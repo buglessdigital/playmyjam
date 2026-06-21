@@ -5,6 +5,11 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import AddSongSheet from "@/components/browse/AddSongSheet";
 
+type QueueEntry = {
+  priority: boolean;
+  songs: { duration_ms: number } | null;
+};
+
 type VenueSong = {
   id: string;
   spotify_track_id: string;
@@ -55,6 +60,7 @@ export default function BrowseClient({
   const [recentlyPlayedIds] = useState<Map<string, number>>(
     new Map(initialRecentlyPlayed.map((r) => [r.song_id, r.played_at]))
   );
+  const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<"default" | "az" | "plays">("default");
   const [sortOpen, setSortOpen] = useState(false);
@@ -65,8 +71,16 @@ export default function BrowseClient({
   const [searching, setSearching] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAddingRef = useRef(false);
+  const userIdRef = useRef<string | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    // getSession reads from local cache — no network round-trip
+    supabase.auth.getSession().then(({ data }) => {
+      userIdRef.current = data.session?.user?.id ?? null;
+    });
+  }, [supabase]);
 
   const venueSongMap = useMemo(() => {
     const map = new Map<string, VenueSong>();
@@ -109,6 +123,29 @@ export default function BrowseClient({
     };
   }, [venueDbId, supabase]);
 
+  useEffect(() => {
+    if (!venueDbId) return;
+
+    const fetchQueue = async () => {
+      const { data } = await supabase
+        .from("queue")
+        .select("priority, songs(duration_ms)")
+        .eq("venue_id", venueDbId)
+        .eq("status", "queued")
+        .not("user_id", "is", null);
+      if (data) setQueueEntries(data as unknown as QueueEntry[]);
+    };
+
+    fetchQueue();
+
+    const qChannel = supabase
+      .channel(`browse-queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchQueue)
+      .subscribe();
+
+    return () => { supabase.removeChannel(qChannel); };
+  }, [venueDbId, supabase]);
+
   const searchSpotify = async (q: string) => {
     if (!q.trim()) { setSearchResults([]); setSearching(false); return; }
     setSearching(true);
@@ -146,28 +183,36 @@ export default function BrowseClient({
     if (!selectedSong || !venueDbId || !selectedSong.id) return;
     if (isAddingRef.current) return;
     isAddingRef.current = true;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+
+    // Optimistic update: close sheet and update UI immediately
+    const cost = priority ? 2 : 1;
+    const songId = selectedSong.id;
+    const spotifyId = selectedSong.spotify_track_id;
+    setTokenBalance((b) => b - cost);
+    setAddedIds((s) => new Set(s).add(spotifyId));
+    setQueuedSongIds((s) => new Set(s).add(songId));
+    setSelectedSong(null);
 
     const res = await fetch("/api/queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ venue_id: venueDbId, song_id: selectedSong.id, priority }),
+      body: JSON.stringify({ venue_id: venueDbId, song_id: songId, priority }),
     });
 
-    if (res.ok) {
-      const cost = priority ? 2 : 1;
-      setTokenBalance((b) => b - cost);
-      setAddedIds((s) => new Set(s).add(selectedSong.spotify_track_id));
-      setQueuedSongIds((s) => new Set(s).add(selectedSong.id!));
+    if (!res.ok) {
+      // Rollback on error
+      setTokenBalance((b) => b + cost);
+      setAddedIds((s) => { const n = new Set(s); n.delete(spotifyId); return n; });
+      setQueuedSongIds((s) => { const n = new Set(s); n.delete(songId); return n; });
     }
-    setSelectedSong(null);
     isAddingRef.current = false;
   };
 
   const handleRequest = async (song: DisplaySong) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !venueDbId) return;
+    if (!venueDbId) return;
+
+    // Optimistic update
+    setRequestedIds((s) => new Set(s).add(song.spotify_track_id));
 
     await fetch(`/api/venue/${venueId}/request`, {
       method: "POST",
@@ -180,20 +225,21 @@ export default function BrowseClient({
         duration_ms: song.duration_ms,
       }),
     });
-
-    setRequestedIds((s) => new Set(s).add(song.spotify_track_id));
   };
 
   const toggleFavorite = async (song: DisplaySong) => {
     if (!song.id) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    if (favoriteIds.has(song.id)) {
-      await supabase.from("user_favorites").delete().eq("user_id", user.id).eq("song_id", song.id);
+    const userId = userIdRef.current;
+    if (!userId) return;
+
+    // Optimistic update
+    const wasFav = favoriteIds.has(song.id);
+    if (wasFav) {
       setFavoriteIds((s) => { const n = new Set(s); n.delete(song.id!); return n; });
+      await supabase.from("user_favorites").delete().eq("user_id", userId).eq("song_id", song.id);
     } else {
-      await supabase.from("user_favorites").insert({ user_id: user.id, song_id: song.id });
       setFavoriteIds((s) => new Set(s).add(song.id!));
+      await supabase.from("user_favorites").insert({ user_id: userId, song_id: song.id });
     }
   };
 
@@ -210,6 +256,15 @@ export default function BrowseClient({
   };
 
   const isInVenueList = (song: DisplaySong) => song.in_venue_list === true;
+
+  const waitNormalMs = useMemo(
+    () => queueEntries.reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0),
+    [queueEntries]
+  );
+  const waitPriorityMs = useMemo(
+    () => queueEntries.filter((e) => e.priority).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0),
+    [queueEntries]
+  );
 
   return (
     <div style={{ background: "#0f0a18", minHeight: "100dvh", width: "100%" }}>
@@ -351,6 +406,8 @@ export default function BrowseClient({
         song={selectedSong}
         tokenBalance={tokenBalance}
         cooldown={selectedSong ? getCooldown(selectedSong) : undefined}
+        waitNormalMs={waitNormalMs}
+        waitPriorityMs={waitPriorityMs}
         onClose={() => setSelectedSong(null)}
         onAdd={handleAdd}
       />

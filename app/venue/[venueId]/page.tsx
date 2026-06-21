@@ -28,11 +28,11 @@ export default function AuthPage({ params }: Props) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) { setError("E-posta veya şifre hatalı"); setLoading(false); return; }
     } else {
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { data: signUpData, error } = await supabase.auth.signUp({ email, password });
       if (error) {
         const msg = error.message.toLowerCase();
-        if (msg.includes("rate limit") || msg.includes("too many")) {
-          setError("Çok fazla deneme yapıldı. Lütfen birkaç dakika bekleyip tekrar deneyin.");
+        if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("20 seconds") || msg.includes("429")) {
+          setError("Çok fazla deneme yapıldı. Lütfen birkaç saniye bekleyip tekrar deneyin.");
         } else if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("user already")) {
           setError("Bu e-posta adresi zaten kayıtlı. Giriş yapmayı deneyin.");
         } else if (msg.includes("password") && msg.includes("short")) {
@@ -43,6 +43,14 @@ export default function AuthPage({ params }: Props) {
           setError("Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.");
         }
         setLoading(false);
+        return;
+      }
+      // Email confirmation enabled: session is null until user confirms
+      if (!signUpData.session) {
+        setError("");
+        setLoading(false);
+        alert(`${email} adresine bir onay e-postası gönderildi. Lütfen e-postanızı kontrol edip bağlantıya tıklayın, ardından giriş yapın.`);
+        setIsLogin(true);
         return;
       }
     }

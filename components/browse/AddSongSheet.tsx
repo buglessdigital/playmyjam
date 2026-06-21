@@ -10,15 +10,27 @@ interface Song {
   album_cover_url: string;
 }
 
+function formatWait(ms: number): string {
+  if (ms <= 0) return "Hemen";
+  const totalSec = Math.ceil(ms / 1000);
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  if (mins === 0) return `~${secs} sn`;
+  if (secs === 0) return `~${mins} dk`;
+  return `~${mins} dk ${secs} sn`;
+}
+
 interface Props {
   song: Song | null;
   tokenBalance: number;
   cooldown?: { remainingMs: number; reason: "played" | "queued" | null };
+  waitNormalMs?: number;
+  waitPriorityMs?: number;
   onClose: () => void;
   onAdd: (priority: boolean) => void;
 }
 
-export default function AddSongSheet({ song, tokenBalance, cooldown, onClose, onAdd }: Props) {
+export default function AddSongSheet({ song, tokenBalance, cooldown, waitNormalMs = 0, waitPriorityMs = 0, onClose, onAdd }: Props) {
   const router = useRouter();
   const params = useParams<{ venueId: string }>();
 
@@ -113,7 +125,7 @@ export default function AddSongSheet({ song, tokenBalance, cooldown, onClose, on
               </div>
               <div className="text-left">
                 <p className="text-white font-semibold text-sm">Normal Sıra</p>
-                <p className="text-[#6b7280] text-xs">~15 dk bekleme</p>
+                <p className="text-[#6b7280] text-xs">{formatWait(waitNormalMs)} bekleme</p>
               </div>
             </div>
             <span className="text-[#3b82f6] font-bold text-sm">1 Jeton</span>
@@ -144,7 +156,7 @@ export default function AddSongSheet({ song, tokenBalance, cooldown, onClose, on
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
                   Öncelikli Sıra
                 </p>
-                <p className="text-[#6b7280] text-xs">~3 dk bekleme</p>
+                <p className="text-[#6b7280] text-xs">{formatWait(waitPriorityMs)} bekleme</p>
               </div>
             </div>
             <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>2 Jeton</span>

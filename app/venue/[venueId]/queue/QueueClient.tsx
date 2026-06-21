@@ -105,10 +105,22 @@ export default function QueueClient({ venueId, initialVenueName, initialVenueDbI
   const dur = nowPlaying?.songs?.duration_ms ?? 1;
   const progressPct = Math.min((progress / dur) * 100, 100);
 
-  const getWaitMinutes = (idx: number) => {
-    const base = nowPlaying?.songs ? Math.ceil((dur - progress) / 60000) : 0;
-    return base + idx * 4;
+  const remainingCurrentMs = nowPlaying?.songs ? Math.max(dur - progress, 0) : 0;
+
+  // Wait time until position idx in queue; auto-fill songs (position >= 9000) excluded
+  const getWaitMs = (idx: number) => {
+    const queueMs = queue.slice(0, idx).filter((e) => e.position < 9000).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0);
+    return remainingCurrentMs + queueMs;
   };
+
+  const getWaitMinutes = (idx: number) => Math.ceil(getWaitMs(idx) / 60000);
+
+  // Auto-fill şarkıları (position >= 9000) bekleme süresine dahil edilmez — manuel şarkılar onların önüne geçer
+  const manualQueue = queue.filter((e) => e.position < 9000);
+  const waitNormalMs = remainingCurrentMs + manualQueue.reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0);
+  const waitPriorityMs = remainingCurrentMs + manualQueue.filter((e) => e.priority).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0);
+  const waitNormalMin = Math.ceil(waitNormalMs / 60000);
+  const waitPriorityMin = Math.ceil(waitPriorityMs / 60000);
 
   return (
     <div className="min-h-screen bg-[#0f0a18]">
@@ -125,7 +137,7 @@ export default function QueueClient({ venueId, initialVenueName, initialVenueDbI
             </svg>
             <div>
               <p className="text-[#6b7280] text-[10px]">Normal Bekleme</p>
-              <p className="text-white font-bold text-sm">~{Math.max(getWaitMinutes(queue.length), 5)} dk</p>
+              <p className="text-white font-bold text-sm">~{waitNormalMin} dk</p>
             </div>
           </div>
           <div className="flex-1 flex items-center gap-3 px-4 py-3">
@@ -134,7 +146,7 @@ export default function QueueClient({ venueId, initialVenueName, initialVenueDbI
             </svg>
             <div>
               <p className="text-[#6b7280] text-[10px]">Öncelikli Bekleme</p>
-              <p className="font-bold text-sm" style={{ color: "#e91e8c" }}>~3 dk</p>
+              <p className="font-bold text-sm" style={{ color: "#e91e8c" }}>~{waitPriorityMin} dk</p>
             </div>
           </div>
         </div>

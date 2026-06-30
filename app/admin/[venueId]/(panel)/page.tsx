@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback, use } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, use, Suspense } from "react";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
@@ -37,6 +37,14 @@ const QUEUE_SELECT =
   "id, added_by, tokens_spent, priority, position, added_at, songs(title, artist, album_cover_url, duration_ms)";
 
 export default function AdminDashboard({ params }: Props) {
+  return (
+    <Suspense fallback={null}>
+      <AdminDashboardContent params={params} />
+    </Suspense>
+  );
+}
+
+function AdminDashboardContent({ params }: Props) {
   const { venueId } = use(params);
   const [venueDbId, setVenueDbId] = useState("");
   const [spotifyConnected, setSpotifyConnected] = useState(false);

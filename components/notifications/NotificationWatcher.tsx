@@ -59,7 +59,7 @@ export default function NotificationWatcher({ venueId }: { venueId: string }) {
 
       channel = supabase
         .channel(`notif:${venueRow.id}:${user.id}`)
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "queue", filter: `venue_id=eq.${venueRow.id}` }, async (payload) => {
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "queue", filter: `venue_id=eq.${venueRow.id}` }, async (payload: { new: unknown }) => {
           const row = payload.new as { user_id?: string; song_id?: string };
           // Kendi eklediğin şarkı için kuyruk bildirimi atma
           if (prefs.current.queue && row.user_id !== user.id && row.song_id) {

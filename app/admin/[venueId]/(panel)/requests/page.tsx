@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, use } from "react";
+import { useState, useEffect, useMemo, use, Suspense } from "react";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
@@ -33,6 +33,14 @@ function timeAgo(ts: string) {
 }
 
 export default function RequestsPage({ params }: Props) {
+  return (
+    <Suspense fallback={null}>
+      <RequestsPageContent params={params} />
+    </Suspense>
+  );
+}
+
+function RequestsPageContent({ params }: Props) {
   const { venueId } = use(params);
   const [tab, setTab] = useState<Tab>("pending");
   const [pending, setPending] = useState<Request[]>([]);

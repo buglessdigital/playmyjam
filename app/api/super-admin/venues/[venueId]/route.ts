@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { updateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import bcrypt from "bcryptjs";
 import { getSuperSession } from "@/lib/session";
@@ -41,6 +42,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ve
 
   if (Object.keys(venueUpdate).length > 0) {
     await supabaseAdmin.from("venues").update(venueUpdate).eq("id", venue.id);
+    updateTag(`venue-${venueId}`);
   }
 
   if (typeof adminUsername === "string" && adminUsername.trim()) {
@@ -75,5 +77,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ v
   const { error } = await supabaseAdmin.from("venues").delete().eq("id", venue.id);
   if (error) return NextResponse.json({ error: "Mekan silinemedi" }, { status: 500 });
 
+  updateTag(`venue-${venueId}`);
   return NextResponse.json({ ok: true });
 }

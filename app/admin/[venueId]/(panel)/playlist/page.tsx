@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback, use } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, use, Suspense } from "react";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
@@ -38,6 +38,14 @@ type SpotifyPlaylist = {
 };
 
 export default function PlaylistPage({ params }: Props) {
+  return (
+    <Suspense fallback={null}>
+      <PlaylistPageContent params={params} />
+    </Suspense>
+  );
+}
+
+function PlaylistPageContent({ params }: Props) {
   const { venueId } = use(params);
   const [venueDbId, setVenueDbId] = useState("");
   const [songs, setSongs] = useState<Song[]>([]);

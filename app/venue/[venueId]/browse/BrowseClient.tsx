@@ -80,7 +80,7 @@ export default function BrowseClient({
 
   useEffect(() => {
     // getSession reads from local cache — no network round-trip
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }: Awaited<ReturnType<typeof supabase.auth.getSession>>) => {
       userIdRef.current = data.session?.user?.id ?? null;
     });
   }, [supabase]);

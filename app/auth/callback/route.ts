@@ -5,13 +5,13 @@ import { cookies } from "next/headers";
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = req.nextUrl;
   const code = searchParams.get("code");
-  const venueId = searchParams.get("venueId");
+
+  const cookieStore = await cookies();
+  const venueId = searchParams.get("venueId") || cookieStore.get("pending_oauth_venue")?.value;
 
   if (!code || !venueId) {
     return NextResponse.redirect(new URL("/", origin));
   }
-
-  const cookieStore = await cookies();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -47,5 +47,6 @@ export async function GET(req: NextRequest) {
     path: `/venue/${venueId}`,
     maxAge: 60 * 60 * 24 * 30,
   });
+  res.cookies.delete("pending_oauth_venue");
   return res;
 }

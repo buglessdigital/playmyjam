@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toSlug, generatePassword } from "@/lib/utils";
@@ -43,11 +43,16 @@ export default function NewVenuePage() {
   const [logoUrl, setLogoUrl] = useState("");
   const [adminUsername, setAdminUsername] = useState("");
   const [usernameEdited, setUsernameEdited] = useState(false);
-  const [adminPassword, setAdminPassword] = useState(generatePassword());
+  const [adminPassword, setAdminPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // crypto.getRandomValues() prerender sırasında çağrılamaz — mount sonrası üret
+  useEffect(() => {
+    setAdminPassword(generatePassword());
+  }, []);
 
   // Slug ve kullanıcı adı, elle düzenlenmedikleri sürece mekan adından türetilir
   const handleNameChange = (val: string) => {

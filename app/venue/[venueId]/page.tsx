@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -9,6 +9,14 @@ interface Props {
 }
 
 export default function AuthPage({ params }: Props) {
+  return (
+    <Suspense fallback={null}>
+      <AuthPageContent params={params} />
+    </Suspense>
+  );
+}
+
+function AuthPageContent({ params }: Props) {
   const { venueId } = use(params);
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
@@ -63,6 +71,7 @@ export default function AuthPage({ params }: Props) {
     setGoogleLoading(true);
     setError("");
     const supabase = createClient();
+    document.cookie = `pending_oauth_venue=${venueId}; path=/; max-age=600; samesite=lax`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {

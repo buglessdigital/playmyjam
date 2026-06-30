@@ -10,7 +10,7 @@ export default async function QueuePage({ params }: Props) {
   const { venueId } = await params;
   const supabase = await createClient();
 
-  const venueRow = await getVenueBySlug(supabase, venueId);
+  const venueRow = await getVenueBySlug(venueId);
 
   const initialVenueName = venueRow?.name ?? "";
   const initialVenueDbId = venueRow?.id ?? "";

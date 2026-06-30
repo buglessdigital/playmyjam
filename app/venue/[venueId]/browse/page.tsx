@@ -1,79 +1,83 @@
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getVenueBySlug } from "@/lib/venue-cache";
+import { getVenueBySlug, getVenueSongCatalog } from "@/lib/venue-cache";
 import BrowseClient from "./BrowseClient";
+import BrowseLoading from "./loading";
+
+export const unstable_instant = false;
 
 interface Props {
   params: Promise<{ venueId: string }>;
 }
 
-type VenueSongRow = {
-  play_count: number;
-  in_venue_list: boolean;
-  songs: { id: string; spotify_track_id: string; title: string; artist: string; album_cover_url: string; duration_ms: number } | null;
-};
+export default function BrowsePage({ params }: Props) {
+  return (
+    <Suspense fallback={<BrowseLoading />}>
+      <BrowsePageContent params={params} />
+    </Suspense>
+  );
+}
 
-export default async function BrowsePage({ params }: Props) {
+async function BrowsePageContent({ params }: Props) {
   const { venueId } = await params;
-  const supabase = await createClient();
-
-  const [venue, userRes] = await Promise.all([
-    getVenueBySlug(supabase, venueId),
-    supabase.auth.getUser(),
-  ]);
-
-  const user = userRes.data.user;
+  const venue = await getVenueBySlug(venueId);
 
   if (!venue) {
-    return <BrowseClient
-      venueId={venueId}
-      venueDbId=""
-      initialVenueSongs={[]}
-      initialQueuedSongIds={[]}
-      initialRecentlyPlayed={[]}
-      initialTokenBalance={0}
-      initialFavoriteIds={[]}
-    />;
+    return (
+      <BrowseClient
+        venueId={venueId}
+        venueDbId=""
+        initialVenueSongs={[]}
+        initialQueuedSongIds={[]}
+        initialRecentlyPlayed={[]}
+        initialTokenBalance={0}
+        initialFavoriteIds={[]}
+      />
+    );
   }
 
+  return <BrowseDynamicContent venueId={venueId} venueDbId={venue.id} />;
+}
+
+async function BrowseDynamicContent({ venueId, venueDbId }: { venueId: string; venueDbId: string }) {
+  const supabase = await createClient();
   const cooldownSince = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
-  const [vSongsRes, queueRes, playedRes, nowPlayingRes, tokensRes, favsRes] = await Promise.all([
-    supabase
-      .from("venue_songs")
-      .select("play_count, in_venue_list, songs(id, spotify_track_id, title, artist, album_cover_url, duration_ms)")
-      .eq("venue_id", venue.id),
+  const [userRes, initialVenueSongs, queueRes, playedRes, nowPlayingRes] = await Promise.all([
+    supabase.auth.getClaims(),
+    getVenueSongCatalog(venueDbId),
     supabase
       .from("queue")
       .select("song_id")
-      .eq("venue_id", venue.id)
+      .eq("venue_id", venueDbId)
       .eq("status", "queued")
       .not("user_id", "is", null),
     supabase
       .from("queue")
       .select("song_id, played_at")
-      .eq("venue_id", venue.id)
+      .eq("venue_id", venueDbId)
       .eq("status", "played")
       .not("user_id", "is", null)
       .gte("played_at", cooldownSince),
     supabase
       .from("queue")
       .select("song_id, added_at")
-      .eq("venue_id", venue.id)
+      .eq("venue_id", venueDbId)
       .eq("status", "playing")
       .not("user_id", "is", null)
       .maybeSingle(),
-    user
-      ? supabase.from("user_tokens").select("balance").eq("user_id", user.id).eq("venue_id", venue.id).maybeSingle()
-      : Promise.resolve({ data: null }),
-    user
-      ? supabase.from("user_favorites").select("song_id").eq("user_id", user.id)
-      : Promise.resolve({ data: null }),
   ]);
 
-  const rows = (vSongsRes.data ?? []) as unknown as VenueSongRow[];
-  const initialVenueSongs = rows
-    .filter((vs) => vs.songs)
-    .map((vs) => ({ ...vs.songs!, play_count: vs.play_count, in_venue_list: vs.in_venue_list }));
+  const userId = userRes.data?.claims.sub;
+
+  const [tokensRes, favsRes] = await Promise.all([
+    userId
+      ? supabase.from("user_tokens").select("balance").eq("user_id", userId).eq("venue_id", venueDbId).maybeSingle()
+      : Promise.resolve({ data: null }),
+    userId
+      ? supabase.from("user_favorites").select("song_id").eq("user_id", userId)
+      : Promise.resolve({ data: null }),
+  ]);
 
   const initialQueuedSongIds = (queueRes.data ?? []).map((q: { song_id: string }) => q.song_id);
 
@@ -93,7 +97,7 @@ export default async function BrowsePage({ params }: Props) {
   return (
     <BrowseClient
       venueId={venueId}
-      venueDbId={venue.id}
+      venueDbId={venueDbId}
       initialVenueSongs={initialVenueSongs}
       initialQueuedSongIds={initialQueuedSongIds}
       initialRecentlyPlayed={recentlyPlayedMap}

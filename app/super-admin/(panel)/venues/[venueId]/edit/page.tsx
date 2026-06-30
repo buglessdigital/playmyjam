@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { generatePassword } from "@/lib/utils";
@@ -44,6 +44,14 @@ function Field({
 }
 
 export default function EditVenuePage() {
+  return (
+    <Suspense>
+      <EditVenueForm />
+    </Suspense>
+  );
+}
+
+function EditVenueForm() {
   const params = useParams();
   const router = useRouter();
   const venueSlug = params.venueId as string;

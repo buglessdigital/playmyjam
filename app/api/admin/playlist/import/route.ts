@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { updateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAdminSession } from "@/lib/session";
 import { getVenueAccessToken, getPlaylistTracks } from "@/lib/spotify";
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
     if (insErr) {
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
+    updateTag(`venue-songs-${session.venue_id}`);
   }
 
   return NextResponse.json({ added: newRows.length, skipped: songIds.length - newRows.length });

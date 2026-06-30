@@ -1,3 +1,4 @@
+import { cacheLife } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { fillQueueToTen } from "@/lib/queue-fill";
 
@@ -378,6 +379,9 @@ export type SpotifyTrackDetails = {
 };
 
 export async function getTrackDetails(trackId: string): Promise<SpotifyTrackDetails | null> {
+  "use cache";
+  cacheLife("days");
+
   const token = await getClientCredentialsToken();
   const res = await fetch(`https://api.spotify.com/v1/tracks/${trackId}?market=TR`, {
     headers: { Authorization: `Bearer ${token}` },

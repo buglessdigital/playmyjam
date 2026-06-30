@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, use } from "react";
+import { useState, useEffect, useMemo, useCallback, use, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface Props {
@@ -10,6 +10,14 @@ interface Props {
 type Package = { id: string; label: string; tokens: number; price: number; popular: boolean; display_order: number };
 
 export default function AdminTokensPage({ params }: Props) {
+  return (
+    <Suspense fallback={null}>
+      <AdminTokensPageContent params={params} />
+    </Suspense>
+  );
+}
+
+function AdminTokensPageContent({ params }: Props) {
   const { venueId } = use(params);
   const [packages, setPackages] = useState<Package[]>([]);
   const [saved, setSaved] = useState(false);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { updateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAdminSession } from "@/lib/session";
 import { addSongToVenuePlaylist } from "@/lib/playlist";
@@ -47,6 +48,9 @@ export async function PATCH(req: NextRequest) {
       });
       if ("error" in result && result.status !== 409) {
         return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      if (!("error" in result)) {
+        updateTag(`venue-songs-${session.venue_id}`);
       }
     }
   }

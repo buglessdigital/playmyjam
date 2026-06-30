@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, Suspense } from "react";
 import { useRouter } from "next/navigation";
 
 interface Props {
@@ -8,6 +8,14 @@ interface Props {
 }
 
 export default function AdminLoginPage({ params }: Props) {
+  return (
+    <Suspense>
+      <AdminLoginForm params={params} />
+    </Suspense>
+  );
+}
+
+function AdminLoginForm({ params }: Props) {
   const { venueId } = use(params);
   const router = useRouter();
   const [username, setUsername] = useState("");

@@ -1,9 +1,9 @@
 "use client";
 
+import { Suspense, use } from "react";
+import { usePathname } from "next/navigation";
 import BottomNav from "@/components/ui/BottomNav";
 import NotificationWatcher from "@/components/notifications/NotificationWatcher";
-import { use } from "react";
-import { usePathname } from "next/navigation";
 
 interface Props {
   children: React.ReactNode;
@@ -11,15 +11,30 @@ interface Props {
 }
 
 export default function VenueLayout({ children, params }: Props) {
-  const { venueId } = use(params);
+  return (
+    <div className="relative min-h-screen w-full bg-[#0f0a18]">
+      <Suspense fallback={<main className="w-full">{children}</main>}>
+        <VenueLayoutContent params={params}>{children}</VenueLayoutContent>
+      </Suspense>
+    </div>
+  );
+}
+
+function VenueLayoutContent({ children, params }: Props) {
+  // Giriş sayfası "/venue/{venueId}" — alt segment yoksa params'ı beklemeden anlaşılır
   const pathname = usePathname();
+  const { venueId } = use(params);
   const isLoginPage = pathname === `/venue/${venueId}`;
 
   return (
-    <div className="relative min-h-screen w-full bg-[#0f0a18]">
+    <>
       <main className={`w-full ${isLoginPage ? "" : "pb-16"}`}>{children}</main>
-      {!isLoginPage && <NotificationWatcher venueId={venueId} />}
-      {!isLoginPage && <BottomNav venueId={venueId} />}
-    </div>
+      {!isLoginPage && (
+        <>
+          <NotificationWatcher venueId={venueId} />
+          <BottomNav venueId={venueId} />
+        </>
+      )}
+    </>
   );
 }

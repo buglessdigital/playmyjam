@@ -1,50 +1,120 @@
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getVenueBySlug } from "@/lib/venue-cache";
 import { getTrackDetails } from "@/lib/spotify";
 import SongDetailClient from "./SongDetailClient";
+import SongDetailLoading from "./loading";
+
+export const unstable_instant = false;
 
 interface Props {
   params: Promise<{ venueId: string; songId: string }>;
 }
 
-export default async function SongDetailPage({ params }: Props) {
-  const { venueId, songId } = await params;
-  const supabase = await createClient();
+export default function SongDetailPage({ params }: Props) {
+  return (
+    <Suspense fallback={<SongDetailLoading />}>
+      <SongDetailPageContent params={params} />
+    </Suspense>
+  );
+}
 
-  const [venue, userRes, track] = await Promise.all([
-    getVenueBySlug(supabase, venueId),
-    supabase.auth.getUser(),
+async function SongDetailPageContent({ params }: Props) {
+  const { venueId, songId } = await params;
+
+  const [venue, track] = await Promise.all([
+    getVenueBySlug(venueId),
     getTrackDetails(songId).catch(() => null),
   ]);
 
-  const user = userRes.data.user;
-
   if (!venue || !track) {
-    return <SongDetailClient venueId={venueId} venueDbId="" track={null} dbSongId={null} playCount={0} inVenueList={false} isFavorite={false} tokenBalance={0} cooldown={{ remainingMs: 0, reason: null }} initialQueueEntries={[]} initialNowPlaying={null} />;
+    return (
+      <SongDetailClient
+        venueId={venueId}
+        venueDbId=""
+        track={null}
+        dbSongId={null}
+        playCount={0}
+        inVenueList={false}
+        isFavorite={false}
+        tokenBalance={0}
+        cooldown={{ remainingMs: 0, reason: null }}
+        initialQueueEntries={[]}
+        initialNowPlaying={null}
+      />
+    );
   }
 
+  return <SongDetailDynamicContent venueId={venueId} venueDbId={venue.id} songId={songId} track={track} />;
+}
+
+async function SongDetailDynamicContent({
+  venueId,
+  venueDbId,
+  songId,
+  track,
+}: {
+  venueId: string;
+  venueDbId: string;
+  songId: string;
+  track: NonNullable<Awaited<ReturnType<typeof getTrackDetails>>>;
+}) {
+  const supabase = await createClient();
   const cooldownSince = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
-  const [songRes, queueRes, nowPlayingRes] = await Promise.all([
-    supabase
-      .from("songs")
-      .select("id")
-      .eq("spotify_track_id", songId)
-      .maybeSingle(),
-    supabase
-      .from("queue")
-      .select("priority, song_id, songs(duration_ms)")
-      .eq("venue_id", venue.id)
-      .eq("status", "queued")
-      .not("user_id", "is", null),
-    supabase
-      .from("now_playing")
-      .select("song_id, progress_ms, is_playing, started_at, songs(duration_ms)")
-      .eq("venue_id", venue.id)
-      .maybeSingle(),
-  ]);
+  // dbSongId'ye bağlı sorguları, songRes'in tek başına dönmesini beklemeden
+  // diğer bağımsız sorgularla aynı anda yürütüyoruz — sıralı round-trip'i önler.
+  const userPromise = supabase.auth.getClaims();
+  const songPromise = supabase
+    .from("songs")
+    .select("id")
+    .eq("spotify_track_id", songId)
+    .maybeSingle();
+  const queuePromise = supabase
+    .from("queue")
+    .select("priority, song_id, songs(duration_ms)")
+    .eq("venue_id", venueDbId)
+    .eq("status", "queued")
+    .not("user_id", "is", null);
+  const nowPlayingPromise = supabase
+    .from("now_playing")
+    .select("song_id, progress_ms, is_playing, started_at, songs(duration_ms)")
+    .eq("venue_id", venueDbId)
+    .maybeSingle();
 
+  const [userRes, songRes] = await Promise.all([userPromise, songPromise]);
+  const userId = userRes.data?.claims.sub;
   const dbSongId = songRes.data?.id ?? null;
+
+  const dependentPromise = dbSongId
+    ? Promise.all([
+        supabase
+          .from("venue_songs")
+          .select("play_count, in_venue_list")
+          .eq("venue_id", venueDbId)
+          .eq("song_id", dbSongId)
+          .maybeSingle(),
+        userId
+          ? supabase.from("user_favorites").select("song_id").eq("user_id", userId).eq("song_id", dbSongId).maybeSingle()
+          : Promise.resolve({ data: null }),
+        userId
+          ? supabase.from("user_tokens").select("balance").eq("user_id", userId).eq("venue_id", venueDbId).maybeSingle()
+          : Promise.resolve({ data: null }),
+        supabase
+          .from("queue")
+          .select("played_at")
+          .eq("venue_id", venueDbId)
+          .eq("song_id", dbSongId)
+          .eq("status", "played")
+          .not("user_id", "is", null)
+          .gte("played_at", cooldownSince)
+          .order("played_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ])
+    : null;
+
+  const [queueRes, nowPlayingRes, dependentRes] = await Promise.all([queuePromise, nowPlayingPromise, dependentPromise]);
 
   let playCount = 0;
   let inVenueList = false;
@@ -52,33 +122,8 @@ export default async function SongDetailPage({ params }: Props) {
   let tokenBalance = 0;
   let recentlyPlayedAt: number | null = null;
 
-  if (dbSongId) {
-    const [vSongRes, favRes, tokensRes, playedRes] = await Promise.all([
-      supabase
-        .from("venue_songs")
-        .select("play_count, in_venue_list")
-        .eq("venue_id", venue.id)
-        .eq("song_id", dbSongId)
-        .maybeSingle(),
-      user
-        ? supabase.from("user_favorites").select("song_id").eq("user_id", user.id).eq("song_id", dbSongId).maybeSingle()
-        : Promise.resolve({ data: null }),
-      user
-        ? supabase.from("user_tokens").select("balance").eq("user_id", user.id).eq("venue_id", venue.id).maybeSingle()
-        : Promise.resolve({ data: null }),
-      supabase
-        .from("queue")
-        .select("played_at")
-        .eq("venue_id", venue.id)
-        .eq("song_id", dbSongId)
-        .eq("status", "played")
-        .not("user_id", "is", null)
-        .gte("played_at", cooldownSince)
-        .order("played_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
-
+  if (dependentRes) {
+    const [vSongRes, favRes, tokensRes, playedRes] = dependentRes;
     playCount = vSongRes.data?.play_count ?? 0;
     inVenueList = vSongRes.data?.in_venue_list ?? false;
     isFavorite = !!favRes.data;
@@ -101,7 +146,7 @@ export default async function SongDetailPage({ params }: Props) {
   return (
     <SongDetailClient
       venueId={venueId}
-      venueDbId={venue.id}
+      venueDbId={venueDbId}
       track={track}
       dbSongId={dbSongId}
       playCount={playCount}

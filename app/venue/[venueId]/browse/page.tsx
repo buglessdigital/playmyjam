@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getVenueBySlug } from "@/lib/venue-cache";
 import BrowseClient from "./BrowseClient";
 
 interface Props {
@@ -15,12 +16,11 @@ export default async function BrowsePage({ params }: Props) {
   const { venueId } = await params;
   const supabase = await createClient();
 
-  const [venueRes, userRes] = await Promise.all([
-    supabase.from("venues").select("id").eq("slug", venueId).single(),
+  const [venue, userRes] = await Promise.all([
+    getVenueBySlug(supabase, venueId),
     supabase.auth.getUser(),
   ]);
 
-  const venue = venueRes.data;
   const user = userRes.data.user;
 
   if (!venue) {

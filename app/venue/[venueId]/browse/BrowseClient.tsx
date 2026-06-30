@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import AddSongSheet from "@/components/browse/AddSongSheet";
@@ -61,6 +62,7 @@ export default function BrowseClient({
     new Map(initialRecentlyPlayed.map((r) => [r.song_id, r.played_at]))
   );
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
+  const [remainingCurrentMs, setRemainingCurrentMs] = useState(0);
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<"default" | "az" | "plays">("default");
   const [sortOpen, setSortOpen] = useState(false);
@@ -74,6 +76,7 @@ export default function BrowseClient({
   const userIdRef = useRef<string | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
 
   useEffect(() => {
     // getSession reads from local cache — no network round-trip
@@ -136,14 +139,37 @@ export default function BrowseClient({
       if (data) setQueueEntries(data as unknown as QueueEntry[]);
     };
 
+    const fetchNowPlaying = async () => {
+      const { data } = await supabase
+        .from("now_playing")
+        .select("progress_ms, is_playing, songs(duration_ms)")
+        .eq("venue_id", venueDbId)
+        .single();
+      const row = data as unknown as { progress_ms: number; is_playing: boolean; songs: { duration_ms: number } | null } | null;
+      if (row?.songs) {
+        setRemainingCurrentMs(Math.max(row.songs.duration_ms - (row.progress_ms ?? 0), 0));
+      } else {
+        setRemainingCurrentMs(0);
+      }
+    };
+
     fetchQueue();
+    fetchNowPlaying();
 
     const qChannel = supabase
       .channel(`browse-queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchQueue)
       .subscribe();
 
-    return () => { supabase.removeChannel(qChannel); };
+    const npChannel = supabase
+      .channel(`browse-now-playing:${venueDbId}:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchNowPlaying)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(qChannel);
+      supabase.removeChannel(npChannel);
+    };
   }, [venueDbId, supabase]);
 
   const searchSpotify = async (q: string) => {
@@ -258,12 +284,12 @@ export default function BrowseClient({
   const isInVenueList = (song: DisplaySong) => song.in_venue_list === true;
 
   const waitNormalMs = useMemo(
-    () => queueEntries.reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0),
-    [queueEntries]
+    () => remainingCurrentMs + queueEntries.reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0),
+    [queueEntries, remainingCurrentMs]
   );
   const waitPriorityMs = useMemo(
-    () => queueEntries.filter((e) => e.priority).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0),
-    [queueEntries]
+    () => remainingCurrentMs + queueEntries.filter((e) => e.priority).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0),
+    [queueEntries, remainingCurrentMs]
   );
 
   return (
@@ -338,23 +364,28 @@ export default function BrowseClient({
           return (
             <div key={song.spotify_track_id} style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 0" }}>
-                <div style={{ width: 56, height: 56, borderRadius: 12, flexShrink: 0, overflow: "hidden", background: "#1a0e2a" }}>
-                  {song.album_cover_url && (
-                    <Image src={song.album_cover_url} alt={song.title} width={56} height={56} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                  )}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ color: "white", fontWeight: 600, fontSize: 14, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{song.title}</p>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                    <span style={{ color: "#6b7280", fontSize: 12 }}>{song.artist}</span>
-                    {(song.play_count ?? 0) > 0 && (
-                      <><span style={{ color: "#6b7280", fontSize: 12 }}>•</span><span style={{ color: "#e91e8c", fontSize: 12, fontWeight: 500 }}>{song.play_count}</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="2" /><circle cx="18" cy="16" r="3" stroke="#6b7280" strokeWidth="2" /></svg></>
+                <div
+                  onClick={() => router.push(`/venue/${venueId}/song/${song.spotify_track_id}`)}
+                  style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0, cursor: "pointer" }}
+                >
+                  <div style={{ width: 56, height: 56, borderRadius: 12, flexShrink: 0, overflow: "hidden", background: "#1a0e2a" }}>
+                    {song.album_cover_url && (
+                      <Image src={song.album_cover_url} alt={song.title} width={56} height={56} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                     )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: "white", fontWeight: 600, fontSize: 14, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{song.title}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                      <span style={{ color: "#6b7280", fontSize: 12 }}>{song.artist}</span>
+                      {(song.play_count ?? 0) > 0 && (
+                        <><span style={{ color: "#6b7280", fontSize: 12 }}>•</span><span style={{ color: "#e91e8c", fontSize: 12, fontWeight: 500 }}>{song.play_count}</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="2" /><circle cx="18" cy="16" r="3" stroke="#6b7280" strokeWidth="2" /></svg></>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {song.id && (
-                  <button onClick={() => toggleFavorite(song)} style={{ flexShrink: 0, width: 32, height: 32, borderRadius: "50%", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+                  <button onClick={(e) => { e.stopPropagation(); toggleFavorite(song); }} style={{ flexShrink: 0, width: 32, height: 32, borderRadius: "50%", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill={isFav ? "#e91e8c" : "none"}><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke={isFav ? "#e91e8c" : "#6b7280"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </button>
                 )}
@@ -368,7 +399,7 @@ export default function BrowseClient({
                       </div>
                     ) : (
                       <button
-                        onClick={() => !isAdded && setSelectedSong(song)}
+                        onClick={(e) => { e.stopPropagation(); !isAdded && setSelectedSong(song); }}
                         style={{ width: 36, height: 36, borderRadius: "50%", border: isAdded ? "1px solid rgba(233,30,140,0.4)" : "1px solid rgba(255,255,255,0.15)", background: isAdded ? "rgba(233,30,140,0.2)" : "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", cursor: isAdded ? "default" : "pointer" }}
                       >
                         {isAdded ? (
@@ -380,7 +411,7 @@ export default function BrowseClient({
                     )
                   ) : (
                     <button
-                      onClick={() => !isRequested && handleRequest(song)}
+                      onClick={(e) => { e.stopPropagation(); !isRequested && handleRequest(song); }}
                       style={{ height: 32, borderRadius: 10, border: isRequested ? "1px solid rgba(251,191,36,0.3)" : "1px solid rgba(251,191,36,0.4)", background: isRequested ? "rgba(251,191,36,0.07)" : "rgba(251,191,36,0.1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: isRequested ? "default" : "pointer", padding: "0 10px", gap: 4 }}
                     >
                       {isRequested ? (

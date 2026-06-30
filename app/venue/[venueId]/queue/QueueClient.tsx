@@ -107,9 +107,9 @@ export default function QueueClient({ venueId, initialVenueName, initialVenueDbI
 
   const remainingCurrentMs = nowPlaying?.songs ? Math.max(dur - progress, 0) : 0;
 
-  // Wait time until position idx in queue; auto-fill songs (position >= 9000) excluded
+  // queue dizisi zaten çalma sırasında (priority, position); idx'ten önceki tüm şarkılar (auto-fill dahil) bu şarkıdan önce çalar
   const getWaitMs = (idx: number) => {
-    const queueMs = queue.slice(0, idx).filter((e) => e.position < 9000).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0);
+    const queueMs = queue.slice(0, idx).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0);
     return remainingCurrentMs + queueMs;
   };
 

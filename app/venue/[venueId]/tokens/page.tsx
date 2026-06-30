@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getVenueBySlug } from "@/lib/venue-cache";
 import TokensClient from "./TokensClient";
 
 interface Props {
@@ -9,7 +10,7 @@ export default async function TokensPage({ params }: Props) {
   const { venueId } = await params;
   const supabase = await createClient();
 
-  const { data: venue } = await supabase.from("venues").select("id").eq("slug", venueId).single();
+  const venue = await getVenueBySlug(supabase, venueId);
 
   let initialPackages: { id: string; label: string; tokens: number; price: number; popular: boolean }[] = [];
   let initialBalance = 0;

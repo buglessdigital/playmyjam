@@ -364,6 +364,53 @@ export async function getPlaylistTracks(
   return tracks;
 }
 
+export type SpotifyTrackDetails = {
+  spotify_track_id: string;
+  title: string;
+  artist: string;
+  album_name: string;
+  album_cover_url: string;
+  duration_ms: number;
+  popularity: number;
+  release_date: string | null;
+  external_url: string | null;
+  preview_url: string | null;
+};
+
+export async function getTrackDetails(trackId: string): Promise<SpotifyTrackDetails | null> {
+  const token = await getClientCredentialsToken();
+  const res = await fetch(`https://api.spotify.com/v1/tracks/${trackId}?market=TR`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Spotify track bilgisi alınamadı (${res.status})`);
+
+  const t: {
+    id: string;
+    name: string;
+    duration_ms: number;
+    popularity: number;
+    preview_url: string | null;
+    external_urls?: { spotify?: string };
+    artists?: Array<{ name: string }>;
+    album?: { name?: string; release_date?: string; images?: Array<{ url: string }> };
+  } = await res.json();
+
+  return {
+    spotify_track_id: t.id,
+    title: t.name ?? "",
+    artist: (t.artists ?? []).map((a) => a.name).filter(Boolean).join(", "),
+    album_name: t.album?.name ?? "",
+    album_cover_url: t.album?.images?.[0]?.url ?? "",
+    duration_ms: t.duration_ms,
+    popularity: t.popularity ?? 0,
+    release_date: t.album?.release_date ?? null,
+    external_url: t.external_urls?.spotify ?? null,
+    preview_url: t.preview_url ?? null,
+  };
+}
+
 export async function getSpotifyProfile(accessToken: string): Promise<{
   id: string;
   display_name: string | null;

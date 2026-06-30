@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getVenueBySlug } from "@/lib/venue-cache";
 import QueueClient from "./QueueClient";
 
 interface Props {
@@ -9,7 +10,7 @@ export default async function QueuePage({ params }: Props) {
   const { venueId } = await params;
   const supabase = await createClient();
 
-  const { data: venueRow } = await supabase.from("venues").select("id, name").eq("slug", venueId).single();
+  const venueRow = await getVenueBySlug(supabase, venueId);
 
   const initialVenueName = venueRow?.name ?? "";
   const initialVenueDbId = venueRow?.id ?? "";

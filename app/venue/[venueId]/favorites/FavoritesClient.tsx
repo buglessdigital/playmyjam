@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
@@ -11,18 +11,45 @@ type FavSong = {
   songs: { title: string; artist: string; album_cover_url: string };
 };
 
-interface Props {
-  initialFavorites: FavSong[];
-}
-
-export default function FavoritesClient({ initialFavorites }: Props) {
+export default function FavoritesClient() {
   const router = useRouter();
-  const [favorites, setFavorites] = useState<FavSong[]>(initialFavorites);
+  const supabase = useMemo(() => createClient(), []);
+  const [loaded, setLoaded] = useState(false);
+  const [favorites, setFavorites] = useState<FavSong[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      // Kullanıcı id'si lokal session'dan (ağ çağrısı yok); favoriler tek sorgu
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+      if (cancelled || !userId) {
+        if (!cancelled) setLoaded(true);
+        return;
+      }
+      const { data } = await supabase
+        .from("user_favorites")
+        .select("id, song_id, songs(title, artist, album_cover_url)")
+        .eq("user_id", userId);
+      if (!cancelled) {
+        setFavorites((data ?? []) as unknown as FavSong[]);
+        setLoaded(true);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
 
   const removeFavorite = async (favId: string) => {
-    const supabase = createClient();
-    await supabase.from("user_favorites").delete().eq("id", favId);
+    // Optimistic: satırı hemen kaldır, hata olursa geri koy
+    const removed = favorites.find((f) => f.id === favId);
     setFavorites((prev) => prev.filter((f) => f.id !== favId));
+    const { error } = await supabase.from("user_favorites").delete().eq("id", favId);
+    if (error && removed) {
+      setFavorites((prev) => [...prev, removed]);
+    }
   };
 
   return (
@@ -34,7 +61,19 @@ export default function FavoritesClient({ initialFavorites }: Props) {
         <h1 className="text-white font-bold text-lg">Favorilerim</h1>
       </div>
 
-      {favorites.length === 0 ? (
+      {!loaded ? (
+        <div className="px-5 space-y-3 pb-20">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-3 p-3 rounded-2xl animate-pulse" style={{ background: "#1a0e2a" }}>
+              <div className="w-12 h-12 rounded-xl bg-white/10 flex-shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-3/4 rounded bg-white/10" />
+                <div className="h-3 w-1/2 rounded bg-white/10" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : favorites.length === 0 ? (
         <div className="text-center py-16 text-[#6b7280] text-sm">Henüz favori eklenmedi</div>
       ) : (
         <div className="px-5 space-y-3 pb-20">

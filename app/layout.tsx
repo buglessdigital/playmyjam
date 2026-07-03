@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import ServiceWorkerRegister from "@/components/pwa/ServiceWorkerRegister";
 import "./globals.css";
 
@@ -39,6 +40,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-[#0f0a18] text-white">
         <ServiceWorkerRegister />
         {children}
+        <SpeedInsights />
       </body>
     </html>
   );

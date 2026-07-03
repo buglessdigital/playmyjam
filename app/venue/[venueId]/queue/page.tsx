@@ -1,50 +1,38 @@
-import { createClient } from "@/lib/supabase/server";
+import { Suspense } from "react";
 import { getVenueBySlug } from "@/lib/venue-cache";
 import QueueClient from "./QueueClient";
+import QueueLoading from "./loading";
+
+// Geçişlerin anında olması build'de doğrulanır: kabuk yalnızca cache'li veri içerir,
+// canlı kuyruk/şu-an-çalan verisi client'ta tek RPC ile gelir (realtime zaten orada).
+// runtime prefetch: kabuk mekan bazında istek anında üretilip prefetch'e servis edilir;
+// samples yalnızca build doğrulaması için örnek değerdir.
+export const unstable_instant = {
+  prefetch: "runtime",
+  samples: [{ params: { venueId: "ecem-s-house" } }],
+};
 
 interface Props {
   params: Promise<{ venueId: string }>;
 }
 
-export default async function QueuePage({ params }: Props) {
-  const { venueId } = await params;
-  const supabase = await createClient();
+export default function QueuePage({ params }: Props) {
+  return (
+    <Suspense fallback={<QueueLoading />}>
+      {params.then(({ venueId }) => (
+        <QueueShell venueId={venueId} />
+      ))}
+    </Suspense>
+  );
+}
 
-  const venueRow = await getVenueBySlug(venueId);
-
-  const initialVenueName = venueRow?.name ?? "";
-  const initialVenueDbId = venueRow?.id ?? "";
-
-  let initialNowPlaying = null;
-  let initialQueue: unknown[] = [];
-
-  if (venueRow) {
-    const [npRes, queueRes] = await Promise.all([
-      supabase
-        .from("now_playing")
-        .select("song_id, progress_ms, is_playing, started_at, songs(title, artist, album_cover_url, duration_ms)")
-        .eq("venue_id", venueRow.id)
-        .single(),
-      supabase
-        .from("queue")
-        .select("id, song_id, added_by, tokens_spent, priority, position, added_at, songs(title, artist, album_cover_url, duration_ms)")
-        .eq("venue_id", venueRow.id)
-        .eq("status", "queued")
-        .order("priority", { ascending: false })
-        .order("position", { ascending: true })
-        .limit(10),
-    ]);
-    initialNowPlaying = npRes.data ?? null;
-    initialQueue = queueRes.data ?? [];
-  }
-
+async function QueueShell({ venueId }: { venueId: string }) {
+  const venue = await getVenueBySlug(venueId);
   return (
     <QueueClient
       venueId={venueId}
-      initialVenueName={initialVenueName}
-      initialVenueDbId={initialVenueDbId}
-      initialNowPlaying={initialNowPlaying as never}
-      initialQueue={initialQueue as never}
+      venueName={venue?.name ?? ""}
+      venueDbId={venue?.id ?? ""}
     />
   );
 }

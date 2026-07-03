@@ -1,24 +1,66 @@
 "use client";
 
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
+type ProfileState = {
+  username: string | null;
+  token_balance: number;
+  fav_count: number;
+  request_count: number;
+};
+
 interface Props {
   venueId: string;
-  username: string;
-  email: string;
-  tokenBalance: number;
-  favCount: number;
-  requestCount: number;
+  venueDbId: string;
 }
 
-export default function ProfileClient({ venueId, username, email, tokenBalance, favCount, requestCount }: Props) {
+export default function ProfileClient({ venueId, venueDbId }: Props) {
   const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+
+  const [loaded, setLoaded] = useState(false);
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [tokenBalance, setTokenBalance] = useState(0);
+  const [favCount, setFavCount] = useState(0);
+  const [requestCount, setRequestCount] = useState(0);
+
+  useEffect(() => {
+    if (!venueDbId) return;
+    let cancelled = false;
+
+    const load = async () => {
+      // E-posta lokal session'dan (ağ çağrısı yok); özet tek RPC round-trip (0006)
+      const [{ data: sessionData }, { data: stateData }] = await Promise.all([
+        supabase.auth.getSession(),
+        supabase.rpc("get_profile_state", { p_venue_id: venueDbId }),
+      ]);
+      if (cancelled) return;
+
+      const sessionEmail = sessionData.session?.user?.email ?? "";
+      setEmail(sessionEmail);
+
+      const state = stateData as unknown as ProfileState | null;
+      if (state) {
+        setUsername(state.username ?? sessionEmail.split("@")[0] ?? "");
+        setTokenBalance(state.token_balance ?? 0);
+        setFavCount(state.fav_count ?? 0);
+        setRequestCount(state.request_count ?? 0);
+      }
+      setLoaded(true);
+    };
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [venueDbId, supabase]);
 
   const handleLogout = async () => {
     await fetch(`/api/venue/${venueId}/auth`, { method: "DELETE" });
-    const supabase = createClient();
     await supabase.auth.signOut();
     router.push(`/venue/${venueId}`);
   };
@@ -56,10 +98,19 @@ export default function ProfileClient({ venueId, username, email, tokenBalance, 
           </div>
 
           <div style={{ textAlign: "center" }}>
-            <h1 style={{ color: "white", fontWeight: 700, fontSize: 22, margin: 0, letterSpacing: "-0.3px" }}>
-              {username || email.split("@")[0]}
-            </h1>
-            <p style={{ color: "#6b7280", fontSize: 13, marginTop: 4 }}>{email}</p>
+            {loaded ? (
+              <>
+                <h1 style={{ color: "white", fontWeight: 700, fontSize: 22, margin: 0, letterSpacing: "-0.3px" }}>
+                  {username || email.split("@")[0]}
+                </h1>
+                <p style={{ color: "#6b7280", fontSize: 13, marginTop: 4 }}>{email}</p>
+              </>
+            ) : (
+              <>
+                <div className="h-6 w-36 rounded-lg bg-white/10 animate-pulse" style={{ margin: "0 auto" }} />
+                <div className="h-4 w-44 rounded-lg bg-white/10 animate-pulse" style={{ margin: "6px auto 0" }} />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -79,7 +130,7 @@ export default function ProfileClient({ venueId, username, email, tokenBalance, 
             border: "1px solid rgba(255,255,255,0.06)",
             display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
           }}>
-            <p style={{ color: "white", fontWeight: 800, fontSize: 24, margin: 0, lineHeight: 1 }}>{s.value}</p>
+            <p style={{ color: "white", fontWeight: 800, fontSize: 24, margin: 0, lineHeight: 1 }}>{loaded ? s.value : "–"}</p>
             <p style={{ color: "#6b7280", fontSize: 11, fontWeight: 600, margin: 0, textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.label}</p>
           </div>
         ))}

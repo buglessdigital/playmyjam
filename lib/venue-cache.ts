@@ -46,3 +46,21 @@ export async function getVenueSongCatalog(venueDbId: string): Promise<VenueCatal
     .filter((vs) => vs.songs)
     .map((vs) => ({ ...vs.songs!, play_count: vs.play_count, in_venue_list: vs.in_venue_list }));
 }
+
+export type TokenPackage = { id: string; label: string; tokens: number; price: number; popular: boolean };
+
+// Paketler nadiren değişir — kabukta anında görünsün diye önbelleklenir,
+// "minutes" profili sayesinde admin değişikliği birkaç dk içinde yansır.
+export async function getVenueTokenPackages(venueDbId: string): Promise<TokenPackage[]> {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag(`venue-packages-${venueDbId}`);
+
+  const { data } = await supabaseAdmin
+    .from("token_packages")
+    .select("id, label, tokens, price, popular")
+    .eq("venue_id", venueDbId)
+    .order("display_order");
+
+  return (data ?? []) as TokenPackage[];
+}

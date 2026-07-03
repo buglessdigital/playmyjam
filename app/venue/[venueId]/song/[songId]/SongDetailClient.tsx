@@ -11,18 +11,37 @@ import type { LyricsResult } from "@/lib/lyrics";
 type QueueEntry = { song_id: string; priority: boolean; duration_ms: number };
 type NowPlayingInfo = { songId: string | null; progress_ms: number; is_playing: boolean; duration_ms: number };
 
+type SongUserState = {
+  db_song_id: string | null;
+  play_count: number;
+  in_venue_list: boolean;
+  is_favorite: boolean;
+  token_balance: number;
+  recently_played_at: number | null;
+  queue_entries: QueueEntry[];
+  now_playing: { song_id: string | null; progress_ms: number; is_playing: boolean; duration_ms: number } | null;
+};
+
+const COOLDOWN_MS = 30 * 60 * 1000;
+
+type Cooldown = { remainingMs: number; reason: "played" | "queued" | null };
+
+// Şarkı kuyruktaysa veya son 30 dk'da çalındıysa cooldown — veri geldiği anda hesaplanır
+function computeCooldown(dbSongId: string | null, entries: QueueEntry[], recentlyPlayedAt: number | null): Cooldown {
+  if (dbSongId && entries.some((e) => e.song_id === dbSongId)) {
+    return { remainingMs: COOLDOWN_MS, reason: "queued" };
+  }
+  if (recentlyPlayedAt) {
+    const remaining = recentlyPlayedAt + COOLDOWN_MS - Date.now();
+    if (remaining > 0) return { remainingMs: remaining, reason: "played" };
+  }
+  return { remainingMs: 0, reason: null };
+}
+
 interface Props {
   venueId: string;
   venueDbId: string;
   track: SpotifyTrackDetails | null;
-  dbSongId: string | null;
-  playCount: number;
-  inVenueList: boolean;
-  isFavorite: boolean;
-  tokenBalance: number;
-  cooldown: { remainingMs: number; reason: "played" | "queued" | null };
-  initialQueueEntries: QueueEntry[];
-  initialNowPlaying: NowPlayingInfo | null;
 }
 
 function formatDuration(ms: number): string {
@@ -44,30 +63,23 @@ function formatWait(ms: number): string {
   return `~${mins} dk`;
 }
 
-export default function SongDetailClient({
-  venueId,
-  venueDbId,
-  track,
-  dbSongId,
-  playCount,
-  inVenueList,
-  isFavorite: initialFavorite,
-  tokenBalance: initialTokenBalance,
-  cooldown,
-  initialQueueEntries,
-  initialNowPlaying,
-}: Props) {
+export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
-  const [isFavorite, setIsFavorite] = useState(initialFavorite);
-  const [tokenBalance, setTokenBalance] = useState(initialTokenBalance);
+  const [loaded, setLoaded] = useState(false);
+  const [dbSongId, setDbSongId] = useState<string | null>(null);
+  const [playCount, setPlayCount] = useState(0);
+  const [inVenueList, setInVenueList] = useState(false);
+  const [cooldown, setCooldown] = useState<Cooldown>({ remainingMs: 0, reason: null });
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [tokenBalance, setTokenBalance] = useState(0);
   const [added, setAdded] = useState(false);
   const [requested, setRequested] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [queueEntries, setQueueEntries] = useState<QueueEntry[]>(initialQueueEntries);
-  const [nowPlaying, setNowPlaying] = useState<NowPlayingInfo | null>(initialNowPlaying);
-  const [progress, setProgress] = useState(initialNowPlaying?.progress_ms ?? 0);
+  const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
+  const [nowPlaying, setNowPlaying] = useState<NowPlayingInfo | null>(null);
+  const [progress, setProgress] = useState(0);
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
@@ -108,50 +120,48 @@ export default function SongDetailClient({
 
   // venueDbId yokken (mekan bulunamadı) abone olunacak bir şey yok
   useEffect(() => {
-    if (!venueDbId) return;
+    if (!venueDbId || !track) return;
     let cancelled = false;
 
-    const fetchQueue = async () => {
-      const { data } = await supabase
-        .from("queue")
-        .select("song_id, priority, songs(duration_ms)")
-        .eq("venue_id", venueDbId)
-        .eq("status", "queued")
-        .not("user_id", "is", null);
-      if (!cancelled && data) {
-        const rows = data as unknown as { song_id: string; priority: boolean; songs: { duration_ms: number } | null }[];
-        setQueueEntries(rows.map((r) => ({ song_id: r.song_id, priority: r.priority, duration_ms: r.songs?.duration_ms ?? 0 })));
-      }
-    };
+    // Kullanıcı + canlı durum tek round-trip (0006'daki RPC): db şarkı kaydı, favori,
+    // bakiye, cooldown, kuyruk süreleri ve şu an çalan
+    const fetchState = async () => {
+      const { data } = await supabase.rpc("get_song_user_state", {
+        p_venue_id: venueDbId,
+        p_spotify_track_id: track.spotify_track_id,
+      });
+      if (cancelled || !data) return;
+      const state = data as unknown as SongUserState;
 
-    const fetchNowPlaying = async () => {
-      const { data } = await supabase
-        .from("now_playing")
-        .select("song_id, progress_ms, is_playing, songs(duration_ms)")
-        .eq("venue_id", venueDbId)
-        .maybeSingle();
-      if (cancelled) return;
-      const row = data as unknown as { song_id: string | null; progress_ms: number; is_playing: boolean; songs: { duration_ms: number } | null } | null;
-      if (row?.songs) {
-        setNowPlaying({ songId: row.song_id, progress_ms: row.progress_ms ?? 0, is_playing: row.is_playing, duration_ms: row.songs.duration_ms });
-        setProgress(row.progress_ms ?? 0);
+      setDbSongId(state.db_song_id);
+      setPlayCount(state.play_count ?? 0);
+      setInVenueList(state.in_venue_list ?? false);
+      setIsFavorite(state.is_favorite ?? false);
+      setTokenBalance(state.token_balance ?? 0);
+      setQueueEntries(state.queue_entries ?? []);
+      setCooldown(computeCooldown(state.db_song_id, state.queue_entries ?? [], state.recently_played_at));
+
+      const np = state.now_playing;
+      if (np && np.duration_ms > 0) {
+        setNowPlaying({ songId: np.song_id, progress_ms: np.progress_ms ?? 0, is_playing: np.is_playing, duration_ms: np.duration_ms });
+        setProgress(np.progress_ms ?? 0);
       } else {
         setNowPlaying(null);
         setProgress(0);
       }
+      setLoaded(true);
     };
 
-    fetchQueue();
-    fetchNowPlaying();
+    fetchState();
 
     const queueChannel = supabase
       .channel(`song-queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchQueue)
+      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchState)
       .subscribe();
 
     const npChannel = supabase
       .channel(`song-now-playing:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchNowPlaying)
+      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchState)
       .subscribe();
 
     return () => {
@@ -159,7 +169,7 @@ export default function SongDetailClient({
       supabase.removeChannel(queueChannel);
       supabase.removeChannel(npChannel);
     };
-  }, [venueDbId, supabase]);
+  }, [venueDbId, track, supabase]);
 
   // Bir sonraki DB güncellemesine kadar saniye saniye geri sayarak ilerlemeyi yaklaşık tut
   useEffect(() => {
@@ -273,7 +283,12 @@ export default function SongDetailClient({
   let centerAction: () => void = () => {};
   let centerBg = "white";
 
-  if (!dbSongId) {
+  if (!loaded) {
+    // Kullanıcı durumu henüz gelmedi (~100-150 ms) — yanlış durum göstermemek için nötr
+    centerDisabled = true;
+    centerBg = "rgba(255,255,255,0.1)";
+    centerIcon = <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#6b7280" strokeWidth="2.5" strokeLinecap="round" /></svg>;
+  } else if (!dbSongId) {
     centerDisabled = true;
     centerIcon = <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#6b7280" strokeWidth="2.5" strokeLinecap="round" /></svg>;
   } else if (inVenueList) {
@@ -301,7 +316,9 @@ export default function SongDetailClient({
     }
   }
 
-  const centerCaption = !dbSongId
+  const centerCaption = !loaded
+    ? ""
+    : !dbSongId
     ? "Mekan listesinde değil"
     : isOnCooldown
     ? `${cooldownMins} dk sonra eklenebilir`

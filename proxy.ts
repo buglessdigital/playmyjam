@@ -66,16 +66,19 @@ export async function proxy(req: NextRequest) {
       }
     );
 
-    const { data: { user } } = await supabase.auth.getUser();
+    // getClaims: JWT imzasını yerelde doğrular (asimetrik anahtarla) — her istekte
+    // Auth sunucusuna gitmez. Token süresi dolmuşsa oturumu tazeleyip cookie'leri günceller.
+    const { data: claimsData } = await supabase.auth.getClaims();
+    const userId = claimsData?.claims.sub;
     const venueId = venueMatch[1];
 
-    if (!user) {
+    if (!userId) {
       return NextResponse.redirect(new URL(`/venue/${venueId}`, req.url));
     }
 
     // Bu venue'ya özel cookie'yi kontrol et — başka mekanların session'ı geçersiz
     const venueAuthCookie = req.cookies.get(`venue_auth_${venueId}`);
-    if (!venueAuthCookie || venueAuthCookie.value !== user.id) {
+    if (!venueAuthCookie || venueAuthCookie.value !== userId) {
       return NextResponse.redirect(new URL(`/venue/${venueId}`, req.url));
     }
 

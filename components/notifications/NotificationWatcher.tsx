@@ -51,7 +51,9 @@ export default function NotificationWatcher({ venueId }: { venueId: string }) {
       const { data: venueRow } = await supabase.from("venues").select("id").or(`id.eq.${venueId},slug.eq.${venueId}`).single();
       if (cancelled || !venueRow) return;
 
-      const { data: { user } } = await supabase.auth.getUser();
+      // getSession lokal cache'ten okur — ağ çağrısı yapmaz
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
       if (cancelled || !user) return;
 
       // Sayfa açıldığında şarkı zaten sıradaysa da haber ver

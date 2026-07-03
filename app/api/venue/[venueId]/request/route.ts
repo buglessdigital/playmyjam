@@ -9,9 +9,12 @@ export async function POST(
 ) {
   const { venueId } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // getClaims: JWT'yi yerelde doğrular — Auth sunucusuna gitmez
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const userId = claimsData?.claims.sub;
+  const email = (claimsData?.claims as { email?: string } | undefined)?.email ?? "";
 
-  if (!user) {
+  if (!userId) {
     return NextResponse.json({ error: "Giriş yapmalısın" }, { status: 401 });
   }
 
@@ -21,42 +24,41 @@ export async function POST(
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const { data: venue } = await supabaseAdmin
-    .from("venues")
-    .select("id")
-    .eq("slug", venueId)
-    .single();
+  // Üç bağımsız sorgu paralel — sıralı round-trip şelalesini önler
+  const [venueRes, songRes, profileRes] = await Promise.all([
+    supabaseAdmin.from("venues").select("id").eq("slug", venueId).single(),
+    supabaseAdmin
+      .from("songs")
+      .upsert(
+        {
+          spotify_track_id: parsed.song.spotify_track_id,
+          title: parsed.song.title,
+          artist: parsed.song.artist,
+          album_cover_url: parsed.song.album_cover_url,
+          duration_ms: parsed.song.duration_ms,
+        },
+        { onConflict: "spotify_track_id" }
+      )
+      .select("id")
+      .single(),
+    supabase.from("profiles").select("username").eq("id", userId).single(),
+  ]);
 
+  const venue = venueRes.data;
   if (!venue) {
     return NextResponse.json({ error: "Mekan bulunamadı" }, { status: 404 });
   }
 
-  const { data: song, error: songErr } = await supabaseAdmin
-    .from("songs")
-    .upsert(
-      {
-        spotify_track_id: parsed.song.spotify_track_id,
-        title: parsed.song.title,
-        artist: parsed.song.artist,
-        album_cover_url: parsed.song.album_cover_url,
-        duration_ms: parsed.song.duration_ms,
-      },
-      { onConflict: "spotify_track_id" }
-    )
-    .select("id")
-    .single();
-
-  if (songErr || !song) {
+  const song = songRes.data;
+  if (songRes.error || !song) {
     return NextResponse.json({ error: "Şarkı kaydedilemedi" }, { status: 500 });
   }
-
-  const { data: profile } = await supabase.from("profiles").select("username").eq("id", user.id).single();
 
   const { error } = await supabaseAdmin.from("song_requests").insert({
     venue_id: venue.id,
     song_id: song.id,
-    user_id: user.id,
-    requested_by: profile?.username ?? user.email?.split("@")[0] ?? "Misafir",
+    user_id: userId,
+    requested_by: profileRes.data?.username ?? email.split("@")[0] ?? "Misafir",
     status: "pending",
   });
 

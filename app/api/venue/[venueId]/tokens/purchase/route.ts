@@ -9,8 +9,10 @@ export async function POST(
   const { venueId } = await params;
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  // getClaims: JWT'yi yerelde doğrular — Auth sunucusuna gitmez
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const userId = claimsData?.claims.sub;
+  if (!userId) {
     return NextResponse.json({ error: "Giriş yapmalısın" }, { status: 401 });
   }
 
@@ -43,7 +45,7 @@ export async function POST(
   // Ödeme onaylanmadan jeton eklenmemeli.
 
   const { data: balance, error } = await supabaseAdmin.rpc("add_tokens", {
-    p_user_id: user.id,
+    p_user_id: userId,
     p_venue_id: venue.id,
     p_amount: pkg.tokens,
   });

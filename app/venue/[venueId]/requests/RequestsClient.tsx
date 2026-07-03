@@ -32,13 +32,10 @@ function timeAgo(ts: string) {
   return `${Math.floor(h / 24)} gün önce`;
 }
 
-interface Props {
-  initialRequests: Request[];
-}
-
-export default function RequestsClient({ initialRequests }: Props) {
+export default function RequestsClient() {
   const router = useRouter();
-  const [requests, setRequests] = useState<Request[]>(initialRequests);
+  const [loaded, setLoaded] = useState(false);
+  const [requests, setRequests] = useState<Request[]>([]);
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
@@ -64,11 +61,19 @@ export default function RequestsClient({ initialRequests }: Props) {
           songs: q.songs!,
         })));
       }
+      if (!cancelled) setLoaded(true);
     };
 
     const subscribe = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (cancelled || !user) return;
+      // getSession lokal cache'ten okur — ağ çağrısı yapmaz
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
+      if (cancelled || !user) {
+        if (!cancelled) setLoaded(true);
+        return;
+      }
+
+      fetchHistory(user.id);
 
       channel = supabase
         .channel(`my_queue:${user.id}`)
@@ -95,7 +100,19 @@ export default function RequestsClient({ initialRequests }: Props) {
         <h1 className="text-white font-bold text-lg">İsteklerim</h1>
       </div>
 
-      {requests.length === 0 ? (
+      {!loaded ? (
+        <div className="px-5 space-y-3 pb-20">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-3 p-3 rounded-2xl animate-pulse" style={{ background: "#1a0e2a" }}>
+              <div className="w-12 h-12 rounded-xl bg-white/10 flex-shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-3/4 rounded bg-white/10" />
+                <div className="h-3 w-1/2 rounded bg-white/10" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : requests.length === 0 ? (
         <div className="text-center py-16 text-[#6b7280] text-sm">Henüz istek yapılmadı</div>
       ) : (
         <div className="px-5 space-y-3 pb-20">

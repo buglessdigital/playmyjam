@@ -57,7 +57,9 @@ export default function SettingsPage() {
   useEffect(() => {
     const load = async () => {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      // getSession lokal cache'ten okur — ağ çağrısı yapmaz
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
       if (!user) return;
       setEmail(user.email ?? "");
       const { data: profile } = await supabase.from("profiles").select("username").eq("id", user.id).single();
@@ -73,7 +75,8 @@ export default function SettingsPage() {
     setSaveError("");
     try {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
       if (!user) return;
       const { error } = await supabase.from("profiles").update({ username }).eq("id", user.id);
       if (error) {

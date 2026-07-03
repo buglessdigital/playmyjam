@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
@@ -8,7 +8,17 @@ import AddSongSheet from "@/components/browse/AddSongSheet";
 
 type QueueEntry = {
   priority: boolean;
-  songs: { duration_ms: number } | null;
+  duration_ms: number;
+};
+
+type BrowseUserState = {
+  queued_song_ids: string[];
+  recently_played: { song_id: string; played_at: number }[];
+  playing: { song_id: string; started_at: number } | null;
+  token_balance: number;
+  favorite_ids: string[];
+  queue_entries: QueueEntry[];
+  now_playing: { progress_ms: number; is_playing: boolean; duration_ms: number } | null;
 };
 
 type VenueSong = {
@@ -39,28 +49,14 @@ interface Props {
   venueId: string;
   venueDbId: string;
   initialVenueSongs: VenueSong[];
-  initialQueuedSongIds: string[];
-  initialRecentlyPlayed: { song_id: string; played_at: number }[];
-  initialTokenBalance: number;
-  initialFavoriteIds: string[];
 }
 
-export default function BrowseClient({
-  venueId,
-  venueDbId,
-  initialVenueSongs,
-  initialQueuedSongIds,
-  initialRecentlyPlayed,
-  initialTokenBalance,
-  initialFavoriteIds,
-}: Props) {
+export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: Props) {
   const [venueSongs, setVenueSongs] = useState<VenueSong[]>(initialVenueSongs);
-  const [queuedSongIds, setQueuedSongIds] = useState<Set<string>>(new Set(initialQueuedSongIds));
-  const [tokenBalance, setTokenBalance] = useState(initialTokenBalance);
-  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set(initialFavoriteIds));
-  const [recentlyPlayedIds] = useState<Map<string, number>>(
-    new Map(initialRecentlyPlayed.map((r) => [r.song_id, r.played_at]))
-  );
+  const [queuedSongIds, setQueuedSongIds] = useState<Set<string>>(new Set());
+  const [tokenBalance, setTokenBalance] = useState(0);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [recentlyPlayedIds, setRecentlyPlayedIds] = useState<Map<string, number>>(new Map());
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [remainingCurrentMs, setRemainingCurrentMs] = useState(0);
   const [query, setQuery] = useState("");
@@ -128,45 +124,45 @@ export default function BrowseClient({
 
   useEffect(() => {
     if (!venueDbId) return;
+    let cancelled = false;
 
-    const fetchQueue = async () => {
-      const { data } = await supabase
-        .from("queue")
-        .select("priority, songs(duration_ms)")
-        .eq("venue_id", venueDbId)
-        .eq("status", "queued")
-        .not("user_id", "is", null);
-      if (data) setQueueEntries(data as unknown as QueueEntry[]);
-    };
+    // Kullanıcı + canlı durum tek round-trip (0006'daki RPC): kuyruktakiler,
+    // son çalınanlar, bakiye, favoriler, bekleme süresi girdileri
+    const fetchUserState = async () => {
+      const { data } = await supabase.rpc("get_browse_user_state", { p_venue_id: venueDbId });
+      if (cancelled || !data) return;
+      const state = data as unknown as BrowseUserState;
 
-    const fetchNowPlaying = async () => {
-      const { data } = await supabase
-        .from("now_playing")
-        .select("progress_ms, is_playing, songs(duration_ms)")
-        .eq("venue_id", venueDbId)
-        .single();
-      const row = data as unknown as { progress_ms: number; is_playing: boolean; songs: { duration_ms: number } | null } | null;
-      if (row?.songs) {
-        setRemainingCurrentMs(Math.max(row.songs.duration_ms - (row.progress_ms ?? 0), 0));
+      setQueuedSongIds(new Set(state.queued_song_ids ?? []));
+      setTokenBalance(state.token_balance ?? 0);
+      setFavoriteIds(new Set(state.favorite_ids ?? []));
+      setQueueEntries(state.queue_entries ?? []);
+
+      const played = new Map((state.recently_played ?? []).map((r) => [r.song_id, r.played_at]));
+      if (state.playing?.song_id) played.set(state.playing.song_id, state.playing.started_at);
+      setRecentlyPlayedIds(played);
+
+      if (state.now_playing) {
+        setRemainingCurrentMs(Math.max(state.now_playing.duration_ms - (state.now_playing.progress_ms ?? 0), 0));
       } else {
         setRemainingCurrentMs(0);
       }
     };
 
-    fetchQueue();
-    fetchNowPlaying();
+    fetchUserState();
 
     const qChannel = supabase
       .channel(`browse-queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchQueue)
+      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchUserState)
       .subscribe();
 
     const npChannel = supabase
       .channel(`browse-now-playing:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchNowPlaying)
+      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchUserState)
       .subscribe();
 
     return () => {
+      cancelled = true;
       supabase.removeChannel(qChannel);
       supabase.removeChannel(npChannel);
     };
@@ -192,8 +188,11 @@ export default function BrowseClient({
     debounceRef.current = setTimeout(() => searchSpotify(value), 400);
   };
 
+  // deferredQuery: yazarken büyük listenin yeniden render'ı input'u bloklamasın
+  const deferredQuery = useDeferredValue(query);
+
   const displaySongs = useMemo<DisplaySong[]>(() => {
-    if (query.trim()) {
+    if (deferredQuery.trim()) {
       return searchResults.map((r) => {
         const vs = venueSongMap.get(r.spotify_track_id);
         return { ...r, id: vs?.id, play_count: vs?.play_count, in_venue_list: vs?.in_venue_list };
@@ -203,7 +202,7 @@ export default function BrowseClient({
     if (sortBy === "az") result = result.sort((a, b) => a.title.localeCompare(b.title));
     else if (sortBy === "plays") result = result.sort((a, b) => (b.play_count ?? 0) - (a.play_count ?? 0));
     return result;
-  }, [query, searchResults, venueSongs, sortBy, venueSongMap]);
+  }, [deferredQuery, searchResults, venueSongs, sortBy, venueSongMap]);
 
   const handleAdd = async (priority: boolean) => {
     if (!selectedSong || !venueDbId || !selectedSong.id) return;
@@ -284,11 +283,11 @@ export default function BrowseClient({
   const isInVenueList = (song: DisplaySong) => song.in_venue_list === true;
 
   const waitNormalMs = useMemo(
-    () => remainingCurrentMs + queueEntries.reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0),
+    () => remainingCurrentMs + queueEntries.reduce((sum, e) => sum + (e.duration_ms ?? 0), 0),
     [queueEntries, remainingCurrentMs]
   );
   const waitPriorityMs = useMemo(
-    () => remainingCurrentMs + queueEntries.filter((e) => e.priority).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0),
+    () => remainingCurrentMs + queueEntries.filter((e) => e.priority).reduce((sum, e) => sum + (e.duration_ms ?? 0), 0),
     [queueEntries, remainingCurrentMs]
   );
 
@@ -362,7 +361,11 @@ export default function BrowseClient({
           const cooldownMins = Math.ceil(cooldown.remainingMs / 60000);
 
           return (
-            <div key={song.spotify_track_id} style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div
+              key={song.spotify_track_id}
+              // Ekran dışı satırlar layout/paint maliyetine girmez — büyük kataloglarda kaydırma akıcı kalır
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", contentVisibility: "auto", containIntrinsicSize: "auto 85px" }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 0" }}>
                 <div
                   onClick={() => router.push(`/venue/${venueId}/song/${song.spotify_track_id}`)}

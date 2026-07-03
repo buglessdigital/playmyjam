@@ -1,9 +1,13 @@
-"use client";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import VenueLayoutClient from "./VenueLayoutClient";
 
-import { Suspense, use } from "react";
-import { usePathname } from "next/navigation";
-import BottomNav from "@/components/ui/BottomNav";
-import NotificationWatcher from "@/components/notifications/NotificationWatcher";
+// Bilinen mekan slug'ları build'de örnek param olarak kullanılır: unstable_instant
+// doğrulaması bu değerlerle çalışır ve mekan kabukları statik HTML olarak üretilir.
+// Yeni mekanlar ilk istekte render edilip diske kaydedilir (dynamicParams varsayılanı).
+export async function generateStaticParams() {
+  const { data } = await supabaseAdmin.from("venues").select("slug");
+  return (data ?? []).map((v: { slug: string }) => ({ venueId: v.slug }));
+}
 
 interface Props {
   children: React.ReactNode;
@@ -11,30 +15,5 @@ interface Props {
 }
 
 export default function VenueLayout({ children, params }: Props) {
-  return (
-    <div className="relative min-h-screen w-full bg-[#0f0a18]">
-      <Suspense fallback={<main className="w-full">{children}</main>}>
-        <VenueLayoutContent params={params}>{children}</VenueLayoutContent>
-      </Suspense>
-    </div>
-  );
-}
-
-function VenueLayoutContent({ children, params }: Props) {
-  // Giriş sayfası "/venue/{venueId}" — alt segment yoksa params'ı beklemeden anlaşılır
-  const pathname = usePathname();
-  const { venueId } = use(params);
-  const isLoginPage = pathname === `/venue/${venueId}`;
-
-  return (
-    <>
-      <main className={`w-full ${isLoginPage ? "" : "pb-16"}`}>{children}</main>
-      {!isLoginPage && (
-        <>
-          <NotificationWatcher venueId={venueId} />
-          <BottomNav venueId={venueId} />
-        </>
-      )}
-    </>
-  );
+  return <VenueLayoutClient params={params}>{children}</VenueLayoutClient>;
 }

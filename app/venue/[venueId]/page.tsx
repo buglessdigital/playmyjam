@@ -87,9 +87,10 @@ function AuthPageContent({ params }: Props) {
   return (
     <div className="min-h-screen flex flex-col bg-[#0f0a18] max-w-md mx-auto relative overflow-hidden">
       <div className="relative h-56 w-full overflow-hidden">
+        {/* Yerel görsel: external CDN'e gitmez, service worker cache'ler */}
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=800&q=80')" }}
+          style={{ backgroundImage: "url('/login-hero.jpg')" }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-[#0f0a18]" />
         <div className="absolute top-4 left-1/2 -translate-x-1/2">

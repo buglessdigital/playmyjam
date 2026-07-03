@@ -1,22 +1,53 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 type Package = { id: string; label: string; tokens: number; price: number; popular: boolean };
 
 interface Props {
   venueId: string;
+  venueDbId: string;
   initialPackages: Package[];
-  initialBalance: number;
   initialSelectedId: string;
 }
 
-export default function TokensClient({ venueId, initialPackages, initialBalance, initialSelectedId }: Props) {
+export default function TokensClient({ venueId, venueDbId, initialPackages, initialSelectedId }: Props) {
   const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
   const [packages] = useState<Package[]>(initialPackages);
-  const [balance, setBalance] = useState(initialBalance);
+  const [balanceLoaded, setBalanceLoaded] = useState(false);
+  const [balance, setBalance] = useState(0);
   const [selected, setSelected] = useState<string>(initialSelectedId);
+
+  useEffect(() => {
+    if (!venueDbId) return;
+    let cancelled = false;
+    const load = async () => {
+      // Kullanıcı id'si lokal session'dan; bakiye tek sorgu (RLS: yalnızca kendi satırı)
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+      if (cancelled || !userId) {
+        if (!cancelled) setBalanceLoaded(true);
+        return;
+      }
+      const { data } = await supabase
+        .from("user_tokens")
+        .select("balance")
+        .eq("user_id", userId)
+        .eq("venue_id", venueDbId)
+        .maybeSingle();
+      if (!cancelled) {
+        setBalance(data?.balance ?? 0);
+        setBalanceLoaded(true);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [venueDbId, supabase]);
   const [success, setSuccess] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [demoSuccess, setDemoSuccess] = useState(false);
@@ -76,7 +107,11 @@ export default function TokensClient({ venueId, initialPackages, initialBalance,
 
       <div className="rounded-2xl p-4 mb-6 text-center" style={{ background: "#1a0e2a", border: "1px solid rgba(233,30,140,0.15)" }}>
         <p className="text-[#9ca3af] text-xs mb-1">Mevcut Jeton</p>
-        <p className="text-white font-black text-4xl">{balance}</p>
+        {balanceLoaded ? (
+          <p className="text-white font-black text-4xl">{balance}</p>
+        ) : (
+          <div className="h-10 w-16 mx-auto rounded-lg bg-white/10 animate-pulse" />
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-6">

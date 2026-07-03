@@ -27,18 +27,17 @@ type NowPlaying = {
 
 interface Props {
   venueId: string;
-  initialVenueName: string;
-  initialVenueDbId: string;
-  initialNowPlaying: NowPlaying | null;
-  initialQueue: QueueItem[];
+  venueName: string;
+  venueDbId: string;
 }
 
-export default function QueueClient({ venueId, initialVenueName, initialVenueDbId, initialNowPlaying, initialQueue }: Props) {
-  const [venueName] = useState(initialVenueName);
-  const [venueDbId] = useState(initialVenueDbId);
-  const [queue, setQueue] = useState<QueueItem[]>(initialQueue);
-  const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(initialNowPlaying);
-  const [progress, setProgress] = useState(initialNowPlaying?.progress_ms ?? 0);
+type QueueState = { now_playing: NowPlaying | null; queue: QueueItem[] };
+
+export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
+  const [loaded, setLoaded] = useState(false);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
+  const [progress, setProgress] = useState(0);
   const [selectedSong, setSelectedSong] = useState<SongDetail | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
@@ -52,38 +51,32 @@ export default function QueueClient({ venueId, initialVenueName, initialVenueDbI
     if (!venueDbId) return;
     let cancelled = false;
 
-    const fetchQueue = async () => {
-      const { data } = await supabase
-        .from("queue")
-        .select("id, song_id, added_by, tokens_spent, priority, position, added_at, songs(title, artist, album_cover_url, duration_ms)")
-        .eq("venue_id", venueDbId)
-        .eq("status", "queued")
-        .order("priority", { ascending: false })
-        .order("position", { ascending: true })
-        .limit(10);
-      if (!cancelled && data) setQueue(data as unknown as QueueItem[]);
+    // Tüm sayfa verisi tek round-trip: now_playing + ilk 10 kuyruk (0006'daki RPC)
+    const fetchState = async () => {
+      const { data } = await supabase.rpc("get_queue_state", { p_venue_id: venueDbId });
+      if (cancelled || !data) return;
+      const state = data as unknown as QueueState;
+      setQueue(state.queue ?? []);
+      if (state.now_playing) {
+        setNowPlaying(state.now_playing);
+        setProgress(state.now_playing.progress_ms ?? 0);
+      } else {
+        setNowPlaying(null);
+        setProgress(0);
+      }
+      setLoaded(true);
     };
 
-    const fetchNowPlaying = async () => {
-      const { data } = await supabase
-        .from("now_playing")
-        .select("song_id, progress_ms, is_playing, started_at, songs(title, artist, album_cover_url, duration_ms)")
-        .eq("venue_id", venueDbId)
-        .single();
-      if (!cancelled && data) {
-        setNowPlaying(data as unknown as NowPlaying);
-        setProgress(data.progress_ms ?? 0);
-      }
-    };
+    fetchState();
 
     const queueChannel = supabase
       .channel(`queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchQueue)
+      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchState)
       .subscribe();
 
     const npChannel = supabase
       .channel(`now_playing:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchNowPlaying)
+      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchState)
       .subscribe();
 
     return () => {
@@ -191,8 +184,17 @@ export default function QueueClient({ venueId, initialVenueName, initialVenueDbI
             </div>
           </div>
 
-          <h2 className="text-white font-bold text-xl text-center">{nowPlaying?.songs?.title ?? "Şu an çalan yok"}</h2>
-          <p className="text-[#9ca3af] text-sm mb-4">{nowPlaying?.songs?.artist ?? ""}</p>
+          {loaded ? (
+            <>
+              <h2 className="text-white font-bold text-xl text-center">{nowPlaying?.songs?.title ?? "Şu an çalan yok"}</h2>
+              <p className="text-[#9ca3af] text-sm mb-4">{nowPlaying?.songs?.artist ?? ""}</p>
+            </>
+          ) : (
+            <>
+              <div className="h-6 w-44 rounded-lg bg-white/10 animate-pulse mb-1" />
+              <div className="h-4 w-28 rounded-lg bg-white/10 animate-pulse mb-4" />
+            </>
+          )}
 
           <div className="w-full">
             <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mb-1.5">
@@ -209,10 +211,22 @@ export default function QueueClient({ venueId, initialVenueName, initialVenueDbI
       <div className="px-5">
         <div className="flex justify-between items-center mb-3">
           <h3 className="text-white font-bold text-base">Sıradaki Şarkılar</h3>
-          <span className="text-[#9ca3af] text-xs">Kuyrukta {queue.length} şarkı</span>
+          <span className="text-[#9ca3af] text-xs">{loaded ? `Kuyrukta ${queue.length} şarkı` : ""}</span>
         </div>
 
-        {queue.length === 0 ? (
+        {!loaded ? (
+          <div className="space-y-2 pb-36">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3 p-3 rounded-2xl animate-pulse" style={{ background: "#1a0e2a" }}>
+                <div className="w-12 h-12 rounded-xl bg-white/10 flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-3/4 rounded bg-white/10" />
+                  <div className="h-3 w-1/2 rounded bg-white/10" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : queue.length === 0 ? (
           <div className="text-center py-12 text-[#6b7280] text-sm">Kuyruk boş — ilk şarkıyı sen ekle!</div>
         ) : (
           <div className="space-y-2 pb-36">

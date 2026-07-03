@@ -35,7 +35,9 @@ export async function getLyrics(
   let result: LyricsResult | null = null;
   try {
     const res = await fetch(`https://lrclib.net/api/get?${params}`, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10000),
+      // lrclib.net istek başına tanımlanabilir bir User-Agent öneriyor — yoksa yavaş kuyruğa düşebiliyor
+      headers: { "User-Agent": "PlayMyJam/1.0 (+https://playmyjam.app)" },
       next: { revalidate: 3600 },
     });
     if (res.ok) {

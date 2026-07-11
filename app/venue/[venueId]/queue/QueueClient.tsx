@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
@@ -39,8 +40,10 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [progress, setProgress] = useState(0);
   const [selectedSong, setSelectedSong] = useState<SongDetail | null>(null);
+  const [trackIdBySongId, setTrackIdBySongId] = useState<Map<string, string>>(new Map());
 
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
 
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000);
@@ -85,6 +88,40 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
       supabase.removeChannel(npChannel);
     };
   }, [venueDbId, supabase]);
+
+  // get_queue_state RPC'si spotify_track_id döndürmüyor — şarkı detayına
+  // gidebilmek için eksik id'leri tek sorguda songs tablosundan eşle
+  useEffect(() => {
+    const ids = new Set<string>();
+    if (nowPlaying?.song_id) ids.add(nowPlaying.song_id);
+    queue.forEach((q) => ids.add(q.song_id));
+    const missing = [...ids].filter((id) => !trackIdBySongId.has(id));
+    if (missing.length === 0) return;
+    let cancelled = false;
+
+    supabase
+      .from("songs")
+      .select("id, spotify_track_id")
+      .in("id", missing)
+      .then(({ data }: { data: { id: string; spotify_track_id: string }[] | null }) => {
+        if (cancelled || !data) return;
+        setTrackIdBySongId((prev) => {
+          const next = new Map(prev);
+          data.forEach((row) => next.set(row.id, row.spotify_track_id));
+          return next;
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [queue, nowPlaying, trackIdBySongId, supabase]);
+
+  const openSongDetail = (songId: string | null) => {
+    if (!songId) return;
+    const trackId = trackIdBySongId.get(songId);
+    if (trackId) router.push(`/venue/${venueId}/song/${trackId}`);
+  };
 
   useEffect(() => {
     if (!nowPlaying?.is_playing) return;
@@ -145,7 +182,11 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
         </div>
       </div>
 
-      <div className="mx-5 rounded-3xl p-5 mb-5" style={{ background: "linear-gradient(145deg, #2d1045 0%, #1a0e2a 100%)", border: "1px solid rgba(233,30,140,0.15)" }}>
+      <div
+        onClick={() => openSongDetail(nowPlaying?.song_id ?? null)}
+        className={`mx-5 rounded-3xl p-5 mb-5 ${nowPlaying?.songs ? "cursor-pointer transition-transform active:scale-[0.99]" : ""}`}
+        style={{ background: "linear-gradient(145deg, #2d1045 0%, #1a0e2a 100%)", border: "1px solid rgba(233,30,140,0.15)" }}
+      >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             {nowPlaying?.is_playing && (
@@ -231,7 +272,12 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
         ) : (
           <div className="space-y-2 pb-36">
             {queue.map((item, idx) => (
-              <div key={item.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: "#1a0e2a" }}>
+              <div
+                key={item.id}
+                onClick={() => openSongDetail(item.song_id)}
+                className="flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-transform active:scale-[0.98]"
+                style={{ background: "#1a0e2a" }}
+              >
                 <div className="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden bg-[#0f0a18]">
                   {item.songs.album_cover_url && (
                     <Image src={item.songs.album_cover_url} alt={item.songs.title} width={48} height={48} className="w-full h-full object-cover" />
@@ -247,7 +293,8 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                   )}
                   <span className="text-xs font-bold" style={{ color: item.priority ? "#e91e8c" : "#9ca3af" }}>~{getWaitMinutes(idx)} dk</span>
                   <button
-                    onClick={() =>
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setSelectedSong({
                         id: item.id,
                         title: item.songs.title,
@@ -257,8 +304,8 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                         tokens_spent: item.tokens_spent,
                         added_by: item.added_by,
                         wait_minutes: getWaitMinutes(idx),
-                      })
-                    }
+                      });
+                    }}
                     className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">

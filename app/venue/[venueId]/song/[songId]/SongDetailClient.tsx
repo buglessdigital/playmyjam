@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import AddSongSheet from "@/components/browse/AddSongSheet";
+import LyricsOverlay from "@/components/song/LyricsOverlay";
 import type { SpotifyTrackDetails } from "@/lib/spotify";
 import type { LyricsResult } from "@/lib/lyrics";
 
@@ -23,6 +24,10 @@ type SongUserState = {
 };
 
 const COOLDOWN_MS = 30 * 60 * 1000;
+
+// Spotify durumu sunucuya, oradan da bize gelene kadar geçen boru hattı gecikmesinin
+// telafisi — satır vurgusu geç kalmaktansa bir tık erken yansın
+const LYRICS_LEAD_MS = 400;
 
 type Cooldown = { remainingMs: number; reason: "played" | "queued" | null };
 
@@ -80,16 +85,17 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [nowPlaying, setNowPlaying] = useState<NowPlayingInfo | null>(null);
   const [progress, setProgress] = useState(0);
+  const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null);
-  const [lyricsLoading, setLyricsLoading] = useState(false);
+  // track prop'u mount sonrası değişmez — loading'i initializer'da başlatmak
+  // effect içinde senkron setState gereksinimini kaldırıyor
+  const [lyricsLoading, setLyricsLoading] = useState(!!track);
   const [lyricsOpen, setLyricsOpen] = useState(false);
-  const lyricsSectionRef = useRef<HTMLDivElement | null>(null);
 
   // Sözler butona basılınca anında gözüksün diye sayfa açılır açılmaz arka planda önceden çekiliyor
   useEffect(() => {
     if (!track) return;
     let cancelled = false;
-    setLyricsLoading(true);
     const params = new URLSearchParams({
       trackId: track.spotify_track_id,
       title: track.title,
@@ -110,14 +116,6 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
     };
   }, [track]);
 
-  const toggleLyrics = () => {
-    const willOpen = !lyricsOpen;
-    setLyricsOpen(willOpen);
-    if (willOpen) {
-      setTimeout(() => lyricsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-    }
-  };
-
   // venueDbId yokken (mekan bulunamadı) abone olunacak bir şey yok
   useEffect(() => {
     if (!venueDbId || !track) return;
@@ -126,12 +124,24 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
     // Kullanıcı + canlı durum tek round-trip (0006'daki RPC): db şarkı kaydı, favori,
     // bakiye, cooldown, kuyruk süreleri ve şu an çalan
     const fetchState = async () => {
-      const { data } = await supabase.rpc("get_song_user_state", {
-        p_venue_id: venueDbId,
-        p_spotify_track_id: track.spotify_track_id,
-      });
+      // started_at RPC'de yok ama sözlerin gerçek zamanlı senkronu için şart:
+      // DB'deki progress_ms yazıldığı andan itibaren bayatlıyor, started_at ise sabit çapa
+      const [{ data }, { data: npRow }] = await Promise.all([
+        supabase.rpc("get_song_user_state", {
+          p_venue_id: venueDbId,
+          p_spotify_track_id: track.spotify_track_id,
+        }),
+        supabase
+          .from("now_playing")
+          .select("started_at, is_playing")
+          .eq("venue_id", venueDbId)
+          .maybeSingle(),
+      ]);
       if (cancelled || !data) return;
       const state = data as unknown as SongUserState;
+
+      const np2 = npRow as { started_at: string | null; is_playing: boolean } | null;
+      setStartedAtMs(np2?.is_playing && np2.started_at ? Date.parse(np2.started_at) : null);
 
       setDbSongId(state.db_song_id);
       setPlayCount(state.play_count ?? 0);
@@ -144,7 +154,12 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
       const np = state.now_playing;
       if (np && np.duration_ms > 0) {
         setNowPlaying({ songId: np.song_id, progress_ms: np.progress_ms ?? 0, is_playing: np.is_playing, duration_ms: np.duration_ms });
-        setProgress(np.progress_ms ?? 0);
+        // İlk boyamada da çapadan hesapla — RPC'deki progress_ms yazıldığından beri bayat
+        const anchored =
+          np.is_playing && np2?.is_playing && np2.started_at
+            ? Math.min(Math.max(Date.now() - Date.parse(np2.started_at), 0), np.duration_ms)
+            : np.progress_ms ?? 0;
+        setProgress(anchored);
       } else {
         setNowPlaying(null);
         setProgress(0);
@@ -171,15 +186,22 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
     };
   }, [venueDbId, track, supabase]);
 
-  // Bir sonraki DB güncellemesine kadar saniye saniye geri sayarak ilerlemeyi yaklaşık tut
+  // İlerlemeyi duvar saatine sabitle: started_at varsa gerçek konum her tick'te
+  // Date.now() - started_at ile hesaplanır (interval sürüklenmesi ve bayat progress_ms
+  // sorunu olmaz); yoksa eski davranışa düş
   useEffect(() => {
     if (!nowPlaying?.is_playing) return;
     const dur = nowPlaying.duration_ms;
-    const interval = setInterval(() => {
-      setProgress((p) => Math.min(p + 1000, dur));
-    }, 1000);
+    const tick = () => {
+      if (startedAtMs) {
+        setProgress(Math.min(Math.max(Date.now() - startedAtMs, 0), dur));
+      } else {
+        setProgress((p) => Math.min(p + 500, dur));
+      }
+    };
+    const interval = setInterval(tick, 500);
     return () => clearInterval(interval);
-  }, [nowPlaying]);
+  }, [nowPlaying, startedAtMs]);
 
   const remainingCurrentMs = nowPlaying ? Math.max(nowPlaying.duration_ms - progress, 0) : 0;
   const waitNormalMs = useMemo(
@@ -195,20 +217,14 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
 
   const activeLyricsIndex = useMemo(() => {
     if (!lyrics?.synced || !isCurrentlyPlayingThisSong) return -1;
+    const syncedProgress = progress + LYRICS_LEAD_MS;
     let idx = -1;
     for (let i = 0; i < lyrics.lines.length; i++) {
-      if (lyrics.lines[i].timeMs <= progress) idx = i;
+      if (lyrics.lines[i].timeMs <= syncedProgress) idx = i;
       else break;
     }
     return idx;
   }, [lyrics, isCurrentlyPlayingThisSong, progress]);
-
-  const lyricsLineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
-
-  useEffect(() => {
-    if (activeLyricsIndex < 0) return;
-    lyricsLineRefs.current[activeLyricsIndex]?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [activeLyricsIndex]);
 
   if (!track) {
     return (
@@ -404,11 +420,11 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
       {/* Bilgi pilleri */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 24px 0", flexWrap: "wrap" }}>
         <button
-          onClick={toggleLyrics}
-          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 20, background: lyricsOpen ? "rgba(233,30,140,0.18)" : "rgba(255,255,255,0.08)", border: "none", cursor: "pointer" }}
+          onClick={() => setLyricsOpen(true)}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 20, background: "rgba(255,255,255,0.08)", border: "none", cursor: "pointer" }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13M9 9l12-2" stroke={lyricsOpen ? "#e91e8c" : "white"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          <span style={{ color: lyricsOpen ? "#e91e8c" : "white", fontSize: 13, fontWeight: 600 }}>Sözler</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13M9 9l12-2" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <span style={{ color: "white", fontSize: 13, fontWeight: 600 }}>Sözler</span>
         </button>
         {dbSongId && (
           <button
@@ -469,42 +485,19 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
         {centerCaption}
       </p>
 
-      {/* Şarkı sözleri */}
-      {lyricsOpen && (
-      <div ref={lyricsSectionRef} style={{ padding: "32px 24px 24px", scrollMarginTop: 20 }}>
-        <h2 style={{ color: "white", fontSize: 15, fontWeight: 700, margin: "0 0 14px" }}>Sözler</h2>
-        {lyricsLoading ? (
-          <p style={{ color: "#6b7280", fontSize: 13 }}>Yükleniyor...</p>
-        ) : !lyrics || lyrics.lines.length === 0 ? (
-          <p style={{ color: "#6b7280", fontSize: 13 }}>Söz bulunamadı</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {lyrics.lines.map((line, i) => {
-              const isActive = i === activeLyricsIndex;
-              return (
-                <p
-                  key={i}
-                  ref={(el) => {
-                    lyricsLineRefs.current[i] = el;
-                  }}
-                  style={{
-                    margin: 0,
-                    fontSize: isActive ? 17 : 15,
-                    fontWeight: isActive ? 700 : 500,
-                    color: isActive ? "#e91e8c" : "#9ca3af",
-                    transition: "color 0.2s, font-size 0.2s",
-                  }}
-                >
-                  {line.text}
-                </p>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      )}
-
       <div style={{ marginTop: "auto", paddingBottom: 24 }} />
+
+      {/* Şarkı sözleri — tam ekran overlay, dokununca anında açılır */}
+      {lyricsOpen && (
+        <LyricsOverlay
+          title={track.title}
+          artist={track.artist}
+          lyrics={lyrics}
+          loading={lyricsLoading}
+          activeIndex={activeLyricsIndex}
+          onClose={() => setLyricsOpen(false)}
+        />
+      )}
 
       <AddSongSheet
         song={sheetOpen ? { spotify_track_id: track.spotify_track_id, title: track.title, artist: track.artist, album_cover_url: track.album_cover_url } : null}

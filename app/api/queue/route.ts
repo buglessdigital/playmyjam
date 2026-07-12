@@ -2,41 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getVenueAccessToken, startTrack } from "@/lib/spotify";
+import { playNextFromQueue } from "@/lib/queue";
 import { fillQueueToTen } from "@/lib/queue-fill";
-
-async function isSpotifyPlaying(venueId: string): Promise<boolean> {
-  try {
-    const token = await getVenueAccessToken(venueId);
-    const res = await fetch("https://api.spotify.com/v1/me/player/currently-playing", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok || res.status === 204) return false;
-    const data = await res.json();
-    return data?.is_playing === true && !!data?.item;
-  } catch {
-    return false;
-  }
-}
-
-async function startPlayingOnSpotify(venueId: string, songId: string): Promise<void> {
-  const { data: song } = await supabaseAdmin
-    .from("songs")
-    .select("spotify_track_id")
-    .eq("id", songId)
-    .single();
-  if (!song?.spotify_track_id) return;
-
-  const token = await getVenueAccessToken(venueId);
-  const res = await startTrack(token, song.spotify_track_id);
-
-  if (res.ok) {
-    await supabaseAdmin
-      .from("now_playing")
-      .update({ song_id: songId, is_playing: true, progress_ms: 0, started_at: new Date().toISOString() })
-      .eq("venue_id", venueId);
-  }
-}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -82,23 +49,24 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Yanıtı bloklamayan işler: auto-fill ayarı ve gerekiyorsa Spotify'da başlatma.
-  // Kullanıcı arayüzü realtime aboneliğiyle zaten güncelleniyor.
+  // Yanıtı bloklamayan işler: auto-fill ve hiçbir şey çalmıyorsa kuyruğu başlatma.
+  // now_playing güncellenince admin cihazındaki player Realtime ile videoyu yükler.
   after(async () => {
     await fillQueueToTen(venue_id).catch(() => {});
     try {
-      const playing = await isSpotifyPlaying(venue_id);
-      if (!playing) {
-        await startPlayingOnSpotify(venue_id, song_id);
-        await supabaseAdmin
-          .from("queue")
-          .update({ status: "playing" })
-          .eq("venue_id", venue_id)
-          .eq("song_id", song_id)
-          .eq("status", "queued");
+      const { data: np } = await supabaseAdmin
+        .from("now_playing")
+        .select("song_id, is_playing, progress_ms")
+        .eq("venue_id", venue_id)
+        .maybeSingle();
+
+      // Ortada duraklatılmış şarkı varsa dokunma — admin pause'unu ezme
+      const idle = !np?.song_id || (!np.is_playing && (np.progress_ms ?? 0) === 0);
+      if (idle) {
+        await playNextFromQueue(venue_id);
       }
     } catch {
-      // Spotify erişilemese bile şarkı kuyruğa eklendi — sync süreci telafi eder
+      // Başlatma başarısız olsa bile şarkı kuyruğa eklendi — player açılınca devam eder
     }
   });
 

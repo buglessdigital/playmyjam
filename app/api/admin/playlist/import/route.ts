@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAdminSession } from "@/lib/session";
-import { getVenueAccessToken, getPlaylistTracks } from "@/lib/spotify";
+import { getPlaylistItems, parsePlaylistId, YouTubeQuotaError } from "@/lib/youtube";
 
-const PLAYLIST_ID_RE = /^[A-Za-z0-9]{10,40}$/;
-
-// Spotify playlist'indeki tüm şarkıları mekan playlist'ine toplu ekler.
-// Zaten ekli olanlar atlanır; sonuçta { added, skipped } döner.
+// Public YouTube playlist'indeki tüm şarkıları mekan playlist'ine toplu ekler.
+// OAuth gerekmez — admin playlist URL'sini yapıştırır. { added, skipped } döner.
 export async function POST(req: NextRequest) {
   const session = getAdminSession(req);
   if (!session) {
@@ -15,29 +13,41 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null);
-  const playlistId = typeof body?.playlist_id === "string" ? body.playlist_id.trim() : "";
-  if (!PLAYLIST_ID_RE.test(playlistId)) {
-    return NextResponse.json({ error: "Geçersiz playlist kimliği" }, { status: 400 });
+  const playlistId = parsePlaylistId(typeof body?.playlist_url === "string" ? body.playlist_url : "");
+  if (!playlistId) {
+    return NextResponse.json({ error: "Geçersiz playlist bağlantısı" }, { status: 400 });
   }
 
   let tracks;
   try {
-    const token = await getVenueAccessToken(session.venue_id);
-    tracks = await getPlaylistTracks(token, playlistId);
+    tracks = await getPlaylistItems(playlistId);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Playlist şarkıları alınamadı";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    if (err instanceof YouTubeQuotaError) {
+      return NextResponse.json({ error: err.message }, { status: 429 });
+    }
+    return NextResponse.json(
+      { error: "Playlist alınamadı — bağlantının herkese açık olduğundan emin olun" },
+      { status: 400 }
+    );
   }
 
-  // Aynı şarkı playlist'te birden çok kez olabilir — tek upsert'te çakışmasın
-  const unique = [...new Map(tracks.map((t) => [t.spotify_track_id, t])).values()];
-  if (unique.length === 0) {
+  const rows = tracks.map((t) => ({
+    youtube_video_id: t.youtube_video_id,
+    title: t.title,
+    artist: t.artist,
+    album_cover_url: t.album_cover_url,
+    duration_ms: t.duration_ms,
+    channel_title: t.channel_title,
+    view_count: t.view_count,
+  }));
+
+  if (rows.length === 0) {
     return NextResponse.json({ added: 0, skipped: 0 });
   }
 
   const { data: songRows, error: songErr } = await supabaseAdmin
     .from("songs")
-    .upsert(unique, { onConflict: "spotify_track_id" })
+    .upsert(rows, { onConflict: "youtube_video_id" })
     .select("id");
 
   if (songErr || !songRows) {
@@ -61,7 +71,7 @@ export async function POST(req: NextRequest) {
     if (insErr) {
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
-    updateTag(`venue-songs-${session.venue_id}`);
+    revalidateTag(`venue-songs-${session.venue_id}`, "max");
   }
 
   return NextResponse.json({ added: newRows.length, skipped: songIds.length - newRows.length });

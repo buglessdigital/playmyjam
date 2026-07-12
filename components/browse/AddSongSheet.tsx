@@ -4,7 +4,7 @@ import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 
 interface Song {
-  spotify_track_id: string;
+  youtube_video_id: string;
   title: string;
   artist: string;
   album_cover_url: string;

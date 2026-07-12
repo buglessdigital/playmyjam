@@ -58,12 +58,14 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
   const excludeIds = new Set(inQueueIds);
   if (playingNow?.song_id) excludeIds.add(playingNow.song_id);
 
-  // Venue playlist candidates — auto-fill has no 30-min cooldown
+  // Venue playlist candidates — auto-fill has no 30-min cooldown.
+  // Çalınamaz işaretlenen (embed kapalı) videolar otomatik doldurmaya girmez.
   const { data: venueSongs } = await supabaseAdmin
     .from("venue_songs")
-    .select("song_id")
+    .select("song_id, songs!inner(embeddable)")
     .eq("venue_id", venueId)
-    .eq("in_venue_list", true);
+    .eq("in_venue_list", true)
+    .eq("songs.embeddable", true);
 
   const candidates = (venueSongs ?? [])
     .map((vs) => vs.song_id)

@@ -1,4 +1,4 @@
-import { createHmac, createHash, timingSafeEqual, randomBytes } from "node:crypto";
+import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 export interface AdminSession {
@@ -11,15 +11,6 @@ export interface AdminSession {
 
 export interface SuperSession {
   kind: "super";
-  exp: number;
-}
-
-interface OAuthState {
-  venue_id: string;
-  // Akışın başladığı origin — Spotify dönüşü 127.0.0.1'e gelse bile kullanıcı
-  // kendi kullandığı host'a (örn. localhost) geri yönlendirilir
-  origin: string;
-  nonce: string;
   exp: number;
 }
 
@@ -42,7 +33,7 @@ function hmac(data: string): Buffer {
   return createHmac("sha256", getSecret()).update(data).digest();
 }
 
-export function signSession(payload: AdminSession | SuperSession | OAuthState): string {
+export function signSession(payload: AdminSession | SuperSession): string {
   const body = b64url(Buffer.from(JSON.stringify(payload), "utf8"));
   return `${body}.${b64url(hmac(body))}`;
 }
@@ -87,24 +78,6 @@ export function requireVenueAccess(req: CookieSource, venueDbId: string): boolea
   if (getSuperSession(req)) return true;
   const admin = getAdminSession(req);
   return admin !== null && admin.venue_id === venueDbId;
-}
-
-export function signState(venueId: string, origin: string): string {
-  const payload: OAuthState = {
-    venue_id: venueId,
-    origin,
-    nonce: randomBytes(8).toString("hex"),
-    exp: Math.floor(Date.now() / 1000) + 600, // 10 dakika
-  };
-  return signSession(payload);
-}
-
-export function verifyState(
-  state: string | undefined | null
-): { venue_id: string; origin: string } | null {
-  const payload = verifySession<OAuthState>(state);
-  if (!payload?.venue_id) return null;
-  return { venue_id: payload.venue_id, origin: payload.origin ?? "" };
 }
 
 // Uzunluk farkını gizlemek için iki tarafı da hash'leyip sabit zamanlı karşılaştırır

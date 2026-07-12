@@ -31,13 +31,13 @@ export async function POST(
       .from("songs")
       .upsert(
         {
-          spotify_track_id: parsed.song.spotify_track_id,
+          youtube_video_id: parsed.song.youtube_video_id,
           title: parsed.song.title,
           artist: parsed.song.artist,
           album_cover_url: parsed.song.album_cover_url,
           duration_ms: parsed.song.duration_ms,
         },
-        { onConflict: "spotify_track_id" }
+        { onConflict: "youtube_video_id" }
       )
       .select("id")
       .single(),

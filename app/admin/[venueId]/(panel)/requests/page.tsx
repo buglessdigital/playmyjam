@@ -20,7 +20,7 @@ type Request = {
     title: string;
     artist: string;
     album_cover_url: string;
-    spotify_track_id: string;
+    youtube_video_id: string;
     duration_ms: number;
   };
 };
@@ -55,7 +55,7 @@ function RequestsPageContent({ params }: Props) {
     const fetchRequests = async (venueDbId: string) => {
       const { data: p } = await supabase
         .from("song_requests")
-        .select("id, status, requested_by, requested_at, resolved_at, songs(title, artist, album_cover_url, spotify_track_id, duration_ms)")
+        .select("id, status, requested_by, requested_at, resolved_at, songs(title, artist, album_cover_url, youtube_video_id, duration_ms)")
         .eq("venue_id", venueDbId)
         .eq("status", "pending")
         .order("requested_at", { ascending: false });
@@ -63,7 +63,7 @@ function RequestsPageContent({ params }: Props) {
 
       const { data: h } = await supabase
         .from("song_requests")
-        .select("id, status, requested_by, requested_at, resolved_at, songs(title, artist, album_cover_url, spotify_track_id, duration_ms)")
+        .select("id, status, requested_by, requested_at, resolved_at, songs(title, artist, album_cover_url, youtube_video_id, duration_ms)")
         .eq("venue_id", venueDbId)
         .neq("status", "pending")
         .order("resolved_at", { ascending: false })

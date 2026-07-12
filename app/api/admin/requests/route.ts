@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAdminSession } from "@/lib/session";
 import { addSongToVenuePlaylist } from "@/lib/playlist";
@@ -19,7 +19,7 @@ export async function PATCH(req: NextRequest) {
 
   const { data: request } = await supabaseAdmin
     .from("song_requests")
-    .select("id, status, songs(spotify_track_id, title, artist, album_cover_url, duration_ms)")
+    .select("id, status, songs(youtube_video_id, title, artist, album_cover_url, duration_ms)")
     .eq("id", requestId)
     .eq("venue_id", session.venue_id)
     .single();
@@ -34,13 +34,13 @@ export async function PATCH(req: NextRequest) {
   // Kabul edilirse şarkıyı mekan playlist'ine ekle (zaten varsa sorun değil)
   if (status === "accepted") {
     const songRel = request.songs as unknown as
-      | { spotify_track_id: string; title: string; artist: string; album_cover_url: string | null; duration_ms: number }
-      | { spotify_track_id: string; title: string; artist: string; album_cover_url: string | null; duration_ms: number }[]
+      | { youtube_video_id: string; title: string; artist: string; album_cover_url: string | null; duration_ms: number }
+      | { youtube_video_id: string; title: string; artist: string; album_cover_url: string | null; duration_ms: number }[]
       | null;
     const song = Array.isArray(songRel) ? songRel[0] : songRel;
-    if (song?.spotify_track_id) {
+    if (song?.youtube_video_id) {
       const result = await addSongToVenuePlaylist(session.venue_id, {
-        spotify_track_id: song.spotify_track_id,
+        youtube_video_id: song.youtube_video_id,
         title: song.title,
         artist: song.artist,
         album_cover_url: song.album_cover_url ?? "",
@@ -50,7 +50,7 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ error: result.error }, { status: result.status });
       }
       if (!("error" in result)) {
-        updateTag(`venue-songs-${session.venue_id}`);
+        revalidateTag(`venue-songs-${session.venue_id}`, "max");
       }
     }
   }

@@ -10,13 +10,13 @@ export async function addSongToVenuePlaylist(
     .from("songs")
     .upsert(
       {
-        spotify_track_id: song.spotify_track_id,
+        youtube_video_id: song.youtube_video_id,
         title: song.title,
         artist: song.artist,
         album_cover_url: song.album_cover_url,
         duration_ms: song.duration_ms,
       },
-      { onConflict: "spotify_track_id" }
+      { onConflict: "youtube_video_id" }
     )
     .select("id")
     .single();

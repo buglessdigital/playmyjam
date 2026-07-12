@@ -75,11 +75,11 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
     persistRecent(recent.filter((r) => r !== term));
   };
 
-  const searchSpotify = async (q: string) => {
+  const searchRemote = async (q: string) => {
     if (!q.trim()) { setSearchResults([]); setSearching(false); return; }
     setSearching(true);
     try {
-      const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       if (!res.ok) { setSearchResults([]); return; }
       setSearchResults(data.tracks ?? []);
@@ -94,20 +94,20 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
     if (!value.trim()) { setSearchResults([]); setSearching(false); return; }
     // Debounce beklerken de spinner görünsün — erken "Sonuç bulunamadı" yanıltmasın
     setSearching(true);
-    debounceRef.current = setTimeout(() => searchSpotify(value), 400);
+    debounceRef.current = setTimeout(() => searchRemote(value), 400);
   };
 
   const submitQuery = (term: string) => {
     setQuery(term);
     saveRecent(term);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    searchSpotify(term);
+    searchRemote(term);
   };
 
   // Yerel sonuçlar debounce beklemeden gelsin; deferred değer yazmayı bloklamasın
   const deferredQuery = useDeferredValue(query);
 
-  // Mekan listesindeki eşleşmeler — Spotify yanıtını beklemeden anında gösterilir
+  // Mekan listesindeki eşleşmeler — YouTube yanıtını beklemeden anında gösterilir
   const localResults = useMemo<DisplaySong[]>(() => {
     const q = deferredQuery.trim().toLocaleLowerCase("tr");
     if (!q) return [];
@@ -121,14 +121,14 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
     return matches.sort((a, b) => b.play_count - a.play_count).slice(0, 20);
   }, [deferredQuery, venueSongMap]);
 
-  // Spotify sonuçlarını mekan kataloğu metadata'sıyla birleştir (cooldown/istek durumu için),
+  // YouTube sonuçlarını mekan kataloğu metadata'sıyla birleştir (cooldown/istek durumu için),
   // yerel bölümde zaten görünenleri ele
-  const spotifyResults = useMemo<DisplaySong[]>(() => {
-    const localIds = new Set(localResults.map((s) => s.spotify_track_id));
+  const remoteResults = useMemo<DisplaySong[]>(() => {
+    const localIds = new Set(localResults.map((s) => s.youtube_video_id));
     return searchResults
-      .filter((r) => !localIds.has(r.spotify_track_id))
+      .filter((r) => !localIds.has(r.youtube_video_id))
       .map((r) => {
-        const vs = venueSongMap.get(r.spotify_track_id);
+        const vs = venueSongMap.get(r.youtube_video_id);
         return { ...r, id: vs?.id, play_count: vs?.play_count, in_venue_list: vs?.in_venue_list };
       });
   }, [searchResults, venueSongMap, localResults]);
@@ -207,7 +207,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
           ) : (
             <div className="flex flex-col items-center pt-16 text-center">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#3d3450" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#3d3450" strokeWidth="2" strokeLinecap="round" /></svg>
-              <p className="mt-3 text-sm text-[#6b7280]">Spotify&apos;da şarkı veya sanatçı ara</p>
+              <p className="mt-3 text-sm text-[#6b7280]">Şarkı veya sanatçı ara</p>
             </div>
           )
         ) : (
@@ -217,7 +217,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
                 <h2 className="pt-2 text-sm font-bold text-white">Mekan Listesi</h2>
                 {localResults.map((song) => (
                   <SongRow
-                    key={song.spotify_track_id}
+                    key={song.youtube_video_id}
                     song={song}
                     action={actionFor(song)}
                     isFav={song.id ? favoriteIds.has(song.id) : false}
@@ -231,14 +231,14 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
             )}
 
             <div className="flex items-center gap-2 pt-4">
-              <h2 className="text-sm font-bold text-white">Spotify Sonuçları</h2>
+              <h2 className="text-sm font-bold text-white">YouTube Sonuçları</h2>
               {searching && (
                 <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#6b7280" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
               )}
             </div>
-            {spotifyResults.map((song) => (
+            {remoteResults.map((song) => (
               <SongRow
-                key={song.spotify_track_id}
+                key={song.youtube_video_id}
                 song={song}
                 action={actionFor(song)}
                 isFav={song.id ? favoriteIds.has(song.id) : false}
@@ -248,9 +248,9 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
                 onRequest={interact(onRequest)}
               />
             ))}
-            {!searching && spotifyResults.length === 0 && (
+            {!searching && remoteResults.length === 0 && (
               <p className="py-8 text-center text-sm text-[#6b7280]">
-                {localResults.length > 0 ? "Spotify'da başka sonuç bulunamadı" : "Sonuç bulunamadı"}
+                {localResults.length > 0 ? "YouTube'da başka sonuç bulunamadı" : "Sonuç bulunamadı"}
               </p>
             )}
           </>

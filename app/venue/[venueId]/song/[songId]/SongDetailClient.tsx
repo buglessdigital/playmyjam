@@ -6,7 +6,7 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import AddSongSheet from "@/components/browse/AddSongSheet";
 import LyricsOverlay from "@/components/song/LyricsOverlay";
-import type { SpotifyTrackDetails } from "@/lib/spotify";
+import type { TrackDetails } from "@/lib/youtube";
 import type { LyricsResult } from "@/lib/lyrics";
 
 type QueueEntry = { song_id: string; priority: boolean; duration_ms: number };
@@ -25,7 +25,7 @@ type SongUserState = {
 
 const COOLDOWN_MS = 30 * 60 * 1000;
 
-// Spotify durumu sunucuya, oradan da bize gelene kadar geçen boru hattı gecikmesinin
+// Player durumu sunucuya, oradan da bize gelene kadar geçen boru hattı gecikmesinin
 // telafisi — satır vurgusu geç kalmaktansa bir tık erken yansın
 const LYRICS_LEAD_MS = 400;
 
@@ -46,7 +46,7 @@ function computeCooldown(dbSongId: string | null, entries: QueueEntry[], recentl
 interface Props {
   venueId: string;
   venueDbId: string;
-  track: SpotifyTrackDetails | null;
+  track: TrackDetails | null;
 }
 
 function formatDuration(ms: number): string {
@@ -97,7 +97,7 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
     if (!track) return;
     let cancelled = false;
     const params = new URLSearchParams({
-      trackId: track.spotify_track_id,
+      trackId: track.youtube_video_id,
       title: track.title,
       artist: track.artist,
       durationMs: String(track.duration_ms),
@@ -129,7 +129,7 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
       const [{ data }, { data: npRow }] = await Promise.all([
         supabase.rpc("get_song_user_state", {
           p_venue_id: venueDbId,
-          p_spotify_track_id: track.spotify_track_id,
+          p_youtube_video_id: track.youtube_video_id,
         }),
         supabase
           .from("now_playing")
@@ -281,7 +281,7 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        spotify_track_id: track.spotify_track_id,
+        youtube_video_id: track.youtube_video_id,
         title: track.title,
         artist: track.artist,
         album_cover_url: track.album_cover_url,
@@ -500,7 +500,7 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
       )}
 
       <AddSongSheet
-        song={sheetOpen ? { spotify_track_id: track.spotify_track_id, title: track.title, artist: track.artist, album_cover_url: track.album_cover_url } : null}
+        song={sheetOpen ? { youtube_video_id: track.youtube_video_id, title: track.title, artist: track.artist, album_cover_url: track.album_cover_url } : null}
         tokenBalance={tokenBalance}
         cooldown={cooldown}
         waitNormalMs={waitNormalMs}

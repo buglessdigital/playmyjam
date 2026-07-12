@@ -4,10 +4,8 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "i.scdn.co" },
-      // Spotify playlist kapakları: mosaic (otomatik kolaj) ve kullanıcı yüklemeleri
-      { protocol: "https", hostname: "mosaic.scdn.co" },
-      { protocol: "https", hostname: "*.spotifycdn.com" },
+      // YouTube video thumbnail'ları (kapak görseli olarak kullanılıyor)
+      { protocol: "https", hostname: "i.ytimg.com" },
       { protocol: "https", hostname: "images.unsplash.com" },
       { protocol: "https", hostname: "picsum.photos" },
     ],

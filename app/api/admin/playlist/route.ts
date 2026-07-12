@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAdminSession } from "@/lib/session";
 import { parseSongInput } from "@/lib/validate";
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
-  updateTag(`venue-songs-${session.venue_id}`);
+  revalidateTag(`venue-songs-${session.venue_id}`, "max");
   return NextResponse.json(result);
 }
 
@@ -47,7 +47,7 @@ export async function PATCH(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  updateTag(`venue-songs-${session.venue_id}`);
+  revalidateTag(`venue-songs-${session.venue_id}`, "max");
   return NextResponse.json({ ok: true });
 }
 
@@ -72,6 +72,6 @@ export async function DELETE(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  updateTag(`venue-songs-${session.venue_id}`);
+  revalidateTag(`venue-songs-${session.venue_id}`, "max");
   return NextResponse.json({ ok: true });
 }

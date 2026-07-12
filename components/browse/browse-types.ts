@@ -15,7 +15,7 @@ export type BrowseUserState = {
 
 export type VenueSong = {
   id: string;
-  spotify_track_id: string;
+  youtube_video_id: string;
   title: string;
   artist: string;
   album_cover_url: string;
@@ -25,7 +25,7 @@ export type VenueSong = {
 };
 
 export type DisplaySong = {
-  spotify_track_id: string;
+  youtube_video_id: string;
   title: string;
   artist: string;
   album_cover_url: string;
@@ -72,9 +72,9 @@ export function getSongActionState(song: DisplaySong, ctx: SongActionContext): S
   if (song.in_venue_list === true) {
     const cd = getCooldown(song, ctx);
     if (cd.remainingMs > 0) return { kind: "cooldown", mins: Math.ceil(cd.remainingMs / 60000) };
-    return ctx.addedIds.has(song.spotify_track_id) ? { kind: "added" } : { kind: "add" };
+    return ctx.addedIds.has(song.youtube_video_id) ? { kind: "added" } : { kind: "add" };
   }
-  return ctx.requestedIds.has(song.spotify_track_id) ? { kind: "requested" } : { kind: "request" };
+  return ctx.requestedIds.has(song.youtube_video_id) ? { kind: "requested" } : { kind: "request" };
 }
 
 export function actionStatesEqual(a: SongActionState, b: SongActionState): boolean {

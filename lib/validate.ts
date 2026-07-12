@@ -1,12 +1,13 @@
 export interface SongInput {
-  spotify_track_id: string;
+  youtube_video_id: string;
   title: string;
   artist: string;
   album_cover_url: string;
   duration_ms: number;
 }
 
-const TRACK_ID_RE = /^[A-Za-z0-9]{10,40}$/;
+// YouTube video kimliği 11 karakterdir (base64url alfabesi)
+const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
 export function parseSongInput(
   body: unknown
@@ -16,9 +17,9 @@ export function parseSongInput(
   }
   const b = body as Record<string, unknown>;
 
-  const spotify_track_id = typeof b.spotify_track_id === "string" ? b.spotify_track_id.trim() : "";
-  if (!TRACK_ID_RE.test(spotify_track_id)) {
-    return { ok: false, error: "Geçersiz Spotify şarkı kimliği" };
+  const youtube_video_id = typeof b.youtube_video_id === "string" ? b.youtube_video_id.trim() : "";
+  if (!VIDEO_ID_RE.test(youtube_video_id)) {
+    return { ok: false, error: "Geçersiz YouTube video kimliği" };
   }
 
   const title = typeof b.title === "string" ? b.title.trim() : "";
@@ -33,7 +34,7 @@ export function parseSongInput(
 
   const album_cover_url = typeof b.album_cover_url === "string" ? b.album_cover_url.trim() : "";
   if (album_cover_url && (album_cover_url.length > 600 || !album_cover_url.startsWith("https://"))) {
-    return { ok: false, error: "Geçersiz albüm kapağı adresi" };
+    return { ok: false, error: "Geçersiz kapak görseli adresi" };
   }
 
   const duration_ms = typeof b.duration_ms === "number" ? Math.floor(b.duration_ms) : NaN;
@@ -41,5 +42,5 @@ export function parseSongInput(
     return { ok: false, error: "Geçersiz şarkı süresi" };
   }
 
-  return { ok: true, song: { spotify_track_id, title, artist, album_cover_url, duration_ms } };
+  return { ok: true, song: { youtube_video_id, title, artist, album_cover_url, duration_ms } };
 }

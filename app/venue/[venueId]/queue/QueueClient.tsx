@@ -89,7 +89,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     };
   }, [venueDbId, supabase]);
 
-  // get_queue_state RPC'si spotify_track_id döndürmüyor — şarkı detayına
+  // get_queue_state RPC'si youtube_video_id döndürmüyor — şarkı detayına
   // gidebilmek için eksik id'leri tek sorguda songs tablosundan eşle
   useEffect(() => {
     const ids = new Set<string>();
@@ -101,13 +101,13 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
 
     supabase
       .from("songs")
-      .select("id, spotify_track_id")
+      .select("id, youtube_video_id")
       .in("id", missing)
-      .then(({ data }: { data: { id: string; spotify_track_id: string }[] | null }) => {
+      .then(({ data }: { data: { id: string; youtube_video_id: string }[] | null }) => {
         if (cancelled || !data) return;
         setTrackIdBySongId((prev) => {
           const next = new Map(prev);
-          data.forEach((row) => next.set(row.id, row.spotify_track_id));
+          data.forEach((row) => next.set(row.id, row.youtube_video_id));
           return next;
         });
       });

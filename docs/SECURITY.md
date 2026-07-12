@@ -18,9 +18,7 @@ karşılaştırmalar `timingSafeEqual` ile yapılır. Cookie'ler prod'da `Secure
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=          # yalnızca sunucu; asla NEXT_PUBLIC yapmayın
-SPOTIFY_CLIENT_ID=
-SPOTIFY_CLIENT_SECRET=
-SPOTIFY_REDIRECT_URI=
+YOUTUBE_API_KEY=                    # yalnızca sunucu; YouTube Data API v3 anahtarı
 SESSION_SECRET=                     # 64+ karakter rastgele dize (HMAC anahtarı)
 SUPER_ADMIN_PASSWORD=               # super-admin giriş şifresi
 ```
@@ -43,9 +41,8 @@ Doğrulama: `select * from pg_policies where schemaname = 'public';`
 - **Tüm yazmalar** (favoriler ve profil hariç) API rotaları üzerinden `service-role`
   anahtarıyla yapılır; rotalar oturumu doğrular ve `venue_id` scoping uygular.
 - **Tarayıcı (anon anahtar)** yalnızca RLS'in izin verdiği okumaları yapabilir.
-  `venues` tablosunda Spotify token kolonları kolon bazlı grant ile anon'dan gizlidir.
-- **Spotify OAuth**: `state` parametresi imzalıdır (`signState`/`verifyState`, 10 dk geçerli)
-  ve callback, oturumun ilgili mekana erişimini doğrular — token hijack kapalıdır.
+- **YouTube API anahtarı** yalnızca sunucu tarafında kullanılır (`YOUTUBE_API_KEY`);
+  tarayıcıya inmez. Oynatma tarayıcıdaki resmi IFrame Player ile yapılır, anahtar gerektirmez.
 - **Jeton düşümü**: `spend_tokens` RPC'si tek koşullu UPDATE ile çalışır (race condition yok).
   Kuyruğa ekleme başarısız olursa `add_tokens` ile iade edilir.
 - **Ödeme**: simülasyondur. Gerçek PSP entegrasyonu
@@ -56,4 +53,4 @@ Doğrulama: `select * from pg_policies where schemaname = 'public';`
 - `song_requests` herkese-SELECT'tir (admin paneli ve realtime anon anahtarla okur);
   istek sahibi kullanıcı adları mekan genelinde görünürdür.
 - `queue` ve `now_playing` herkese-SELECT'tir — kuyruk zaten mekandaki herkese gösterilir.
-- Spotify arama (`/api/spotify/search`) client-credentials token kullanır ve oturum istemez.
+- Arama (`/api/search`) oturum istemez; kota koruması yerel katalog + `search_cache` ile sağlanır.

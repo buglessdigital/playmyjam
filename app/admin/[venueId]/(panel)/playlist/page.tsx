@@ -11,7 +11,7 @@ interface Props {
 type Song = {
   venueSongId: string;
   id: string;
-  spotify_track_id: string;
+  youtube_video_id: string;
   title: string;
   artist: string;
   album_cover_url: string;
@@ -20,21 +20,12 @@ type Song = {
   in_venue_list: boolean;
 };
 
-type SpotifyTrack = {
-  spotify_track_id: string;
+type SearchTrack = {
+  youtube_video_id: string;
   title: string;
   artist: string;
   album_cover_url: string | null;
   duration_ms: number;
-  preview_url: string | null;
-};
-
-type SpotifyPlaylist = {
-  id: string;
-  name: string;
-  image_url: string | null;
-  track_count: number;
-  owner: string | null;
 };
 
 export default function PlaylistPage({ params }: Props) {
@@ -51,17 +42,16 @@ function PlaylistPageContent({ params }: Props) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
 
-  // Playlist import state
+  // Playlist import state — public YouTube playlist URL'si yapıştırılır (OAuth yok)
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
-  const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
-  const [playlistsLoading, setPlaylistsLoading] = useState(false);
+  const [playlistUrl, setPlaylistUrl] = useState("");
+  const [importing, setImporting] = useState(false);
   const [playlistError, setPlaylistError] = useState("");
-  const [importingId, setImportingId] = useState<string | null>(null);
   const [importResult, setImportResult] = useState("");
 
-  // Spotify search state
+  // YouTube search state
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SpotifyTrack[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchTrack[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [addingId, setAddingId] = useState<string | null>(null);
@@ -79,7 +69,7 @@ function PlaylistPageContent({ params }: Props) {
 
     const { data } = await supabase
       .from("venue_songs")
-      .select("id, play_count, in_venue_list, songs(id, spotify_track_id, title, artist, album_cover_url, duration_ms)")
+      .select("id, play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
       .eq("venue_id", venueDbIdArg)
       .order("added_at", { ascending: false });
 
@@ -146,7 +136,7 @@ function PlaylistPageContent({ params }: Props) {
     setSearching(true);
     setSearchError("");
     try {
-      const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       if (!res.ok) { setSearchError(data.error ?? "Arama başarısız"); return; }
       setSearchResults(data.tracks ?? []);
@@ -165,8 +155,8 @@ function PlaylistPageContent({ params }: Props) {
     debounceRef.current = setTimeout(() => doSearch(value), 350);
   };
 
-  const addSpotifyTrack = async (track: SpotifyTrack) => {
-    setAddingId(track.spotify_track_id);
+  const addTrack = async (track: SearchTrack) => {
+    setAddingId(track.youtube_video_id);
     setSearchError("");
 
     try {
@@ -185,7 +175,7 @@ function PlaylistPageContent({ params }: Props) {
       setSongs((prev) => [{
         venueSongId: data.venueSongId,
         id: data.songId,
-        spotify_track_id: track.spotify_track_id,
+        youtube_video_id: track.youtube_video_id,
         title: track.title,
         artist: track.artist,
         album_cover_url: track.album_cover_url ?? "",
@@ -213,42 +203,23 @@ function PlaylistPageContent({ params }: Props) {
     setSearchError("");
   };
 
-  const openPlaylistModal = async () => {
-    setShowPlaylistModal(true);
-    setPlaylistError("");
-    setImportResult("");
-    setPlaylistsLoading(true);
-    try {
-      const res = await fetch("/api/admin/spotify/playlists");
-      const data = await res.json();
-      if (!res.ok) {
-        setPlaylistError(data.error ?? "Playlist'ler alınamadı");
-        return;
-      }
-      setPlaylists(data.playlists ?? []);
-    } catch {
-      setPlaylistError("Bağlantı hatası, tekrar deneyin");
-    } finally {
-      setPlaylistsLoading(false);
-    }
-  };
-
   const closePlaylistModal = () => {
     setShowPlaylistModal(false);
-    setPlaylists([]);
+    setPlaylistUrl("");
     setPlaylistError("");
     setImportResult("");
   };
 
-  const importPlaylist = async (playlist: SpotifyPlaylist) => {
-    setImportingId(playlist.id);
+  const importPlaylist = async () => {
+    if (!playlistUrl.trim() || importing) return;
+    setImporting(true);
     setPlaylistError("");
     setImportResult("");
     try {
       const res = await fetch("/api/admin/playlist/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playlist_id: playlist.id }),
+        body: JSON.stringify({ playlist_url: playlistUrl.trim() }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -256,13 +227,14 @@ function PlaylistPageContent({ params }: Props) {
         return;
       }
       setImportResult(
-        `"${playlist.name}": ${data.added} şarkı eklendi${data.skipped ? `, ${data.skipped} şarkı zaten vardı` : ""}`
+        `${data.added} şarkı eklendi${data.skipped ? `, ${data.skipped} şarkı zaten vardı` : ""}`
       );
+      setPlaylistUrl("");
       if (venueDbId) await fetchSongs(venueDbId);
     } catch {
       setPlaylistError("Bağlantı hatası, tekrar deneyin");
     } finally {
-      setImportingId(null);
+      setImporting(false);
     }
   };
 
@@ -271,7 +243,7 @@ function PlaylistPageContent({ params }: Props) {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-white font-bold text-2xl">Playlist</h1>
         <div className="flex items-center gap-2">
-          <button onClick={openPlaylistModal} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold" style={{ background: "#1DB954", color: "white" }}>
+          <button onClick={() => setShowPlaylistModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold" style={{ background: "#FF0000", color: "white" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
             Playlist Ekle
           </button>
@@ -312,17 +284,21 @@ function PlaylistPageContent({ params }: Props) {
         )}
       </div>
 
-      {/* Spotify Playlist Import Modal */}
+      {/* YouTube Playlist Import Modal */}
       {showPlaylistModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70" onClick={closePlaylistModal} />
-          <div className="relative w-full max-w-md rounded-2xl border border-white/10 p-6 flex flex-col max-h-[80vh]" style={{ background: "#1a1025" }}>
+          <div className="relative w-full max-w-md rounded-2xl border border-white/10 p-6" style={{ background: "#1a1025" }}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold">Spotify Playlist&apos;i İçe Aktar</h3>
+              <h3 className="text-white font-semibold">YouTube Playlist&apos;i İçe Aktar</h3>
               <button onClick={closePlaylistModal} className="text-[#6b7280] hover:text-white">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
               </button>
             </div>
+
+            <p className="text-[#9ca3af] text-xs mb-3">
+              Herkese açık bir YouTube playlist bağlantısı yapıştırın — hesap bağlamaya gerek yok.
+            </p>
 
             {importResult && (
               <p className="text-sm rounded-xl px-3.5 py-2.5 mb-3" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}>{importResult}</p>
@@ -331,56 +307,42 @@ function PlaylistPageContent({ params }: Props) {
               <p className="text-sm rounded-xl px-3.5 py-2.5 mb-3" style={{ background: "rgba(239,68,68,0.1)", color: "#f87171" }}>{playlistError}</p>
             )}
 
-            <div className="overflow-y-auto flex-1">
-              {playlistsLoading ? (
-                <div className="flex justify-center py-8">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="#6b7280" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
-                </div>
-              ) : playlists.length === 0 && !playlistError ? (
-                <p className="text-center text-[#6b7280] text-sm py-6">Hesapta playlist bulunamadı</p>
+            <input
+              value={playlistUrl}
+              onChange={(e) => setPlaylistUrl(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && importPlaylist()}
+              placeholder="https://www.youtube.com/playlist?list=..."
+              autoFocus
+              className="w-full rounded-xl px-3.5 py-2.5 text-sm text-white outline-none mb-3"
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+            />
+
+            <button
+              onClick={importPlaylist}
+              disabled={importing || !playlistUrl.trim()}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ background: "#e91e8c", color: "white" }}
+            >
+              {importing ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
+                  İçe aktarılıyor...
+                </>
               ) : (
-                playlists.map((playlist) => (
-                  <div key={playlist.id} className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0">
-                    <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/10">
-                      {playlist.image_url ? (
-                        <Image src={playlist.image_url} alt="" width={40} height={40} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="2" /></svg>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-medium truncate">{playlist.name}</p>
-                      <p className="text-[#6b7280] text-xs truncate">{playlist.owner ? `${playlist.owner} · ` : ""}{playlist.track_count} şarkı</p>
-                    </div>
-                    <button
-                      onClick={() => importPlaylist(playlist)}
-                      disabled={importingId !== null}
-                      className="text-xs px-3 py-1.5 rounded-lg font-semibold shrink-0 disabled:opacity-50"
-                      style={{ background: "rgba(29,185,84,0.15)", color: "#1DB954" }}
-                    >
-                      {importingId === playlist.id ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="#1DB954" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
-                      ) : (
-                        "Ekle"
-                      )}
-                    </button>
-                  </div>
-                ))
+                "İçe Aktar"
               )}
-            </div>
+            </button>
           </div>
         </div>
       )}
 
-      {/* Spotify Search Modal */}
+      {/* YouTube Search Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70" onClick={closeModal} />
           <div className="relative w-full max-w-md rounded-2xl border border-white/10 p-6 flex flex-col max-h-[80vh]" style={{ background: "#1a1025" }}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold">Spotify&apos;da Şarkı Ara</h3>
+              <h3 className="text-white font-semibold">Şarkı Ara</h3>
               <button onClick={closeModal} className="text-[#6b7280] hover:text-white">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
               </button>
@@ -413,7 +375,7 @@ function PlaylistPageContent({ params }: Props) {
                 </p>
               )}
               {searchResults.map((track) => (
-                <div key={track.spotify_track_id} className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0">
+                <div key={track.youtube_video_id} className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0">
                   <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/10">
                     {track.album_cover_url ? (
                       <Image src={track.album_cover_url} alt="" width={40} height={40} className="w-full h-full object-cover" />
@@ -428,12 +390,12 @@ function PlaylistPageContent({ params }: Props) {
                     <p className="text-[#6b7280] text-xs truncate">{track.artist} · {formatDur(track.duration_ms)}</p>
                   </div>
                   <button
-                    onClick={() => addSpotifyTrack(track)}
-                    disabled={addingId === track.spotify_track_id}
+                    onClick={() => addTrack(track)}
+                    disabled={addingId === track.youtube_video_id}
                     className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 disabled:opacity-50"
                     style={{ background: "rgba(233,30,140,0.15)" }}
                   >
-                    {addingId === track.spotify_track_id ? (
+                    {addingId === track.youtube_video_id ? (
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="#e91e8c" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
                     ) : (
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#e91e8c" strokeWidth="2.5" strokeLinecap="round" /></svg>

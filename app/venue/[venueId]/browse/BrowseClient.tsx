@@ -69,7 +69,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
 
   const venueSongMap = useMemo(() => {
     const map = new Map<string, VenueSong>();
-    venueSongs.forEach((s) => map.set(s.spotify_track_id, s));
+    venueSongs.forEach((s) => map.set(s.youtube_video_id, s));
     return map;
   }, [venueSongs]);
 
@@ -85,7 +85,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
     const fetchVenueSongs = async () => {
       const { data: vSongs } = await supabase
         .from("venue_songs")
-        .select("play_count, in_venue_list, songs(id, spotify_track_id, title, artist, album_cover_url, duration_ms)")
+        .select("play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
         .eq("venue_id", venueDbId);
 
       if (vSongs) {
@@ -243,7 +243,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
   }, [venueSongs, actionFor]);
 
   const openSong = useCallback(
-    (song: DisplaySong) => router.push(`/venue/${venueId}/song/${song.spotify_track_id}`),
+    (song: DisplaySong) => router.push(`/venue/${venueId}/song/${song.youtube_video_id}`),
     [router, venueId]
   );
 
@@ -257,9 +257,9 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
     // Optimistic update: close sheet and update UI immediately
     const cost = priority ? 2 : 1;
     const songId = selectedSong.id;
-    const spotifyId = selectedSong.spotify_track_id;
+    const videoId = selectedSong.youtube_video_id;
     setTokenBalance((b) => b - cost);
-    setAddedIds((s) => new Set(s).add(spotifyId));
+    setAddedIds((s) => new Set(s).add(videoId));
     setQueuedSongIds((s) => new Set(s).add(songId));
     setSelectedSong(null);
 
@@ -272,7 +272,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
     if (!res.ok) {
       // Rollback on error
       setTokenBalance((b) => b + cost);
-      setAddedIds((s) => { const n = new Set(s); n.delete(spotifyId); return n; });
+      setAddedIds((s) => { const n = new Set(s); n.delete(videoId); return n; });
       setQueuedSongIds((s) => { const n = new Set(s); n.delete(songId); return n; });
     }
     isAddingRef.current = false;
@@ -282,13 +282,13 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
     if (!venueDbId) return;
 
     // Optimistic update
-    setRequestedIds((s) => new Set(s).add(song.spotify_track_id));
+    setRequestedIds((s) => new Set(s).add(song.youtube_video_id));
 
     await fetch(`/api/venue/${venueId}/request`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        spotify_track_id: song.spotify_track_id,
+        youtube_video_id: song.youtube_video_id,
         title: song.title,
         artist: song.artist,
         album_cover_url: song.album_cover_url,
@@ -392,7 +392,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
             </div>
             <div className="flex gap-3 overflow-x-auto px-5">
               {favoriteSongs.map((song) => (
-                <SongCard key={song.spotify_track_id} song={song} action={actionFor(song)} onOpen={openSong} onAdd={openSheet} onRequest={handleRequest} />
+                <SongCard key={song.youtube_video_id} song={song} action={actionFor(song)} onOpen={openSong} onAdd={openSheet} onRequest={handleRequest} />
               ))}
             </div>
           </section>
@@ -406,7 +406,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
             </div>
             <div className="flex gap-3 overflow-x-auto px-5">
               {topSongs.map((song) => (
-                <SongCard key={song.spotify_track_id} song={song} action={actionFor(song)} onOpen={openSong} onAdd={openSheet} onRequest={handleRequest} />
+                <SongCard key={song.youtube_video_id} song={song} action={actionFor(song)} onOpen={openSong} onAdd={openSheet} onRequest={handleRequest} />
               ))}
             </div>
           </section>
@@ -452,7 +452,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
             </div>
             <div className="flex gap-3 overflow-x-auto px-5">
               {recentSongs.map((song) => (
-                <SongCard key={song.spotify_track_id} song={song} action={actionFor(song)} onOpen={openSong} onAdd={openSheet} onRequest={handleRequest} />
+                <SongCard key={song.youtube_video_id} song={song} action={actionFor(song)} onOpen={openSong} onAdd={openSheet} onRequest={handleRequest} />
               ))}
             </div>
           </section>
@@ -513,7 +513,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
           )}
           {listSongs.map((song) => (
             <SongRow
-              key={song.spotify_track_id}
+              key={song.youtube_video_id}
               song={song}
               action={actionFor(song)}
               isFav={favoriteIds.has(song.id)}

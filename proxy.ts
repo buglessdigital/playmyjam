@@ -1,6 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getAdminSession, getSuperSession } from "@/lib/session";
+import { setVenueAuthCookie, venueAuthCookieName } from "@/lib/venue-auth-cookie";
+
+// getClaims: JWT imzasını yerelde doğrular (asimetrik anahtarla) — her istekte
+// Auth sunucusuna gitmez. Token süresi dolmuşsa oturumu tazeleyip cookie'leri günceller.
+async function getVenueSession(req: NextRequest): Promise<{ userId?: string; response: NextResponse }> {
+  let response = NextResponse.next({ request: req });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return req.cookies.getAll(); },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value));
+          response = NextResponse.next({ request: req });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  const { data: claimsData } = await supabase.auth.getClaims();
+  return { userId: claimsData?.claims.sub, response };
+}
+
+// Redirect response'una session cookie'lerini taşı: refresh token rotasyonu tek
+// kullanımlık olduğundan, tazelenen cookie'ler redirect'te kaybolursa oturum düşer.
+function redirectWithCookies(url: URL, from: NextResponse): NextResponse {
+  const redirect = NextResponse.redirect(url);
+  from.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+  return redirect;
+}
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -39,49 +74,29 @@ export async function proxy(req: NextRequest) {
   // Müşteri route koruması — giriş sayfasının kendisi (/venue/[id]) açık, alt sayfalar korumalı
   const venueMatch = pathname.match(/^\/venue\/([^/]+)(\/.*)?$/);
   if (venueMatch) {
-    const subPath = venueMatch[2] ?? "";
-
-    // Ana sayfa (login) herkese açık
-    if (!subPath || subPath === "/") {
-      return NextResponse.next();
-    }
-
-    // Supabase session kontrolü
-    let response = NextResponse.next({ request: req });
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() { return req.cookies.getAll(); },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value));
-            response = NextResponse.next({ request: req });
-            cookiesToSet.forEach(({ name, value, options }) =>
-              response.cookies.set(name, value, options)
-            );
-          },
-        },
-      }
-    );
-
-    // getClaims: JWT imzasını yerelde doğrular (asimetrik anahtarla) — her istekte
-    // Auth sunucusuna gitmez. Token süresi dolmuşsa oturumu tazeleyip cookie'leri günceller.
-    const { data: claimsData } = await supabase.auth.getClaims();
-    const userId = claimsData?.claims.sub;
     const venueId = venueMatch[1];
+    const subPath = venueMatch[2] ?? "";
+    const isLoginPage = !subPath || subPath === "/";
 
-    if (!userId) {
-      return NextResponse.redirect(new URL(`/venue/${venueId}`, req.url));
+    const { userId, response } = await getVenueSession(req);
+
+    // Bu venue'ya özel cookie'yi kontrol et — başka mekanların session'ı geçersiz.
+    // Cross-venue otomatik yönlendirme yok: A mekanı kullanıcısı B'nin login'inde formu görür.
+    const venueAuthCookie = req.cookies.get(venueAuthCookieName(venueId));
+    if (!userId || venueAuthCookie?.value !== userId) {
+      if (isLoginPage) {
+        return response;
+      }
+      return redirectWithCookies(new URL(`/venue/${venueId}`, req.url), response);
     }
 
-    // Bu venue'ya özel cookie'yi kontrol et — başka mekanların session'ı geçersiz
-    const venueAuthCookie = req.cookies.get(`venue_auth_${venueId}`);
-    if (!venueAuthCookie || venueAuthCookie.value !== userId) {
-      return NextResponse.redirect(new URL(`/venue/${venueId}`, req.url));
+    // Oturumu açık kullanıcıya login formunu tekrar gösterme
+    if (isLoginPage) {
+      return redirectWithCookies(new URL(`/venue/${venueId}/queue`, req.url), response);
     }
 
+    // Kayan süre: her ziyarette 180 günlük taze maxAge — düzenli kullanılan cihaz açık kalır
+    setVenueAuthCookie(response, venueId, userId);
     return response;
   }
 

@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-
-function cookieName(venueId: string) {
-  return `venue_auth_${venueId}`;
-}
+import { setVenueAuthCookie, clearVenueAuthCookie } from "@/lib/venue-auth-cookie";
 
 export async function POST(
   req: NextRequest,
@@ -34,13 +31,7 @@ export async function POST(
   }
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(cookieName(venueId), user.id, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: `/venue/${venueId}`,
-    maxAge: 60 * 60 * 24 * 30,
-  });
+  setVenueAuthCookie(res, venueId, user.id);
   return res;
 }
 
@@ -50,12 +41,6 @@ export async function DELETE(
 ) {
   const { venueId } = await params;
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(cookieName(venueId), "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: `/venue/${venueId}`,
-    maxAge: 0,
-  });
+  clearVenueAuthCookie(res, venueId);
   return res;
 }

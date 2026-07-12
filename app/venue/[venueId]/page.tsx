@@ -1,8 +1,15 @@
 "use client";
 
-import { useState, use, Suspense } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, use, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  oauth_failed: "Google ile giriş tamamlanamadı. Lütfen tekrar deneyin.",
+  confirm_failed: "Onay bağlantısının süresi dolmuş veya daha önce kullanılmış. Giriş yapmayı deneyin; gerekirse yeni onay e-postası gönderebilirsiniz.",
+  confirm_invalid: "Onay bağlantısı geçersiz. Lütfen e-postadaki bağlantıyı tekrar kullanın.",
+  missing_params: "Giriş sırasında bir sorun oluştu. Lütfen tekrar deneyin.",
+};
 
 interface Props {
   params: Promise<{ venueId: string }>;
@@ -19,6 +26,7 @@ export default function AuthPage({ params }: Props) {
 function AuthPageContent({ params }: Props) {
   const { venueId } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,17 +34,71 @@ function AuthPageContent({ params }: Props) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [showResend, setShowResend] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+
+  // Callback/confirm route'larından gelen hata kodunu göster, URL'den temizle
+  useEffect(() => {
+    const code = searchParams.get("auth_error");
+    if (code) {
+      setError(AUTH_ERROR_MESSAGES[code] ?? AUTH_ERROR_MESSAGES.missing_params);
+      router.replace(`/venue/${venueId}`);
+    }
+  }, [searchParams, router, venueId]);
+
+  const emailRedirectTo = () =>
+    `${window.location.origin}/venue/${venueId}/queue`;
+
+  const handleResend = async () => {
+    setResendLoading(true);
+    setError("");
+    const supabase = createClient();
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: emailRedirectTo() },
+    });
+    setResendLoading(false);
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("429")) {
+        setError("Çok fazla deneme yapıldı. Lütfen birkaç saniye bekleyip tekrar deneyin.");
+      } else {
+        setError("Onay e-postası gönderilemedi. Lütfen tekrar deneyin.");
+      }
+      return;
+    }
+    setShowResend(false);
+    setInfo(`${email} adresine yeni bir onay e-postası gönderildi. Lütfen gelen kutunuzu kontrol edin.`);
+  };
 
   const handleSubmit = async () => {
     setLoading(true);
     setError("");
+    setInfo("");
+    setShowResend(false);
     const supabase = createClient();
 
     if (isLogin) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) { setError("E-posta veya şifre hatalı"); setLoading(false); return; }
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (error.code === "email_not_confirmed" || msg.includes("email not confirmed")) {
+          setError("E-posta adresiniz henüz onaylanmadı. Gelen kutunuzdaki onay bağlantısına tıklayın.");
+          setShowResend(true);
+        } else {
+          setError("E-posta veya şifre hatalı");
+        }
+        setLoading(false);
+        return;
+      }
     } else {
-      const { data: signUpData, error } = await supabase.auth.signUp({ email, password });
+      const { data: signUpData, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: emailRedirectTo() },
+      });
       if (error) {
         const msg = error.message.toLowerCase();
         if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("20 seconds") || msg.includes("429")) {
@@ -57,7 +119,7 @@ function AuthPageContent({ params }: Props) {
       if (!signUpData.session) {
         setError("");
         setLoading(false);
-        alert(`${email} adresine bir onay e-postası gönderildi. Lütfen e-postanızı kontrol edip bağlantıya tıklayın, ardından giriş yapın.`);
+        setInfo(`${email} adresine bir onay e-postası gönderildi. E-postanızdaki bağlantıya tıkladığınızda oturumunuz otomatik açılacak.`);
         setIsLogin(true);
         return;
       }
@@ -70,6 +132,8 @@ function AuthPageContent({ params }: Props) {
   const handleGoogle = async () => {
     setGoogleLoading(true);
     setError("");
+    setInfo("");
+    setShowResend(false);
     const supabase = createClient();
     document.cookie = `pending_oauth_venue=${venueId}; path=/; max-age=600; samesite=lax`;
     const { error } = await supabase.auth.signInWithOAuth({
@@ -109,6 +173,21 @@ function AuthPageContent({ params }: Props) {
         {error && (
           <div className="mb-4 px-4 py-2.5 rounded-xl text-sm text-red-400 bg-red-500/10 border border-red-500/20">
             {error}
+            {showResend && (
+              <button
+                onClick={handleResend}
+                disabled={resendLoading}
+                className="block mt-2 font-semibold text-white underline underline-offset-2 disabled:opacity-50"
+              >
+                {resendLoading ? "Gönderiliyor..." : "Onay e-postasını tekrar gönder"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {info && (
+          <div className="mb-4 px-4 py-2.5 rounded-xl text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
+            {info}
           </div>
         )}
 
@@ -202,7 +281,7 @@ function AuthPageContent({ params }: Props) {
           </button>
 
           <button
-            onClick={() => { setIsLogin(!isLogin); setError(""); }}
+            onClick={() => { setIsLogin(!isLogin); setError(""); setInfo(""); setShowResend(false); }}
             className="w-full text-center py-3.5 rounded-2xl font-semibold text-white text-base border border-white/10 bg-white/5 hover:bg-white/10 transition-all"
           >
             {isLogin ? "Kayıt Ol" : "Giriş Yap"}

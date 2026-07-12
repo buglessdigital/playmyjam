@@ -9,6 +9,9 @@ import {
   getPermission,
   requestPermission,
   notify,
+  isPushSupported,
+  subscribeToPush,
+  unsubscribeFromPush,
   type NotifPref,
 } from "@/lib/notifications";
 
@@ -34,7 +37,11 @@ export default function SettingsPage() {
   const router = useRouter();
   const notifNearby = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("nearby"), () => true);
   const notifQueue = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("queue"), () => false);
+  const notifPush = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("push"), () => false);
   const permission = useSyncExternalStore(subscribeNotifPrefs, getPermission, () => "default" as const);
+  const [pushBusy, setPushBusy] = useState(false);
+  // Sunucu snapshot'ı false — SSR ile hydration tutarlı, istemcide gerçek destek durumu okunur
+  const pushSupported = useSyncExternalStore(subscribeNotifPrefs, isPushSupported, () => false);
 
   const toggleNotif = async (pref: NotifPref, current: boolean) => {
     const next = !current;
@@ -46,6 +53,23 @@ export default function SettingsPage() {
     }
     // setNotifPref olayı tetikler; toggle ve izin durumu store üzerinden tazelenir
     setNotifPref(pref, next);
+  };
+
+  // Push aboneliği sunucuda tutulur; toggle abonelik oluşturur/siler
+  const togglePush = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (!notifPush) {
+        const ok = await subscribeToPush();
+        setNotifPref("push", ok);
+      } else {
+        await unsubscribeFromPush();
+        setNotifPref("push", false);
+      }
+    } finally {
+      setPushBusy(false);
+    }
   };
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [name, setName] = useState("");
@@ -115,13 +139,22 @@ export default function SettingsPage() {
             </div>
             <Toggle value={notifNearby} onChange={() => toggleNotif("nearby", notifNearby)} />
           </div>
-          <div className="flex items-center justify-between px-4 py-4">
+          <div className="flex items-center justify-between px-4 py-4 border-b border-white/5">
             <div className="flex-1 pr-4">
               <p className="text-white text-sm font-medium">Kuyruk güncellemeleri</p>
               <p className="text-[#6b7280] text-xs mt-0.5">Sıra değişimlerinde bildirim al</p>
             </div>
             <Toggle value={notifQueue} onChange={() => toggleNotif("queue", notifQueue)} />
           </div>
+          {pushSupported && (
+            <div className="flex items-center justify-between px-4 py-4" style={{ opacity: pushBusy ? 0.6 : 1 }}>
+              <div className="flex-1 pr-4">
+                <p className="text-white text-sm font-medium">Şarkım çalınca</p>
+                <p className="text-[#6b7280] text-xs mt-0.5">Uygulama kapalıyken bile şarkın çalınca bildirim al</p>
+              </div>
+              <Toggle value={notifPush} onChange={togglePush} />
+            </div>
+          )}
         </div>
         {permission === "denied" && (notifNearby || notifQueue) && (
           <p className="text-amber-400/80 text-xs mt-2 px-1">

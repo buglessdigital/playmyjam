@@ -9,10 +9,10 @@ import { getNotifPref, notify, type NotifPref } from "@/lib/notifications";
 // - "queue": kuyruğa başkası şarkı eklediğinde
 export default function NotificationWatcher({ venueId }: { venueId: string }) {
   const notifiedSongs = useRef<Set<string>>(new Set());
-  const prefs = useRef<Record<NotifPref, boolean>>({ nearby: true, queue: false });
+  const prefs = useRef<Record<NotifPref, boolean>>({ nearby: true, queue: false, push: false });
 
   useEffect(() => {
-    prefs.current = { nearby: getNotifPref("nearby"), queue: getNotifPref("queue") };
+    prefs.current = { nearby: getNotifPref("nearby"), queue: getNotifPref("queue"), push: getNotifPref("push") };
     const onPrefChange = (e: Event) => {
       const { pref, value } = (e as CustomEvent).detail as { pref: NotifPref; value: boolean };
       prefs.current[pref] = value;

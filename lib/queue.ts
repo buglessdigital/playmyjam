@@ -13,7 +13,7 @@ export type NextResult = {
 // Kuyruğu ilerletir: çalanı 'played' yapar, sıradakini seçip now_playing'e yazar.
 // Oynatma artık admin cihazındaki gömülü player'da — burada yalnızca durum güncellenir,
 // player now_playing'i Realtime ile dinleyip yeni videoyu yükler.
-export async function playNextFromQueue(venueId: string): Promise<NextResult> {
+export async function playNextFromQueue(venueId: string, retryAfterFill = true): Promise<NextResult> {
   await supabaseAdmin
     .from("queue")
     .update({ status: "played", played_at: new Date().toISOString() })
@@ -30,16 +30,22 @@ export async function playNextFromQueue(venueId: string): Promise<NextResult> {
     .limit(1)
     .maybeSingle();
 
-  // Replenish queue after consuming a song — fire-and-forget
-  fillQueueToTen(venueId).catch(() => {});
-
   if (!nextItem) {
+    // Sıra boş yakalandıysa dolumu bekleyip bir kez daha dene — mekan listesinde
+    // şarkı olduğu sürece "kuyruk boş" dönmemeli, çalma hiç durmamalı
+    if (retryAfterFill) {
+      await fillQueueToTen(venueId).catch(() => {});
+      return playNextFromQueue(venueId, false);
+    }
     await supabaseAdmin
       .from("now_playing")
       .update({ song_id: null, video_id: null, is_playing: false, progress_ms: 0 })
       .eq("venue_id", venueId);
     return { started: false, queueEmpty: true };
   }
+
+  // Replenish queue after consuming a song — fire-and-forget
+  fillQueueToTen(venueId).catch(() => {});
 
   type SongInfo = {
     youtube_video_id: string;

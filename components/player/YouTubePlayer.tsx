@@ -37,6 +37,7 @@ declare global {
 }
 
 const HEARTBEAT_MS = 15_000;
+const IDLE_RETRY_MS = 15_000;
 
 type NowPlayingRow = {
   video_id: string | null;
@@ -213,6 +214,14 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
     return () => clearInterval(interval);
   }, [started, sendHeartbeat]);
 
+  // Bekçi: idle'da takılı kalma (kuyruk-boş yarışı, ağ hatası vb.) — periyodik
+  // olarak sıradakini iste; sunucu tarafı dolum yaptığı için çalma kendi toparlanır
+  useEffect(() => {
+    if (!started || !idle) return;
+    const interval = setInterval(() => advance({ action: "next" }), IDLE_RETRY_MS);
+    return () => clearInterval(interval);
+  }, [started, idle, advance]);
+
   // Dış komutları dinle: admin panelden next/pause, müşteri isteğiyle başlayan çalma
   useEffect(() => {
     if (!started) return;
@@ -283,7 +292,7 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
       {started && idle && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-[#1a0e2a]">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="2" /><circle cx="18" cy="16" r="3" stroke="#6b7280" strokeWidth="2" /></svg>
-          <p className="text-sm text-[#9ca3af]">Kuyruk boş — şarkı eklenince otomatik başlar</p>
+          <p className="text-sm text-[#9ca3af]">Kuyruk boş — sıradaki şarkı otomatik denenecek</p>
         </div>
       )}
     </div>

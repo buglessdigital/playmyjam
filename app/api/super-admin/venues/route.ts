@@ -15,7 +15,6 @@ export async function GET(req: NextRequest) {
     .select(`
       id, slug, name, tagline, logo_url, status, created_at,
       venue_admins(username),
-      user_tokens(user_id),
       song_requests(id, requested_at)
     `)
     .order("created_at", { ascending: false });

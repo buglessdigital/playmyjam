@@ -1,12 +1,38 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAnimatedNumber } from "@/lib/use-animated-number";
 import Coin from "@/components/ui/Coin";
 
 type Package = { id: string; label: string; tokens: number; price: number; popular: boolean };
+
+type WalletTx = {
+  id: string;
+  amount: number;
+  kind: "purchase" | "demo" | "spend";
+  balance_after: number;
+  venue_name: string | null;
+  song_title: string | null;
+  song_artist: string | null;
+  created_at: number;
+};
+
+function timeAgo(ms: number) {
+  const diff = Date.now() - ms;
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return `${m}dk önce`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}sa önce`;
+  return `${Math.floor(h / 24)} gün önce`;
+}
+
+function txLabel(tx: WalletTx) {
+  if (tx.kind === "spend") return tx.song_title ? `Şarkı: ${tx.song_title}` : "Şarkı isteği";
+  if (tx.kind === "demo") return "Demo jeton";
+  return "Jeton satın alma";
+}
 
 interface Props {
   venueId: string;
@@ -22,6 +48,16 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const [balance, setBalance] = useState(0);
   const [selected, setSelected] = useState<string>(initialSelectedId);
 
+  const [txs, setTxs] = useState<WalletTx[]>([]);
+  const [txLoaded, setTxLoaded] = useState(false);
+
+  const loadTxs = useCallback(async () => {
+    // Jeton hareketleri tek RPC'de (mekan adı + şarkı bilgisiyle, RLS: kendi satırları)
+    const { data } = await supabase.rpc("get_wallet_history");
+    setTxs((data ?? []) as WalletTx[]);
+    setTxLoaded(true);
+  }, [supabase]);
+
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -29,14 +65,16 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user?.id;
       if (cancelled || !userId) {
-        if (!cancelled) setBalanceLoaded(true);
+        if (!cancelled) {
+          setBalanceLoaded(true);
+          setTxLoaded(true);
+        }
         return;
       }
-      const { data } = await supabase
-        .from("user_wallets")
-        .select("balance")
-        .eq("user_id", userId)
-        .maybeSingle();
+      const [{ data }] = await Promise.all([
+        supabase.from("user_wallets").select("balance").eq("user_id", userId).maybeSingle(),
+        loadTxs(),
+      ]);
       if (!cancelled) {
         setBalance(data?.balance ?? 0);
         setBalanceLoaded(true);
@@ -46,7 +84,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, [supabase, loadTxs]);
   const [success, setSuccess] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [demoSuccess, setDemoSuccess] = useState(false);
@@ -71,6 +109,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
       }
       setBalance(typeof data?.balance === "number" ? data.balance : balance + pkg.tokens);
       setSuccess(true);
+      loadTxs();
       setTimeout(() => router.back(), 1800);
     } catch {
       alert("Bağlantı hatası, tekrar dene.");
@@ -88,6 +127,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
       if (!res.ok) { alert(data?.error ?? "Bir hata oluştu."); return; }
       setBalance(typeof data?.balance === "number" ? data.balance : balance + 10);
       setDemoSuccess(true);
+      loadTxs();
     } catch {
       alert("Bağlantı hatası, tekrar dene.");
     } finally {
@@ -308,6 +348,63 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             {demoSuccess ? "✓ Eklendi" : demoLoading ? "Ekleniyor..." : "+10 jeton"}
           </button>
         </div>
+
+        {/* Jeton hareketleri */}
+        <p className="mt-8 mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">Son Hareketler</p>
+        {!txLoaded ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-14 animate-pulse rounded-2xl" style={{ background: "#1a0e2a" }} />
+            ))}
+          </div>
+        ) : txs.length === 0 ? (
+          <div
+            className="rounded-2xl py-8 text-center text-xs text-[#6b7280]"
+            style={{ background: "#160d24", border: "1px solid rgba(255,255,255,0.07)" }}
+          >
+            Henüz işlem yok
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-2xl" style={{ background: "#1a0e2a", border: "1px solid rgba(255,255,255,0.07)" }}>
+            {txs.map((tx, i) => {
+              const positive = tx.amount > 0;
+              return (
+                <div
+                  key={tx.id}
+                  className="flex items-center gap-3 px-4 py-3"
+                  style={i > 0 ? { borderTop: "1px solid rgba(255,255,255,0.06)" } : undefined}
+                >
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                    style={
+                      positive
+                        ? { background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)" }
+                        : { background: "rgba(233,30,140,0.1)", border: "1px solid rgba(233,30,140,0.2)" }
+                    }
+                  >
+                    {positive ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" /></svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V6l10 6-10 6z" stroke="#e91e8c" strokeWidth="2" strokeLinejoin="round" /></svg>
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-white">{txLabel(tx)}</p>
+                    <p className="mt-0.5 text-[11px] text-[#6b7280]">
+                      {tx.venue_name ? `${tx.venue_name} · ` : ""}{timeAgo(tx.created_at)}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className={`text-sm font-bold tabular-nums ${positive ? "text-[#4ade80]" : "text-[#e91e8c]"}`}>
+                      {positive ? `+${tx.amount}` : tx.amount}
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-[#6b7280] tabular-nums">bakiye {tx.balance_after}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

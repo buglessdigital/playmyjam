@@ -1,12 +1,31 @@
+import { Suspense } from "react";
+import { getVenueBySlug } from "@/lib/venue-cache";
 import HistoryClient from "./HistoryClient";
+import HistoryLoading from "./loading";
 
-// Statik kabuk — geçmiş client'ta tek RPC ile gelir (tüm mekanlar, RLS korumalı).
-// runtime prefetch: üstteki venue layout'u params okuduğu için doğrulama örnek ister.
+// Kabukta cache'li venue çözümü ("tekrar çaldır" bulunulan mekanın kuyruğuna ekler);
+// geçmiş client'ta tek RPC ile gelir (tüm mekanlar, RLS korumalı).
+// runtime prefetch: kabuk mekan bazında istek anında üretilip prefetch'e servis edilir.
 export const unstable_instant = {
   prefetch: "runtime",
   samples: [{ params: { venueId: "ecem-s-house" } }],
 };
 
-export default function HistoryPage() {
-  return <HistoryClient />;
+interface Props {
+  params: Promise<{ venueId: string }>;
+}
+
+export default function HistoryPage({ params }: Props) {
+  return (
+    <Suspense fallback={<HistoryLoading />}>
+      {params.then(({ venueId }) => (
+        <HistoryShell venueId={venueId} />
+      ))}
+    </Suspense>
+  );
+}
+
+async function HistoryShell({ venueId }: { venueId: string }) {
+  const venue = await getVenueBySlug(venueId);
+  return <HistoryClient venueDbId={venue?.id ?? ""} venueName={venue?.name ?? ""} />;
 }

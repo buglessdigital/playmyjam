@@ -44,10 +44,13 @@ export async function POST(
   // ÖDEME SİMÜLASYONU: Gerçek ödeme entegrasyonu (Stripe/iyzico vb.) buraya gelecek.
   // Ödeme onaylanmadan jeton eklenmemeli.
 
-  // Global cüzdan: jeton mekandan bağımsız eklenir (0010)
+  // Global cüzdan: jeton mekandan bağımsız eklenir (0010); mekan yalnızca
+  // ledger bağlamı olarak kayda geçer (0012)
   const { data: balance, error } = await supabaseAdmin.rpc("add_tokens", {
     p_user_id: userId,
     p_amount: pkg.tokens,
+    p_venue_id: venue.id,
+    p_kind: "purchase",
   });
 
   if (error) {

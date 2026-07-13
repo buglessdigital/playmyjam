@@ -27,10 +27,13 @@ export async function POST(
     return NextResponse.json({ error: "Mekan bulunamadı" }, { status: 404 });
   }
 
-  // Global cüzdan: jeton mekandan bağımsız eklenir (0010)
+  // Global cüzdan: jeton mekandan bağımsız eklenir (0010); mekan yalnızca
+  // ledger bağlamı olarak kayda geçer (0012)
   const { data: balance, error } = await supabaseAdmin.rpc("add_tokens", {
     p_user_id: userId,
     p_amount: DEMO_AMOUNT,
+    p_venue_id: venue.id,
+    p_kind: "demo",
   });
 
   if (error) {

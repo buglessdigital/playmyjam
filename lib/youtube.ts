@@ -138,6 +138,47 @@ export async function getVideoDetails(videoIds: string[]): Promise<TrackDetails[
   return tracks;
 }
 
+export type VideoRefresh = {
+  title: string;
+  artist: string;
+  album_cover_url: string;
+  duration_ms: number;
+  channel_title: string;
+  view_count: number;
+  embeddable: boolean;
+};
+
+// YouTube Developer Policy III.E.4: 30 günden eski metadata tazelenmeli veya
+// silinmeli (video id muaf). videos.list yanıtında hiç dönmeyen id silinmiş/
+// gizlenmiş videodur → null (çağıran embeddable=false işaretler).
+export async function refreshVideoMetadata(
+  videoIds: string[]
+): Promise<Map<string, VideoRefresh | null>> {
+  const result = new Map<string, VideoRefresh | null>(videoIds.map((id) => [id, null]));
+  for (let i = 0; i < videoIds.length; i += 50) {
+    const batch = videoIds.slice(i, i + 50);
+    const params = new URLSearchParams({
+      part: "snippet,contentDetails,statistics,status",
+      id: batch.join(","),
+      key: API_KEY,
+    });
+    const data = await fetchJson<{ items?: VideoItem[] }>(`${API_BASE}/videos?${params}`);
+    for (const v of data.items ?? []) {
+      const t = toTrack(v);
+      result.set(v.id, {
+        title: t.title,
+        artist: t.artist,
+        album_cover_url: t.album_cover_url,
+        duration_ms: t.duration_ms,
+        channel_title: t.channel_title,
+        view_count: t.view_count,
+        embeddable: v.status?.embeddable !== false,
+      });
+    }
+  }
+  return result;
+}
+
 // search.list (100 birim!) + videos.list (1 birim). Çağıran taraf önce yerel
 // katalog + search_cache'e bakmalı — bu fonksiyon kotanın tek büyük tüketicisi.
 export async function searchVideos(query: string): Promise<TrackDetails[]> {

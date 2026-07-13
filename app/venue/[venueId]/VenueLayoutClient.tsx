@@ -3,6 +3,7 @@
 import { Suspense, use } from "react";
 import { usePathname } from "next/navigation";
 import BottomNav from "@/components/ui/BottomNav";
+import LegalFooter from "@/components/ui/LegalFooter";
 import NotificationWatcher from "@/components/notifications/NotificationWatcher";
 
 interface Props {
@@ -28,7 +29,10 @@ function VenueLayoutContent({ children, params }: Props) {
 
   return (
     <>
-      <main className={`w-full ${isLoginPage ? "" : "pb-16"}`}>{children}</main>
+      <main className={`w-full ${isLoginPage ? "" : "pb-16"}`}>
+        {children}
+        <LegalFooter />
+      </main>
       {!isLoginPage && (
         <>
           <NotificationWatcher venueId={venueId} />

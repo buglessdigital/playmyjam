@@ -253,6 +253,19 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
                 {localResults.length > 0 ? "YouTube'da başka sonuç bulunamadı" : "Sonuç bulunamadı"}
               </p>
             )}
+            {/* YouTube API branding şartı: sonuçların kaynağı görünür şekilde belirtilmeli */}
+            <p className="pb-2 pt-3 text-center text-[11px] text-[#6b7280]">
+              Arama sonuçları ve müzik verileri{" "}
+              <a
+                href="https://www.youtube.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                YouTube
+              </a>{" "}
+              tarafından sağlanır
+            </p>
           </>
         )}
       </div>

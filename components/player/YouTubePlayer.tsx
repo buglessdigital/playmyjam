@@ -9,6 +9,7 @@ type YTPlayer = {
   playVideo: () => void;
   pauseVideo: () => void;
   getCurrentTime: () => number;
+  getPlayerState: () => number;
   destroy: () => void;
 };
 
@@ -30,7 +31,7 @@ declare global {
           };
         }
       ) => YTPlayer;
-      PlayerState: { ENDED: number; PLAYING: number; PAUSED: number; CUED: number };
+      PlayerState: { ENDED: number; PLAYING: number; PAUSED: number; BUFFERING: number; CUED: number };
     };
     onYouTubeIframeAPIReady?: () => void;
   }
@@ -38,6 +39,12 @@ declare global {
 
 const HEARTBEAT_MS = 15_000;
 const IDLE_RETRY_MS = 15_000;
+// Yükleme sonrası bu süre içinde gelen "duraklat" yankıları yok sayılır — skip
+// anında yarışan bayat heartbeat'ler yeni şarkıyı durduramasın
+const PAUSE_ECHO_GRACE_MS = 8_000;
+// loadVideoById sonrası oynatmanın gerçekten başladığı bu aralıklarla doğrulanır
+const PLAY_WATCHDOG_DELAYS_MS = [2_500, 6_000];
+const PLAY_NUDGE_MS = 3_000;
 
 type NowPlayingRow = {
   video_id: string | null;
@@ -85,6 +92,12 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
   const playerRef = useRef<YTPlayer | null>(null);
   const currentVideoRef = useRef<string | null>(null);
   const advancingRef = useRef(false);
+  // Çalması gereken ama (arka plan sekmesinde autoplay engeli vb.) başlayamayan
+  // videoyu bekçinin ayırt edebilmesi için niyet ayrı tutulur
+  const desiredPlayingRef = useRef(false);
+  // Son loadVideo zamanı — pause yankısı grace penceresinin çapası
+  const lastLoadAtRef = useRef(0);
+  const nudgeTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const [started, setStarted] = useState(false);
   const [idle, setIdle] = useState(false); // kuyruk boş, çalan yok
@@ -114,22 +127,57 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
     let playing = false;
     try {
       progress = Math.floor(player.getCurrentTime() * 1000);
-      const state = (player as unknown as { getPlayerState?: () => number }).getPlayerState?.();
-      playing = state === window.YT?.PlayerState.PLAYING;
+      const state = player.getPlayerState();
+      // BUFFERING da "çalıyor" sayılır — geçiş anındaki tamponlama sunucuya
+      // "durdu" diye yazılıp yankıyla yeni şarkıyı durdurmasın
+      playing =
+        state === window.YT?.PlayerState.PLAYING || state === window.YT?.PlayerState.BUFFERING;
     } catch {
       return;
     }
-    api({ action: "heartbeat", progress_ms: progress, is_playing: playing });
+    // video_id eşlik eder: sunucu yalnızca satırdaki video hâlâ buysa yazar —
+    // skip ile yarışan bayat heartbeat yeni şarkının durumunu ezemez
+    api({
+      action: "heartbeat",
+      progress_ms: progress,
+      is_playing: playing,
+      video_id: currentVideoRef.current,
+    });
   }, [api]);
+
+  // Niyet "çal" iken player'ın gerçekten çaldığını doğrula; başlamadıysa dürt.
+  // Arka plan sekmesinde tarayıcının sessizce engellediği başlatmaları toparlar.
+  const ensurePlaying = useCallback(() => {
+    const player = playerRef.current;
+    const YT = window.YT;
+    if (!player || !YT || !desiredPlayingRef.current || !currentVideoRef.current) return;
+    try {
+      const state = player.getPlayerState();
+      if (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.BUFFERING) {
+        player.playVideo();
+      }
+    } catch {}
+  }, []);
+
+  const scheduleNudges = useCallback(
+    (delays: number[]) => {
+      nudgeTimersRef.current.forEach(clearTimeout);
+      nudgeTimersRef.current = delays.map((ms) => setTimeout(ensurePlaying, ms));
+    },
+    [ensurePlaying]
+  );
 
   const loadVideo = useCallback(
     (videoId: string) => {
       currentVideoRef.current = videoId;
+      desiredPlayingRef.current = true;
+      lastLoadAtRef.current = Date.now();
       setIdle(false);
       playerRef.current?.loadVideoById(videoId);
       onTrackChange?.({ videoId, isPlaying: true });
+      scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
     },
-    [onTrackChange]
+    [onTrackChange, scheduleNudges]
   );
 
   // Şarkı bitti / hata verdi → kuyruğu ilerlet, dönen videoyu yükle
@@ -143,6 +191,7 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
           loadVideo(result.video_id);
         } else {
           currentVideoRef.current = null;
+          desiredPlayingRef.current = false;
           setIdle(true);
           onTrackChange?.({ videoId: null, isPlaying: false });
         }
@@ -152,6 +201,44 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
     },
     [api, loadVideo, onTrackChange]
   );
+
+  // Bekçi: çalması gereken video CUED/UNSTARTED'da takıldıysa (arka plan
+  // sekmesinde autoplay engeli) oynatmayı tekrar dene — tek seferlik playVideo
+  // denemesi engellenince şarkı sonsuza dek bekliyordu
+  const nudgePlayback = useCallback(() => {
+    const player = playerRef.current;
+    const YT = window.YT;
+    if (!player || !YT || !currentVideoRef.current || !desiredPlayingRef.current) return;
+    try {
+      const state = player.getPlayerState();
+      if (state === YT.PlayerState.CUED || state === -1 /* UNSTARTED */) {
+        player.playVideo();
+      }
+    } catch {
+      // player henüz hazır değil — sonraki turda denenir
+    }
+  }, []);
+
+  // Emniyet ağı: Realtime kanalı arka plan sekmesinde sessizce kopabilir ve
+  // panelden gelen next/play komutları kaçar — now_playing ile mutabakat kur
+  const reconcile = useCallback(async () => {
+    if (advancingRef.current) return;
+    const { data } = await supabase
+      .from("now_playing")
+      .select("video_id, song_id, is_playing")
+      .eq("venue_id", venueDbId)
+      .maybeSingle();
+    const np = data as NowPlayingRow | null;
+    if (!np || advancingRef.current) return;
+    if (np.video_id && np.video_id !== currentVideoRef.current) {
+      loadVideo(np.video_id);
+      return;
+    }
+    if (np.video_id && np.is_playing) {
+      desiredPlayingRef.current = true;
+      nudgePlayback();
+    }
+  }, [supabase, venueDbId, loadVideo, nudgePlayback]);
 
   // "Başlat" — tarayıcı autoplay politikası gereği ilk oynatma kullanıcı dokunuşuyla
   const start = useCallback(async () => {
@@ -187,9 +274,13 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
           if (e.data === YT.PlayerState.ENDED) {
             advance({ action: "next" });
           } else if (e.data === YT.PlayerState.PLAYING) {
+            desiredPlayingRef.current = true;
             onTrackChange?.({ videoId: currentVideoRef.current, isPlaying: true });
             sendHeartbeat();
           } else if (e.data === YT.PlayerState.PAUSED) {
+            // PAUSED, gerçekten başlamış bir videonun durdurulmasıdır (kullanıcı/panel
+            // niyeti); engellenen autoplay CUED/UNSTARTED'da kalır, buraya düşmez
+            desiredPlayingRef.current = false;
             onTrackChange?.({ videoId: currentVideoRef.current, isPlaying: false });
             sendHeartbeat();
           } else if (e.data === YT.PlayerState.CUED) {
@@ -222,6 +313,23 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
     return () => clearInterval(interval);
   }, [started, idle, advance]);
 
+  // Takılan oynatmayı periyodik dürt; sekme öne gelir gelmez de tam mutabakat —
+  // arka planda engellenen autoplay görünürlükte ilk denemede tutar
+  useEffect(() => {
+    if (!started) return;
+    const nudgeInterval = setInterval(nudgePlayback, PLAY_NUDGE_MS);
+    const reconcileInterval = setInterval(reconcile, HEARTBEAT_MS);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") reconcile();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearInterval(nudgeInterval);
+      clearInterval(reconcileInterval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [started, nudgePlayback, reconcile]);
+
   // Dış komutları dinle: admin panelden next/pause, müşteri isteğiyle başlayan çalma
   useEffect(() => {
     if (!started) return;
@@ -239,6 +347,7 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
           }
           if (!np.video_id && currentVideoRef.current) {
             currentVideoRef.current = null;
+            desiredPlayingRef.current = false;
             setIdle(true);
             playerRef.current?.pauseVideo();
             onTrackChange?.({ videoId: null, isPlaying: false });
@@ -246,8 +355,25 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
           }
           // Aynı video, oynat/duraklat komutu
           if (np.video_id) {
-            if (np.is_playing) playerRef.current?.playVideo();
-            else playerRef.current?.pauseVideo();
+            if (np.is_playing) {
+              desiredPlayingRef.current = true;
+              playerRef.current?.playVideo();
+              scheduleNudges([PLAY_NUDGE_MS]);
+            } else {
+              // "Durdu" gerçek bir duraklatma komutu mu, yoksa takılı player'ın
+              // kendi heartbeat'inin yankısı mı? Hiç başlamamış (CUED/UNSTARTED)
+              // videoda ve yüklemeden hemen sonra niyet söndürülmez — söndürülürse
+              // bekçi devre dışı kalır ve şarkı sonsuza dek bekler
+              let neverStarted = false;
+              try {
+                const s = playerRef.current?.getPlayerState();
+                neverStarted = s === window.YT?.PlayerState.CUED || s === -1;
+              } catch {}
+              if (!neverStarted && Date.now() - lastLoadAtRef.current > PAUSE_ECHO_GRACE_MS) {
+                desiredPlayingRef.current = false;
+                playerRef.current?.pauseVideo();
+              }
+            }
           }
         }
       )
@@ -256,10 +382,11 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [started, supabase, venueDbId, loadVideo, onTrackChange]);
+  }, [started, supabase, venueDbId, loadVideo, onTrackChange, scheduleNudges]);
 
   useEffect(() => {
     return () => {
+      nudgeTimersRef.current.forEach(clearTimeout);
       playerRef.current?.destroy();
       playerRef.current = null;
     };

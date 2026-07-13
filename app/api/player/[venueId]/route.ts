@@ -49,7 +49,8 @@ export async function POST(
     case "heartbeat": {
       const progressMs = typeof body?.progress_ms === "number" ? Math.floor(body.progress_ms) : 0;
       const isPlaying = body?.is_playing === true;
-      await supabaseAdmin
+      const videoId = typeof body?.video_id === "string" ? body.video_id : null;
+      let update = supabaseAdmin
         .from("now_playing")
         .update({
           progress_ms: Math.max(progressMs, 0),
@@ -58,6 +59,10 @@ export async function POST(
           ...(isPlaying ? { started_at: new Date(Date.now() - progressMs).toISOString() } : {}),
         })
         .eq("venue_id", venueId);
+      // Skip ile yarışan bayat heartbeat'e karşı koruma: player'ın raporladığı
+      // video satırdakiyle eşleşmiyorsa (şarkı az önce değişti) yazma
+      if (videoId) update = update.eq("video_id", videoId);
+      await update;
       return NextResponse.json({ ok: true });
     }
 

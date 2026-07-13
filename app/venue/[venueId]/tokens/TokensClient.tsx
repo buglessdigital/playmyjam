@@ -10,12 +10,11 @@ type Package = { id: string; label: string; tokens: number; price: number; popul
 
 interface Props {
   venueId: string;
-  venueDbId: string;
   initialPackages: Package[];
   initialSelectedId: string;
 }
 
-export default function TokensClient({ venueId, venueDbId, initialPackages, initialSelectedId }: Props) {
+export default function TokensClient({ venueId, initialPackages, initialSelectedId }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [packages] = useState<Package[]>(initialPackages);
@@ -24,10 +23,9 @@ export default function TokensClient({ venueId, venueDbId, initialPackages, init
   const [selected, setSelected] = useState<string>(initialSelectedId);
 
   useEffect(() => {
-    if (!venueDbId) return;
     let cancelled = false;
     const load = async () => {
-      // Kullanıcı id'si lokal session'dan; bakiye tek sorgu (RLS: yalnızca kendi satırı)
+      // Kullanıcı id'si lokal session'dan; global cüzdan tek sorgu (RLS: yalnızca kendi satırı)
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user?.id;
       if (cancelled || !userId) {
@@ -35,10 +33,9 @@ export default function TokensClient({ venueId, venueDbId, initialPackages, init
         return;
       }
       const { data } = await supabase
-        .from("user_tokens")
+        .from("user_wallets")
         .select("balance")
         .eq("user_id", userId)
-        .eq("venue_id", venueDbId)
         .maybeSingle();
       if (!cancelled) {
         setBalance(data?.balance ?? 0);
@@ -49,7 +46,7 @@ export default function TokensClient({ venueId, venueDbId, initialPackages, init
     return () => {
       cancelled = true;
     };
-  }, [venueDbId, supabase]);
+  }, [supabase]);
   const [success, setSuccess] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [demoSuccess, setDemoSuccess] = useState(false);
@@ -149,6 +146,7 @@ export default function TokensClient({ venueId, venueDbId, initialPackages, init
                 )}
                 <span className="text-sm font-medium text-[#9ca3af]">jeton</span>
               </div>
+              <p className="mt-1.5 text-[11px] text-[#6b7280]">Tüm mekanlarda geçerli</p>
             </div>
             <div
               className="flex h-14 w-14 items-center justify-center rounded-2xl"

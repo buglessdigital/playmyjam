@@ -37,6 +37,8 @@ function AuthPageContent({ params }: Props) {
   const [info, setInfo] = useState("");
   const [showResend, setShowResend] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
+  const [existingUser, setExistingUser] = useState<{ name: string } | null>(null);
+  const [continueLoading, setContinueLoading] = useState(false);
 
   // Callback/confirm route'larından gelen hata kodunu göster, URL'den temizle
   useEffect(() => {
@@ -46,6 +48,45 @@ function AuthPageContent({ params }: Props) {
       router.replace(`/venue/${venueId}`);
     }
   }, [searchParams, router, venueId]);
+
+  // Başka mekanda açılmış oturum varsa tek dokunuşla bu mekana da girilebilsin
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      const supabase = createClient();
+      // getSession lokal cache'ten okur — ağ çağrısı yok
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
+      if (cancelled || !user) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      const name = profile?.username || user.email?.split("@")[0] || "Hesabın";
+      setExistingUser({ name });
+    };
+    check();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleContinue = async () => {
+    setContinueLoading(true);
+    setError("");
+    setInfo("");
+    const res = await fetch(`/api/venue/${venueId}/auth`, { method: "POST" });
+    if (res.ok) {
+      router.push(`/venue/${venueId}/queue`);
+      return;
+    }
+    // Bayat/geçersiz oturum: butonu kaldır, form kullanılabilir kalsın
+    setContinueLoading(false);
+    setExistingUser(null);
+    setError("Oturum doğrulanamadı. Lütfen tekrar giriş yapın.");
+  };
 
   const emailRedirectTo = () =>
     `${window.location.origin}/venue/${venueId}/queue`;
@@ -189,6 +230,33 @@ function AuthPageContent({ params }: Props) {
           <div className="mb-4 px-4 py-2.5 rounded-xl text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
             {info}
           </div>
+        )}
+
+        {/* Mevcut oturumla tek dokunuşla devam */}
+        {existingUser && (
+          <>
+            <button
+              onClick={handleContinue}
+              disabled={continueLoading || loading || googleLoading}
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-white text-base transition-all active:scale-95 disabled:opacity-50 mb-4"
+              style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
+            >
+              {continueLoading ? (
+                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx="12" cy="7" r="4" stroke="white" strokeWidth="2" />
+                </svg>
+              )}
+              {continueLoading ? "Devam ediliyor..." : `${existingUser.name} olarak devam et`}
+            </button>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex-1 h-px bg-white/10" />
+              <span className="text-xs text-[#4b5563]">veya farklı hesapla</span>
+              <div className="flex-1 h-px bg-white/10" />
+            </div>
+          </>
         )}
 
         {/* Google butonu */}

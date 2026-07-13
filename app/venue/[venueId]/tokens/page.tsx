@@ -32,7 +32,6 @@ async function TokensShell({ venueId }: { venueId: string }) {
   return (
     <TokensClient
       venueId={venueId}
-      venueDbId={venue?.id ?? ""}
       initialPackages={packages}
       initialSelectedId={packages[1]?.id ?? packages[0]?.id ?? ""}
     />

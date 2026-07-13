@@ -100,6 +100,19 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
       ),
     },
     {
+      href: `/venue/${venueId}/history`,
+      label: "Son Çaldırılanlar",
+      desc: "Tüm mekanlarda çaldırdığın şarkılar",
+      tint: "rgba(59,130,246,0.1)",
+      border: "rgba(59,130,246,0.2)",
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="#3b82f6" strokeWidth="2" />
+          <path d="M12 7v5l3 3" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+    {
       href: `/venue/${venueId}/settings`,
       label: "Ayarlar",
       desc: "Hesap tercihlerin",

@@ -17,8 +17,7 @@ yanıtlanır.
       30 gün veri tazeleme cron'u buna bağlı).
 - [ ] **Prod deploy**: footer, YouTube atfı ve cron içeren sürüm yayında olmalı
       (cron `vercel.json` ile deploy'da otomatik kaydolur; `CRON_SECRET` üç ortama eklendi).
-- [ ] **GCP proje numarası**: https://console.cloud.google.com → YOUTUBE_API_KEY'in
-      alındığı proje → Dashboard'da "Project number" (sadece rakam; Project ID değil).
+- [x] **GCP proje numarası**: **152026561871** (proje: "Play My Jam", ID: play-my-jam-502210).
 - [ ] **Demo hesap**: Denetçi için bir misafir hesabı oluştur
       (örn. kullanıcı `google-review`, basit bir şifre) ve bir demo mekan URL'i belirle.
       Denetçi arama yapıp şarkı isteyebilmeli.
@@ -89,7 +88,7 @@ alan adıyla eşleşen bir iletişim e-postası.
 
 ### Section 5 — Use Case & Quota
 - Number of projects: **1**
-- Google Cloud project number: **[GCP Console'dan alınan rakam]**
+- Google Cloud project number: **152026561871**
 - Use case: **Websites & mobile apps** (istersen ek olarak "Smart TVs, consoles & hardware" işaretleme — kullanmıyoruz)
 - Requires users to sign in (OAuth): **No** — sadece API key ile herkese açık veri
   (search.list, videos.list, playlistItems.list); kullanıcı adına hiçbir YouTube

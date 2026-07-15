@@ -1,3 +1,5 @@
+import LegalFooter from "@/components/ui/LegalFooter";
+
 export default function TermsPage() {
   return (
     <main className="max-w-3xl mx-auto px-6 py-16 text-white">
@@ -87,6 +89,7 @@ export default function TermsPage() {
           </a>
         </p>
       </section>
+      <LegalFooter />
     </main>
   );
 }

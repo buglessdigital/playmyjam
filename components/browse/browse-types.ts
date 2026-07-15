@@ -10,7 +10,7 @@ export type BrowseUserState = {
   token_balance: number;
   favorite_ids: string[];
   queue_entries: QueueEntry[];
-  now_playing: { progress_ms: number; is_playing: boolean; duration_ms: number } | null;
+  now_playing: { song_id?: string; progress_ms: number; is_playing: boolean; duration_ms: number } | null;
 };
 
 export type VenueSong = {

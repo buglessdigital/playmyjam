@@ -124,7 +124,9 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
       setFavoriteIds(new Set(state.favorite_ids ?? []));
       setQueueEntries(state.queue_entries ?? []);
       setRecentPlays(state.recently_played ?? []);
-      setPlayingSongId(state.playing?.song_id ?? null);
+      // Banner otomatik çalmada da görünsün: kaynak now_playing tablosu;
+      // 0014 öncesi RPC song_id döndürmüyorsa müşteri kuyruğundaki kayda düş
+      setPlayingSongId(state.now_playing?.song_id ?? state.playing?.song_id ?? null);
       setNowPlaying(state.now_playing ?? null);
 
       const played = new Map((state.recently_played ?? []).map((r) => [r.song_id, r.played_at]));

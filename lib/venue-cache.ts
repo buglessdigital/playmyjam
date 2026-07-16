@@ -3,6 +3,24 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type VenueRow = { id: string; name: string; request_cost: number; priority_cost: number };
 
+export type VenueListItem = { slug: string; name: string; tagline: string | null };
+
+// Ana sayfadaki "Mekanlar" listesi — super admin mekan ekleyince/düzenleyince
+// "venues-list" tag'i revalidate edilir, aksi halde dakikalar içinde tazelenir.
+export async function getActiveVenues(): Promise<VenueListItem[]> {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag("venues-list");
+
+  const { data } = await supabaseAdmin
+    .from("venues")
+    .select("slug, name, tagline")
+    .eq("status", "active")
+    .order("name");
+
+  return (data ?? []) as VenueListItem[];
+}
+
 export async function getVenueBySlug(slug: string): Promise<VenueRow | null> {
   "use cache";
   cacheLife("minutes");

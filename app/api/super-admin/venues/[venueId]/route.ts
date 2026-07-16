@@ -53,6 +53,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ve
   if (Object.keys(venueUpdate).length > 0) {
     await supabaseAdmin.from("venues").update(venueUpdate).eq("id", venue.id);
     revalidateTag(`venue-${venueId}`, "max");
+    revalidateTag("venues-list", "max");
   }
 
   if (typeof adminUsername === "string" && adminUsername.trim()) {
@@ -88,5 +89,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ v
   if (error) return NextResponse.json({ error: "Mekan silinemedi" }, { status: 500 });
 
   revalidateTag(`venue-${venueId}`, "max");
+  revalidateTag("venues-list", "max");
   return NextResponse.json({ ok: true });
 }

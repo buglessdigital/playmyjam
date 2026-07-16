@@ -5,6 +5,8 @@ import { getGlobalTokenPackages, getTokenUnitPrice } from "@/lib/pricing-cache";
 import { COMPANY } from "@/lib/company-info";
 import Coin from "@/components/ui/Coin";
 import CardLogos from "@/components/ui/CardLogos";
+import SiteHeader from "@/components/landing/SiteHeader";
+import SiteFooter from "@/components/landing/SiteFooter";
 
 export const metadata: Metadata = {
   title: "PlayMyJam — Mekanda müziği sen seç",
@@ -12,42 +14,9 @@ export const metadata: Metadata = {
     "PlayMyJam, kafe ve eğlence mekanlarında müzik sırasını misafirlere açan dijital şarkı istek platformudur. Jeton satın al, şarkını sıraya ekle, çalma anını canlı takip et.",
 };
 
-const DEFAULT_VENUE = "ecem-s-house";
 const PINK_GRADIENT = "linear-gradient(135deg, #ff2d9c 0%, #e91e8c 45%, #a8125f 100%)";
 
 const fmt = (n: number) => n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
-
-/* ---------------------------------- Header --------------------------------- */
-
-function Header() {
-  return (
-    <header
-      className="sticky top-0 z-40 border-b border-white/[0.06]"
-      style={{ background: "rgba(15,10,24,0.85)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}
-    >
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-5">
-        <a href="#top" className="flex items-center gap-2.5">
-          <Coin size={26} />
-          <span className="text-lg font-black tracking-tight text-white">PlayMyJam</span>
-        </a>
-        <nav className="hidden items-center gap-7 text-sm font-medium text-[#9ca3af] md:flex">
-          <a href="#nasil-calisir" className="transition-colors hover:text-white">Nasıl Çalışır</a>
-          <a href="#mekanlar" className="transition-colors hover:text-white">Mekanlar İçin</a>
-          <a href="#fiyatlar" className="transition-colors hover:text-white">Fiyatlar</a>
-          <a href="#sss" className="transition-colors hover:text-white">SSS</a>
-          <a href="#iletisim" className="transition-colors hover:text-white">İletişim</a>
-        </nav>
-        <Link
-          href={`/venue/${DEFAULT_VENUE}`}
-          className="rounded-xl px-4 py-2.5 text-sm font-bold text-white transition-transform active:scale-[0.97]"
-          style={{ background: PINK_GRADIENT, boxShadow: "0 6px 20px -6px rgba(233,30,140,0.5)" }}
-        >
-          Uygulamayı Aç
-        </Link>
-      </div>
-    </header>
-  );
-}
 
 /* ------------------------------ Telefon mockup ----------------------------- */
 
@@ -246,7 +215,7 @@ async function PackagesSection() {
                   )}
                 </div>
                 <Link
-                  href={`/venue/${DEFAULT_VENUE}/tokens`}
+                  href="/mekanlar"
                   className="mt-5 rounded-xl py-2.5 text-center text-sm font-bold text-white transition-transform active:scale-[0.97]"
                   style={
                     p.popular
@@ -350,79 +319,6 @@ function FaqSection() {
   );
 }
 
-/* ---------------------------------- Footer --------------------------------- */
-
-function Footer() {
-  return (
-    <footer className="border-t border-white/[0.06]" style={{ background: "#0c0814" }}>
-      <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-14 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <Coin size={24} />
-            <span className="text-base font-black tracking-tight text-white">PlayMyJam</span>
-          </div>
-          <p className="mt-4 max-w-xs text-xs leading-relaxed text-[#6b7280]">
-            Kafe ve eğlence mekanlarında müzik sırasını misafirlere açan dijital şarkı istek
-            platformu. {COMPANY.legalName} tarafından işletilmektedir.
-          </p>
-          <div className="mt-5">
-            <CardLogos />
-          </div>
-        </div>
-
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9ca3af]">Ürün</p>
-          <ul className="mt-4 space-y-2.5 text-sm text-[#6b7280]">
-            <li><Link href={`/venue/${DEFAULT_VENUE}`} className="hover:text-white">Uygulamayı Aç</Link></li>
-            <li><a href="#nasil-calisir" className="hover:text-white">Nasıl Çalışır</a></li>
-            <li><a href="#fiyatlar" className="hover:text-white">Fiyatlar</a></li>
-            <li><a href="#sss" className="hover:text-white">Sık Sorulan Sorular</a></li>
-          </ul>
-        </div>
-
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9ca3af]">Yasal</p>
-          <ul className="mt-4 space-y-2.5 text-sm text-[#6b7280]">
-            <li><Link href="/hakkimizda" className="hover:text-white">Hakkımızda</Link></li>
-            <li><Link href="/privacy" className="hover:text-white">Gizlilik Politikası</Link></li>
-            <li><Link href="/terms" className="hover:text-white">Kullanım Şartları</Link></li>
-            <li><Link href="/mesafeli-satis-sozlesmesi" className="hover:text-white">Mesafeli Satış Sözleşmesi</Link></li>
-            <li><Link href="/teslimat-iade" className="hover:text-white">Teslimat ve İade</Link></li>
-          </ul>
-        </div>
-
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9ca3af]">İletişim</p>
-          <ul className="mt-4 space-y-2.5 text-sm text-[#6b7280]">
-            <li>
-              <a href={`mailto:${COMPANY.email}`} className="hover:text-white">{COMPANY.email}</a>
-            </li>
-            <li>
-              <a href={`tel:${COMPANY.phone.replace(/\s/g, "")}`} className="hover:text-white">{COMPANY.phone}</a>
-            </li>
-            <li className="leading-relaxed">{COMPANY.address}</li>
-            <li><Link href="/iletisim" className="text-[#e91e8c] hover:text-[#ff2d9c]">İletişim sayfası →</Link></li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="border-t border-white/[0.06]">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-5 text-[11px] text-[#4b5563]">
-          <p>© 2026 PlayMyJam · Tüm hakları saklıdır · Tüm ödemeler SSL ile güvence altındadır</p>
-          <a
-            href="https://www.youtube.com/t/terms"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-[#9ca3af]"
-          >
-            YouTube Hizmet Şartları
-          </a>
-        </div>
-      </div>
-    </footer>
-  );
-}
-
 /* ----------------------------------- Sayfa ---------------------------------- */
 
 const VALUE_PROPS = [
@@ -494,7 +390,7 @@ const VENUE_FEATURES = [
 export default function HomePage() {
   return (
     <div id="top" className="min-h-dvh bg-[#0f0a18]">
-      <Header />
+      <SiteHeader />
 
       <main className="relative overflow-hidden">
         {/* Arka plan ışımaları */}
@@ -536,11 +432,11 @@ export default function HomePage() {
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
               <Link
-                href={`/venue/${DEFAULT_VENUE}`}
+                href="/mekanlar"
                 className="rounded-2xl px-7 py-4 text-base font-bold text-white transition-transform active:scale-[0.98]"
                 style={{ background: PINK_GRADIENT, boxShadow: "0 12px 36px -10px rgba(233,30,140,0.6)" }}
               >
-                Uygulamayı Aç
+                Mekanları Keşfet
               </Link>
               <a
                 href="#fiyatlar"
@@ -739,7 +635,7 @@ export default function HomePage() {
         </section>
       </main>
 
-      <Footer />
+      <SiteFooter />
     </div>
   );
 }

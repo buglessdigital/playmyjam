@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import bcrypt from "bcryptjs";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSuperSession } from "@/lib/session";
@@ -76,5 +77,6 @@ export async function POST(req: NextRequest) {
   // Boş now_playing satırı ekle
   await supabaseAdmin.from("now_playing").insert({ venue_id: venue.id, is_playing: false });
 
+  revalidateTag("venues-list", "max");
   return NextResponse.json({ ok: true, venue });
 }

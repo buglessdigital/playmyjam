@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Coin from "@/components/ui/Coin";
+import Image from "next/image";
 import CardLogos from "@/components/ui/CardLogos";
 import { COMPANY } from "@/lib/company-info";
 
@@ -9,9 +9,8 @@ export default function SiteFooter() {
     <footer className="border-t border-white/[0.06]" style={{ background: "#0c0814" }}>
       <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-14 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <Coin size={24} />
-            <span className="text-base font-black tracking-tight text-white">PlayMyJam</span>
+          <div className="inline-flex items-center">
+            <Image src="/logo.png" alt="PlayMyJam" width={900} height={759} className="h-10 w-auto" />
           </div>
           <p className="mt-4 max-w-xs text-xs leading-relaxed text-[#6b7280]">
             Kafe ve eğlence mekanlarında müzik sırasını misafirlere açan dijital şarkı istek

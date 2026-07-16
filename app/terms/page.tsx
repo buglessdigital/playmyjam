@@ -84,8 +84,8 @@ export default function TermsPage() {
         <h2 className="text-xl font-semibold mb-3">8. Contact</h2>
         <p className="text-gray-300 leading-relaxed">
           For questions about these terms, contact us at:{" "}
-          <a href="mailto:taneryldrm111@gmail.com" className="text-purple-400 underline">
-            taneryldrm111@gmail.com
+          <a href="mailto:taneryildirim@buglessdigital.com.tr" className="text-purple-400 underline">
+            taneryildirim@buglessdigital.com.tr
           </a>
         </p>
       </section>

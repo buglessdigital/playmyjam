@@ -1,10 +1,18 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import SongRow from "./SongRow";
-import type { DisplaySong, SongActionState, VenueSong } from "./browse-types";
+import { artistKey, primaryArtist, type DisplaySong, type SongActionState, type VenueSong } from "./browse-types";
 
 const MAX_RECENT = 8;
+
+type SearchArtist = {
+  key: string;
+  name: string;
+  coverUrl: string;
+  songCount: number;
+};
 
 interface Props {
   venueSongMap: Map<string, VenueSong>;
@@ -22,6 +30,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<DisplaySong[]>([]);
   const [searching, setSearching] = useState(false);
+  const [artistFilter, setArtistFilter] = useState<{ key: string; name: string } | null>(null);
   // Yalnızca kullanıcı etkileşimiyle mount olur; yine de SSR guard'ı korunuyor
   const [recent, setRecent] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
@@ -90,6 +99,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
 
   const handleQueryChange = (value: string) => {
     setQuery(value);
+    setArtistFilter(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!value.trim()) { setSearchResults([]); setSearching(false); return; }
     // Debounce beklerken de spinner görünsün — erken "Sonuç bulunamadı" yanıltmasın
@@ -99,9 +109,24 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
 
   const submitQuery = (term: string) => {
     setQuery(term);
+    setArtistFilter(null);
     saveRecent(term);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     searchRemote(term);
+  };
+
+  // Sanatçıya tıklayınca: sonuçlar o sanatçıya daraltılır, ayrıca sanatçı adıyla
+  // yeni bir arama yapılır ki katalog dışındaki şarkıları da gelsin
+  const selectArtist = (artist: SearchArtist) => {
+    setArtistFilter({ key: artist.key, name: artist.name });
+    saveRecent(artist.name);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    searchRemote(artist.name);
+  };
+
+  const clearArtist = () => {
+    setArtistFilter(null);
+    if (query.trim()) searchRemote(query);
   };
 
   // Yerel sonuçlar debounce beklemeden gelsin; deferred değer yazmayı bloklamasın
@@ -133,6 +158,42 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
       });
   }, [searchResults, venueSongMap, localResults]);
 
+  // Sonuçlardaki sanatçılar — tıklanınca o sanatçının şarkılarına geçilir
+  const searchArtists = useMemo<SearchArtist[]>(() => {
+    const map = new Map<string, SearchArtist>();
+    for (const s of [...localResults, ...remoteResults]) {
+      const name = primaryArtist(s.artist);
+      if (!name) continue;
+      const key = name.toLocaleLowerCase("tr");
+      const entry = map.get(key);
+      if (!entry) map.set(key, { key, name, coverUrl: s.album_cover_url, songCount: 1 });
+      else entry.songCount += 1;
+    }
+    return [...map.values()].sort((a, b) => b.songCount - a.songCount).slice(0, 10);
+  }, [localResults, remoteResults]);
+
+  // Sanatçı görünümü: önce mekan listesindeki tüm şarkıları (play_count sırasıyla)
+  const artistVenueSongs = useMemo<DisplaySong[]>(() => {
+    if (!artistFilter) return [];
+    const matches: VenueSong[] = [];
+    for (const s of venueSongMap.values()) {
+      if (s.in_venue_list && artistKey(s.artist) === artistFilter.key) matches.push(s);
+    }
+    return matches.sort((a, b) => b.play_count - a.play_count);
+  }, [artistFilter, venueSongMap]);
+
+  // ...sonra sanatçı adıyla yapılan aramadan gelen, katalogda olmayan şarkılar
+  const artistRemoteSongs = useMemo<DisplaySong[]>(() => {
+    if (!artistFilter) return [];
+    const shownIds = new Set(artistVenueSongs.map((s) => s.youtube_video_id));
+    return searchResults
+      .filter((r) => artistKey(r.artist) === artistFilter.key && !shownIds.has(r.youtube_video_id))
+      .map((r) => {
+        const vs = venueSongMap.get(r.youtube_video_id);
+        return { ...r, id: vs?.id, play_count: vs?.play_count, in_venue_list: vs?.in_venue_list };
+      });
+  }, [artistFilter, searchResults, artistVenueSongs, venueSongMap]);
+
   const interact = <T,>(fn: (arg: T) => void) => (arg: T) => {
     saveRecent(query);
     fn(arg);
@@ -144,9 +205,9 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0f0a18]">
       <div className="flex items-center gap-2 px-4 pb-3 pt-12">
         <button
-          onClick={onClose}
+          onClick={artistFilter ? clearArtist : onClose}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-          aria-label="Aramayı kapat"
+          aria-label={artistFilter ? "Sanatçıdan çık" : "Aramayı kapat"}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
@@ -168,7 +229,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
           />
           {query && (
             <button
-              onClick={() => { setQuery(""); setSearchResults([]); inputRef.current?.focus(); }}
+              onClick={() => { setQuery(""); setSearchResults([]); setArtistFilter(null); inputRef.current?.focus(); }}
               className="absolute right-3 top-1/2 flex -translate-y-1/2 p-1"
               aria-label="Temizle"
             >
@@ -210,8 +271,103 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
               <p className="mt-3 text-sm text-[#6b7280]">Şarkı veya sanatçı ara</p>
             </div>
           )
+        ) : artistFilter ? (
+          <>
+            <div className="flex items-center gap-2 pt-2">
+              <h2 className="min-w-0 truncate text-sm font-bold text-white">{artistFilter.name}</h2>
+              <span className="shrink-0 text-xs text-[#9ca3af]">şarkıları</span>
+              <button
+                onClick={clearArtist}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10"
+                aria-label="Sanatçı filtresini kaldır"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
+              </button>
+            </div>
+
+            {artistVenueSongs.length > 0 && (
+              <>
+                <h2 className="pt-3 text-sm font-bold text-white">Mekan Listesi</h2>
+                {artistVenueSongs.map((song) => (
+                  <SongRow
+                    key={song.youtube_video_id}
+                    song={song}
+                    action={actionFor(song)}
+                    isFav={song.id ? favoriteIds.has(song.id) : false}
+                    onOpen={interact(onOpen)}
+                    onToggleFavorite={onToggleFavorite}
+                    onAdd={interact(onAdd)}
+                    onRequest={interact(onRequest)}
+                  />
+                ))}
+              </>
+            )}
+
+            <div className="flex items-center gap-2 pt-4">
+              <h2 className="text-sm font-bold text-white">YouTube Sonuçları</h2>
+              {searching && (
+                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#6b7280" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
+              )}
+            </div>
+            {artistRemoteSongs.map((song) => (
+              <SongRow
+                key={song.youtube_video_id}
+                song={song}
+                action={actionFor(song)}
+                isFav={song.id ? favoriteIds.has(song.id) : false}
+                onOpen={interact(onOpen)}
+                onToggleFavorite={onToggleFavorite}
+                onAdd={interact(onAdd)}
+                onRequest={interact(onRequest)}
+              />
+            ))}
+            {!searching && artistRemoteSongs.length === 0 && (
+              <p className="py-8 text-center text-sm text-[#6b7280]">
+                {artistVenueSongs.length > 0 ? "YouTube'da başka şarkı bulunamadı" : "Şarkı bulunamadı"}
+              </p>
+            )}
+            {/* YouTube API branding şartı: sonuçların kaynağı görünür şekilde belirtilmeli */}
+            <p className="pb-2 pt-3 text-center text-[11px] text-[#6b7280]">
+              Arama sonuçları ve müzik verileri{" "}
+              <a
+                href="https://www.youtube.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                YouTube
+              </a>{" "}
+              tarafından sağlanır
+            </p>
+          </>
         ) : (
           <>
+            {searchArtists.length > 0 && (
+              <>
+                <h2 className="pt-2 text-sm font-bold text-white">Sanatçılar</h2>
+                <div className="flex gap-4 overflow-x-auto py-3">
+                  {searchArtists.map((a) => (
+                    <button
+                      key={a.key}
+                      onClick={() => selectArtist(a)}
+                      className="flex w-16 shrink-0 flex-col items-center gap-1.5 transition-transform active:scale-95"
+                    >
+                      <div className="h-16 w-16 overflow-hidden rounded-full ring-1 ring-white/10">
+                        {a.coverUrl ? (
+                          <Image src={a.coverUrl} alt={a.name} width={64} height={64} sizes="64px" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-[#1a0e2a]">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#6b7280" strokeWidth="2" /><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
+                          </div>
+                        )}
+                      </div>
+                      <span className="w-full truncate text-center text-[11px] text-[#9ca3af]">{a.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
             {localResults.length > 0 && (
               <>
                 <h2 className="pt-2 text-sm font-bold text-white">Mekan Listesi</h2>

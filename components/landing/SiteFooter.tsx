@@ -10,7 +10,7 @@ export default function SiteFooter() {
       <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-14 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <div className="inline-flex items-center">
-            <Image src="/logo.png" alt="PlayMyJam" width={900} height={759} className="h-10 w-auto" />
+            <Image src="/logo.png" alt="PlayMyJam" width={900} height={759} className="h-16 w-auto" />
           </div>
           <p className="mt-4 max-w-xs text-xs leading-relaxed text-[#6b7280]">
             Kafe ve eğlence mekanlarında müzik sırasını misafirlere açan dijital şarkı istek

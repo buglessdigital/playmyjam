@@ -10,7 +10,7 @@ export default function SiteHeader() {
       className="sticky top-0 z-40 border-b border-white/[0.06]"
       style={{ background: "rgba(15,10,24,0.85)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}
     >
-      <div className="mx-auto flex h-20 w-full max-w-6xl items-center justify-between gap-4 px-5">
+      <div className="mx-auto flex h-24 w-full max-w-7xl items-center justify-between gap-6 px-6">
         <Link href="/" className="relative z-10 flex shrink-0 items-center">
           <Image
             src="/logo-hero.png"

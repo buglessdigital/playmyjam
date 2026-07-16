@@ -27,5 +27,11 @@ export default function HistoryPage({ params }: Props) {
 
 async function HistoryShell({ venueId }: { venueId: string }) {
   const venue = await getVenueBySlug(venueId);
-  return <HistoryClient venueDbId={venue?.id ?? ""} venueName={venue?.name ?? ""} />;
+  return (
+    <HistoryClient
+      venueDbId={venue?.id ?? ""}
+      venueName={venue?.name ?? ""}
+      requestCost={venue?.request_cost ?? 1}
+    />
+  );
 }

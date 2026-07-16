@@ -14,6 +14,8 @@ type VenueData = {
   tagline: string;
   logo_url: string;
   status: string;
+  request_cost: number;
+  priority_cost: number;
   venue_admins: { id: string; username: string }[];
 };
 
@@ -62,6 +64,8 @@ function EditVenueForm() {
   const [logoUrl, setLogoUrl] = useState("");
   const [adminUsername, setAdminUsername] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
+  const [requestCost, setRequestCost] = useState("1");
+  const [priorityCost, setPriorityCost] = useState("2");
   const [showPass, setShowPass] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -81,6 +85,8 @@ function EditVenueForm() {
         setTagline(v.tagline ?? "");
         setLogoUrl(v.logo_url ?? "");
         setAdminUsername(v.venue_admins?.[0]?.username ?? "");
+        setRequestCost(String(v.request_cost ?? 1));
+        setPriorityCost(String(v.priority_cost ?? 2));
       })
       .catch(() => setError("Mekan bilgileri yüklenemedi"))
       .finally(() => setLoading(false));
@@ -95,7 +101,15 @@ function EditVenueForm() {
       const res = await fetch(`/api/super-admin/venues/${venueSlug}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, tagline, logo_url: logoUrl, adminUsername, adminPassword: adminPassword || undefined }),
+        body: JSON.stringify({
+          name,
+          tagline,
+          logo_url: logoUrl,
+          adminUsername,
+          adminPassword: adminPassword || undefined,
+          requestCost: Number(requestCost),
+          priorityCost: Number(priorityCost),
+        }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -156,6 +170,40 @@ function EditVenueForm() {
           </div>
           <Field label="Tagline" value={tagline} onChange={setTagline} />
           <Field label="Logo URL" value={logoUrl} onChange={setLogoUrl} placeholder="https://..." />
+        </div>
+
+        <div className="rounded-2xl border border-white/10 p-5 flex flex-col gap-4" style={{ background: "rgba(255,255,255,0.03)" }}>
+          <p className="text-white text-sm font-semibold">İstek Ücretleri</p>
+          <p className="text-[#6b7280] text-xs -mt-2">
+            Bu mekanda bir şarkı isteğinin jeton maliyeti. Jeton fiyatları globaldir ve
+            Fiyatlandırma sayfasından yönetilir.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[#9ca3af] text-xs mb-1.5">Normal istek (jeton)</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={requestCost}
+                onChange={(e) => setRequestCost(e.target.value)}
+                className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "white" }}
+              />
+            </div>
+            <div>
+              <label className="block text-[#9ca3af] text-xs mb-1.5">Öncelikli istek (jeton)</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={priorityCost}
+                onChange={(e) => setPriorityCost(e.target.value)}
+                className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "white" }}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="rounded-2xl border border-white/10 p-5 flex flex-col gap-4" style={{ background: "rgba(255,255,255,0.03)" }}>

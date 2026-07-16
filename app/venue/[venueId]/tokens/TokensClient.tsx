@@ -5,19 +5,21 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAnimatedNumber } from "@/lib/use-animated-number";
 import Coin from "@/components/ui/Coin";
-
-type Package = { id: string; label: string; tokens: number; price: number; popular: boolean };
+import type { TokenPackage } from "@/lib/pricing-cache";
 
 type WalletTx = {
   id: string;
   amount: number;
-  kind: "purchase" | "demo" | "spend";
+  kind: "purchase" | "demo" | "spend" | "grant";
   balance_after: number;
   venue_name: string | null;
   song_title: string | null;
   song_artist: string | null;
   created_at: number;
 };
+
+const CUSTOM = "custom";
+const MAX_LOOSE = 1000;
 
 function timeAgo(ms: number) {
   const diff = Date.now() - ms;
@@ -31,22 +33,25 @@ function timeAgo(ms: number) {
 function txLabel(tx: WalletTx) {
   if (tx.kind === "spend") return tx.song_title ? `Şarkı: ${tx.song_title}` : "Şarkı isteği";
   if (tx.kind === "demo") return "Demo jeton";
+  if (tx.kind === "grant") return "Hediye jeton";
   return "Jeton satın alma";
 }
 
 interface Props {
   venueId: string;
-  initialPackages: Package[];
+  initialPackages: TokenPackage[];
   initialSelectedId: string;
+  unitPrice: number;
 }
 
-export default function TokensClient({ venueId, initialPackages, initialSelectedId }: Props) {
+export default function TokensClient({ venueId, initialPackages, initialSelectedId, unitPrice }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const [packages] = useState<Package[]>(initialPackages);
+  const [packages] = useState<TokenPackage[]>(initialPackages);
   const [balanceLoaded, setBalanceLoaded] = useState(false);
   const [balance, setBalance] = useState(0);
-  const [selected, setSelected] = useState<string>(initialSelectedId);
+  const [selected, setSelected] = useState<string>(initialSelectedId || CUSTOM);
+  const [qty, setQty] = useState(1);
 
   const [txs, setTxs] = useState<WalletTx[]>([]);
   const [txLoaded, setTxLoaded] = useState(false);
@@ -87,27 +92,28 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   }, [supabase, loadTxs]);
   const [success, setSuccess] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
-  const [demoSuccess, setDemoSuccess] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(false);
 
   const displayBalance = useAnimatedNumber(balance);
 
+  const pkg = selected === CUSTOM ? null : packages.find((p) => p.id === selected);
+  const buyTokens = pkg ? pkg.tokens : qty;
+  const buyTotal = pkg ? pkg.price : qty * unitPrice;
+
   const handlePurchase = async () => {
-    const pkg = packages.find((p) => p.id === selected);
-    if (!pkg || purchasing) return;
+    if (purchasing || buyTokens <= 0) return;
     setPurchasing(true);
     try {
       const res = await fetch(`/api/venue/${venueId}/tokens/purchase`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ package_id: pkg.id }),
+        body: JSON.stringify(pkg ? { package_id: pkg.id } : { tokens: qty }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         alert(data?.error ?? "Bir hata oluştu, tekrar dene.");
         return;
       }
-      setBalance(typeof data?.balance === "number" ? data.balance : balance + pkg.tokens);
+      setBalance(typeof data?.balance === "number" ? data.balance : balance + buyTokens);
       setSuccess(true);
       loadTxs();
       setTimeout(() => router.back(), 1800);
@@ -118,26 +124,9 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
     }
   };
 
-  const handleDemo = async () => {
-    if (demoLoading || demoSuccess) return;
-    setDemoLoading(true);
-    try {
-      const res = await fetch(`/api/venue/${venueId}/tokens/demo`, { method: "POST" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) { alert(data?.error ?? "Bir hata oluştu."); return; }
-      setBalance(typeof data?.balance === "number" ? data.balance : balance + 10);
-      setDemoSuccess(true);
-      loadTxs();
-    } catch {
-      alert("Bağlantı hatası, tekrar dene.");
-    } finally {
-      setDemoLoading(false);
-    }
-  };
-
-  const pkg = packages.find((p) => p.id === selected);
-  const maxUnit = packages.reduce((m, p) => Math.max(m, p.price / p.tokens), 0);
-  const unitLabel = (p: Package) => (p.price / p.tokens).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
+  const unitLabel = (p: TokenPackage) => (p.price / p.tokens).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
+  const fmtPrice = (n: number) => n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+  const clampQty = (n: number) => Math.min(MAX_LOOSE, Math.max(1, Math.round(n)));
 
   return (
     <div className="relative min-h-dvh overflow-hidden bg-[#0f0a18] px-5 pt-12 pb-24">
@@ -186,7 +175,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                 )}
                 <span className="text-sm font-medium text-[#9ca3af]">jeton</span>
               </div>
-              <p className="mt-1.5 text-[11px] text-[#6b7280]">Tüm mekanlarda geçerli</p>
+              <p className="mt-1.5 text-[11px] text-[#6b7280]">Tüm mekanlarda geçerli · 1 jeton = {fmtPrice(unitPrice)}₺</p>
             </div>
             <div
               className="flex h-14 w-14 items-center justify-center rounded-2xl"
@@ -201,91 +190,160 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
           </div>
         </div>
 
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">Paket Seç</p>
+        {packages.length > 0 && (
+          <>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">Paket Seç</p>
 
-        <div className="mb-6 grid grid-cols-2 gap-3">
-          {packages.map((p, idx) => {
-            const isSel = selected === p.id;
-            const savings = maxUnit > 0 ? Math.round((1 - p.price / p.tokens / maxUnit) * 100) : 0;
-            return (
-              <button
-                key={p.id}
-                onClick={() => setSelected(p.id)}
-                className="relative rounded-2xl p-4 text-left transition-all active:scale-[0.97]"
-                style={{
-                  background: isSel
-                    ? "linear-gradient(160deg, rgba(233,30,140,0.16), rgba(139,92,246,0.08) 60%, #1a0e2a)"
-                    : "#1a0e2a",
-                  border: isSel ? "1px solid rgba(233,30,140,0.55)" : "1px solid rgba(255,255,255,0.08)",
-                  boxShadow: isSel ? "0 0 28px rgba(233,30,140,0.22)" : "none",
-                }}
-              >
-                {p.popular && (
-                  <span
-                    className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-[3px] text-[9px] font-extrabold uppercase tracking-wider text-white"
-                    style={{ background: "linear-gradient(135deg, #ff2d9c, #b3126d)", boxShadow: "0 4px 14px rgba(233,30,140,0.45)" }}
-                  >
-                    En Popüler
-                  </span>
-                )}
-                <div className="flex items-start justify-between">
-                  <div className="flex">
-                    {Array.from({ length: Math.min(idx + 1, 4) }).map((_, i) => (
-                      <span key={i} className={`relative inline-flex ${i > 0 ? "-ml-2.5" : ""}`} style={{ zIndex: 4 - i }}>
-                        <Coin size={22} />
-                      </span>
-                    ))}
-                  </div>
-                  <span
-                    className="flex h-5 w-5 items-center justify-center rounded-full transition-all"
+            <div className="mb-4 grid grid-cols-2 gap-3">
+              {packages.map((p, idx) => {
+                const isSel = selected === p.id;
+                const savings = unitPrice > 0 ? Math.round((1 - p.price / p.tokens / unitPrice) * 100) : 0;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setSelected(p.id)}
+                    className="relative rounded-2xl p-4 text-left transition-all active:scale-[0.97]"
                     style={{
-                      background: isSel ? "#e91e8c" : "transparent",
-                      border: isSel ? "1px solid #e91e8c" : "1px solid rgba(255,255,255,0.25)",
+                      background: isSel
+                        ? "linear-gradient(160deg, rgba(233,30,140,0.16), rgba(139,92,246,0.08) 60%, #1a0e2a)"
+                        : "#1a0e2a",
+                      border: isSel ? "1px solid rgba(233,30,140,0.55)" : "1px solid rgba(255,255,255,0.08)",
+                      boxShadow: isSel ? "0 0 28px rgba(233,30,140,0.22)" : "none",
                     }}
                   >
-                    {isSel && (
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    {p.popular && (
+                      <span
+                        className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-[3px] text-[9px] font-extrabold uppercase tracking-wider text-white"
+                        style={{ background: "linear-gradient(135deg, #ff2d9c, #b3126d)", boxShadow: "0 4px 14px rgba(233,30,140,0.45)" }}
+                      >
+                        En Popüler
+                      </span>
                     )}
-                  </span>
-                </div>
-                <p className="mt-3 text-[26px] font-black leading-none text-white">
-                  {p.tokens} <span className="text-xs font-medium text-[#9ca3af]">jeton</span>
-                </p>
-                <p className="mt-1 text-[11px] text-[#6b7280]">₺{unitLabel(p)}/jeton</p>
-                <div className="mt-3 flex items-center justify-between gap-1">
-                  <p className="text-base font-bold text-[#e91e8c]">{p.price}₺</p>
-                  {savings > 0 && (
-                    <span className="rounded-full bg-[#22c55e]/10 px-2 py-0.5 text-[10px] font-bold text-[#4ade80]">
-                      %{savings} avantaj
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {pkg && (
-          <div className="mb-4 rounded-2xl p-4" style={{ background: "#160d24", border: "1px solid rgba(255,255,255,0.07)" }}>
-            <div className="flex justify-between text-sm">
-              <span className="text-[#9ca3af]">Seçilen paket</span>
-              <span className="font-semibold text-white">{pkg.tokens} jeton</span>
+                    <div className="flex items-start justify-between">
+                      <div className="flex">
+                        {Array.from({ length: Math.min(idx + 1, 4) }).map((_, i) => (
+                          <span key={i} className={`relative inline-flex ${i > 0 ? "-ml-2.5" : ""}`} style={{ zIndex: 4 - i }}>
+                            <Coin size={22} />
+                          </span>
+                        ))}
+                      </div>
+                      <span
+                        className="flex h-5 w-5 items-center justify-center rounded-full transition-all"
+                        style={{
+                          background: isSel ? "#e91e8c" : "transparent",
+                          border: isSel ? "1px solid #e91e8c" : "1px solid rgba(255,255,255,0.25)",
+                        }}
+                      >
+                        {isSel && (
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        )}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-[26px] font-black leading-none text-white">
+                      {p.tokens} <span className="text-xs font-medium text-[#9ca3af]">jeton</span>
+                    </p>
+                    <p className="mt-1 text-[11px] text-[#6b7280]">₺{unitLabel(p)}/jeton</p>
+                    <div className="mt-3 flex items-center justify-between gap-1">
+                      <p className="text-base font-bold text-[#e91e8c]">{fmtPrice(p.price)}₺</p>
+                      {savings > 0 && (
+                        <span className="rounded-full bg-[#22c55e]/10 px-2 py-0.5 text-[10px] font-bold text-[#4ade80]">
+                          %{savings} avantaj
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-            <div className="mt-2 flex justify-between text-sm">
-              <span className="text-[#9ca3af]">Birim fiyat</span>
-              <span className="text-white">₺{unitLabel(pkg)}/jeton</span>
-            </div>
-            <div className="my-3 border-t border-dashed border-white/10" />
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm text-[#9ca3af]">Toplam</span>
-              <span className="text-xl font-extrabold text-[#e91e8c]">{pkg.price}₺</span>
-            </div>
-          </div>
+          </>
         )}
+
+        {/* Tekli jeton: adet × global birim fiyat */}
+        <button
+          onClick={() => setSelected(CUSTOM)}
+          className="mb-6 w-full rounded-2xl p-4 text-left transition-all active:scale-[0.99]"
+          style={{
+            background:
+              selected === CUSTOM
+                ? "linear-gradient(160deg, rgba(233,30,140,0.16), rgba(139,92,246,0.08) 60%, #1a0e2a)"
+                : "#1a0e2a",
+            border: selected === CUSTOM ? "1px solid rgba(233,30,140,0.55)" : "1px solid rgba(255,255,255,0.08)",
+            boxShadow: selected === CUSTOM ? "0 0 28px rgba(233,30,140,0.22)" : "none",
+          }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white">Tek Jeton</p>
+              <p className="mt-0.5 text-[11px] text-[#6b7280]">İstediğin adette · ₺{fmtPrice(unitPrice)}/jeton</p>
+            </div>
+            <span
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-all"
+              style={{
+                background: selected === CUSTOM ? "#e91e8c" : "transparent",
+                border: selected === CUSTOM ? "1px solid #e91e8c" : "1px solid rgba(255,255,255,0.25)",
+              }}
+            >
+              {selected === CUSTOM && (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              )}
+            </span>
+          </div>
+          {selected === CUSTOM && (
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                <span
+                  role="button"
+                  aria-label="Azalt"
+                  onClick={() => setQty((q) => clampQty(q - 1))}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95"
+                >
+                  −
+                </span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={MAX_LOOSE}
+                  value={qty}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    setQty(Number.isFinite(n) && n >= 1 ? clampQty(n) : 1);
+                  }}
+                  className="h-9 w-16 rounded-xl bg-white/10 text-center text-sm font-bold text-white outline-none tabular-nums"
+                />
+                <span
+                  role="button"
+                  aria-label="Artır"
+                  onClick={() => setQty((q) => clampQty(q + 1))}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95"
+                >
+                  +
+                </span>
+              </div>
+              <p className="text-base font-bold text-[#e91e8c] tabular-nums">{fmtPrice(qty * unitPrice)}₺</p>
+            </div>
+          )}
+        </button>
+
+        <div className="mb-4 rounded-2xl p-4" style={{ background: "#160d24", border: "1px solid rgba(255,255,255,0.07)" }}>
+          <div className="flex justify-between text-sm">
+            <span className="text-[#9ca3af]">Seçilen</span>
+            <span className="font-semibold text-white">{buyTokens} jeton{pkg ? ` · ${pkg.label}` : ""}</span>
+          </div>
+          <div className="mt-2 flex justify-between text-sm">
+            <span className="text-[#9ca3af]">Birim fiyat</span>
+            <span className="text-white">₺{pkg ? unitLabel(pkg) : fmtPrice(unitPrice)}/jeton</span>
+          </div>
+          <div className="my-3 border-t border-dashed border-white/10" />
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm text-[#9ca3af]">Toplam</span>
+            <span className="text-xl font-extrabold text-[#e91e8c]">{fmtPrice(buyTotal)}₺</span>
+          </div>
+        </div>
 
         <button
           onClick={handlePurchase}
-          disabled={!selected || success || purchasing}
+          disabled={buyTokens <= 0 || success || purchasing}
           className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold transition-all active:scale-[0.98] disabled:pointer-events-none"
           style={
             success
@@ -312,7 +370,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
               İşleniyor...
             </>
           ) : (
-            <>Satın Al · {pkg?.price ?? ""}₺</>
+            <>Satın Al · {fmtPrice(buyTotal)}₺</>
           )}
         </button>
 
@@ -322,31 +380,6 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             <path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="2" />
           </svg>
           Güvenli ödeme · Jetonlar anında yüklenir
-        </div>
-
-        <div className="mt-6 flex items-center gap-3">
-          <div className="h-px flex-1 bg-white/10" />
-          <span className="text-[11px] text-[#9ca3af]">veya</span>
-          <div className="h-px flex-1 bg-white/10" />
-        </div>
-
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-4">
-          <div>
-            <p className="text-sm font-semibold text-white">Demo / Test modu</p>
-            <p className="mt-0.5 text-xs text-[#9ca3af]">Uygulamayı denemek için ücretsiz jeton</p>
-          </div>
-          <button
-            onClick={handleDemo}
-            disabled={demoLoading || demoSuccess}
-            className="shrink-0 rounded-xl px-3.5 py-2 text-xs font-bold transition-all active:scale-95 disabled:pointer-events-none"
-            style={
-              demoSuccess
-                ? { background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.4)", color: "#4ade80" }
-                : { background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "white", opacity: demoLoading ? 0.6 : 1 }
-            }
-          >
-            {demoSuccess ? "✓ Eklendi" : demoLoading ? "Ekleniyor..." : "+10 jeton"}
-          </button>
         </div>
 
         {/* Jeton hareketleri */}

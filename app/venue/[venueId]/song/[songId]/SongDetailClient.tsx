@@ -53,6 +53,8 @@ interface Props {
   venueId: string;
   venueDbId: string;
   track: TrackDetails | null;
+  requestCost: number;
+  priorityCost: number;
 }
 
 function formatDuration(ms: number): string {
@@ -74,7 +76,7 @@ function formatWait(ms: number): string {
   return `~${mins} dk`;
 }
 
-export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
+export default function SongDetailClient({ venueId, venueDbId, track, requestCost, priorityCost }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
@@ -321,7 +323,8 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
 
   const handleAdd = async (priority: boolean) => {
     if (!dbSongId || !venueDbId) return;
-    const cost = priority ? 2 : 1;
+    // Optimistic düşüm — gerçek düşüm RPC'de venues.request_cost/priority_cost'tan
+    const cost = priority ? priorityCost : requestCost;
     setTokenBalance((b) => b - cost);
     setAdded(true);
     setSheetOpen(false);
@@ -684,6 +687,8 @@ export default function SongDetailClient({ venueId, venueDbId, track }: Props) {
         cooldown={cooldown}
         waitNormalMs={waitNormalMs}
         waitPriorityMs={waitPriorityMs}
+        normalCost={requestCost}
+        priorityCost={priorityCost}
         onClose={() => setSheetOpen(false)}
         onAdd={handleAdd}
       />

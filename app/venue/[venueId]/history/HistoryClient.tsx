@@ -19,6 +19,7 @@ type PlayedRow = {
 interface Props {
   venueDbId: string;
   venueName: string;
+  requestCost: number;
 }
 
 function timeAgo(ms: number) {
@@ -30,7 +31,7 @@ function timeAgo(ms: number) {
   return `${Math.floor(h / 24)} gün önce`;
 }
 
-export default function HistoryClient({ venueDbId, venueName }: Props) {
+export default function HistoryClient({ venueDbId, venueName, requestCost }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [loaded, setLoaded] = useState(false);
@@ -55,7 +56,7 @@ export default function HistoryClient({ venueDbId, venueName }: Props) {
     };
   }, [supabase]);
 
-  // Şarkıyı bulunulan mekanın kuyruğuna tekrar ekler (1 jeton, normal öncelik)
+  // Şarkıyı bulunulan mekanın kuyruğuna tekrar ekler (normal öncelik; ücret mekana göre)
   const requeue = async (songId: string) => {
     if (!venueDbId || addingIds.has(songId) || addedIds.has(songId)) return;
     setAddingIds((s) => new Set(s).add(songId));
@@ -85,7 +86,7 @@ export default function HistoryClient({ venueDbId, venueName }: Props) {
       </div>
       {venueName && (
         <p className="px-5 pb-4 text-xs text-[#6b7280]">
-          + ile şarkıyı {venueName} kuyruğuna 1 jetonla tekrar ekleyebilirsin
+          + ile şarkıyı {venueName} kuyruğuna {requestCost} jetonla tekrar ekleyebilirsin
         </p>
       )}
 

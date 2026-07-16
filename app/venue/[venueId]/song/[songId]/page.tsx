@@ -35,6 +35,8 @@ async function SongDetailShell({ venueId, songId }: { venueId: string; songId: s
       venueId={venueId}
       venueDbId={venue?.id ?? ""}
       track={venue ? track : null}
+      requestCost={venue?.request_cost ?? 1}
+      priorityCost={venue?.priority_cost ?? 2}
     />
   );
 }

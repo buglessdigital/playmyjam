@@ -26,11 +26,16 @@ interface Props {
   cooldown?: { remainingMs: number; reason: "played" | "queued" | null };
   waitNormalMs?: number;
   waitPriorityMs?: number;
+  normalCost?: number;
+  priorityCost?: number;
   onClose: () => void;
   onAdd: (priority: boolean) => void;
 }
 
-export default function AddSongSheet({ song, tokenBalance, cooldown, waitNormalMs = 0, waitPriorityMs = 0, onClose, onAdd }: Props) {
+export default function AddSongSheet({
+  song, tokenBalance, cooldown, waitNormalMs = 0, waitPriorityMs = 0,
+  normalCost = 1, priorityCost = 2, onClose, onAdd,
+}: Props) {
   const router = useRouter();
   const params = useParams<{ venueId: string }>();
 
@@ -39,8 +44,8 @@ export default function AddSongSheet({ song, tokenBalance, cooldown, waitNormalM
   const inCooldown = !!cooldown && cooldown.remainingMs > 0;
   const cooldownMin = inCooldown ? Math.ceil(cooldown!.remainingMs / 60000) : 0;
   const cooldownReason = cooldown?.reason;
-  const canNormal = tokenBalance >= 1 && !inCooldown;
-  const canPriority = tokenBalance >= 2 && !inCooldown;
+  const canNormal = tokenBalance >= normalCost && !inCooldown;
+  const canPriority = tokenBalance >= priorityCost && !inCooldown;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -128,7 +133,7 @@ export default function AddSongSheet({ song, tokenBalance, cooldown, waitNormalM
                 <p className="text-[#6b7280] text-xs">{formatWait(waitNormalMs)} bekleme</p>
               </div>
             </div>
-            <span className="text-[#3b82f6] font-bold text-sm">1 Jeton</span>
+            <span className="text-[#3b82f6] font-bold text-sm">{normalCost} Jeton</span>
           </button>
 
           {/* Öncelikli Sıra */}
@@ -159,7 +164,7 @@ export default function AddSongSheet({ song, tokenBalance, cooldown, waitNormalM
                 <p className="text-[#6b7280] text-xs">{formatWait(waitPriorityMs)} bekleme</p>
               </div>
             </div>
-            <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>2 Jeton</span>
+            <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{priorityCost} Jeton</span>
           </button>
         </div>
 

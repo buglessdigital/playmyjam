@@ -71,13 +71,7 @@ export async function POST(req: NextRequest) {
     password_hash,
   });
 
-  // Varsayılan token paketleri ekle
-  await supabaseAdmin.from("token_packages").insert([
-    { venue_id: venue.id, label: "Başlangıç", tokens: 5, price: 50, popular: false, display_order: 1 },
-    { venue_id: venue.id, label: "Popüler", tokens: 12, price: 100, popular: true, display_order: 2 },
-    { venue_id: venue.id, label: "Süper", tokens: 25, price: 180, popular: false, display_order: 3 },
-    { venue_id: venue.id, label: "Mega", tokens: 50, price: 300, popular: false, display_order: 4 },
-  ]);
+  // Jeton paketleri globaldir (global_token_packages) — mekan bazlı seed yok
 
   // Boş now_playing satırı ekle
   await supabaseAdmin.from("now_playing").insert({ venue_id: venue.id, is_playing: false });

@@ -35,6 +35,8 @@ async function BrowseShell({ venueId }: { venueId: string }) {
       venueId={venueId}
       venueDbId={venue?.id ?? ""}
       initialVenueSongs={catalog}
+      requestCost={venue?.request_cost ?? 1}
+      priorityCost={venue?.priority_cost ?? 2}
     />
   );
 }

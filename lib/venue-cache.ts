@@ -1,14 +1,18 @@
 import { cacheLife, cacheTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-type VenueRow = { id: string; name: string };
+type VenueRow = { id: string; name: string; request_cost: number; priority_cost: number };
 
 export async function getVenueBySlug(slug: string): Promise<VenueRow | null> {
   "use cache";
   cacheLife("minutes");
   cacheTag(`venue-${slug}`);
 
-  const { data } = await supabaseAdmin.from("venues").select("id, name").eq("slug", slug).single();
+  const { data } = await supabaseAdmin
+    .from("venues")
+    .select("id, name, request_cost, priority_cost")
+    .eq("slug", slug)
+    .single();
   return data ?? null;
 }
 
@@ -47,20 +51,3 @@ export async function getVenueSongCatalog(venueDbId: string): Promise<VenueCatal
     .map((vs) => ({ ...vs.songs!, play_count: vs.play_count, in_venue_list: vs.in_venue_list }));
 }
 
-export type TokenPackage = { id: string; label: string; tokens: number; price: number; popular: boolean };
-
-// Paketler nadiren değişir — kabukta anında görünsün diye önbelleklenir,
-// "minutes" profili sayesinde admin değişikliği birkaç dk içinde yansır.
-export async function getVenueTokenPackages(venueDbId: string): Promise<TokenPackage[]> {
-  "use cache";
-  cacheLife("minutes");
-  cacheTag(`venue-packages-${venueDbId}`);
-
-  const { data } = await supabaseAdmin
-    .from("token_packages")
-    .select("id, label, tokens, price, popular")
-    .eq("venue_id", venueDbId)
-    .order("display_order");
-
-  return (data ?? []) as TokenPackage[];
-}

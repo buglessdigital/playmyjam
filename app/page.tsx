@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getVenueBySlug, getVenueTokenPackages } from "@/lib/venue-cache";
+import { getGlobalTokenPackages, getTokenUnitPrice } from "@/lib/pricing-cache";
 import { COMPANY } from "@/lib/company-info";
 import Coin from "@/components/ui/Coin";
 import CardLogos from "@/components/ui/CardLogos";
@@ -15,26 +15,25 @@ export const metadata: Metadata = {
 
 const DEFAULT_VENUE = "ecem-s-house";
 
-// Paket vitrini: fiyatlar DB'den cache'li gelir (venue-cache "minutes" profili),
-// bu yüzden sayfa kabuğu statik kalırken fiyat değişiklikleri birkaç dk içinde yansır.
+// Paket vitrini: fiyatlar globaldir ve DB'den cache'li gelir ("global-pricing" tag'i,
+// super admin kaydında revalidate) — sayfa kabuğu statik kalırken fiyatlar güncel kalır.
 async function PackagesSection() {
-  const venue = await getVenueBySlug(DEFAULT_VENUE);
-  const packages = venue ? await getVenueTokenPackages(venue.id) : [];
+  const [packages, unitPrice] = await Promise.all([getGlobalTokenPackages(), getTokenUnitPrice()]);
   if (packages.length === 0) return null;
-
-  const maxUnit = packages.reduce((m, p) => Math.max(m, p.price / p.tokens), 0);
 
   return (
     <section id="fiyatlar" className="mx-auto w-full max-w-5xl px-6 py-14">
       <h2 className="text-center text-2xl font-black text-white">Jeton Paketleri ve Fiyatlar</h2>
       <p className="mx-auto mt-2 max-w-xl text-center text-sm text-[#9ca3af]">
-        Şarkı istemek için jeton kullanılır. Jetonlar dijital olarak anında hesabına yüklenir ve
-        PlayMyJam kullanan tüm mekanlarda geçerlidir. Tüm fiyatlara KDV dahildir.
+        Şarkı istemek için jeton kullanılır; 1 jeton{" "}
+        {unitPrice.toLocaleString("tr-TR", { maximumFractionDigits: 2 })} TL&apos;dir ve fiyat tüm
+        mekanlarda aynıdır. Jetonlar dijital olarak anında hesabına yüklenir. Tüm fiyatlara KDV
+        dahildir.
       </p>
 
       <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {packages.map((p, idx) => {
-          const savings = maxUnit > 0 ? Math.round((1 - p.price / p.tokens / maxUnit) * 100) : 0;
+          const savings = unitPrice > 0 ? Math.round((1 - p.price / p.tokens / unitPrice) * 100) : 0;
           const unit = (p.price / p.tokens).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
           return (
             <div
@@ -69,7 +68,7 @@ async function PackagesSection() {
               </p>
               <p className="mt-1 text-[11px] text-[#6b7280]">₺{unit}/jeton</p>
               <div className="mt-2 flex items-center justify-between gap-1">
-                <p className="text-base font-bold text-[#e91e8c]">{p.price}₺</p>
+                <p className="text-base font-bold text-[#e91e8c]">{p.price.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}₺</p>
                 {savings > 0 && (
                   <span className="rounded-full bg-[#22c55e]/10 px-2 py-0.5 text-[10px] font-bold text-[#4ade80]">
                     %{savings} avantaj

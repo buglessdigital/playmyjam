@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ venu
   const { venueId } = await params;
   const { data: venue, error } = await supabaseAdmin
     .from("venues")
-    .select("id, slug, name, tagline, logo_url, status, venue_admins(id, username)")
+    .select("id, slug, name, tagline, logo_url, status, request_cost, priority_cost, venue_admins(id, username)")
     .eq("slug", venueId)
     .single();
 
@@ -29,16 +29,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ve
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Geçersiz istek" }, { status: 400 });
 
-  const { name, tagline, logo_url, adminUsername, adminPassword, status } = body;
+  const { name, tagline, logo_url, adminUsername, adminPassword, status, requestCost, priorityCost } = body;
 
   const { data: venue } = await supabaseAdmin.from("venues").select("id").eq("slug", venueId).single();
   if (!venue) return NextResponse.json({ error: "Mekan bulunamadı" }, { status: 404 });
 
-  const venueUpdate: Record<string, string> = {};
+  const venueUpdate: Record<string, string | number> = {};
   if (typeof name === "string" && name.trim()) venueUpdate.name = name.trim().slice(0, 80);
   if (typeof tagline === "string") venueUpdate.tagline = tagline.trim();
   if (typeof logo_url === "string") venueUpdate.logo_url = logo_url.trim();
   if (status === "active" || status === "inactive") venueUpdate.status = status;
+
+  // İstek ücretleri (jeton) — yalnızca super admin belirler
+  for (const [key, value] of [["request_cost", requestCost], ["priority_cost", priorityCost]] as const) {
+    if (value === undefined || value === null || value === "") continue;
+    const cost = Number(value);
+    if (!Number.isInteger(cost) || cost <= 0) {
+      return NextResponse.json({ error: "İstek ücretleri pozitif tam sayı olmalı" }, { status: 400 });
+    }
+    venueUpdate[key] = cost;
+  }
 
   if (Object.keys(venueUpdate).length > 0) {
     await supabaseAdmin.from("venues").update(venueUpdate).eq("id", venue.id);

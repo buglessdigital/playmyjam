@@ -34,9 +34,11 @@ interface Props {
   venueId: string;
   venueDbId: string;
   initialVenueSongs: VenueSong[];
+  requestCost: number;
+  priorityCost: number;
 }
 
-export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: Props) {
+export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, requestCost, priorityCost }: Props) {
   const [venueSongs, setVenueSongs] = useState<VenueSong[]>(initialVenueSongs);
   const [queuedSongIds, setQueuedSongIds] = useState<Set<string>>(new Set());
   const [tokenBalance, setTokenBalance] = useState(0);
@@ -257,7 +259,8 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
     isAddingRef.current = true;
 
     // Optimistic update: close sheet and update UI immediately
-    const cost = priority ? 2 : 1;
+    // (gerçek düşüm RPC'de venues.request_cost/priority_cost'tan yapılır)
+    const cost = priority ? priorityCost : requestCost;
     const songId = selectedSong.id;
     const videoId = selectedSong.youtube_video_id;
     setTokenBalance((b) => b - cost);
@@ -549,6 +552,8 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs }: 
         cooldown={selectedSong ? getCooldown(selectedSong, { queuedSongIds, recentlyPlayedAt: recentlyPlayedIds }) : undefined}
         waitNormalMs={waitNormalMs}
         waitPriorityMs={waitPriorityMs}
+        normalCost={requestCost}
+        priorityCost={priorityCost}
         onClose={() => setSelectedSong(null)}
         onAdd={handleAdd}
       />

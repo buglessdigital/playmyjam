@@ -77,3 +77,21 @@ body {
 .animate-vinyl-pulse {
   animation: vinyl-pulse 3s ease-in-out infinite;
 }
+
+/* Landing: ekolayzer çubukları (telefon mockup'ı) */
+@keyframes eq-bar {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+.eq-bar {
+  transform-origin: bottom;
+  animation: eq-bar 1.1s ease-in-out infinite;
+}
+
+/* Landing: SSS akordeon oku */
+details.faq-item summary::-webkit-details-marker {
+  display: none;
+}
+details.faq-item[open] .faq-chevron {
+  transform: rotate(180deg);
+}

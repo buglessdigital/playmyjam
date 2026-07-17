@@ -41,6 +41,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
   const [progress, setProgress] = useState(0);
   const [selectedSong, setSelectedSong] = useState<SongDetail | null>(null);
   const [trackIdBySongId, setTrackIdBySongId] = useState<Map<string, string>>(new Map());
+  const [fabCollapsed, setFabCollapsed] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -116,6 +117,14 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
       cancelled = true;
     };
   }, [queue, nowPlaying, trackIdBySongId, supabase]);
+
+  // Sayfanın en üstünde tam genişlik kart; aşağı kaydırınca sağda yuvarlak butona daralır
+  useEffect(() => {
+    const onScroll = () => setFabCollapsed(window.scrollY > 40);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const openSongDetail = (songId: string | null) => {
     if (!songId) return;
@@ -256,7 +265,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
         </div>
 
         {!loaded ? (
-          <div className="space-y-2 pb-36">
+          <div className="space-y-2 pb-6">
             {[1, 2, 3].map((i) => (
               <div key={i} className="flex items-center gap-3 p-3 rounded-2xl animate-pulse" style={{ background: "#1a0e2a" }}>
                 <div className="w-12 h-12 rounded-xl bg-white/10 flex-shrink-0" />
@@ -270,7 +279,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
         ) : queue.length === 0 ? (
           <div className="text-center py-12 text-[#6b7280] text-sm">Kuyruk boş — ilk şarkıyı sen ekle!</div>
         ) : (
-          <div className="space-y-2 pb-36">
+          <div className="space-y-2 pb-6">
             {queue.map((item, idx) => (
               <div
                 key={item.id}
@@ -320,10 +329,15 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
         )}
       </div>
 
-      <div className="fixed bottom-16 left-0 right-0 px-5 z-40">
-        <Link href={`/venue/${venueId}/browse`} className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl font-bold text-white text-base transition-all active:scale-95" style={{ background: "linear-gradient(135deg, #3b82f6, #2563eb)", boxShadow: "0 0 20px rgba(59,130,246,0.35)" }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" /><path d="M12 8v8M8 12h8" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
-          Şarkı Ekle
+      <div className="fixed bottom-16 left-0 right-0 px-5 z-40 flex justify-end pointer-events-none">
+        <Link
+          href={`/venue/${venueId}/browse`}
+          aria-label="Şarkı Ekle"
+          className={`pointer-events-auto flex items-center justify-center overflow-hidden font-bold text-white text-base transition-all duration-300 ease-in-out active:scale-95 ${fabCollapsed ? "w-14 h-14 rounded-full" : "w-full h-14 rounded-2xl"}`}
+          style={{ background: "linear-gradient(135deg, #3b82f6, #2563eb)", boxShadow: "0 0 20px rgba(59,130,246,0.35)" }}
+        >
+          <svg className="flex-shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" /><path d="M12 8v8M8 12h8" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
+          <span className={`whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out ${fabCollapsed ? "max-w-0 opacity-0 ml-0" : "max-w-[160px] opacity-100 ml-2"}`}>Şarkı Ekle</span>
         </Link>
       </div>
 

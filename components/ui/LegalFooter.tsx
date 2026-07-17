@@ -4,8 +4,9 @@ import CardLogos from "@/components/ui/CardLogos";
 // YouTube API denetim şartı: gizlilik politikası ve kullanım şartları uygulama
 // içinden erişilebilir olmalı, YouTube ToS bağlantısı görünür olmalı (API ToS III.A.2).
 // Tosla sanal POS şartı: yasal sayfalar (mesafeli satış, teslimat-iade, hakkımızda)
-// ve Visa/Mastercard/Troy logoları sitede görünür olmalı.
-export default function LegalFooter() {
+// ve Visa/Mastercard/Troy logoları sitede görünür olmalı — logolar ödeme akışının
+// geçtiği sayfalarda kalır; hidePayment yalnızca ödemeyle ilgisiz sayfalar için.
+export default function LegalFooter({ hidePayment = false }: { hidePayment?: boolean }) {
   return (
     <footer className="mx-auto flex max-w-3xl flex-col items-center gap-3 px-6 pb-6 pt-6">
       <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-[#6b7280]">
@@ -36,9 +37,9 @@ export default function LegalFooter() {
           YouTube Hizmet Şartları
         </a>
       </nav>
-      <CardLogos />
+      {!hidePayment && <CardLogos />}
       <p className="text-center text-[10px] text-[#4b5563]">
-        © 2026 PlayMyJam · Tüm ödemeler SSL ile güvence altındadır.
+        © 2026 PlayMyJam{!hidePayment && " · Tüm ödemeler SSL ile güvence altındadır."}
       </p>
     </footer>
   );

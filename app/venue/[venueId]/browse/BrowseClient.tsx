@@ -334,7 +334,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   ] as const;
 
   return (
-    <div className="min-h-dvh w-full bg-[#0f0a18]">
+    <div className="w-full bg-[#0f0a18]">
       {/* Sticky başlık + sahte arama çubuğu (dokununca tam ekran arama açılır) */}
       <div className="sticky top-0 z-30 bg-[#0f0a18]/95 px-5 pb-3 pt-12 backdrop-blur-md">
         <div className="mb-3 flex items-center justify-between">
@@ -463,7 +463,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           </section>
         )}
 
-        <section className="px-5 pb-32">
+        <section className="px-5 pb-6">
           <div className="mb-1 flex items-center justify-between">
             {selectedArtist ? (
               <div className="flex min-w-0 items-center gap-2">

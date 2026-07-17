@@ -26,12 +26,13 @@ function VenueLayoutContent({ children, params }: Props) {
   const pathname = usePathname();
   const { venueId } = use(params);
   const isLoginPage = pathname === `/venue/${venueId}`;
+  const isQueuePage = pathname === `/venue/${venueId}/queue`;
 
   return (
     <>
       <main className={`w-full ${isLoginPage ? "" : "pb-16"}`}>
         {children}
-        <LegalFooter />
+        <LegalFooter hidePayment={isQueuePage} />
       </main>
       {!isLoginPage && (
         <>

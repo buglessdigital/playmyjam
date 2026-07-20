@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { getGlobalTokenPackages, getTokenUnitPrice } from "@/lib/pricing-cache";
 import { COMPANY } from "@/lib/company-info";
 import Coin from "@/components/ui/Coin";
-import CardLogos from "@/components/ui/CardLogos";
+import IyzicoBand from "@/components/ui/IyzicoBand";
 import SiteHeader from "@/components/landing/SiteHeader";
 import SiteFooter from "@/components/landing/SiteFooter";
 
@@ -232,7 +232,7 @@ async function PackagesSection() {
       )}
 
       <div className="mt-10 flex flex-col items-center gap-3.5">
-        <CardLogos />
+        <IyzicoBand />
         <p className="flex items-center gap-1.5 text-xs text-[#9ca3af]">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
             <rect x="4" y="10" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="2" />
@@ -459,7 +459,7 @@ export default function HomePage() {
                 </svg>
                 Anında teslimat
               </span>
-              <CardLogos />
+              <IyzicoBand />
             </div>
           </div>
 

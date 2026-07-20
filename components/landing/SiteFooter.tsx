@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import CardLogos from "@/components/ui/CardLogos";
+import IyzicoBand from "@/components/ui/IyzicoBand";
 import { COMPANY } from "@/lib/company-info";
 
 // Vitrin sayfalarının ortak tam footer'ı (ödeme kuruluşu şartları: yasal linkler + kart logoları)
@@ -17,7 +17,7 @@ export default function SiteFooter() {
             platformu. {COMPANY.legalName} tarafından işletilmektedir.
           </p>
           <div className="mt-5">
-            <CardLogos />
+            <IyzicoBand />
           </div>
         </div>
 

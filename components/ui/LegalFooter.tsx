@@ -1,5 +1,5 @@
 import Link from "next/link";
-import CardLogos from "@/components/ui/CardLogos";
+import IyzicoBand from "@/components/ui/IyzicoBand";
 
 // YouTube API denetim şartı: gizlilik politikası ve kullanım şartları uygulama
 // içinden erişilebilir olmalı, YouTube ToS bağlantısı görünür olmalı (API ToS III.A.2).
@@ -37,7 +37,7 @@ export default function LegalFooter({ hidePayment = false }: { hidePayment?: boo
           YouTube Hizmet Şartları
         </a>
       </nav>
-      {!hidePayment && <CardLogos />}
+      {!hidePayment && <IyzicoBand />}
       <p className="text-center text-[10px] text-[#4b5563]">
         © 2026 PlayMyJam{!hidePayment && " · Tüm ödemeler SSL ile güvence altındadır."}
       </p>

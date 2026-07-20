@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { useAnimatedNumber } from "@/lib/use-animated-number";
 import Coin from "@/components/ui/Coin";
@@ -380,6 +381,16 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             <path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="2" />
           </svg>
           Güvenli ödeme · Jetonlar anında yüklenir
+        </div>
+        {/* iyzico resmi ödeme rozeti: kart bilgilerinin iyzico güvencesiyle alındığını gösterir (marka kiti şartı) */}
+        <div className="mt-3 flex items-center justify-center">
+          <Image
+            src="/payment/iyzico-ile-ode-horizontal-white.svg"
+            alt="iyzico ile Öde"
+            width={210}
+            height={31}
+            className="h-5 w-auto opacity-80"
+          />
         </div>
 
         {/* Jeton hareketleri */}

@@ -1,11 +1,20 @@
-import Iyzipay from "iyzipay";
-import { createHmac, timingSafeEqual } from "node:crypto";
-
 // iyzipay resmi SDK'sının callback tabanlı API'sini Promise'e sarar. @types/iyzipay
 // paketi checkoutFormInitialize.create için paymentCard/installments alanlarını
 // zorunlu kılıyor (o alanlar iyzico'nun barındırdığı Checkout Form'da geçersiz —
 // kart bilgisi hiç bize gelmiyor), bu yüzden burada elle, sadece kullandığımız
 // alanları içeren tipler tanımlanıyor.
+//
+// Not: iyzipay'in ana `Iyzipay` sınıfı, kullanılmayan ~50 kaynak dosyasını
+// `fs.readdirSync` + dinamik `require()` ile yükler. Turbopack bunu statik
+// olarak bundle edemez, ve serverExternalPackages ile "dokunma" dendiğinde bu
+// sefer Vercel'in file-tracing'i iyzipay'in kendi bağımlılığı `postman-request`'i
+// dahil etmeyi atlıyor (üretimde "Cannot find module 'postman-request'" ile
+// patladı). Çözüm: sadece ihtiyacımız olan iki kaynağı, sabit (dinamik olmayan)
+// yol ile require ediyoruz — bunlar normal bundling'e girer, postman-request de
+// zincirleme olarak otomatik dahil olur.
+import CheckoutFormInitializeResource from "iyzipay/lib/resources/CheckoutFormInitialize";
+import CheckoutFormResource from "iyzipay/lib/resources/CheckoutForm";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 interface IyzicoAddress {
   contactName: string;
@@ -71,27 +80,24 @@ export interface CheckoutFormRetrieveResult {
   signature?: string;
 }
 
-let client: Iyzipay | null = null;
-
-function getClient(): Iyzipay {
-  if (client) return client;
+// IyzicoResourceConfig: types/iyzipay.d.ts içinde global ambient tip olarak tanımlı
+function getConfig(): IyzicoResourceConfig {
   const apiKey = process.env.IYZICO_API_KEY;
   const secretKey = process.env.IYZICO_SECRET_KEY;
   const uri = process.env.IYZICO_BASE_URL;
   if (!apiKey || !secretKey || !uri) {
     throw new Error("iyzico env eksik: IYZICO_API_KEY / IYZICO_SECRET_KEY / IYZICO_BASE_URL");
   }
-  client = new Iyzipay({ apiKey, secretKey, uri });
-  return client;
+  return { apiKey, secretKey, uri };
 }
 
 export function createCheckoutForm(
   request: CheckoutFormInitializeRequest
 ): Promise<CheckoutFormInitializeResult> {
   return new Promise((resolve, reject) => {
-    getClient().checkoutFormInitialize.create(request as unknown as Record<string, unknown>, (err, result) => {
+    new CheckoutFormInitializeResource(getConfig()).create(request, (err, result) => {
       if (err) return reject(err);
-      resolve(result as unknown as CheckoutFormInitializeResult);
+      resolve(result as CheckoutFormInitializeResult);
     });
   });
 }
@@ -100,13 +106,10 @@ export function createCheckoutForm(
 // kendi secret key'imizle server-to-server çağrılıp gerçek ödeme durumu doğrulanır.
 export function retrieveCheckoutForm(token: string): Promise<CheckoutFormRetrieveResult> {
   return new Promise((resolve, reject) => {
-    getClient().checkoutForm.retrieve(
-      { locale: Iyzipay.LOCALE.TR, token },
-      (err, result) => {
-        if (err) return reject(err);
-        resolve(result as unknown as CheckoutFormRetrieveResult);
-      }
-    );
+    new CheckoutFormResource(getConfig()).retrieve({ locale: "tr", token }, (err, result) => {
+      if (err) return reject(err);
+      resolve(result as CheckoutFormRetrieveResult);
+    });
   });
 }
 

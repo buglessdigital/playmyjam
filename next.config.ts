@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  // iyzipay: resources'ı fs.readdirSync + require() ile dinamik yükler —
+  // Turbopack/webpack bunu statik olarak bundle edemez, native require gerekir.
+  serverExternalPackages: ["iyzipay"],
   images: {
     remotePatterns: [
       // YouTube video thumbnail'ları (kapak görseli olarak kullanılıyor)

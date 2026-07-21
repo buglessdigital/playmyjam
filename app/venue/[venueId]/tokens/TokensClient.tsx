@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { useAnimatedNumber } from "@/lib/use-animated-number";
@@ -45,8 +45,18 @@ interface Props {
   unitPrice: number;
 }
 
+const BUYER_STORAGE_KEY = "pmj_buyer_info";
+
+interface BuyerInfo {
+  name: string;
+  surname: string;
+  identityNumber: string;
+  city: string;
+}
+
 export default function TokensClient({ venueId, initialPackages, initialSelectedId, unitPrice }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const [packages] = useState<TokenPackage[]>(initialPackages);
   const [balanceLoaded, setBalanceLoaded] = useState(false);
@@ -91,8 +101,41 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
       cancelled = true;
     };
   }, [supabase, loadTxs]);
-  const [success, setSuccess] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
+  const [paymentResult, setPaymentResult] = useState<"success" | "fail" | null>(null);
+
+  const [buyer, setBuyer] = useState<BuyerInfo>({ name: "", surname: "", identityNumber: "", city: "" });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = localStorage.getItem(BUYER_STORAGE_KEY);
+        if (raw) setBuyer((b) => ({ ...b, ...JSON.parse(raw) }));
+      } catch {
+        // localStorage yok/erişilemez — form boş başlar
+      }
+    })();
+  }, []);
+
+  // iyzico'dan dönüş: ?payment=success|fail — bakiyeyi yenile, banner göster, URL'i temizle
+  useEffect(() => {
+    (async () => {
+      const payment = searchParams.get("payment");
+      if (payment !== "success" && payment !== "fail") return;
+      setPaymentResult(payment);
+      if (payment === "success") {
+        const { data } = await supabase.auth.getSession();
+        const uid = data.session?.user?.id;
+        if (uid) {
+          const { data: w } = await supabase.from("user_wallets").select("balance").eq("user_id", uid).maybeSingle();
+          if (typeof w?.balance === "number") setBalance(w.balance);
+          loadTxs();
+        }
+      }
+      router.replace(`/venue/${venueId}/tokens`);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const displayBalance = useAnimatedNumber(balance);
 
@@ -100,27 +143,40 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const buyTokens = pkg ? pkg.tokens : qty;
   const buyTotal = pkg ? pkg.price : qty * unitPrice;
 
+  const buyerValid =
+    buyer.name.trim().length > 0 &&
+    buyer.surname.trim().length > 0 &&
+    buyer.city.trim().length > 0 &&
+    /^[1-9][0-9]{10}$/.test(buyer.identityNumber.trim());
+
   const handlePurchase = async () => {
     if (purchasing || buyTokens <= 0) return;
+    if (!buyerValid) {
+      alert("Ad, soyad, geçerli bir T.C. kimlik no ve şehir gerekli.");
+      return;
+    }
     setPurchasing(true);
     try {
-      const res = await fetch(`/api/venue/${venueId}/tokens/purchase`, {
+      const trimmedBuyer: BuyerInfo = {
+        name: buyer.name.trim(),
+        surname: buyer.surname.trim(),
+        identityNumber: buyer.identityNumber.trim(),
+        city: buyer.city.trim(),
+      };
+      const res = await fetch(`/api/venue/${venueId}/tokens/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pkg ? { package_id: pkg.id } : { tokens: qty }),
+        body: JSON.stringify({ ...(pkg ? { package_id: pkg.id } : { tokens: qty }), buyer: trimmedBuyer }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         alert(data?.error ?? "Bir hata oluştu, tekrar dene.");
         return;
       }
-      setBalance(typeof data?.balance === "number" ? data.balance : balance + buyTokens);
-      setSuccess(true);
-      loadTxs();
-      setTimeout(() => router.back(), 1800);
+      localStorage.setItem(BUYER_STORAGE_KEY, JSON.stringify(trimmedBuyer));
+      window.location.href = data.paymentPageUrl;
     } catch {
       alert("Bağlantı hatası, tekrar dene.");
-    } finally {
       setPurchasing(false);
     }
   };
@@ -190,6 +246,19 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             </div>
           </div>
         </div>
+
+        {paymentResult && (
+          <div
+            className="mb-6 flex items-center gap-2 rounded-2xl p-4 text-sm font-semibold"
+            style={
+              paymentResult === "success"
+                ? { background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.4)", color: "#4ade80" }
+                : { background: "rgba(233,30,140,0.12)", border: "1px solid rgba(233,30,140,0.4)", color: "#e91e8c" }
+            }
+          >
+            {paymentResult === "success" ? "Ödeme alındı, jetonların eklendi!" : "Ödeme tamamlanmadı, tekrar dene."}
+          </div>
+        )}
 
         {packages.length > 0 && (
           <>
@@ -326,6 +395,38 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
           )}
         </button>
 
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">Alıcı Bilgileri</p>
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          <input
+            value={buyer.name}
+            onChange={(e) => setBuyer((b) => ({ ...b, name: e.target.value }))}
+            placeholder="Ad"
+            className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
+          />
+          <input
+            value={buyer.surname}
+            onChange={(e) => setBuyer((b) => ({ ...b, surname: e.target.value }))}
+            placeholder="Soyad"
+            className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
+          />
+          <input
+            value={buyer.identityNumber}
+            onChange={(e) => setBuyer((b) => ({ ...b, identityNumber: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
+            placeholder="T.C. Kimlik No"
+            inputMode="numeric"
+            className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
+          />
+          <input
+            value={buyer.city}
+            onChange={(e) => setBuyer((b) => ({ ...b, city: e.target.value }))}
+            placeholder="Şehir"
+            className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
+          />
+        </div>
+        <p className="-mt-2 mb-4 text-[10px] text-[#6b7280]">
+          iyzico ödeme altyapısının zorunlu tuttuğu bilgilerdir; kart bilgilerin iyzico&apos;nun güvenli sayfasında alınır.
+        </p>
+
         <div className="mb-4 rounded-2xl p-4" style={{ background: "#160d24", border: "1px solid rgba(255,255,255,0.07)" }}>
           <div className="flex justify-between text-sm">
             <span className="text-[#9ca3af]">Seçilen</span>
@@ -344,34 +445,25 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
 
         <button
           onClick={handlePurchase}
-          disabled={buyTokens <= 0 || success || purchasing}
+          disabled={buyTokens <= 0 || purchasing}
           className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold transition-all active:scale-[0.98] disabled:pointer-events-none"
-          style={
-            success
-              ? { background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.4)", color: "#4ade80" }
-              : {
-                  background: "linear-gradient(135deg, #ff2d9c 0%, #e91e8c 45%, #a8125f 100%)",
-                  boxShadow: "0 10px 32px -8px rgba(233,30,140,0.55)",
-                  color: "white",
-                  opacity: purchasing ? 0.8 : 1,
-                }
-          }
+          style={{
+            background: "linear-gradient(135deg, #ff2d9c 0%, #e91e8c 45%, #a8125f 100%)",
+            boxShadow: "0 10px 32px -8px rgba(233,30,140,0.55)",
+            color: "white",
+            opacity: purchasing ? 0.8 : 1,
+          }}
         >
-          {success ? (
-            <>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              Jetonlar eklendi!
-            </>
-          ) : purchasing ? (
+          {purchasing ? (
             <>
               <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
                 <path d="M21 12a9 9 0 0 0-9-9" stroke="white" strokeWidth="3" strokeLinecap="round" />
               </svg>
-              İşleniyor...
+              iyzico&apos;ya yönlendiriliyor...
             </>
           ) : (
-            <>Satın Al · {fmtPrice(buyTotal)}₺</>
+            <>iyzico ile Öde · {fmtPrice(buyTotal)}₺</>
           )}
         </button>
 

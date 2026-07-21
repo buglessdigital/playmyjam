@@ -30,7 +30,9 @@ export async function POST(req: NextRequest) {
     hasSignature: Boolean(result.signature),
   });
 
-  const orderId = result.conversationId;
+  // iyzico DECLINED (başarısız) ödemelerde conversationId'yi geri döndürmüyor —
+  // basketId her zaman geliyor ve biz ikisini de order.id ile aynı ayarladık (checkout route)
+  const orderId = result.conversationId || result.basketId;
   const { data: order } = orderId
     ? await supabaseAdmin
         .from("payment_orders")

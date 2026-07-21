@@ -158,7 +158,8 @@ export async function POST(
     }
 
     return NextResponse.json({ ok: true, paymentPageUrl: result.paymentPageUrl });
-  } catch {
+  } catch (err) {
+    console.error("iyzico checkout initialize hatası:", err);
     await supabaseAdmin.from("payment_orders").update({ status: "failed" }).eq("id", order.id);
     return NextResponse.json({ error: "Ödeme başlatılamadı" }, { status: 502 });
   }

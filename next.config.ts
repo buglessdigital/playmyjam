@@ -5,6 +5,12 @@ const nextConfig: NextConfig = {
   // iyzipay: resources'ı fs.readdirSync + require() ile dinamik yükler —
   // Turbopack/webpack bunu statik olarak bundle edemez, native require gerekir.
   serverExternalPackages: ["iyzipay"],
+  // Dinamik require'lar Vercel'in file-tracing'i tarafından tespit edilemeyebilir
+  // (nft statik analiz yapar); paket serverless fonksiyona hiç kopyalanmazsa
+  // runtime'da "ENOENT: lib/resources" ile patlar. Elle dahil ediliyor.
+  outputFileTracingIncludes: {
+    "/*": ["node_modules/iyzipay/**/*"],
+  },
   images: {
     remotePatterns: [
       // YouTube video thumbnail'ları (kapak görseli olarak kullanılıyor)

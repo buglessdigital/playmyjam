@@ -11,15 +11,24 @@ export async function POST(req: NextRequest) {
   const token = form?.get("token");
 
   if (typeof token !== "string" || !token) {
+    console.error("iyzico callback: token eksik", Object.fromEntries(form?.entries() ?? []));
     return NextResponse.redirect(new URL("/?payment=fail", origin), 303);
   }
 
   let result;
   try {
     result = await retrieveCheckoutForm(token);
-  } catch {
+  } catch (err) {
+    console.error("iyzico callback: retrieveCheckoutForm hatası", err);
     return NextResponse.redirect(new URL("/?payment=fail", origin), 303);
   }
+
+  console.log("iyzico callback: retrieve sonucu", {
+    status: result.status,
+    paymentStatus: result.paymentStatus,
+    conversationId: result.conversationId,
+    hasSignature: Boolean(result.signature),
+  });
 
   const orderId = result.conversationId;
   const { data: order } = orderId
@@ -31,6 +40,7 @@ export async function POST(req: NextRequest) {
     : { data: null };
 
   if (!order) {
+    console.error("iyzico callback: sipariş bulunamadı", { orderId, result });
     return NextResponse.redirect(new URL("/?payment=fail", origin), 303);
   }
 
@@ -58,6 +68,13 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.redirect(new URL(`${tokensPath}?payment=success`, origin), 303);
   }
+
+  console.error("iyzico callback: ödeme başarısız/imza uyuşmadı", {
+    orderId: order.id,
+    signatureOk,
+    status: result.status,
+    paymentStatus: result.paymentStatus,
+  });
 
   await supabaseAdmin
     .from("payment_orders")

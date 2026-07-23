@@ -10,7 +10,7 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://pmj-seven.vercel.app"),
+  metadataBase: new URL("https://playmyjam.com.tr"),
   title: "PlayMyJam",
   description: "Mekanda müziği sen seç",
   applicationName: "PlayMyJam",

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import { useNowPlayingClock, waitMs } from "@/lib/wait-time";
 import AddSongSheet from "@/components/browse/AddSongSheet";
 import NowPlayingBanner from "@/components/browse/NowPlayingBanner";
 import SearchView from "@/components/browse/SearchView";
@@ -117,9 +118,15 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     // Kullanıcı + canlı durum tek round-trip (0006'daki RPC): kuyruktakiler,
     // son çalınanlar, bakiye, favoriler, bekleme süresi girdileri
     const fetchUserState = async () => {
-      const { data } = await supabase.rpc("get_browse_user_state", { p_venue_id: venueDbId });
+      // started_at RPC'de yok ama bekleme süresi/ilerleme için şart: DB'deki
+      // progress_ms 15 sn'de bir yazıldığından bayat, started_at ise sabit çapa
+      const [{ data }, { data: npRow }] = await Promise.all([
+        supabase.rpc("get_browse_user_state", { p_venue_id: venueDbId }),
+        supabase.from("now_playing").select("started_at, is_playing").eq("venue_id", venueDbId).maybeSingle(),
+      ]);
       if (cancelled || !data) return;
       const state = data as unknown as BrowseUserState;
+      const np2 = npRow as { started_at: string | null; is_playing: boolean } | null;
 
       setQueuedSongIds(new Set(state.queued_song_ids ?? []));
       setTokenBalance(state.token_balance ?? 0);
@@ -129,7 +136,11 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       // Banner otomatik çalmada da görünsün: kaynak now_playing tablosu;
       // 0014 öncesi RPC song_id döndürmüyorsa müşteri kuyruğundaki kayda düş
       setPlayingSongId(state.now_playing?.song_id ?? state.playing?.song_id ?? null);
-      setNowPlaying(state.now_playing ?? null);
+      setNowPlaying(
+        state.now_playing
+          ? { ...state.now_playing, started_at: np2?.is_playing ? np2.started_at : null }
+          : null
+      );
 
       const played = new Map((state.recently_played ?? []).map((r) => [r.song_id, r.played_at]));
       if (state.playing?.song_id) played.set(state.playing.song_id, state.playing.started_at);
@@ -156,10 +167,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     };
   }, [venueDbId, supabase]);
 
-  const remainingCurrentMs = useMemo(
-    () => (nowPlaying ? Math.max(nowPlaying.duration_ms - (nowPlaying.progress_ms ?? 0), 0) : 0),
-    [nowPlaying]
-  );
+  const { progressMs, remainingMs: remainingCurrentMs } = useNowPlayingClock(nowPlaying);
 
   const songById = useMemo(() => {
     const map = new Map<string, VenueSong>();
@@ -319,11 +327,11 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   }, [favoriteIds, supabase]);
 
   const waitNormalMs = useMemo(
-    () => remainingCurrentMs + queueEntries.reduce((sum, e) => sum + (e.duration_ms ?? 0), 0),
+    () => waitMs(remainingCurrentMs, queueEntries, false),
     [queueEntries, remainingCurrentMs]
   );
   const waitPriorityMs = useMemo(
-    () => remainingCurrentMs + queueEntries.filter((e) => e.priority).reduce((sum, e) => sum + (e.duration_ms ?? 0), 0),
+    () => waitMs(remainingCurrentMs, queueEntries, true),
     [queueEntries, remainingCurrentMs]
   );
 
@@ -376,7 +384,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           <div className="mb-6 px-5">
             <NowPlayingBanner
               song={nowPlayingSong}
-              progressMs={nowPlaying.progress_ms ?? 0}
+              progressMs={progressMs}
               durationMs={nowPlaying.duration_ms}
               isPlaying={nowPlaying.is_playing}
               onClick={() => router.push(`/venue/${venueId}/queue`)}

@@ -10,7 +10,14 @@ export type BrowseUserState = {
   token_balance: number;
   favorite_ids: string[];
   queue_entries: QueueEntry[];
-  now_playing: { song_id?: string; progress_ms: number; is_playing: boolean; duration_ms: number } | null;
+  now_playing: {
+    song_id?: string;
+    progress_ms: number;
+    is_playing: boolean;
+    duration_ms: number;
+    /** RPC'de yok — now_playing satırından ayrıca çekilip birleştirilir (bkz. BrowseClient) */
+    started_at?: string | null;
+  } | null;
 };
 
 export type VenueSong = {

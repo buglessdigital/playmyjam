@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Image from "next/image";
 import type { VenueSong } from "./browse-types";
 
@@ -12,25 +11,10 @@ interface Props {
   onClick: () => void;
 }
 
+// progressMs çağıran tarafta duvar saatine sabitlenip her tick tazelenir
+// (useNowPlayingClock) — burada ayrıca sayaç işletilmez
 export default function NowPlayingBanner({ song, progressMs, durationMs, isPlaying, onClick }: Props) {
-  const [progress, setProgress] = useState(progressMs);
-  const [prevProgressMs, setPrevProgressMs] = useState(progressMs);
-
-  // Realtime güncellemesi geldiğinde lokal tick'i sunucu değerine sıfırla
-  if (progressMs !== prevProgressMs) {
-    setPrevProgressMs(progressMs);
-    setProgress(progressMs);
-  }
-
-  useEffect(() => {
-    if (!isPlaying) return;
-    const interval = setInterval(() => {
-      setProgress((p) => Math.min(p + 1000, durationMs));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isPlaying, durationMs]);
-
-  const pct = durationMs > 0 ? Math.min((progress / durationMs) * 100, 100) : 0;
+  const pct = durationMs > 0 ? Math.min((progressMs / durationMs) * 100, 100) : 0;
 
   return (
     <button

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { playNextFromQueue } from "@/lib/queue";
 import { fillQueueToTen } from "@/lib/queue-fill";
+import { hasVenueSession } from "@/lib/venue-auth-cookie";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -22,6 +23,17 @@ export async function POST(req: NextRequest) {
 
   if (!venue_id || !song_id) {
     return NextResponse.json({ error: "Eksik alan" }, { status: 400 });
+  }
+
+  // venue_id gövdeden geliyor; mekan çerezi slug ile adlandırıldığı için önce
+  // slug'a çevrilip kullanıcının gerçekten o mekanda giriş yaptığı doğrulanır
+  const { data: venue } = await supabaseAdmin
+    .from("venues")
+    .select("slug")
+    .eq("id", venue_id)
+    .maybeSingle();
+  if (!venue || !hasVenueSession(req, venue.slug, userId)) {
+    return NextResponse.json({ error: "Bu mekana giriş yapmalısın" }, { status: 403 });
   }
 
   // Cooldown + çalıyor kontrolü + jeton düşümü + pozisyon + insert tek transaction (0005)

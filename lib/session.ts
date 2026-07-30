@@ -7,6 +7,9 @@ export interface AdminSession {
   venue_id: string;
   venue_slug: string;
   exp: number; // unix saniye
+  // Oturum iptali için satırdaki sürümle karşılaştırılır (bkz. lib/admin-session.ts).
+  // Bu alandan önce basılmış çerezlerde yok — okurken 1 varsayılır.
+  sv?: number;
 }
 
 export interface SuperSession {

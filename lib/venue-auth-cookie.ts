@@ -9,25 +9,42 @@ export function venueAuthCookieName(venueId: string) {
   return `venue_auth_${venueId}`;
 }
 
-function cookieOptions(venueId: string) {
+// Path "/" olmalı: /api/venue/... rotaları da bu çerezi görmeli, yoksa sunucu
+// tarafında "kullanıcı gerçekten bu mekanda giriş yaptı mı" sorusu sorulamıyor.
+// Adı zaten mekana özel olduğu için path daraltmasına gerek yok.
+function cookieOptions() {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
-    path: `/venue/${venueId}`,
+    path: "/",
   };
 }
 
 export function setVenueAuthCookie(res: NextResponse, venueId: string, userId: string) {
   res.cookies.set(venueAuthCookieName(venueId), userId, {
-    ...cookieOptions(venueId),
+    ...cookieOptions(),
     maxAge: VENUE_AUTH_MAX_AGE,
   });
 }
 
 export function clearVenueAuthCookie(res: NextResponse, venueId: string) {
-  res.cookies.set(venueAuthCookieName(venueId), "", {
-    ...cookieOptions(venueId),
+  const name = venueAuthCookieName(venueId);
+  res.cookies.set(name, "", { ...cookieOptions(), maxAge: 0 });
+  // Eski sürümde path mekana daraltılmıştı; o çerez silinmezse tarayıcıda kalır
+  res.cookies.set(name, "", {
+    ...cookieOptions(),
+    path: `/venue/${venueId}`,
     maxAge: 0,
   });
+}
+
+// Kullanıcı bu mekanın giriş ekranından geçmiş mi? Supabase oturumu tek başına
+// yetmiyor: A mekanında giriş yapan biri B'nin uçlarına istek gönderebiliyordu.
+export function hasVenueSession(
+  req: { cookies: { get(name: string): { value: string } | undefined } },
+  venueSlug: string,
+  userId: string
+): boolean {
+  return req.cookies.get(venueAuthCookieName(venueSlug))?.value === userId;
 }

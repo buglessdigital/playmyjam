@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { requireVenueAccess } from "@/lib/session";
+import { requireVenueAccessVerified } from "@/lib/admin-session";
 import { playNextFromQueue, markUnplayableAndSkip } from "@/lib/queue";
 
 // Çalma motoru komutları. Spotify Connect'e uzaktan kumanda yerine yalnızca
@@ -12,7 +12,7 @@ export async function POST(
 ) {
   const { venueId } = await params;
 
-  if (!requireVenueAccess(req, venueId)) {
+  if (!(await requireVenueAccessVerified(req, venueId))) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
   }
 

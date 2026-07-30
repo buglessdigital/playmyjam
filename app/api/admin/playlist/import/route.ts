@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getAdminSession } from "@/lib/session";
+import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { getPlaylistItems, parsePlaylistId, YouTubeQuotaError } from "@/lib/youtube";
 
 // Public YouTube playlist'indeki tüm şarkıları mekan playlist'ine toplu ekler.
 // OAuth gerekmez — admin playlist URL'sini yapıştırır. { added, skipped } döner.
 export async function POST(req: NextRequest) {
-  const session = getAdminSession(req);
+  const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
   }

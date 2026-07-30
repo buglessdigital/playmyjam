@@ -1,16 +1,25 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useState, useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import AddSongSheet from "@/components/browse/AddSongSheet";
 import LyricsOverlay from "@/components/song/LyricsOverlay";
+import SimilarOverlay from "@/components/song/SimilarOverlay";
+import type { DisplaySong, VenueSong } from "@/components/browse/browse-types";
 import type { TrackDetails } from "@/lib/youtube";
 import type { LyricsResult } from "@/lib/lyrics";
+import { formatWait, useNowPlayingClock, waitMs } from "@/lib/wait-time";
 
 type QueueEntry = { song_id: string; priority: boolean; duration_ms: number };
-type NowPlayingInfo = { songId: string | null; progress_ms: number; is_playing: boolean; duration_ms: number };
+type NowPlayingInfo = {
+  songId: string | null;
+  progress_ms: number;
+  is_playing: boolean;
+  duration_ms: number;
+  started_at: string | null;
+};
 
 // Aşağı kaydırınca görünen sıra bölümü için şarkı bilgili kuyruk (get_queue_state RPC'si)
 type SongMeta = { title: string; artist: string; album_cover_url: string; duration_ms: number };
@@ -37,6 +46,14 @@ const LYRICS_LEAD_MS = 400;
 
 type Cooldown = { remainingMs: number; reason: "played" | "queued" | null };
 
+// Sıraya ekleme sheet'i hem bu sayfanın şarkısı hem "Benzer" panelindeki öneriler için
+// açılabilir — hangi şarkı için açıldığı tek yerde tutulur
+type SheetTarget = {
+  songId: string;
+  song: { youtube_video_id: string; title: string; artist: string; album_cover_url: string };
+  cooldown: Cooldown;
+};
+
 // Şarkı kuyruktaysa veya son 30 dk'da çalındıysa cooldown — veri geldiği anda hesaplanır
 function computeCooldown(dbSongId: string | null, entries: QueueEntry[], recentlyPlayedAt: number | null): Cooldown {
   if (dbSongId && entries.some((e) => e.song_id === dbSongId)) {
@@ -57,6 +74,17 @@ interface Props {
   priorityCost: number;
 }
 
+// Bilgi pilleri tek satırda kaydığı için hiçbiri daralmaz, metinleri de sarmaz
+const pillStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "8px 14px",
+  borderRadius: 20,
+  flexShrink: 0,
+  whiteSpace: "nowrap",
+};
+
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
   const mins = Math.floor(totalSec / 60);
@@ -70,12 +98,6 @@ function formatReleaseDate(date: string | null): string {
   return parts[0] ?? date;
 }
 
-function formatWait(ms: number): string {
-  if (ms <= 0) return "Hemen";
-  const mins = Math.ceil(ms / 60000);
-  return `~${mins} dk`;
-}
-
 export default function SongDetailClient({ venueId, venueDbId, track, requestCost, priorityCost }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -87,13 +109,13 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
   const [cooldown, setCooldown] = useState<Cooldown>({ remainingMs: 0, reason: null });
   const [isFavorite, setIsFavorite] = useState(false);
   const [tokenBalance, setTokenBalance] = useState(0);
-  const [added, setAdded] = useState(false);
+  // Bu oturumda sıraya eklenen video id'leri (bu şarkı + önerilenler)
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [requested, setRequested] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetTarget, setSheetTarget] = useState<SheetTarget | null>(null);
+  const [similarOpen, setSimilarOpen] = useState(false);
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [nowPlaying, setNowPlaying] = useState<NowPlayingInfo | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null);
   // track prop'u mount sonrası değişmez — loading'i initializer'da başlatmak
   // effect içinde senkron setState gereksinimini kaldırıyor
@@ -140,9 +162,11 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
       // started_at RPC'de yok ama sözlerin gerçek zamanlı senkronu için şart:
       // DB'deki progress_ms yazıldığı andan itibaren bayatlıyor, started_at ise sabit çapa
       const [{ data }, { data: npRow }, { data: queueData }] = await Promise.all([
+        // Parametre adı fonksiyon imzasıyla birebir aynı olmalı — PostgREST adla
+        // eşleştirir, uymayan ad "fonksiyon yok" (PGRST202) hatasına düşer
         supabase.rpc("get_song_user_state", {
           p_venue_id: venueDbId,
-          p_youtube_video_id: track.youtube_video_id,
+          p_video_id: track.youtube_video_id,
         }),
         supabase
           .from("now_playing")
@@ -163,7 +187,6 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
       const state = data as unknown as SongUserState;
 
       const np2 = npRow as { started_at: string | null; is_playing: boolean } | null;
-      setStartedAtMs(np2?.is_playing && np2.started_at ? Date.parse(np2.started_at) : null);
 
       setDbSongId(state.db_song_id);
       setPlayCount(state.play_count ?? 0);
@@ -175,16 +198,16 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
 
       const np = state.now_playing;
       if (np && np.duration_ms > 0) {
-        setNowPlaying({ songId: np.song_id, progress_ms: np.progress_ms ?? 0, is_playing: np.is_playing, duration_ms: np.duration_ms });
-        // İlk boyamada da çapadan hesapla — RPC'deki progress_ms yazıldığından beri bayat
-        const anchored =
-          np.is_playing && np2?.is_playing && np2.started_at
-            ? Math.min(Math.max(Date.now() - Date.parse(np2.started_at), 0), np.duration_ms)
-            : np.progress_ms ?? 0;
-        setProgress(anchored);
+        setNowPlaying({
+          songId: np.song_id,
+          progress_ms: np.progress_ms ?? 0,
+          is_playing: np.is_playing,
+          duration_ms: np.duration_ms,
+          // RPC'deki progress_ms yazıldığından beri bayat; ilerleme hep bu çapadan hesaplanır
+          started_at: np2?.is_playing ? np2.started_at : null,
+        });
       } else {
         setNowPlaying(null);
-        setProgress(0);
       }
       setLoaded(true);
     };
@@ -236,30 +259,16 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     };
   }, [fullQueue, npDetail, trackIdBySongId, supabase]);
 
-  // İlerlemeyi duvar saatine sabitle: started_at varsa gerçek konum her tick'te
-  // Date.now() - started_at ile hesaplanır (interval sürüklenmesi ve bayat progress_ms
-  // sorunu olmaz); yoksa eski davranışa düş
-  useEffect(() => {
-    if (!nowPlaying?.is_playing) return;
-    const dur = nowPlaying.duration_ms;
-    const tick = () => {
-      if (startedAtMs) {
-        setProgress(Math.min(Math.max(Date.now() - startedAtMs, 0), dur));
-      } else {
-        setProgress((p) => Math.min(p + 500, dur));
-      }
-    };
-    const interval = setInterval(tick, 500);
-    return () => clearInterval(interval);
-  }, [nowPlaying, startedAtMs]);
+  // İlerleme duvar saatine sabitli (started_at çapası) — sözlerin senkronu da
+  // bekleme süreleri de aynı saatten beslenir
+  const { progressMs: progress, remainingMs: remainingCurrentMs } = useNowPlayingClock(nowPlaying);
 
-  const remainingCurrentMs = nowPlaying ? Math.max(nowPlaying.duration_ms - progress, 0) : 0;
   const waitNormalMs = useMemo(
-    () => remainingCurrentMs + queueEntries.reduce((sum, e) => sum + e.duration_ms, 0),
+    () => waitMs(remainingCurrentMs, queueEntries, false),
     [queueEntries, remainingCurrentMs]
   );
   const waitPriorityMs = useMemo(
-    () => remainingCurrentMs + queueEntries.filter((e) => e.priority).reduce((sum, e) => sum + e.duration_ms, 0),
+    () => waitMs(remainingCurrentMs, queueEntries, true),
     [queueEntries, remainingCurrentMs]
   );
 
@@ -267,10 +276,8 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
 
   // Sıra bölümü: kuyruk dizisi zaten çalma sırasında (priority, position);
   // idx'ten önceki tüm şarkılar bu şarkıdan önce çalar
-  const getQueueWaitMinutes = (idx: number) => {
-    const queueMs = fullQueue.slice(0, idx).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0);
-    return Math.ceil((remainingCurrentMs + queueMs) / 60000);
-  };
+  const getQueueWaitMs = (idx: number) =>
+    remainingCurrentMs + fullQueue.slice(0, idx).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0);
 
   const openQueueSong = (songId: string | null) => {
     if (!songId || songId === dbSongId) return;
@@ -322,22 +329,28 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
   };
 
   const handleAdd = async (priority: boolean) => {
-    if (!dbSongId || !venueDbId) return;
+    const target = sheetTarget;
+    if (!target || !venueDbId) return;
+    const videoId = target.song.youtube_video_id;
     // Optimistic düşüm — gerçek düşüm RPC'de venues.request_cost/priority_cost'tan
     const cost = priority ? priorityCost : requestCost;
     setTokenBalance((b) => b - cost);
-    setAdded(true);
-    setSheetOpen(false);
+    setAddedIds((s) => new Set(s).add(videoId));
+    setSheetTarget(null);
 
     const res = await fetch("/api/queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ venue_id: venueDbId, song_id: dbSongId, priority }),
+      body: JSON.stringify({ venue_id: venueDbId, song_id: target.songId, priority }),
     });
 
     if (!res.ok) {
       setTokenBalance((b) => b + cost);
-      setAdded(false);
+      setAddedIds((s) => {
+        const next = new Set(s);
+        next.delete(videoId);
+        return next;
+      });
     }
   };
 
@@ -359,6 +372,19 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
 
   const isOnCooldown = cooldown.remainingMs > 0;
   const cooldownMins = Math.ceil(cooldown.remainingMs / 60000);
+  const added = addedIds.has(track.youtube_video_id);
+
+  // "Benzer" panelindeki önerilerin cooldown durumu için kuyruktaki şarkı id'leri
+  const queuedSongIds = new Set(queueEntries.map((e) => e.song_id));
+
+  // Öneriden başka şarkıya geçince panel kapanır — açılan sayfanın kendisi görünsün
+  const openSongPage = (song: DisplaySong) => {
+    setSimilarOpen(false);
+    router.push(`/venue/${venueId}/song/${song.youtube_video_id}`);
+  };
+
+  const openSheetFor = (song: VenueSong, cd: Cooldown) =>
+    setSheetTarget({ songId: song.id, song, cooldown: cd });
 
   // Ana eylem butonu (ortadaki büyük "play" pozisyonu): durum makinesi
   let centerIcon: ReactNode;
@@ -384,7 +410,13 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
       centerIcon = <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
       centerDisabled = true;
     } else {
-      centerAction = () => setSheetOpen(true);
+      const songId = dbSongId;
+      centerAction = () =>
+        setSheetTarget({
+          songId,
+          song: { youtube_video_id: track.youtube_video_id, title: track.title, artist: track.artist, album_cover_url: track.album_cover_url },
+          cooldown,
+        });
       centerIcon = <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#0f0a18" strokeWidth="3" strokeLinecap="round" /></svg>;
     }
   } else {
@@ -417,10 +449,12 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
 
   return (
     <div style={{ width: "100%", background: "#0f0a18" }}>
-      {/* İlk ekran: mevcut şarkı detayı — tam viewport yüksekliğinde, sıra bölümü altında kalır */}
+      {/* İlk ekran: mevcut şarkı detayı — sıra bölümü altında kalır. Yükseklikten
+          alt menü payı (VenueLayoutClient'taki pb-16) düşülür, yoksa en alttaki
+          "Sıra" ipucu menünün altına taşar ve kaydırmadan görünmez */}
       <div
         style={{
-          minHeight: "100dvh",
+          minHeight: "calc(100dvh - 64px)",
           width: "100%",
           background: "linear-gradient(180deg, #2a1a30 0%, #150c1f 38%, #0f0a18 100%)",
           display: "flex",
@@ -455,7 +489,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
         </div>
 
         {/* Albüm kapağı */}
-        <div style={{ display: "flex", justifyContent: "center", padding: "16px 28px 0" }}>
+        <div style={{ display: "flex", justifyContent: "center", padding: "12px 28px 0" }}>
           <div style={{ width: "100%", maxWidth: 340, aspectRatio: "1 / 1", borderRadius: 18, overflow: "hidden", background: "#1a0e2a", boxShadow: "0 20px 60px rgba(0,0,0,0.55)" }}>
             {track.album_cover_url && (
               <Image src={track.album_cover_url} alt={track.title} width={340} height={340} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -464,16 +498,19 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
         </div>
 
         {/* Başlık + sanatçı */}
-        <div style={{ padding: "24px 24px 0" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ padding: "16px 24px 0" }}>
+          {/* Başlık + ok: mekan listesinden benzer şarkılar ve sanatçılar panelini açar */}
+          <button
+            onClick={() => setSimilarOpen(true)}
+            style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: 0, background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
+            aria-label="Benzer şarkı ve sanatçıları gör"
+          >
             <h1 style={{ color: "white", fontWeight: 700, fontSize: 21, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.title}</h1>
-            {track.external_url && (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            )}
-          </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
           <p style={{ color: "#9ca3af", fontSize: 15, margin: "4px 0 0" }}>{track.artist}</p>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 24, marginTop: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 24, marginTop: 14 }}>
             <div>
               <p style={{ color: "white", fontSize: 13, fontWeight: 700, margin: 0 }}>{formatWait(waitNormalMs)}</p>
               <p style={{ color: "#6b7280", fontSize: 11, margin: "2px 0 0" }}>Normal sıra bekleme</p>
@@ -486,11 +523,11 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
           </div>
         </div>
 
-        {/* Bilgi pilleri */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 24px 0", flexWrap: "wrap" }}>
+        {/* Bilgi pilleri — tek satır; sığmayanlara yatay kaydırarak erişilir */}
+        <div className="pill-row" style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 24px 0", flexWrap: "nowrap", overflowX: "auto", scrollbarWidth: "none" }}>
           <button
             onClick={() => setLyricsOpen(true)}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 20, background: "rgba(255,255,255,0.08)", border: "none", cursor: "pointer" }}
+            style={{ ...pillStyle, background: "rgba(255,255,255,0.08)", border: "none", cursor: "pointer" }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13M9 9l12-2" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             <span style={{ color: "white", fontSize: 13, fontWeight: 600 }}>Sözler</span>
@@ -498,27 +535,27 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
           {dbSongId && (
             <button
               onClick={toggleFavorite}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 20, background: "rgba(255,255,255,0.08)", border: "none", cursor: "pointer" }}
+              style={{ ...pillStyle, background: "rgba(255,255,255,0.08)", border: "none", cursor: "pointer" }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill={isFavorite ? "#e91e8c" : "none"}><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke={isFavorite ? "#e91e8c" : "white"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               <span style={{ color: "white", fontSize: 13, fontWeight: 600 }}>{isFavorite ? "Favoride" : "Favorile"}</span>
             </button>
           )}
           {playCount > 0 && (
-            <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 20, background: "rgba(233,30,140,0.12)" }}>
+            <span style={{ ...pillStyle, background: "rgba(233,30,140,0.12)" }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="#e91e8c" strokeWidth="2" /><circle cx="18" cy="16" r="3" stroke="#e91e8c" strokeWidth="2" /></svg>
               <span style={{ color: "#e91e8c", fontSize: 13, fontWeight: 600 }}>{playCount} kez çalındı</span>
             </span>
           )}
           {track.release_date && (
-            <span style={{ padding: "8px 14px", borderRadius: 20, background: "rgba(255,255,255,0.08)", color: "#d1d5db", fontSize: 13, fontWeight: 600 }}>
+            <span style={{ ...pillStyle, background: "rgba(255,255,255,0.08)", color: "#d1d5db", fontSize: 13, fontWeight: 600 }}>
               {formatReleaseDate(track.release_date)}
             </span>
           )}
         </div>
 
         {/* İlerleme çubuğu (kuyruk bekleme süresi gösterimi) */}
-        <div style={{ padding: "28px 24px 0" }}>
+        <div style={{ padding: "16px 24px 0" }}>
           <div style={{ width: "100%", height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", position: "relative", overflow: "hidden" }}>
             <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${progressPct}%`, background: "#e91e8c", borderRadius: 2 }} />
           </div>
@@ -529,7 +566,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
         </div>
 
         {/* Kontrol satırı */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 28, padding: "20px 24px 0" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 28, padding: "12px 24px 0" }}>
           <button
             onClick={() => !centerDisabled && centerAction()}
             disabled={centerDisabled}
@@ -550,12 +587,12 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
           </button>
         </div>
 
-        <p style={{ textAlign: "center", color: centerDisabled && !isOnCooldown ? "#6b7280" : isOnCooldown ? "#6b7280" : "#9ca3af", fontSize: 13, fontWeight: 600, marginTop: 12 }}>
+        <p style={{ textAlign: "center", color: centerDisabled && !isOnCooldown ? "#6b7280" : isOnCooldown ? "#6b7280" : "#9ca3af", fontSize: 13, fontWeight: 600, marginTop: 10 }}>
           {centerCaption}
         </p>
 
         {/* Aşağıda sıra varsa kaydırma ipucu — dokununca sıra bölümüne kayar */}
-        <div style={{ marginTop: "auto", paddingTop: 20, paddingBottom: 10, display: "flex", justifyContent: "center", minHeight: 58 }}>
+        <div style={{ marginTop: "auto", paddingTop: 8, paddingBottom: 10, display: "flex", justifyContent: "center", minHeight: 44 }}>
           {hasQueueSection && (
             <button
               onClick={() => queueSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
@@ -660,7 +697,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
                     {item.priority && (
                       <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>Önce</span>
                     )}
-                    <span style={{ color: item.priority ? "#e91e8c" : "#9ca3af", fontSize: 12, fontWeight: 700 }}>~{getQueueWaitMinutes(idx)} dk</span>
+                    <span style={{ color: item.priority ? "#e91e8c" : "#9ca3af", fontSize: 12, fontWeight: 700 }}>{formatWait(getQueueWaitMs(idx))}</span>
                   </div>
                 </div>
               );
@@ -681,20 +718,42 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
         />
       )}
 
+      {/* Benzer şarkılar/sanatçılar — hepsi mekanın çalınabilir listesinden */}
+      {similarOpen && (
+        <SimilarOverlay
+          venueDbId={venueDbId}
+          track={{
+            youtube_video_id: track.youtube_video_id,
+            title: track.title,
+            artist: track.artist,
+            album_cover_url: track.album_cover_url,
+            duration_ms: track.duration_ms,
+          }}
+          queuedSongIds={queuedSongIds}
+          playingSongId={nowPlaying?.songId ?? null}
+          addedIds={addedIds}
+          onOpenSong={openSongPage}
+          onAddSong={openSheetFor}
+          onClose={() => setSimilarOpen(false)}
+        />
+      )}
+
       <AddSongSheet
-        song={sheetOpen ? { youtube_video_id: track.youtube_video_id, title: track.title, artist: track.artist, album_cover_url: track.album_cover_url } : null}
+        song={sheetTarget?.song ?? null}
         tokenBalance={tokenBalance}
-        cooldown={cooldown}
+        // Bu sayfanın şarkısı için cooldown canlı tikliyor; öneriler için açılışta hesaplanan değer
+        cooldown={sheetTarget ? (sheetTarget.songId === dbSongId ? cooldown : sheetTarget.cooldown) : undefined}
         waitNormalMs={waitNormalMs}
         waitPriorityMs={waitPriorityMs}
         normalCost={requestCost}
         priorityCost={priorityCost}
-        onClose={() => setSheetOpen(false)}
+        onClose={() => setSheetTarget(null)}
         onAdd={handleAdd}
       />
 
       <style jsx>{`
         @keyframes sq-eq { from { transform: scaleY(0.4); } to { transform: scaleY(1); } }
+        .pill-row::-webkit-scrollbar { display: none; }
       `}</style>
     </div>
   );

@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLyrics } from "@/lib/lyrics";
+import { identifyCaller } from "@/lib/api-auth";
 
+// Bu uç dışarıdaki lrclib.net'e vekillik ediyor; giriş şartı olmadan üçüncü
+// tarafın servisini bizim adımıza sömürmek için kullanılabilirdi.
 export async function GET(req: NextRequest) {
+  const caller = await identifyCaller(req);
+  if (!caller) {
+    return NextResponse.json({ error: "Giriş yapmalısın" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const trackId = searchParams.get("trackId");
   const title = searchParams.get("title");

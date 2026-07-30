@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { formatWait } from "@/lib/wait-time";
 
 export interface SongDetail {
   id: string;
@@ -10,7 +11,7 @@ export interface SongDetail {
   priority: boolean;
   tokens_spent: number;
   added_by: string;
-  wait_minutes: number;
+  wait_ms: number;
 }
 
 interface Props {
@@ -84,7 +85,7 @@ export default function SongDetailModal({ song, onClose }: Props) {
           </div>
           <div className="flex justify-between items-center py-3">
             <span className="text-[#9ca3af] text-sm">Tahmini Bekleme</span>
-            <span className="text-white text-sm font-medium">{song.wait_minutes} dk</span>
+            <span className="text-white text-sm font-medium">{formatWait(song.wait_ms)}</span>
           </div>
         </div>
 

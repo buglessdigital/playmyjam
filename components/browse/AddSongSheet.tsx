@@ -1,23 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
+import { formatWait } from "@/lib/wait-time";
 
 interface Song {
   youtube_video_id: string;
   title: string;
   artist: string;
   album_cover_url: string;
-}
-
-function formatWait(ms: number): string {
-  if (ms <= 0) return "Hemen";
-  const totalSec = Math.ceil(ms / 1000);
-  const mins = Math.floor(totalSec / 60);
-  const secs = totalSec % 60;
-  if (mins === 0) return `~${secs} sn`;
-  if (secs === 0) return `~${mins} dk`;
-  return `~${mins} dk ${secs} sn`;
 }
 
 interface Props {
@@ -38,6 +30,15 @@ export default function AddSongSheet({
 }: Props) {
   const router = useRouter();
   const params = useParams<{ venueId: string }>();
+
+  // Normal sıra seçildiğinde araya giren onay adımı: sonradan eklenen öncelikli
+  // şarkılar normal sıradakilerin önüne geçtiği için uyarıp yönlendiriyoruz.
+  // Onay hangi şarkı için açıldığını tutar: sheet kapanınca/başka şarkı seçilince
+  // kendiliğinden sıfırlanır.
+  const [confirmForId, setConfirmForId] = useState<string | null>(null);
+  const confirmNormal = !!song && confirmForId === song.youtube_video_id;
+  const setConfirmNormal = (open: boolean) =>
+    setConfirmForId(open && song ? song.youtube_video_id : null);
 
   if (!song) return null;
 
@@ -107,66 +108,128 @@ export default function AddSongSheet({
           </p>
         )}
 
-        <div className="space-y-3">
-          {/* Normal Sıra */}
-          <button
-            onClick={() => canNormal && onAdd(false)}
-            disabled={!canNormal}
-            className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
-            style={{
-              background: canNormal ? "rgba(59,130,246,0.1)" : "rgba(255,255,255,0.03)",
-              borderColor: canNormal ? "rgba(59,130,246,0.3)" : "rgba(255,255,255,0.08)",
-              opacity: canNormal ? 1 : 0.5,
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: "rgba(59,130,246,0.15)" }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </div>
-              <div className="text-left">
-                <p className="text-white font-semibold text-sm">Normal Sıra</p>
-                <p className="text-[#6b7280] text-xs">{formatWait(waitNormalMs)} bekleme</p>
-              </div>
-            </div>
-            <span className="text-[#3b82f6] font-bold text-sm">{normalCost} Jeton</span>
-          </button>
-
-          {/* Öncelikli Sıra */}
-          <button
-            onClick={() => canPriority && onAdd(true)}
-            disabled={!canPriority}
-            className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
-            style={{
-              background: canPriority ? "rgba(233,30,140,0.1)" : "rgba(255,255,255,0.03)",
-              borderColor: canPriority ? "rgba(233,30,140,0.3)" : "rgba(255,255,255,0.08)",
-              opacity: canPriority ? 1 : 0.5,
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: "rgba(233,30,140,0.15)" }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" />
-                </svg>
-              </div>
-              <div className="text-left">
-                <p className="text-white font-semibold text-sm flex items-center gap-1.5">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
-                  Öncelikli Sıra
+        {confirmNormal ? (
+          <div className="space-y-3">
+            <div
+              className="flex items-start gap-3 p-4 rounded-2xl"
+              style={{ background: "rgba(233,30,140,0.08)", border: "1px solid rgba(233,30,140,0.25)" }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="flex-shrink-0 mt-0.5">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" />
+              </svg>
+              <div>
+                <p className="text-white text-sm font-semibold">Öncelikli eklenenler önünüze geçer</p>
+                <p className="text-[#9ca3af] text-xs mt-1 leading-relaxed">
+                  Normal sıraya eklerseniz, sizden sonra <span className="text-[#e91e8c] font-semibold">öncelikli</span> eklenen
+                  her şarkı şarkınızın önüne geçer ve beklemeniz{" "}
+                  <span className="text-white font-semibold">{formatWait(waitNormalMs)}</span>&apos;dan daha uzun sürebilir.
+                  Öncelikli sırada şarkınız <span className="text-white font-semibold">{formatWait(waitPriorityMs)}</span> içinde çalar.
                 </p>
-                <p className="text-[#6b7280] text-xs">{formatWait(waitPriorityMs)} bekleme</p>
               </div>
             </div>
-            <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{priorityCost} Jeton</span>
-          </button>
-        </div>
+
+            {canPriority ? (
+              <button
+                onClick={() => onAdd(true)}
+                className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
+                style={{ background: "rgba(233,30,140,0.16)", borderColor: "rgba(233,30,140,0.45)" }}
+              >
+                <span className="text-white font-semibold text-sm flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
+                  Öncelikli sıraya ekle
+                </span>
+                <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{priorityCost} Jeton</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => { onClose(); router.push(`/venue/${params.venueId}/tokens`); }}
+                className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
+                style={{ background: "rgba(233,30,140,0.16)", borderColor: "rgba(233,30,140,0.45)" }}
+              >
+                <span className="text-white font-semibold text-sm flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
+                  Öncelikli için jeton yükle
+                </span>
+                <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{priorityCost} Jeton</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => canNormal && onAdd(false)}
+              disabled={!canNormal}
+              className="w-full py-3.5 rounded-2xl border text-sm font-semibold transition-all"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                borderColor: "rgba(255,255,255,0.1)",
+                color: "#9ca3af",
+                opacity: canNormal ? 1 : 0.5,
+              }}
+            >
+              Yine de normal sıraya ekle ({normalCost} Jeton)
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Normal Sıra */}
+            <button
+              onClick={() => canNormal && setConfirmNormal(true)}
+              disabled={!canNormal}
+              className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
+              style={{
+                background: canNormal ? "rgba(59,130,246,0.1)" : "rgba(255,255,255,0.03)",
+                borderColor: canNormal ? "rgba(59,130,246,0.3)" : "rgba(255,255,255,0.08)",
+                opacity: canNormal ? 1 : 0.5,
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: "rgba(59,130,246,0.15)" }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <div className="text-left">
+                  <p className="text-white font-semibold text-sm">Normal Sıra</p>
+                  <p className="text-[#6b7280] text-xs">{formatWait(waitNormalMs)} bekleme</p>
+                </div>
+              </div>
+              <span className="text-[#3b82f6] font-bold text-sm">{normalCost} Jeton</span>
+            </button>
+
+            {/* Öncelikli Sıra */}
+            <button
+              onClick={() => canPriority && onAdd(true)}
+              disabled={!canPriority}
+              className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
+              style={{
+                background: canPriority ? "rgba(233,30,140,0.1)" : "rgba(255,255,255,0.03)",
+                borderColor: canPriority ? "rgba(233,30,140,0.3)" : "rgba(255,255,255,0.08)",
+                opacity: canPriority ? 1 : 0.5,
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: "rgba(233,30,140,0.15)" }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" />
+                  </svg>
+                </div>
+                <div className="text-left">
+                  <p className="text-white font-semibold text-sm flex items-center gap-1.5">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
+                    Öncelikli Sıra
+                  </p>
+                  <p className="text-[#6b7280] text-xs">{formatWait(waitPriorityMs)} bekleme</p>
+                </div>
+              </div>
+              <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{priorityCost} Jeton</span>
+            </button>
+          </div>
+        )}
 
         {!canNormal && (
           <p className="text-center text-[#6b7280] text-xs mt-4">
@@ -179,10 +242,10 @@ export default function AddSongSheet({
         )}
 
         <button
-          onClick={onClose}
+          onClick={() => (confirmNormal ? setConfirmNormal(false) : onClose())}
           className="w-full mt-4 py-3 rounded-2xl font-semibold text-[#9ca3af] border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-sm"
         >
-          İptal
+          {confirmNormal ? "Geri" : "İptal"}
         </button>
       </div>
     </div>

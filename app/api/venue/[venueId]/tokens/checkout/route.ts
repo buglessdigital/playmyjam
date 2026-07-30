@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createCheckoutForm } from "@/lib/iyzico";
+import { hasVenueSession } from "@/lib/venue-auth-cookie";
 
 const MAX_LOOSE = 1000;
 
@@ -18,6 +19,9 @@ export async function POST(
   const email = claimsData?.claims.email;
   if (!userId) {
     return NextResponse.json({ error: "Giriş yapmalısın" }, { status: 401 });
+  }
+  if (!hasVenueSession(req, venueId, userId)) {
+    return NextResponse.json({ error: "Bu mekana giriş yapmalısın" }, { status: 403 });
   }
 
   // Fiyat/tutar asla client'tan alınmaz: ya paket id'si (fiyat DB satırından)

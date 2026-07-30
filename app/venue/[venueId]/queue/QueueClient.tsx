@@ -6,6 +6,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import SongDetailModal, { type SongDetail } from "@/components/queue/SongDetailModal";
+import {
+  fetchManualQueueEntries,
+  formatWait,
+  useNowPlayingClock,
+  waitMs,
+  type WaitEntry,
+} from "@/lib/wait-time";
 
 type QueueItem = {
   id: string;
@@ -38,7 +45,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
-  const [progress, setProgress] = useState(0);
+  const [waitEntries, setWaitEntries] = useState<WaitEntry[]>([]);
   const [selectedSong, setSelectedSong] = useState<SongDetail | null>(null);
   const [trackIdBySongId, setTrackIdBySongId] = useState<Map<string, string>>(new Map());
   const [fabCollapsed, setFabCollapsed] = useState(false);
@@ -55,27 +62,33 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     if (!venueDbId) return;
     let cancelled = false;
 
-    // Tüm sayfa verisi tek round-trip: now_playing + ilk 10 kuyruk (0006'daki RPC)
+    // Sayfa gövdesi tek round-trip: now_playing + ilk 10 kuyruk (0006'daki RPC)
     const fetchState = async () => {
       const { data } = await supabase.rpc("get_queue_state", { p_venue_id: venueDbId });
       if (cancelled || !data) return;
       const state = data as unknown as QueueState;
       setQueue(state.queue ?? []);
-      if (state.now_playing) {
-        setNowPlaying(state.now_playing);
-        setProgress(state.now_playing.progress_ms ?? 0);
-      } else {
-        setNowPlaying(null);
-        setProgress(0);
-      }
+      setNowPlaying(state.now_playing ?? null);
       setLoaded(true);
     };
 
+    // Bekleme süresi kuyruğun tamamını ister; RPC 10 kayıtla sınırlı ve auto-fill'i
+    // de içeriyor. Yalnızca kuyruk değiştiğinde tazelenir — heartbeat'in 15 sn'de
+    // bir tetiklediği now_playing güncellemeleri kuyruğun içeriğini değiştirmez.
+    const fetchWaitEntries = async () => {
+      const entries = await fetchManualQueueEntries(supabase, venueDbId);
+      if (!cancelled) setWaitEntries(entries);
+    };
+
     fetchState();
+    fetchWaitEntries();
 
     const queueChannel = supabase
       .channel(`queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchState)
+      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, () => {
+        fetchState();
+        fetchWaitEntries();
+      })
       .subscribe();
 
     const npChannel = supabase
@@ -132,34 +145,29 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     if (trackId) router.push(`/venue/${venueId}/song/${trackId}`);
   };
 
-  useEffect(() => {
-    if (!nowPlaying?.is_playing) return;
-    const dur = nowPlaying.songs?.duration_ms ?? 0;
-    const interval = setInterval(() => {
-      setProgress((p) => Math.min(p + 1000, dur));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [nowPlaying]);
+  const npClock = useMemo(
+    () =>
+      nowPlaying?.songs
+        ? {
+            duration_ms: nowPlaying.songs.duration_ms,
+            progress_ms: nowPlaying.progress_ms,
+            is_playing: nowPlaying.is_playing,
+            started_at: nowPlaying.started_at,
+          }
+        : null,
+    [nowPlaying]
+  );
+  const { progressMs, remainingMs } = useNowPlayingClock(npClock);
 
   const dur = nowPlaying?.songs?.duration_ms ?? 1;
-  const progressPct = Math.min((progress / dur) * 100, 100);
+  const progressPct = Math.min((progressMs / dur) * 100, 100);
 
-  const remainingCurrentMs = nowPlaying?.songs ? Math.max(dur - progress, 0) : 0;
+  // queue dizisi zaten çalma sırasında (priority, position); idx'ten önceki tüm şarkılar bu şarkıdan önce çalar
+  const getRowWaitMs = (idx: number) =>
+    remainingMs + queue.slice(0, idx).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0);
 
-  // queue dizisi zaten çalma sırasında (priority, position); idx'ten önceki tüm şarkılar (auto-fill dahil) bu şarkıdan önce çalar
-  const getWaitMs = (idx: number) => {
-    const queueMs = queue.slice(0, idx).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0);
-    return remainingCurrentMs + queueMs;
-  };
-
-  const getWaitMinutes = (idx: number) => Math.ceil(getWaitMs(idx) / 60000);
-
-  // Auto-fill şarkıları (position >= 9000) bekleme süresine dahil edilmez — manuel şarkılar onların önüne geçer
-  const manualQueue = queue.filter((e) => e.position < 9000);
-  const waitNormalMs = remainingCurrentMs + manualQueue.reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0);
-  const waitPriorityMs = remainingCurrentMs + manualQueue.filter((e) => e.priority).reduce((sum, e) => sum + (e.songs?.duration_ms ?? 0), 0);
-  const waitNormalMin = Math.ceil(waitNormalMs / 60000);
-  const waitPriorityMin = Math.ceil(waitPriorityMs / 60000);
+  const waitNormalMs = waitMs(remainingMs, waitEntries, false);
+  const waitPriorityMs = waitMs(remainingMs, waitEntries, true);
 
   return (
     <div className="min-h-screen bg-[#0f0a18]">
@@ -176,7 +184,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
             </svg>
             <div>
               <p className="text-[#6b7280] text-[10px]">Normal Bekleme</p>
-              <p className="text-white font-bold text-sm">~{waitNormalMin} dk</p>
+              <p className="text-white font-bold text-sm">{formatWait(waitNormalMs)}</p>
             </div>
           </div>
           <div className="flex-1 flex items-center gap-3 px-4 py-3">
@@ -185,7 +193,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
             </svg>
             <div>
               <p className="text-[#6b7280] text-[10px]">Öncelikli Bekleme</p>
-              <p className="font-bold text-sm" style={{ color: "#e91e8c" }}>~{waitPriorityMin} dk</p>
+              <p className="font-bold text-sm" style={{ color: "#e91e8c" }}>{formatWait(waitPriorityMs)}</p>
             </div>
           </div>
         </div>
@@ -251,7 +259,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
               <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${progressPct}%`, background: "linear-gradient(90deg, #e91e8c, #8b5cf6)" }} />
             </div>
             <div className="flex justify-between">
-              <span className="text-[#6b7280] text-xs">{formatTime(progress)}</span>
+              <span className="text-[#6b7280] text-xs">{formatTime(progressMs)}</span>
               <span className="text-[#6b7280] text-xs">{formatTime(dur === 1 ? 0 : dur)}</span>
             </div>
           </div>
@@ -300,7 +308,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                   {item.priority && (
                     <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>Önce</span>
                   )}
-                  <span className="text-xs font-bold" style={{ color: item.priority ? "#e91e8c" : "#9ca3af" }}>~{getWaitMinutes(idx)} dk</span>
+                  <span className="text-xs font-bold" style={{ color: item.priority ? "#e91e8c" : "#9ca3af" }}>{formatWait(getRowWaitMs(idx))}</span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -312,7 +320,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                         priority: item.priority,
                         tokens_spent: item.tokens_spent,
                         added_by: item.added_by,
-                        wait_minutes: getWaitMinutes(idx),
+                        wait_ms: getRowWaitMs(idx),
                       });
                     }}
                     className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10"

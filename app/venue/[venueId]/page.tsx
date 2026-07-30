@@ -37,6 +37,7 @@ function AuthPageContent({ params }: Props) {
   const [info, setInfo] = useState("");
   const [showResend, setShowResend] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const [existingUser, setExistingUser] = useState<{ name: string } | null>(null);
   const [continueLoading, setContinueLoading] = useState(false);
 
@@ -112,6 +113,41 @@ function AuthPageContent({ params }: Props) {
     }
     setShowResend(false);
     setInfo(`${email} adresine yeni bir onay e-postası gönderildi. Lütfen gelen kutunuzu kontrol edin.`);
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setInfo("");
+      setShowResend(false);
+      setError("Şifreni sıfırlamak için önce e-posta adresini yaz.");
+      return;
+    }
+    setResetLoading(true);
+    setError("");
+    setInfo("");
+    setShowResend(false);
+    const supabase = createClient();
+    // PKCE yönlendirmesi redirectTo'nun sorgu kısmını ezip venueId'yi düşürebiliyor;
+    // /auth/reset mekanı bu çerezden de okuyabilsin (Google akışındaki desenin aynısı)
+    document.cookie = `pmj_reset_venue=${venueId}; path=/; max-age=3600; samesite=lax`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/auth/reset?venueId=${venueId}`,
+    });
+    setResetLoading(false);
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("429")) {
+        setError("Çok fazla deneme yapıldı. Lütfen birkaç saniye bekleyip tekrar deneyin.");
+      } else {
+        setError("Sıfırlama e-postası gönderilemedi. Lütfen tekrar deneyin.");
+      }
+      return;
+    }
+    // Kayıtlı olmayan adres için de aynı mesaj: hangi e-postaların kayıtlı
+    // olduğu dışarıdan anlaşılmasın.
+    setInfo(
+      `${email.trim()} adresi kayıtlıysa şifre sıfırlama bağlantısı gönderildi. Bağlantıyı bu cihazda açman gerekiyor.`
+    );
   };
 
   const handleSubmit = async () => {
@@ -308,6 +344,15 @@ function AuthPageContent({ params }: Props) {
           <div>
             <div className="flex justify-between items-center mb-1.5">
               <label className="text-xs text-[#9ca3af]">Şifre</label>
+              {isLogin && (
+                <button
+                  onClick={handleForgotPassword}
+                  disabled={resetLoading || loading || googleLoading}
+                  className="text-xs text-[#e91e8c] font-semibold disabled:opacity-50"
+                >
+                  {resetLoading ? "Gönderiliyor..." : "Şifremi unuttum"}
+                </button>
+              )}
             </div>
             <div className="relative">
               <div className="absolute left-3 top-1/2 -translate-y-1/2">

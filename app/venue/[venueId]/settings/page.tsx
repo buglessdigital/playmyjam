@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   getNotifPref,
@@ -33,8 +33,11 @@ const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) =
   </button>
 );
 
+const DELETE_CONFIRM_PHRASE = "HESABIMI SİL";
+
 export default function SettingsPage() {
   const router = useRouter();
+  const venueId = String(useParams()?.venueId ?? "");
   const notifNearby = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("nearby"), () => true);
   const notifQueue = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("queue"), () => false);
   const notifPush = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("push"), () => false);
@@ -78,6 +81,27 @@ export default function SettingsPage() {
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Google ile açılmış hesapta şifre yoktur; o durumda mevcut şifre sorulmaz
+  const [hasPassword, setHasPassword] = useState(true);
+
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordInfo, setPasswordInfo] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [emailInfo, setEmailInfo] = useState("");
+  const [emailSaving, setEmailSaving] = useState(false);
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
   useEffect(() => {
     const load = async () => {
       const supabase = createClient();
@@ -86,6 +110,7 @@ export default function SettingsPage() {
       const user = sessionData.session?.user;
       if (!user) return;
       setEmail(user.email ?? "");
+      setHasPassword((user.app_metadata?.providers ?? []).includes("email"));
       const { data: profile } = await supabase.from("profiles").select("username").eq("id", user.id).single();
       setName(profile?.username ?? user.email?.split("@")[0] ?? "");
     };
@@ -102,7 +127,9 @@ export default function SettingsPage() {
       const { data: sessionData } = await supabase.auth.getSession();
       const user = sessionData.session?.user;
       if (!user) return;
-      const { error } = await supabase.from("profiles").update({ username }).eq("id", user.id);
+      // upsert: profil satırı herhangi bir nedenle yoksa update sessizce 0 satır
+      // günceller ve kullanıcı kaydettiğini sanır
+      const { error } = await supabase.from("profiles").upsert({ id: user.id, username });
       if (error) {
         setSaveError("Kaydedilemedi, tekrar deneyin");
         return;
@@ -111,6 +138,129 @@ export default function SettingsPage() {
       setShowUpdateModal(false);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const savePassword = async () => {
+    if (passwordSaving) return;
+    setPasswordError("");
+    setPasswordInfo("");
+    if (newPassword.length < 6) {
+      setPasswordError("Yeni şifre en az 6 karakter olmalı.");
+      return;
+    }
+    if (hasPassword && !currentPassword) {
+      setPasswordError("Mevcut şifreni gir.");
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      const supabase = createClient();
+
+      // Supabase şifre değişiminde mevcut şifreyi sormaz; açık kalmış bir cihazda
+      // hesabın ele geçirilmemesi için doğrulamayı biz yapıyoruz.
+      if (hasPassword) {
+        const { error } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
+        if (error) {
+          setPasswordError("Mevcut şifre hatalı.");
+          return;
+        }
+      }
+
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes("should be different") || msg.includes("same as the")) {
+          setPasswordError("Yeni şifre eskisiyle aynı olamaz.");
+        } else if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("429")) {
+          setPasswordError("Çok fazla deneme yapıldı. Birkaç saniye bekleyip tekrar dene.");
+        } else {
+          setPasswordError("Şifre güncellenemedi. Lütfen tekrar dene.");
+        }
+        return;
+      }
+
+      setHasPassword(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setShowPasswordModal(false);
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const saveEmail = async () => {
+    if (emailSaving) return;
+    const target = newEmail.trim();
+    setEmailError("");
+    setEmailInfo("");
+    if (!target || !target.includes("@")) {
+      setEmailError("Geçerli bir e-posta adresi gir.");
+      return;
+    }
+    if (target.toLowerCase() === email.toLowerCase()) {
+      setEmailError("Bu zaten mevcut adresin.");
+      return;
+    }
+
+    setEmailSaving(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.updateUser(
+        { email: target },
+        { emailRedirectTo: `${window.location.origin}/auth/confirm?next=/venue/${venueId}/settings` }
+      );
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes("already") || msg.includes("registered")) {
+          setEmailError("Bu e-posta adresi başka bir hesapta kayıtlı.");
+        } else if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("429")) {
+          setEmailError("Çok fazla deneme yapıldı. Birkaç saniye bekleyip tekrar dene.");
+        } else {
+          setEmailError("E-posta güncellenemedi. Lütfen tekrar dene.");
+        }
+        return;
+      }
+      // Güvenli e-posta değişimi açıkken hem eski hem yeni adrese onay gider
+      setEmailInfo(
+        `Onay bağlantısı gönderildi. Hem ${email} hem ${target} adresindeki bağlantılara tıkladığında adresin değişecek.`
+      );
+      setNewEmail("");
+    } finally {
+      setEmailSaving(false);
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (deleting) return;
+    setDeleteError("");
+    if (deleteConfirm.trim().toLocaleUpperCase("tr") !== DELETE_CONFIRM_PHRASE) {
+      setDeleteError(`Onaylamak için "${DELETE_CONFIRM_PHRASE}" yaz.`);
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/account", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: DELETE_CONFIRM_PHRASE }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setDeleteError(data?.error ?? "Hesap silinemedi. Lütfen tekrar dene.");
+        setDeleting(false);
+        return;
+      }
+      // Hesap gitti; mekan çerezini ve yerel oturumu da temizle
+      const supabase = createClient();
+      await fetch(`/api/venue/${venueId}/auth`, { method: "DELETE" }).catch(() => null);
+      await supabase.auth.signOut().catch(() => null);
+      router.replace("/");
+    } catch {
+      setDeleteError("Hesap silinemedi. Lütfen tekrar dene.");
+      setDeleting(false);
     }
   };
 
@@ -174,9 +324,58 @@ export default function SettingsPage() {
         <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
           <button
             onClick={() => { setEditName(name); setSaveError(""); setShowUpdateModal(true); }}
-            className="w-full flex items-center justify-between px-4 py-4 hover:bg-white/5 transition-colors"
+            className="w-full flex items-center justify-between px-4 py-4 border-b border-white/5 hover:bg-white/5 transition-colors"
           >
             <span className="text-white text-sm font-medium">Bilgileri Güncelle</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+          <button
+            onClick={() => {
+              setCurrentPassword(""); setNewPassword("");
+              setPasswordError(""); setPasswordInfo(""); setShowPasswordModal(true);
+            }}
+            className="w-full flex items-center justify-between px-4 py-4 border-b border-white/5 hover:bg-white/5 transition-colors"
+          >
+            <div className="text-left">
+              <p className="text-white text-sm font-medium">
+                {hasPassword ? "Şifre Değiştir" : "Şifre Belirle"}
+              </p>
+              {!hasPassword && (
+                <p className="text-[#6b7280] text-xs mt-0.5">
+                  Google ile giriyorsun; şifre belirlersen e-postayla da girebilirsin
+                </p>
+              )}
+            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+          <button
+            onClick={() => { setNewEmail(""); setEmailError(""); setEmailInfo(""); setShowEmailModal(true); }}
+            className="w-full flex items-center justify-between px-4 py-4 hover:bg-white/5 transition-colors"
+          >
+            <span className="text-white text-sm font-medium">E-posta Değiştir</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Hesabı sil */}
+      <div className="px-5 mb-4">
+        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">TEHLİKELİ BÖLGE</h2>
+        <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
+          <button
+            onClick={() => { setDeleteConfirm(""); setDeleteError(""); setShowDeleteModal(true); }}
+            className="w-full flex items-center justify-between px-4 py-4 hover:bg-white/5 transition-colors"
+          >
+            <div className="text-left">
+              <p className="text-red-400 text-sm font-medium">Hesabımı Sil</p>
+              <p className="text-[#6b7280] text-xs mt-0.5">Hesabın ve verilerin kalıcı olarak silinir</p>
+            </div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" />
             </svg>
@@ -215,7 +414,9 @@ export default function SettingsPage() {
                   readOnly
                   className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-[#6b7280] text-sm focus:outline-none"
                 />
-                <p className="text-[#4b5563] text-xs mt-1">E-posta adresi değiştirilemez.</p>
+                <p className="text-[#4b5563] text-xs mt-1">
+                  E-postanı değiştirmek için &quot;E-posta Değiştir&quot;i kullan.
+                </p>
               </div>
             </div>
             <div className="flex gap-3">
@@ -232,6 +433,145 @@ export default function SettingsPage() {
                 style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
               >
                 {saving ? "Kaydediliyor..." : "Kaydet"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Şifre Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
+          <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "#1a0e2a" }}>
+            <h2 className="text-white font-bold text-lg mb-5">
+              {hasPassword ? "Şifre Değiştir" : "Şifre Belirle"}
+            </h2>
+            {passwordError && <p className="text-red-400 text-sm mb-3">{passwordError}</p>}
+            {passwordInfo && <p className="text-emerald-400 text-sm mb-3">{passwordInfo}</p>}
+            <div className="space-y-3 mb-5">
+              {hasPassword && (
+                <div>
+                  <label className="text-[#6b7280] text-xs mb-1 block">Mevcut şifre</label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    autoComplete="current-password"
+                    className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-[#e91e8c]/40"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="text-[#6b7280] text-xs mb-1 block">Yeni şifre</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && savePassword()}
+                  autoComplete="new-password"
+                  className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-[#e91e8c]/40"
+                />
+                <p className="text-[#4b5563] text-xs mt-1">En az 6 karakter.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPasswordModal(false)}
+                className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm"
+              >
+                İptal
+              </button>
+              <button
+                onClick={savePassword}
+                disabled={passwordSaving || !newPassword}
+                className="flex-1 py-3 rounded-xl font-bold text-white text-sm disabled:opacity-60"
+                style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
+              >
+                {passwordSaving ? "Kaydediliyor..." : "Kaydet"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* E-posta Modal */}
+      {showEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
+          <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "#1a0e2a" }}>
+            <h2 className="text-white font-bold text-lg mb-1">E-posta Değiştir</h2>
+            <p className="text-[#6b7280] text-xs mb-5">Mevcut adresin: {email}</p>
+            {emailError && <p className="text-red-400 text-sm mb-3">{emailError}</p>}
+            {emailInfo && <p className="text-emerald-400 text-sm mb-3">{emailInfo}</p>}
+            <div className="mb-5">
+              <label className="text-[#6b7280] text-xs mb-1 block">Yeni e-posta</label>
+              <input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveEmail()}
+                placeholder="yeni@ornek.com"
+                className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white text-sm placeholder-[#4b5563] focus:outline-none focus:border-[#e91e8c]/40"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowEmailModal(false)}
+                className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm"
+              >
+                {emailInfo ? "Kapat" : "İptal"}
+              </button>
+              <button
+                onClick={saveEmail}
+                disabled={emailSaving || !newEmail.trim()}
+                className="flex-1 py-3 rounded-xl font-bold text-white text-sm disabled:opacity-60"
+                style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
+              >
+                {emailSaving ? "Gönderiliyor..." : "Onay Gönder"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hesap Silme Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
+          <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "#1a0e2a" }}>
+            <h2 className="text-white font-bold text-lg mb-2">Hesabını sil</h2>
+            <p className="text-[#9ca3af] text-sm mb-3 leading-relaxed">
+              Profilin, jeton bakiyen, favorilerin ve şarkı isteklerin kalıcı olarak silinir.
+              Bu işlem geri alınamaz.
+            </p>
+            <p className="text-[#6b7280] text-xs mb-5 leading-relaxed">
+              Satın alma kayıtların yasal saklama yükümlülüğü nedeniyle muhasebe kaydı olarak
+              korunur, ancak hesabınla bağlantısı kesilir.
+            </p>
+            {deleteError && <p className="text-red-400 text-sm mb-3">{deleteError}</p>}
+            <div className="mb-5">
+              <label className="text-[#6b7280] text-xs mb-1 block">
+                Onaylamak için <span className="text-white font-semibold">{DELETE_CONFIRM_PHRASE}</span> yaz
+              </label>
+              <input
+                type="text"
+                value={deleteConfirm}
+                onChange={(e) => setDeleteConfirm(e.target.value)}
+                className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-red-500/40"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm disabled:opacity-60"
+              >
+                Vazgeç
+              </button>
+              <button
+                onClick={deleteAccount}
+                disabled={deleting || !deleteConfirm.trim()}
+                className="flex-1 py-3 rounded-xl font-bold text-white text-sm bg-red-600 disabled:opacity-60"
+              >
+                {deleting ? "Siliniyor..." : "Kalıcı Olarak Sil"}
               </button>
             </div>
           </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { parseSongInput } from "@/lib/validate";
+import { hasVenueSession } from "@/lib/venue-auth-cookie";
 
 export async function POST(
   req: NextRequest,
@@ -16,6 +17,11 @@ export async function POST(
 
   if (!userId) {
     return NextResponse.json({ error: "Giriş yapmalısın" }, { status: 401 });
+  }
+
+  // Oturum açık olmak yetmez: bu mekanın giriş ekranından geçilmiş olmalı
+  if (!hasVenueSession(req, venueId, userId)) {
+    return NextResponse.json({ error: "Bu mekana giriş yapmalısın" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { getAdminSession, getSuperSession } from "@/lib/session";
+import { getSuperSession } from "@/lib/session";
+import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { setVenueAuthCookie, venueAuthCookieName } from "@/lib/venue-auth-cookie";
 
 // getClaims: JWT imzasını yerelde doğrular (asimetrik anahtarla) — her istekte
@@ -62,8 +63,8 @@ export async function proxy(req: NextRequest) {
       return NextResponse.next();
     }
 
-    // Session imzalı ve bu venue'ya ait olmalı
-    const session = getAdminSession(req);
+    // Session imzalı, iptal edilmemiş ve bu venue'ya ait olmalı
+    const session = await getVerifiedAdminSession(req);
     if (!session || session.venue_slug !== venueId) {
       return NextResponse.redirect(new URL(`/admin/${venueId}/login`, req.url));
     }
@@ -84,6 +85,18 @@ export async function proxy(req: NextRequest) {
     // Cross-venue otomatik yönlendirme yok: A mekanı kullanıcısı B'nin login'inde formu görür.
     const venueAuthCookie = req.cookies.get(venueAuthCookieName(venueId));
     if (!userId || venueAuthCookie?.value !== userId) {
+      // E-posta onay/kurtarma linki korumalı bir sayfaya inebilir: varsayılan
+      // {{ .ConfirmationURL }} şablonu emailRedirectTo'ya ?code= ekleyerek döner.
+      // Login'e yönlendirirsek token düşer ve kullanıcı sessizce sıkışır —
+      // parametreleri koruyarak /auth/confirm'e taşı.
+      const params = req.nextUrl.searchParams;
+      if (params.get("token_hash") || params.get("code")) {
+        const confirmUrl = new URL("/auth/confirm", req.url);
+        params.forEach((value, key) => confirmUrl.searchParams.set(key, value));
+        // Token'ı bir sonraki adrese taşımadan yalnızca hedef yolu geçir
+        confirmUrl.searchParams.set("next", pathname);
+        return redirectWithCookies(confirmUrl, response);
+      }
       if (isLoginPage) {
         return response;
       }

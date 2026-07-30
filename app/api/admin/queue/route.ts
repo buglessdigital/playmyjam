@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getAdminSession } from "@/lib/session";
+import { getVerifiedAdminSession } from "@/lib/admin-session";
 
 export async function PATCH(req: NextRequest) {
-  const session = getAdminSession(req);
+  const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
   }

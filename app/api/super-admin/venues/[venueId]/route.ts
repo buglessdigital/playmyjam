@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import bcrypt from "bcryptjs";
 import { getSuperSession } from "@/lib/session";
+import { revokeAdminSessions } from "@/lib/admin-session";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ venueId: string }> }) {
   if (!getSuperSession(req)) {
@@ -69,6 +70,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ve
     }
     const hash = await bcrypt.hash(adminPassword, 10);
     await supabaseAdmin.from("venue_admins").update({ password_hash: hash }).eq("venue_id", venue.id);
+    // Şifre değişti: o mekanın adminine ait açık tüm oturumlar düşsün
+    await revokeAdminSessions(venue.id);
   }
 
   return NextResponse.json({ ok: true });

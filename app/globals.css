@@ -88,6 +88,20 @@ body {
   animation: eq-bar 1.1s ease-in-out infinite;
 }
 
+/* Player (TV) ekranı: canlı noktası + video sahnesi oranı */
+@keyframes live-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+@media (min-width: 1024px) {
+  .player-stage {
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    aspect-ratio: 16 / 9;
+  }
+}
+
 /* Landing: SSS akordeon oku */
 details.faq-item summary::-webkit-details-marker {
   display: none;

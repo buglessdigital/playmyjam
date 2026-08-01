@@ -10,7 +10,7 @@ export default function PrivacyPage() {
       tr={
         <main className="max-w-3xl mx-auto px-6 pb-16 pt-6 text-white">
           <h1 className="text-3xl font-bold mb-2">Gizlilik Politikası</h1>
-          <p className="text-gray-400 mb-10 text-sm">Son güncelleme: 15 Temmuz 2026</p>
+          <p className="text-gray-400 mb-10 text-sm">Son güncelleme: 30 Temmuz 2026</p>
 
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-3">1. Giriş</h2>
@@ -26,12 +26,24 @@ export default function PrivacyPage() {
             <h2 className="text-xl font-semibold mb-3">2. Topladığımız Bilgiler</h2>
             <ul className="text-gray-300 leading-relaxed list-disc list-inside space-y-2">
               <li>
-                <strong>Şarkı istekleri:</strong> Misafirlerin gönderdiği istek verileri (şarkı adı,
+                <strong>Hesap verileri:</strong> E-posta adresiniz, kullanıcı adınız, jeton bakiyeniz
+                ve jeton işlem geçmişiniz saklanır. Google ile giriş yaptığınızda Google&apos;dan
+                yalnızca e-posta adresiniz ve adınız alınır; şifreniz veya diğer Google hesap
+                bilgileriniz tarafımıza iletilmez.
+              </li>
+              <li>
+                <strong>Şarkı istekleri:</strong> Gönderdiğiniz istek ve favori verileri (şarkı adı,
                 sanatçı, YouTube video kimliği) saklanır.
               </li>
               <li>
-                <strong>Hesap verileri:</strong> Misafir hesaplarında kullanıcı adı ve jeton
-                bakiyesi tutulur. YouTube/Google hesap bilgileriniz istenmez ve saklanmaz.
+                <strong>Ödeme ve fatura bilgileri:</strong> Jeton satın alırken ad, soyad, şehir ve
+                mevzuat gereği T.C. kimlik numarası alınır. Kart bilgileriniz hiçbir aşamada
+                tarafımızca görülmez veya saklanmaz; ödeme lisanslı ödeme kuruluşu üzerinden alınır.
+              </li>
+              <li>
+                <strong>Bildirim aboneliği:</strong> Bildirimlere izin verdiğinizde tarayıcınızın
+                oluşturduğu abonelik adresi saklanır; bu adres kimliğinizi içermez ve yalnızca size
+                bildirim göndermek için kullanılır.
               </li>
               <li>
                 <strong>Kullanım verileri:</strong> Platformu iyileştirmek için anonimleştirilmiş
@@ -81,14 +93,40 @@ export default function PrivacyPage() {
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-3">5. Veri Saklama</h2>
             <p className="text-gray-300 leading-relaxed">
-              Şarkı isteği geçmişi operasyonel amaçlarla en fazla 30 gün saklanabilir. Arama
-              sorguları API kullanımını azaltmak için en fazla 30 gün önbelleğe alınır ve bireysel
-              kullanıcılarla ilişkilendirilmez.
+              Hesap verileriniz, hesabınız açık olduğu sürece saklanır. Şarkı isteği geçmişi
+              operasyonel amaçlarla en fazla 30 gün saklanabilir. Arama sorguları API kullanımını
+              azaltmak için en fazla 30 gün önbelleğe alınır ve bireysel kullanıcılarla
+              ilişkilendirilmez. Jeton satın alımlarına ilişkin ödeme ve fatura kayıtları, Vergi Usul
+              Kanunu&apos;ndan doğan yükümlülük gereği hesabınızı silseniz dahi yasal saklama süresi
+              boyunca muhafaza edilir; bu kayıtlar hesabınızla bağlantısı kesilerek tutulur.
             </p>
           </section>
 
           <section className="mb-8">
-            <h2 className="text-xl font-semibold mb-3">6. Veri Güvenliği</h2>
+            <h2 className="text-xl font-semibold mb-3">6. Haklarınız ve Hesabınızın Silinmesi</h2>
+            <p className="text-gray-300 leading-relaxed mb-3">
+              6698 sayılı Kişisel Verilerin Korunması Kanunu&apos;nun 11. maddesi uyarınca; kişisel
+              verilerinizin işlenip işlenmediğini öğrenme, işlenmişse buna ilişkin bilgi talep etme,
+              işlenme amacını öğrenme, verilerinizin düzeltilmesini, silinmesini veya yok edilmesini
+              isteme ve işlemenin kanuna aykırı olması hâlinde zararınızın giderilmesini talep etme
+              haklarına sahipsiniz.
+            </p>
+            <p className="text-gray-300 leading-relaxed mb-3">
+              Hesabınızı dilediğiniz zaman <strong>Ayarlar → Hesabımı Sil</strong> adımlarıyla
+              kendiniz silebilirsiniz. İşlem geri alınamaz; profiliniz, kullanıcı adınız, jeton
+              bakiyeniz ve işlem geçmişiniz, şarkı istekleriniz, favorileriniz, bildirim aboneliğiniz
+              ve giriş bilgileriniz kalıcı olarak kaldırılır. Kullanılmamış jeton bakiyeniz de bu
+              işlemle silinir; silme talebinden önce bakiyenizi kullanmanızı öneririz. Yalnızca
+              yukarıda belirtilen ödeme ve fatura kayıtları, yasal yükümlülük gereği hesabınızdan
+              koparılarak saklanmaya devam eder.
+            </p>
+            <p className="text-gray-300 leading-relaxed">
+              Taleplerinizi aşağıdaki iletişim bilgilerinden bize iletebilirsiniz.
+            </p>
+          </section>
+
+          <section className="mb-8">
+            <h2 className="text-xl font-semibold mb-3">7. Veri Güvenliği</h2>
             <p className="text-gray-300 leading-relaxed">
               Şifreli depolama ve güvenli HTTPS (SSL) bağlantıları dahil olmak üzere endüstri
               standardı güvenlik önlemleri kullanıyoruz.
@@ -96,7 +134,7 @@ export default function PrivacyPage() {
           </section>
 
           <section className="mb-8">
-            <h2 className="text-xl font-semibold mb-3">7. İletişim</h2>
+            <h2 className="text-xl font-semibold mb-3">8. İletişim</h2>
             <p className="text-gray-300 leading-relaxed">
               Gizlilikle ilgili sorularınız için: {COMPANY.legalName},{" "}
               <a href={`mailto:${COMPANY.email}`} className="text-purple-400 underline">
@@ -110,7 +148,7 @@ export default function PrivacyPage() {
       en={
         <main className="max-w-3xl mx-auto px-6 pb-16 pt-6 text-white">
           <h1 className="text-3xl font-bold mb-2">Privacy Policy</h1>
-          <p className="text-gray-400 mb-10 text-sm">Last updated: July 15, 2026</p>
+          <p className="text-gray-400 mb-10 text-sm">Last updated: July 30, 2026</p>
 
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-3">1. Introduction</h2>
@@ -126,12 +164,25 @@ export default function PrivacyPage() {
             <h2 className="text-xl font-semibold mb-3">2. Information We Collect</h2>
             <ul className="text-gray-300 leading-relaxed list-disc list-inside space-y-2">
               <li>
-                <strong>Song requests:</strong> We store song request data (track name, artist,
-                YouTube video ID) submitted by venue guests.
+                <strong>Account data:</strong> We store your email address, username, token balance
+                and token transaction history. When you sign in with Google we receive only your
+                email address and name; your password and other Google account credentials are never
+                shared with us.
               </li>
               <li>
-                <strong>Account data:</strong> Guest accounts store a username and token balance.
-                We do not require or store any YouTube/Google account credentials.
+                <strong>Song requests:</strong> We store the song requests and favourites you submit
+                (track name, artist, YouTube video ID).
+              </li>
+              <li>
+                <strong>Payment and invoicing data:</strong> When you purchase tokens we collect your
+                first name, surname, city and — as required by Turkish law — your national ID number.
+                We never see or store your card details; payments are handled by a licensed payment
+                provider.
+              </li>
+              <li>
+                <strong>Notification subscription:</strong> If you allow notifications, we store the
+                subscription endpoint generated by your browser. It contains no identifying
+                information and is used solely to deliver notifications to you.
               </li>
               <li>
                 <strong>Usage data:</strong> We may collect anonymized usage statistics to improve
@@ -180,14 +231,39 @@ export default function PrivacyPage() {
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-3">5. Data Retention</h2>
             <p className="text-gray-300 leading-relaxed">
-              Song request history may be retained for up to 30 days for operational purposes.
-              Search queries are cached for up to 30 days to reduce API usage; they are not linked
-              to individual users.
+              Your account data is retained for as long as your account exists. Song request history
+              may be retained for up to 30 days for operational purposes. Search queries are cached
+              for up to 30 days to reduce API usage; they are not linked to individual users. Payment
+              and invoicing records for token purchases are retained for the statutory period
+              required by Turkish tax law even if you delete your account; those records are kept
+              detached from your account.
             </p>
           </section>
 
           <section className="mb-8">
-            <h2 className="text-xl font-semibold mb-3">6. Data Security</h2>
+            <h2 className="text-xl font-semibold mb-3">6. Your Rights and Account Deletion</h2>
+            <p className="text-gray-300 leading-relaxed mb-3">
+              Under Article 11 of Turkish Personal Data Protection Law No. 6698 (KVKK) you have the
+              right to learn whether your personal data is being processed, to request information
+              about such processing and its purpose, to request correction, deletion or destruction of
+              your data, and to seek compensation for damages arising from unlawful processing.
+            </p>
+            <p className="text-gray-300 leading-relaxed mb-3">
+              You can delete your account yourself at any time via{" "}
+              <strong>Settings → Delete My Account</strong>. The action cannot be undone: your
+              profile, username, token balance and transaction history, song requests, favourites,
+              notification subscription and login credentials are permanently removed. Any unused
+              token balance is deleted as well, so we recommend spending your balance before
+              requesting deletion. Only the payment and invoicing records described above continue to
+              be stored, detached from your account, as required by law.
+            </p>
+            <p className="text-gray-300 leading-relaxed">
+              You can submit any such request using the contact details below.
+            </p>
+          </section>
+
+          <section className="mb-8">
+            <h2 className="text-xl font-semibold mb-3">7. Data Security</h2>
             <p className="text-gray-300 leading-relaxed">
               We use industry-standard security measures including encrypted storage and secure
               HTTPS connections.
@@ -195,7 +271,7 @@ export default function PrivacyPage() {
           </section>
 
           <section className="mb-8">
-            <h2 className="text-xl font-semibold mb-3">7. Contact</h2>
+            <h2 className="text-xl font-semibold mb-3">8. Contact</h2>
             <p className="text-gray-300 leading-relaxed">
               For privacy-related inquiries, contact us at: {COMPANY.legalName},{" "}
               <a href={`mailto:${COMPANY.email}`} className="text-purple-400 underline">

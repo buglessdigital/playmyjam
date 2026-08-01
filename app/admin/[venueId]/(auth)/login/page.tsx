@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, use, Suspense } from "react";
-import { useRouter } from "next/navigation";
 
 interface Props {
   params: Promise<{ venueId: string }>;
@@ -17,7 +16,6 @@ export default function AdminLoginPage({ params }: Props) {
 
 function AdminLoginForm({ params }: Props) {
   const { venueId } = use(params);
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -40,12 +38,14 @@ function AdminLoginForm({ params }: Props) {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Giriş başarısız");
+        setLoading(false);
         return;
       }
-      router.push(`/admin/${venueId}`);
+      // Tam gezinme: erişimi proxy çerezten karar veriyor, router cache'inde ise
+      // giriş öncesinden kalan "/admin/[venueId] → login" yönlendirmesi durabiliyor
+      window.location.replace(`/admin/${venueId}`);
     } catch {
       setError("Bağlantı hatası, tekrar deneyin");
-    } finally {
       setLoading(false);
     }
   };

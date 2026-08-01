@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAnimatedNumber } from "@/lib/use-animated-number";
@@ -20,7 +19,6 @@ interface Props {
 }
 
 export default function ProfileClient({ venueId, venueDbId }: Props) {
-  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
   const [loaded, setLoaded] = useState(false);
@@ -64,7 +62,9 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
   const handleLogout = async () => {
     await fetch(`/api/venue/${venueId}/auth`, { method: "DELETE" });
     await supabase.auth.signOut();
-    router.push(`/venue/${venueId}`);
+    // Çıkıştan sonra da mekan gezilebilir — kuyruğa dön, giriş ekranına değil.
+    // Tam gezinme: client router cache'inde hesaplıyken üretilmiş kayıtlar kalıyor.
+    window.location.replace(`/venue/${venueId}/queue`);
   };
 
   const initial = username.charAt(0).toUpperCase() || "?";

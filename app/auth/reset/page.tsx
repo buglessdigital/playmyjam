@@ -175,12 +175,14 @@ function ResetPasswordContent() {
     clearResetVenueCookie();
     if (venueId) {
       await fetch(`/api/venue/${venueId}/auth`, { method: "POST" }).catch(() => null);
-      router.replace(`/venue/${venueId}/queue`);
+      // Tam gezinme: client router cache'inde giriş öncesinden kalan
+      // "/queue → login" yönlendirmesi yumuşak geçişi sessizce yutabiliyor
+      window.location.replace(`/venue/${venueId}/queue`);
       return;
     }
     setSaving(false);
     setPhase("done");
-  }, [confirmPassword, password, router, saving, venueId]);
+  }, [confirmPassword, password, saving, venueId]);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0f0a18] max-w-md mx-auto px-6 pt-16 pb-10">
@@ -198,7 +200,7 @@ function ResetPasswordContent() {
           <h1 className="text-2xl font-bold text-white mb-2">Bağlantı kullanılamadı</h1>
           <p className="text-sm text-[#9ca3af] mb-6">{invalidReason}</p>
           <button
-            onClick={() => router.replace(venueId ? `/venue/${venueId}` : "/")}
+            onClick={() => router.replace(venueId ? `/venue/${venueId}/login` : "/")}
             className="w-full py-3.5 rounded-2xl font-bold text-white text-base transition-all active:scale-95"
             style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
           >

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { useNowPlayingClock, waitMs } from "@/lib/wait-time";
 import AddSongSheet from "@/components/browse/AddSongSheet";
 import NowPlayingBanner from "@/components/browse/NowPlayingBanner";
@@ -62,6 +63,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
+  const { isMember, requireAccount } = useVenueGate(venueId);
 
   useEffect(() => {
     // getSession reads from local cache — no network round-trip
@@ -124,7 +126,12 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
         supabase.rpc("get_browse_user_state", { p_venue_id: venueDbId }),
         supabase.from("now_playing").select("started_at, is_playing").eq("venue_id", venueDbId).maybeSingle(),
       ]);
-      if (cancelled || !data) return;
+      if (cancelled) return;
+      if (!data) {
+        // Hata durumunda eldeki veri korunur ama iskelet takılı kalmaz
+        setStateLoaded(true);
+        return;
+      }
       const state = data as unknown as BrowseUserState;
       const np2 = npRow as { started_at: string | null; is_playing: boolean } | null;
 
@@ -249,17 +256,25 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
   // Şansına bırak: cooldown'da/kuyrukta olmayan listeden rastgele bir şarkıyla sheet'i aç
   const luckyPick = useCallback(() => {
+    if (!requireAccount()) return;
     const eligible = venueSongs.filter((s) => s.in_venue_list && actionFor(s).kind === "add");
     if (eligible.length === 0) return;
     setSelectedSong(eligible[Math.floor(Math.random() * eligible.length)]);
-  }, [venueSongs, actionFor]);
+  }, [venueSongs, actionFor, requireAccount]);
 
   const openSong = useCallback(
     (song: DisplaySong) => router.push(`/venue/${venueId}/song/${song.youtube_video_id}`),
     [router, venueId]
   );
 
-  const openSheet = useCallback((song: DisplaySong) => setSelectedSong(song), []);
+  // Sıraya ekleme, istek, favori ve jeton hesaba bağlı — misafir giriş ekranına gider
+  const openSheet = useCallback(
+    (song: DisplaySong) => {
+      if (!requireAccount()) return;
+      setSelectedSong(song);
+    },
+    [requireAccount]
+  );
 
   const handleAdd = async (priority: boolean) => {
     if (!selectedSong || !venueDbId || !selectedSong.id) return;
@@ -287,12 +302,17 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       setTokenBalance((b) => b + cost);
       setAddedIds((s) => { const n = new Set(s); n.delete(videoId); return n; });
       setQueuedSongIds((s) => { const n = new Set(s); n.delete(songId); return n; });
+      // Oturum bu arada düşmüş olabilir (çerez süresi/başka cihazdan çıkış)
+      if (res.status === 401 || res.status === 403) {
+        router.push(venueLoginPath(venueId, `/venue/${venueId}/browse`));
+      }
     }
     isAddingRef.current = false;
   };
 
   const handleRequest = useCallback(async (song: DisplaySong) => {
     if (!venueDbId) return;
+    if (!requireAccount()) return;
 
     // Optimistic update
     setRequestedIds((s) => new Set(s).add(song.youtube_video_id));
@@ -308,10 +328,11 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
         duration_ms: song.duration_ms,
       }),
     });
-  }, [venueDbId, venueId]);
+  }, [venueDbId, venueId, requireAccount]);
 
   const toggleFavorite = useCallback(async (song: DisplaySong) => {
     if (!song.id) return;
+    if (!requireAccount()) return;
     const userId = userIdRef.current;
     if (!userId) return;
 
@@ -324,7 +345,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       setFavoriteIds((s) => new Set(s).add(song.id!));
       await supabase.from("user_favorites").insert({ user_id: userId, song_id: song.id });
     }
-  }, [favoriteIds, supabase]);
+  }, [favoriteIds, supabase, requireAccount]);
 
   const waitNormalMs = useMemo(
     () => waitMs(remainingCurrentMs, queueEntries, false),
@@ -347,23 +368,34 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       <div className="sticky top-0 z-30 bg-[#0f0a18]/95 px-5 pb-3 pt-12 backdrop-blur-md">
         <div className="mb-3 flex items-center justify-between">
           <h1 className="text-xl font-bold text-white">Gözat</h1>
-          <Link
-            href={`/venue/${venueId}/tokens`}
-            className="flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-[#1a0e2a] px-3 transition-transform active:scale-95"
-            aria-label="Jeton bakiyen — jeton yükle"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fbbf24" strokeWidth="2" /><circle cx="12" cy="12" r="4" stroke="#fbbf24" strokeWidth="2" /></svg>
-            {stateLoaded ? (
-              <span className="text-sm font-bold text-white">{tokenBalance}</span>
-            ) : (
-              <span className="h-3.5 w-4 animate-pulse rounded bg-white/10" />
-            )}
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /></svg>
-          </Link>
+          {isMember ? (
+            <Link
+              href={`/venue/${venueId}/tokens`}
+              className="flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-[#1a0e2a] px-3 transition-transform active:scale-95"
+              aria-label="Jeton bakiyen — jeton yükle"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fbbf24" strokeWidth="2" /><circle cx="12" cy="12" r="4" stroke="#fbbf24" strokeWidth="2" /></svg>
+              {stateLoaded ? (
+                <span className="text-sm font-bold text-white">{tokenBalance}</span>
+              ) : (
+                <span className="h-3.5 w-4 animate-pulse rounded bg-white/10" />
+              )}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /></svg>
+            </Link>
+          ) : (
+            /* Misafirde bakiye yok — çip doğrudan giriş ekranına götürür */
+            <Link
+              href={venueLoginPath(venueId, `/venue/${venueId}/browse`)}
+              className="flex h-8 items-center gap-1.5 rounded-full border border-[#e91e8c]/40 bg-[#e91e8c]/15 px-3 transition-transform active:scale-95"
+            >
+              <span className="text-xs font-bold text-white">Giriş Yap</span>
+            </Link>
+          )}
         </div>
         <div className="flex gap-2">
+          {/* Arama ucu YouTube kotasını harcadığı için girişe bağlı (bkz. /api/search) */}
           <button
-            onClick={() => setSearchOpen(true)}
+            onClick={() => requireAccount() && setSearchOpen(true)}
             className="flex h-12 min-w-0 flex-1 items-center gap-3 rounded-2xl border border-white/10 bg-[#1a0e2a] px-4 text-left transition-transform active:scale-[0.98]"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#6b7280" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>

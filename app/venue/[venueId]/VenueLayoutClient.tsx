@@ -22,10 +22,10 @@ export default function VenueLayoutClient({ children, params }: Props) {
 }
 
 function VenueLayoutContent({ children, params }: Props) {
-  // Giriş sayfası "/venue/{venueId}" — alt segment yoksa params'ı beklemeden anlaşılır
   const pathname = usePathname();
   const { venueId } = use(params);
-  const isLoginPage = pathname === `/venue/${venueId}`;
+  // Giriş ekranında alt gezinme ve bildirim izleyici yok
+  const isLoginPage = pathname === `/venue/${venueId}/login`;
   const isQueuePage = pathname === `/venue/${venueId}/queue`;
 
   return (

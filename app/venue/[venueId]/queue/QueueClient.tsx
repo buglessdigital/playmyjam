@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import SongDetailModal, { type SongDetail } from "@/components/queue/SongDetailModal";
 import {
   fetchManualQueueEntries,
@@ -52,6 +53,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
 
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
+  const { isMember } = useVenueGate(venueId);
 
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000);
@@ -65,10 +67,13 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     // Sayfa gövdesi tek round-trip: now_playing + ilk 10 kuyruk (0006'daki RPC)
     const fetchState = async () => {
       const { data } = await supabase.rpc("get_queue_state", { p_venue_id: venueDbId });
-      if (cancelled || !data) return;
-      const state = data as unknown as QueueState;
-      setQueue(state.queue ?? []);
-      setNowPlaying(state.now_playing ?? null);
+      if (cancelled) return;
+      if (data) {
+        const state = data as unknown as QueueState;
+        setQueue(state.queue ?? []);
+        setNowPlaying(state.now_playing ?? null);
+      }
+      // Hata durumunda eldeki veri korunur ama iskelet takılı kalmaz
       setLoaded(true);
     };
 
@@ -173,6 +178,15 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     <div className="min-h-screen bg-[#0f0a18]">
       <div className="flex items-center justify-between px-5 pt-12 pb-4">
         <h1 className="text-white font-bold text-lg">{venueName || venueId}</h1>
+        {/* Kuyruk artık mekanın giriş sayfası — misafire görünür bir giriş kapısı kalsın */}
+        {!isMember && (
+          <Link
+            href={venueLoginPath(venueId, `/venue/${venueId}/queue`)}
+            className="flex h-8 items-center rounded-full border border-[#e91e8c]/40 bg-[#e91e8c]/15 px-3 text-xs font-bold text-white transition-transform active:scale-95"
+          >
+            Giriş Yap
+          </Link>
+        )}
       </div>
 
       <div className="mx-5 mb-4 rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>

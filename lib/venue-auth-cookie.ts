@@ -9,6 +9,15 @@ export function venueAuthCookieName(venueId: string) {
   return `venue_auth_${venueId}`;
 }
 
+// Yanındaki JS'ten okunabilir işaret çerezi. Asıl çerez httpOnly olduğu için
+// istemci "bu mekanda hesabım açık mı" sorusunu soramıyordu; kuyruk/gözat
+// sayfaları misafire de açık olduğundan hesap gerektiren butonların önceden
+// login'e yönlendirmesi gerekiyor. Yetkiyi hâlâ httpOnly çerez taşır — bu
+// yalnızca arayüz ipucu, sunucu tarafında hiçbir yerde güvenilmez.
+export function venueMemberCookieName(venueId: string) {
+  return `venue_member_${venueId}`;
+}
+
 // Path "/" olmalı: /api/venue/... rotaları da bu çerezi görmeli, yoksa sunucu
 // tarafında "kullanıcı gerçekten bu mekanda giriş yaptı mı" sorusu sorulamıyor.
 // Adı zaten mekana özel olduğu için path daraltmasına gerek yok.
@@ -26,6 +35,11 @@ export function setVenueAuthCookie(res: NextResponse, venueId: string, userId: s
     ...cookieOptions(),
     maxAge: VENUE_AUTH_MAX_AGE,
   });
+  res.cookies.set(venueMemberCookieName(venueId), "1", {
+    ...cookieOptions(),
+    httpOnly: false,
+    maxAge: VENUE_AUTH_MAX_AGE,
+  });
 }
 
 export function clearVenueAuthCookie(res: NextResponse, venueId: string) {
@@ -35,6 +49,17 @@ export function clearVenueAuthCookie(res: NextResponse, venueId: string) {
   res.cookies.set(name, "", {
     ...cookieOptions(),
     path: `/venue/${venueId}`,
+    maxAge: 0,
+  });
+  clearVenueMemberCookie(res, venueId);
+}
+
+// Yalnızca arayüz ipucunu düşür. Asıl çerez korunur: oturum anlık tazelenemediğinde
+// 180 günlük mekan erişimini silmek kullanıcıyı gereksiz yere dışarı atardı.
+export function clearVenueMemberCookie(res: NextResponse, venueId: string) {
+  res.cookies.set(venueMemberCookieName(venueId), "", {
+    ...cookieOptions(),
+    httpOnly: false,
     maxAge: 0,
   });
 }

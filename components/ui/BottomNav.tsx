@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useVenueGate } from "@/lib/venue-gate";
 
 interface BottomNavProps {
   venueId: string;
@@ -9,6 +10,7 @@ interface BottomNavProps {
 
 export default function BottomNav({ venueId }: BottomNavProps) {
   const pathname = usePathname();
+  const { requireAccount } = useVenueGate(venueId);
 
   const tabs = [
     {
@@ -40,6 +42,8 @@ export default function BottomNav({ venueId }: BottomNavProps) {
       label: "PROFİL",
       segment: "profile",
       href: `/venue/${venueId}/profile`,
+      // Profil hesaba bağlı — misafir önce giriş ekranına gider
+      requiresAccount: true,
       icon: (active: boolean) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
           <circle cx="12" cy="8" r="4" stroke={active ? "#e91e8c" : "#6b7280"} strokeWidth="2" />
@@ -60,6 +64,9 @@ export default function BottomNav({ venueId }: BottomNavProps) {
           <Link
             key={tab.href}
             href={tab.href}
+            onClick={(e) => {
+              if (tab.requiresAccount && !requireAccount(tab.href)) e.preventDefault();
+            }}
             className="flex flex-col items-center justify-center gap-1 flex-1 h-full"
           >
             {tab.icon(active)}

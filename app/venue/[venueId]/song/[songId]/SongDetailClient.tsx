@@ -10,6 +10,7 @@ import SimilarOverlay from "@/components/song/SimilarOverlay";
 import type { DisplaySong, VenueSong } from "@/components/browse/browse-types";
 import type { TrackDetails } from "@/lib/youtube";
 import type { LyricsResult } from "@/lib/lyrics";
+import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { formatWait, useNowPlayingClock, waitMs } from "@/lib/wait-time";
 
 type QueueEntry = { song_id: string; priority: boolean; duration_ms: number };
@@ -101,6 +102,8 @@ function formatReleaseDate(date: string | null): string {
 export default function SongDetailClient({ venueId, venueDbId, track, requestCost, priorityCost }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  // Sayfa misafire açık; sıraya ekleme/istek/favori hesaba bağlı
+  const { requireAccount } = useVenueGate(venueId);
 
   const [loaded, setLoaded] = useState(false);
   const [dbSongId, setDbSongId] = useState<string | null>(null);
@@ -315,6 +318,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
 
   const toggleFavorite = async () => {
     if (!dbSongId) return;
+    if (!requireAccount()) return;
     const { data } = await supabase.auth.getSession();
     const userId = data.session?.user?.id;
     if (!userId) return;
@@ -351,11 +355,16 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
         next.delete(videoId);
         return next;
       });
+      // Oturum bu arada düşmüş olabilir (çerez süresi/başka cihazdan çıkış)
+      if (res.status === 401 || res.status === 403) {
+        router.push(venueLoginPath(venueId, window.location.pathname));
+      }
     }
   };
 
   const handleRequest = async () => {
     if (!venueDbId) return;
+    if (!requireAccount()) return;
     setRequested(true);
     await fetch(`/api/venue/${venueId}/request`, {
       method: "POST",
@@ -383,8 +392,10 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     router.push(`/venue/${venueId}/song/${song.youtube_video_id}`);
   };
 
-  const openSheetFor = (song: VenueSong, cd: Cooldown) =>
+  const openSheetFor = (song: VenueSong, cd: Cooldown) => {
+    if (!requireAccount()) return;
     setSheetTarget({ songId: song.id, song, cooldown: cd });
+  };
 
   // Ana eylem butonu (ortadaki büyük "play" pozisyonu): durum makinesi
   let centerIcon: ReactNode;
@@ -411,12 +422,14 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
       centerDisabled = true;
     } else {
       const songId = dbSongId;
-      centerAction = () =>
+      centerAction = () => {
+        if (!requireAccount()) return;
         setSheetTarget({
           songId,
           song: { youtube_video_id: track.youtube_video_id, title: track.title, artist: track.artist, album_cover_url: track.album_cover_url },
           cooldown,
         });
+      };
       centerIcon = <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#0f0a18" strokeWidth="3" strokeLinecap="round" /></svg>;
     }
   } else {

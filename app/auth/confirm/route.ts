@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
   const user = data?.session?.user ?? data?.user ?? null;
   if (error || !user) {
     // Süresi dolmuş/kullanılmış link — login sayfasında anlaşılır mesaj göster
-    const target = venueId ? `/venue/${venueId}?auth_error=confirm_failed` : "/?auth_error=confirm_failed";
+    const target = venueId ? `/venue/${venueId}/login?auth_error=confirm_failed` : "/?auth_error=confirm_failed";
     return NextResponse.redirect(new URL(target, origin));
   }
 

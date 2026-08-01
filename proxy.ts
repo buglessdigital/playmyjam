@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getSuperSession } from "@/lib/session";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
-import { setVenueAuthCookie, venueAuthCookieName } from "@/lib/venue-auth-cookie";
+import {
+  clearVenueMemberCookie,
+  setVenueAuthCookie,
+  venueAuthCookieName,
+  venueMemberCookieName,
+} from "@/lib/venue-auth-cookie";
 
 // getClaims: JWT imzasını yerelde doğrular (asimetrik anahtarla) — her istekte
 // Auth sunucusuna gitmez. Token süresi dolmuşsa oturumu tazeleyip cookie'leri günceller.
@@ -29,6 +34,10 @@ async function getVenueSession(req: NextRequest): Promise<{ userId?: string; res
   const { data: claimsData } = await supabase.auth.getClaims();
   return { userId: claimsData?.claims.sub, response };
 }
+
+// Hesap gerektirmeyen müşteri sayfaları — mekanı QR'dan açan biri giriş
+// yapmadan kuyruğu, katalogu ve şarkı detaylarını görebilir.
+const PUBLIC_VENUE_SEGMENTS = ["/queue", "/browse", "/song"];
 
 // Redirect response'una session cookie'lerini taşı: refresh token rotasyonu tek
 // kullanımlık olduğundan, tazelenen cookie'ler redirect'te kaybolursa oturum düşer.
@@ -72,40 +81,62 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Müşteri route koruması — giriş sayfasının kendisi (/venue/[id]) açık, alt sayfalar korumalı
+  // Müşteri route koruması. Mekanın vitrinini görmek için giriş gerekmez:
+  // kuyruk, gözat ve şarkı detayı misafire açık. Hesap gerektiren sayfalar
+  // (jeton, favori, geçmiş, istekler, profil, ayarlar) login'e yönlendirir.
   const venueMatch = pathname.match(/^\/venue\/([^/]+)(\/.*)?$/);
   if (venueMatch) {
     const venueId = venueMatch[1];
     const subPath = venueMatch[2] ?? "";
-    const isLoginPage = !subPath || subPath === "/";
+    const isRoot = !subPath || subPath === "/";
+    const isLoginPage = subPath === "/login" || subPath.startsWith("/login/");
+    const isPublicPage = isLoginPage || PUBLIC_VENUE_SEGMENTS.some(
+      (seg) => subPath === seg || subPath.startsWith(`${seg}/`)
+    );
 
     const { userId, response } = await getVenueSession(req);
 
     // Bu venue'ya özel cookie'yi kontrol et — başka mekanların session'ı geçersiz.
     // Cross-venue otomatik yönlendirme yok: A mekanı kullanıcısı B'nin login'inde formu görür.
     const venueAuthCookie = req.cookies.get(venueAuthCookieName(venueId));
-    if (!userId || venueAuthCookie?.value !== userId) {
-      // E-posta onay/kurtarma linki korumalı bir sayfaya inebilir: varsayılan
+    const isMember = !!userId && venueAuthCookie?.value === userId;
+
+    if (!isMember) {
+      // Arayüz "hesap açık" sanmasın: erişim düştüyse ipucu çerezi de düşer,
+      // yoksa misafir 401 yiyen butonlara basmaya devam ederdi
+      if (req.cookies.get(venueMemberCookieName(venueId))) {
+        clearVenueMemberCookie(response, venueId);
+      }
+      // E-posta onay/kurtarma linki herhangi bir sayfaya inebilir: varsayılan
       // {{ .ConfirmationURL }} şablonu emailRedirectTo'ya ?code= ekleyerek döner.
-      // Login'e yönlendirirsek token düşer ve kullanıcı sessizce sıkışır —
+      // Yönlendirirsek token düşer ve kullanıcı sessizce sıkışır —
       // parametreleri koruyarak /auth/confirm'e taşı.
       const params = req.nextUrl.searchParams;
       if (params.get("token_hash") || params.get("code")) {
         const confirmUrl = new URL("/auth/confirm", req.url);
         params.forEach((value, key) => confirmUrl.searchParams.set(key, value));
         // Token'ı bir sonraki adrese taşımadan yalnızca hedef yolu geçir
-        confirmUrl.searchParams.set("next", pathname);
+        confirmUrl.searchParams.set("next", isRoot ? `/venue/${venueId}/queue` : pathname);
         return redirectWithCookies(confirmUrl, response);
       }
-      if (isLoginPage) {
+      if (isRoot) {
+        return redirectWithCookies(new URL(`/venue/${venueId}/queue`, req.url), response);
+      }
+      if (isPublicPage) {
         return response;
       }
-      return redirectWithCookies(new URL(`/venue/${venueId}`, req.url), response);
+      const loginUrl = new URL(`/venue/${venueId}/login`, req.url);
+      loginUrl.searchParams.set("next", pathname);
+      return redirectWithCookies(loginUrl, response);
     }
 
     // Oturumu açık kullanıcıya login formunu tekrar gösterme
-    if (isLoginPage) {
-      return redirectWithCookies(new URL(`/venue/${venueId}/queue`, req.url), response);
+    if (isRoot || isLoginPage) {
+      const next = isLoginPage ? req.nextUrl.searchParams.get("next") : null;
+      const target = next && next.startsWith(`/venue/${venueId}/`) && !next.startsWith(`/venue/${venueId}/login`)
+        ? next
+        : `/venue/${venueId}/queue`;
+      return redirectWithCookies(new URL(target, req.url), response);
     }
 
     // Kayan süre: her ziyarette 180 günlük taze maxAge — düzenli kullanılan cihaz açık kalır

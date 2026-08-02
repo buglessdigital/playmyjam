@@ -3,7 +3,7 @@ import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { parseSongInput } from "@/lib/validate";
-import { addSongToVenuePlaylist } from "@/lib/playlist";
+import { addSongToVenuePlaylist, assertVenuePlaylist } from "@/lib/playlist";
 
 export async function POST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
@@ -17,7 +17,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const result = await addSongToVenuePlaylist(session.venue_id, parsed.song);
+  // Hedef playlist belirtilmezse varsayılana (aktif olan ilk liste) düşer
+  const playlistId = typeof body?.playlist_id === "string" ? body.playlist_id : undefined;
+  if (playlistId && !(await assertVenuePlaylist(session.venue_id, playlistId))) {
+    return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
+  }
+
+  const result = await addSongToVenuePlaylist(session.venue_id, parsed.song, playlistId);
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
@@ -59,19 +65,49 @@ export async function DELETE(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const venueSongId = typeof body?.venue_song_id === "string" ? body.venue_song_id : "";
+  const playlistId = typeof body?.playlist_id === "string" ? body.playlist_id : "";
   if (!venueSongId) {
     return NextResponse.json({ error: "Eksik alan" }, { status: 400 });
   }
 
-  const { error } = await supabaseAdmin
+  const { data: venueSong } = await supabaseAdmin
     .from("venue_songs")
-    .delete()
+    .select("song_id")
     .eq("id", venueSongId)
-    .eq("venue_id", session.venue_id);
+    .eq("venue_id", session.venue_id)
+    .maybeSingle();
+
+  if (!venueSong) {
+    return NextResponse.json({ error: "Şarkı bulunamadı" }, { status: 404 });
+  }
+
+  // playlist_id verilirse yalnızca o listeden çıkarılır; verilmezse şarkı mekanın
+  // tüm listelerinden düşer. Her iki yolda da son üyelik gidince 0026'daki trigger
+  // katalog satırını (venue_songs) siler.
+  const membershipQuery = supabaseAdmin
+    .from("playlist_songs")
+    .delete()
+    .eq("venue_id", session.venue_id)
+    .eq("song_id", venueSong.song_id);
+
+  const { error } = playlistId
+    ? await membershipQuery.eq("playlist_id", playlistId)
+    : await membershipQuery;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // 0026 öncesinden kalmış, hiç üyeliği olmayan katalog satırları için emniyet:
+  // trigger tetiklenmediyse tam silmede satır burada temizlenir.
+  if (!playlistId) {
+    await supabaseAdmin
+      .from("venue_songs")
+      .delete()
+      .eq("id", venueSongId)
+      .eq("venue_id", session.venue_id);
+  }
+
   revalidateTag(`venue-songs-${session.venue_id}`, "max");
   return NextResponse.json({ ok: true });
 }

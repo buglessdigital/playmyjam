@@ -4,6 +4,42 @@ const QUEUE_TARGET = 10;
 const AUTO_POSITION_BASE = 9000;
 const COOLDOWN_MS = 30 * 60 * 1000;
 
+// Aktif playlist'lerin şarkı kimlikleri. Hiç aktif playlist yoksa null döner:
+// çağıran taraf bunu "havuz = tüm katalog" diye okur, böylece admin tüm listeleri
+// pasife çekse bile müzik susmaz.
+async function getActivePlaylistSongIds(venueId: string): Promise<Set<string> | null> {
+  const { data: activePlaylists } = await supabaseAdmin
+    .from("playlists")
+    .select("id")
+    .eq("venue_id", venueId)
+    .eq("is_active", true);
+
+  const ids = (activePlaylists ?? []).map((p) => p.id);
+  if (ids.length === 0) return null;
+
+  const { data: members } = await supabaseAdmin
+    .from("playlist_songs")
+    .select("song_id")
+    .eq("venue_id", venueId)
+    .in("playlist_id", ids);
+
+  return new Set((members ?? []).map((m) => m.song_id));
+}
+
+// Aktif playlist seçimi değişince çağrılır: kuyrukta bekleyen OTOMATİK şarkılar
+// (user_id null) düşer ve yeni havuzdan yeniden doldurulur. Müşterinin jeton
+// harcayarak eklediği şarkılara ve sahnede çalana dokunulmaz.
+export async function resetAutoQueue(venueId: string): Promise<void> {
+  await supabaseAdmin
+    .from("queue")
+    .update({ status: "removed" })
+    .eq("venue_id", venueId)
+    .eq("status", "queued")
+    .is("user_id", null);
+
+  await fillQueueToTen(venueId);
+}
+
 export async function fillQueueToTen(venueId: string): Promise<void> {
   // Current queued count (playing is separate status, not counted)
   const { count: totalQueued } = await supabaseAdmin
@@ -82,8 +118,8 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
   // bir sonraki dolumda played satırı üzerinden yakalanır)
   if (playingNow?.user_id && playingNow.song_id) cooldownIds.add(playingNow.song_id);
 
-  // Venue playlist candidates.
-  // Çalınamaz işaretlenen (embed kapalı) videolar otomatik doldurmaya girmez.
+  // Otomatik çalma havuzu = AKTİF playlist'lerdeki şarkılar (0026).
+  // Çalınamaz işaretlenen (embed kapalı) ve müşteriye kapatılmış şarkılar girmez.
   const { data: venueSongs } = await supabaseAdmin
     .from("venue_songs")
     .select("song_id, songs!inner(embeddable)")
@@ -91,7 +127,14 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
     .eq("in_venue_list", true)
     .eq("songs.embeddable", true);
 
-  const available = (venueSongs ?? []).map((vs) => vs.song_id).filter((id) => !excludeIds.has(id));
+  const activePool = await getActivePlaylistSongIds(venueId);
+
+  const eligible = (venueSongs ?? []).map((vs) => vs.song_id).filter((id) => !excludeIds.has(id));
+  const fromActive = activePool === null ? eligible : eligible.filter((id) => activePool.has(id));
+
+  // Aktif listeler boşsa (ör. tüm şarkıları gizlenmiş) müzik susmasın diye
+  // tüm kataloga düşülür — cooldown fallback'iyle aynı mantık
+  const available = fromActive.length > 0 ? fromActive : eligible;
 
   // Cooldown'daki şarkılar elenir; ama liste küçük olup hepsi elenirse müzik
   // susmasın diye cooldown yok sayılır (kuyruğa/sahneye çıkma engeli hep geçerli)

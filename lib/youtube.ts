@@ -232,6 +232,20 @@ export function parsePlaylistId(input: string): string | null {
   return null;
 }
 
+// playlists.list (1 birim) — içe aktarılan liste yeni bir playlist'e gidiyorsa
+// varsayılan ad olarak YouTube'daki başlık kullanılır. Başarısız olursa null.
+export async function getPlaylistTitle(playlistId: string): Promise<string | null> {
+  const params = new URLSearchParams({ part: "snippet", id: playlistId, key: API_KEY });
+  try {
+    const data = await fetchJson<{ items?: Array<{ snippet?: { title?: string } }> }>(
+      `${API_BASE}/playlists?${params}`
+    );
+    return data.items?.[0]?.snippet?.title?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 // playlistItems.list (1 birim/sayfa) — public playlist'ler için OAuth gerekmez
 export async function getPlaylistItems(playlistId: string): Promise<TrackDetails[]> {
   const videoIds: string[] = [];

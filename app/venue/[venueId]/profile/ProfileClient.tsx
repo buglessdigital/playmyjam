@@ -4,10 +4,13 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAnimatedNumber } from "@/lib/use-animated-number";
+import { useVenueGate } from "@/lib/venue-gate";
+import { AVATARS, AvatarMark, isAvatarId } from "@/lib/avatars";
 import Coin from "@/components/ui/Coin";
 
 type ProfileState = {
   username: string | null;
+  avatar_id: string | null;
   token_balance: number;
   fav_count: number;
   request_count: number;
@@ -20,10 +23,15 @@ interface Props {
 
 export default function ProfileClient({ venueId, venueDbId }: Props) {
   const supabase = useMemo(() => createClient(), []);
+  const { requireAccount } = useVenueGate(venueId);
 
   const [loaded, setLoaded] = useState(false);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
+  const [userId, setUserId] = useState("");
+  const [avatarId, setAvatarId] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
   const [tokenBalance, setTokenBalance] = useState(0);
   const [favCount, setFavCount] = useState(0);
   const [requestCount, setRequestCount] = useState(0);
@@ -42,10 +50,12 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
 
       const sessionEmail = sessionData.session?.user?.email ?? "";
       setEmail(sessionEmail);
+      setUserId(sessionData.session?.user?.id ?? "");
 
       const state = stateData as unknown as ProfileState | null;
       if (state) {
         setUsername(state.username ?? sessionEmail.split("@")[0] ?? "");
+        setAvatarId(state.avatar_id ?? null);
         setTokenBalance(state.token_balance ?? 0);
         setFavCount(state.fav_count ?? 0);
         setRequestCount(state.request_count ?? 0);
@@ -58,6 +68,35 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
       cancelled = true;
     };
   }, [venueDbId, supabase]);
+
+  // Misafir de bu sayfayı görebiliyor — avatar seçimi hesaba bağlı
+  const openPicker = () => {
+    if (!requireAccount()) return;
+    setAvatarError("");
+    setPickerOpen(true);
+  };
+
+  const chooseAvatar = async (nextId: string | null) => {
+    if (!userId || nextId === avatarId) {
+      setPickerOpen(false);
+      return;
+    }
+    // Bilinmeyen id veritabanına gitmesin (liste değişmiş olabilir)
+    if (nextId !== null && !isAvatarId(nextId)) return;
+
+    const previous = avatarId;
+    setAvatarId(nextId);
+    setPickerOpen(false);
+    setAvatarError("");
+
+    // upsert: profil satırı herhangi bir nedenle yoksa update sessizce 0 satır
+    // günceller ve kullanıcı kaydettiğini sanır (ayarlar sayfasıyla aynı gerekçe)
+    const { error } = await supabase.from("profiles").upsert({ id: userId, avatar_id: nextId });
+    if (error) {
+      setAvatarId(previous);
+      setAvatarError("Avatar kaydedilemedi, tekrar dene");
+    }
+  };
 
   const handleLogout = async () => {
     await fetch(`/api/venue/${venueId}/auth`, { method: "DELETE" });
@@ -138,7 +177,11 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
       <div className="relative">
         {/* Avatar + kimlik */}
         <div className="flex flex-col items-center pb-8 pt-5">
-          <div className="relative">
+          <button
+            onClick={openPicker}
+            aria-label="Avatarını değiştir"
+            className="relative transition-transform active:scale-95"
+          >
             <div
               className="rounded-full p-[3px]"
               style={{
@@ -147,16 +190,29 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
               }}
             >
               <div className="rounded-full bg-[#0f0a18] p-[3px]">
-                <div
-                  className="flex h-[84px] w-[84px] items-center justify-center rounded-full text-4xl font-black text-white"
-                  style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
-                >
-                  {initial}
-                </div>
+                <AvatarMark avatarId={avatarId} initial={initial} size={84} />
               </div>
             </div>
-            <span className="absolute bottom-1 right-1 h-[18px] w-[18px] rounded-full border-[3px] border-[#0f0a18] bg-[#22c55e]" />
-          </div>
+            {/* Yeşil "çevrimiçi" noktası yerine düzenleme rozeti: avatara
+                dokunulabildiğini gösteren tek ipucu bu */}
+            <span
+              className="absolute bottom-0.5 right-0.5 flex h-7 w-7 items-center justify-center rounded-full border-[3px] border-[#0f0a18]"
+              style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                <path d="M12 20h9" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
+                <path
+                  d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"
+                  stroke="#fff"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+          </button>
+
+          {avatarError && <p className="mt-3 text-[13px] text-red-400">{avatarError}</p>}
 
           <div className="mt-4 text-center">
             {loaded ? (
@@ -245,6 +301,65 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
 
         <p className="mt-8 text-center text-[11px] font-medium tracking-[0.2em] text-[#3f3a4d]">PLAYMYJAM</p>
       </div>
+
+      {/* Avatar seçici */}
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: "rgba(0,0,0,0.7)" }}
+          onClick={() => setPickerOpen(false)}
+        >
+          <div
+            className="max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-t-3xl p-6"
+            style={{ background: "#1a0e2a" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white">Avatarını Seç</h2>
+              <button
+                onClick={() => setPickerOpen(false)}
+                aria-label="Kapat"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M18 6L6 18M6 6l12 12" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-4 gap-3">
+              {AVATARS.map((avatar) => {
+                const selected = avatar.id === avatarId;
+                return (
+                  <button
+                    key={avatar.id}
+                    onClick={() => chooseAvatar(avatar.id)}
+                    aria-label={avatar.label}
+                    aria-pressed={selected}
+                    className="flex items-center justify-center rounded-2xl p-1.5 transition-all active:scale-95"
+                    style={{
+                      background: selected ? "rgba(233,30,140,0.12)" : "transparent",
+                      border: `1px solid ${selected ? "rgba(233,30,140,0.6)" : "rgba(255,255,255,0.07)"}`,
+                    }}
+                  >
+                    <AvatarMark avatarId={avatar.id} initial={initial} size={56} />
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Avatardan vazgeçme yolu: baş harfe dön */}
+            {avatarId !== null && (
+              <button
+                onClick={() => chooseAvatar(null)}
+                className="mt-5 w-full rounded-xl border border-white/10 py-3 text-sm font-semibold text-[#9ca3af]"
+              >
+                Avatarı kaldır, baş harfimi kullan
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

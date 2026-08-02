@@ -14,6 +14,17 @@ type Request = {
   songs: { title: string; artist: string; album_cover_url: string };
 };
 
+// Mekana gönderilen serbest metin öneriler (song_id boş song_requests satırları).
+// Mekan şarkıyı listesine ekleyince satır gerçek şarkıya bağlanır ve 'accepted' olur.
+type Suggestion = {
+  id: string;
+  status: string;
+  requested_at: string;
+  suggested_title: string | null;
+  suggested_artist: string | null;
+  songs: { title: string; artist: string; album_cover_url: string } | null;
+};
+
 type QueueHistoryRow = {
   id: string;
   tokens_spent: number;
@@ -36,11 +47,23 @@ export default function RequestsClient() {
   const router = useRouter();
   const [loaded, setLoaded] = useState(false);
   const [requests, setRequests] = useState<Request[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const fetchSuggestions = async (userId: string) => {
+      const { data } = await supabase
+        .from("song_requests")
+        .select("id, status, requested_at, suggested_title, suggested_artist, songs(title, artist, album_cover_url)")
+        .eq("user_id", userId)
+        .not("suggested_title", "is", null)
+        .order("requested_at", { ascending: false })
+        .limit(10);
+      if (!cancelled && data) setSuggestions(data as unknown as Suggestion[]);
+    };
 
     const fetchHistory = async (userId: string) => {
       const { data: queueHistory } = await supabase
@@ -74,11 +97,15 @@ export default function RequestsClient() {
       }
 
       fetchHistory(user.id);
+      fetchSuggestions(user.id);
 
       channel = supabase
         .channel(`my_queue:${user.id}`)
         .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `user_id=eq.${user.id}` }, () => {
           fetchHistory(user.id);
+        })
+        .on("postgres_changes", { event: "*", schema: "public", table: "song_requests", filter: `user_id=eq.${user.id}` }, () => {
+          fetchSuggestions(user.id);
         })
         .subscribe();
     };
@@ -112,10 +139,41 @@ export default function RequestsClient() {
             </div>
           ))}
         </div>
-      ) : requests.length === 0 ? (
+      ) : requests.length === 0 && suggestions.length === 0 ? (
         <div className="text-center py-16 text-[#6b7280] text-sm">Henüz istek yapılmadı</div>
       ) : (
         <div className="px-5 space-y-3 pb-20">
+          {suggestions.length > 0 && (
+            <>
+              <h2 className="text-white font-semibold text-sm pt-1">Mekana Önerdiklerin</h2>
+              {suggestions.map((s) => {
+                const added = s.status === "accepted";
+                const rejected = s.status === "rejected";
+                return (
+                  <div key={s.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: "#1a0e2a" }}>
+                    <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-white/10 flex items-center justify-center">
+                      {s.songs?.album_cover_url ? (
+                        <Image src={s.songs.album_cover_url} alt="" width={48} height={48} className="w-full h-full object-cover" />
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="2" /><circle cx="18" cy="16" r="3" stroke="#6b7280" strokeWidth="2" /></svg>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-semibold text-sm truncate">{s.songs?.title ?? s.suggested_title}</p>
+                      <p className="text-[#6b7280] text-xs">{s.songs?.artist ?? s.suggested_artist}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-xs font-medium" style={{ color: added ? "#22c55e" : rejected ? "#6b7280" : "#fbbf24" }}>
+                        {added ? "Listeye eklendi" : rejected ? "Eklenmedi" : "Mekana iletildi"}
+                      </p>
+                      <p className="text-[#6b7280] text-xs mt-0.5">{timeAgo(s.requested_at)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              {requests.length > 0 && <h2 className="text-white font-semibold text-sm pt-3">Sıraya Eklediklerin</h2>}
+            </>
+          )}
           {requests.map((req) => (
             <div key={req.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: "#1a0e2a" }}>
               <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-white/10">

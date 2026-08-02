@@ -227,7 +227,8 @@ function PlaylistPageContent({ params }: Props) {
         return;
       }
       setImportResult(
-        `${data.added} şarkı eklendi${data.skipped ? `, ${data.skipped} şarkı zaten vardı` : ""}`
+        `${data.added} şarkı eklendi${data.skipped ? `, ${data.skipped} şarkı zaten vardı` : ""}` +
+          (data.resolved_suggestions ? `, ${data.resolved_suggestions} müşteri önerisi karşılandı` : "")
       );
       setPlaylistUrl("");
       if (venueDbId) await fetchSongs(venueDbId);

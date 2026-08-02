@@ -218,19 +218,20 @@ export default function SimilarOverlay({
                     <button
                       key={a.key}
                       onClick={() => setSelectedArtist(a)}
-                      className="flex w-16 shrink-0 flex-col items-center gap-1.5 transition-transform active:scale-95"
+                      className="flex w-36 shrink-0 flex-col items-center gap-2 transition-transform active:scale-95"
                     >
-                      <div className="h-16 w-16 overflow-hidden rounded-full ring-1 ring-white/10">
+                      {/* YouTube hqdefault kapağı 480x360'tır ve 16:9 videoda üst/alt %12,5
+                          siyah bant içerir. scale-[1.35] bu bantları daire dışına taşır —
+                          böylece daire tamamen görselle dolar. */}
+                      <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-full bg-[#1a0e2a] ring-1 ring-white/10">
                         {a.coverUrl ? (
-                          <Image src={a.coverUrl} alt={a.name} width={64} height={64} sizes="64px" className="h-full w-full object-cover" />
+                          <Image src={a.coverUrl} alt={a.name} width={144} height={144} sizes="144px" className="h-full w-full scale-[1.35] object-cover" />
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-[#1a0e2a]">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#6b7280" strokeWidth="2" /><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
-                          </div>
+                          <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#6b7280" strokeWidth="2" /><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
                         )}
                       </div>
-                      <span className="w-full truncate text-center text-[11px] text-[#9ca3af]">{a.name}</span>
-                      <span className="text-[10px] text-[#6b7280]">{a.songCount} şarkı</span>
+                      <span className="w-full truncate text-center text-[17px] font-medium text-[#d1d5db]">{a.name}</span>
+                      <span className="-mt-1 text-[13px] text-[#6b7280]">{a.songCount} şarkı</span>
                     </button>
                   ))}
                 </div>

@@ -14,6 +14,8 @@ type SearchArtist = {
   songCount: number;
 };
 
+export type SuggestResult = "ok" | "duplicate" | "auth" | "limit" | "error";
+
 interface Props {
   venueSongMap: Map<string, VenueSong>;
   favoriteIds: Set<string>;
@@ -23,14 +25,17 @@ interface Props {
   onToggleFavorite: (song: DisplaySong) => void;
   onAdd: (song: DisplaySong) => void;
   onRequest: (song: DisplaySong) => void;
+  onSuggest: (title: string, artist: string) => Promise<SuggestResult>;
   onClose: () => void;
 }
 
-export default function SearchView({ venueSongMap, favoriteIds, actionFor, recentKey, onOpen, onToggleFavorite, onAdd, onRequest, onClose }: Props) {
+// Arama tamamen mekanın kendi listesi üzerinde çalışır (YouTube'a çıkılmaz).
+// Aranan şarkı listede yoksa müşteri sanatçı + şarkı adını yazıp mekana öneri
+// gönderir; öneri mekanın istekler bölümüne düşer.
+export default function SearchView({ venueSongMap, favoriteIds, actionFor, recentKey, onOpen, onToggleFavorite, onAdd, onRequest, onSuggest, onClose }: Props) {
   const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<DisplaySong[]>([]);
-  const [searching, setSearching] = useState(false);
   const [artistFilter, setArtistFilter] = useState<{ key: string; name: string } | null>(null);
+  const [suggestOpen, setSuggestOpen] = useState(false);
   // Yalnızca kullanıcı etkileşimiyle mount olur; yine de SSR guard'ı korunuyor
   const [recent, setRecent] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
@@ -45,7 +50,6 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
     }
     return [];
   });
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Arka plandaki gözat listesi unmount olmaz — body scroll kilidi
@@ -55,12 +59,6 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
 
@@ -84,56 +82,31 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
     persistRecent(recent.filter((r) => r !== term));
   };
 
-  const searchRemote = async (q: string) => {
-    if (!q.trim()) { setSearchResults([]); setSearching(false); return; }
-    setSearching(true);
-    try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-      const data = await res.json();
-      if (!res.ok) { setSearchResults([]); return; }
-      setSearchResults(data.tracks ?? []);
-    } finally {
-      setSearching(false);
-    }
-  };
-
   const handleQueryChange = (value: string) => {
     setQuery(value);
     setArtistFilter(null);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!value.trim()) { setSearchResults([]); setSearching(false); return; }
-    // Debounce beklerken de spinner görünsün — erken "Sonuç bulunamadı" yanıltmasın
-    setSearching(true);
-    debounceRef.current = setTimeout(() => searchRemote(value), 400);
+    setSuggestOpen(false);
   };
 
   const submitQuery = (term: string) => {
     setQuery(term);
     setArtistFilter(null);
+    setSuggestOpen(false);
     saveRecent(term);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    searchRemote(term);
   };
 
-  // Sanatçıya tıklayınca: sonuçlar o sanatçıya daraltılır, ayrıca sanatçı adıyla
-  // yeni bir arama yapılır ki katalog dışındaki şarkıları da gelsin
   const selectArtist = (artist: SearchArtist) => {
     setArtistFilter({ key: artist.key, name: artist.name });
     saveRecent(artist.name);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    searchRemote(artist.name);
   };
 
-  const clearArtist = () => {
-    setArtistFilter(null);
-    if (query.trim()) searchRemote(query);
-  };
+  const clearArtist = () => setArtistFilter(null);
 
-  // Yerel sonuçlar debounce beklemeden gelsin; deferred değer yazmayı bloklamasın
+  // Sonuçlar yazarken bloklamasın diye ertelenmiş değer üzerinden hesaplanır
   const deferredQuery = useDeferredValue(query);
 
-  // Mekan listesindeki eşleşmeler — YouTube yanıtını beklemeden anında gösterilir
-  const localResults = useMemo<DisplaySong[]>(() => {
+  // Mekan listesindeki eşleşmeler — tek veri kaynağı bu (ağ isteği yok)
+  const results = useMemo<DisplaySong[]>(() => {
     const q = deferredQuery.trim().toLocaleLowerCase("tr");
     if (!q) return [];
     const matches: VenueSong[] = [];
@@ -143,25 +116,13 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
         matches.push(s);
       }
     }
-    return matches.sort((a, b) => b.play_count - a.play_count).slice(0, 20);
+    return matches.sort((a, b) => b.play_count - a.play_count).slice(0, 50);
   }, [deferredQuery, venueSongMap]);
 
-  // YouTube sonuçlarını mekan kataloğu metadata'sıyla birleştir (cooldown/istek durumu için),
-  // yerel bölümde zaten görünenleri ele
-  const remoteResults = useMemo<DisplaySong[]>(() => {
-    const localIds = new Set(localResults.map((s) => s.youtube_video_id));
-    return searchResults
-      .filter((r) => !localIds.has(r.youtube_video_id))
-      .map((r) => {
-        const vs = venueSongMap.get(r.youtube_video_id);
-        return { ...r, id: vs?.id, play_count: vs?.play_count, in_venue_list: vs?.in_venue_list };
-      });
-  }, [searchResults, venueSongMap, localResults]);
-
-  // Sonuçlardaki sanatçılar — tıklanınca o sanatçının şarkılarına geçilir
+  // Sonuçlardaki sanatçılar — tıklanınca o sanatçının tüm şarkılarına geçilir
   const searchArtists = useMemo<SearchArtist[]>(() => {
     const map = new Map<string, SearchArtist>();
-    for (const s of [...localResults, ...remoteResults]) {
+    for (const s of results) {
       const name = primaryArtist(s.artist);
       if (!name) continue;
       const key = name.toLocaleLowerCase("tr");
@@ -170,10 +131,10 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
       else entry.songCount += 1;
     }
     return [...map.values()].sort((a, b) => b.songCount - a.songCount).slice(0, 10);
-  }, [localResults, remoteResults]);
+  }, [results]);
 
-  // Sanatçı görünümü: önce mekan listesindeki tüm şarkıları (play_count sırasıyla)
-  const artistVenueSongs = useMemo<DisplaySong[]>(() => {
+  // Sanatçı görünümü: o sanatçının mekan listesindeki tüm şarkıları
+  const artistSongs = useMemo<DisplaySong[]>(() => {
     if (!artistFilter) return [];
     const matches: VenueSong[] = [];
     for (const s of venueSongMap.values()) {
@@ -181,18 +142,6 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
     }
     return matches.sort((a, b) => b.play_count - a.play_count);
   }, [artistFilter, venueSongMap]);
-
-  // ...sonra sanatçı adıyla yapılan aramadan gelen, katalogda olmayan şarkılar
-  const artistRemoteSongs = useMemo<DisplaySong[]>(() => {
-    if (!artistFilter) return [];
-    const shownIds = new Set(artistVenueSongs.map((s) => s.youtube_video_id));
-    return searchResults
-      .filter((r) => artistKey(r.artist) === artistFilter.key && !shownIds.has(r.youtube_video_id))
-      .map((r) => {
-        const vs = venueSongMap.get(r.youtube_video_id);
-        return { ...r, id: vs?.id, play_count: vs?.play_count, in_venue_list: vs?.in_venue_list };
-      });
-  }, [artistFilter, searchResults, artistVenueSongs, venueSongMap]);
 
   const interact = <T,>(fn: (arg: T) => void) => (arg: T) => {
     saveRecent(query);
@@ -216,7 +165,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
             ref={inputRef}
             type="text"
             autoFocus
-            placeholder="Şarkı, sanatçı ara..."
+            placeholder="Mekan listesinde ara..."
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}
             onKeyDown={(e) => {
@@ -229,7 +178,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
           />
           {query && (
             <button
-              onClick={() => { setQuery(""); setSearchResults([]); setArtistFilter(null); inputRef.current?.focus(); }}
+              onClick={() => { setQuery(""); setArtistFilter(null); setSuggestOpen(false); inputRef.current?.focus(); }}
               className="absolute right-3 top-1/2 flex -translate-y-1/2 p-1"
               aria-label="Temizle"
             >
@@ -268,7 +217,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
           ) : (
             <div className="flex flex-col items-center pt-16 text-center">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#3d3450" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#3d3450" strokeWidth="2" strokeLinecap="round" /></svg>
-              <p className="mt-3 text-sm text-[#6b7280]">Şarkı veya sanatçı ara</p>
+              <p className="mt-3 text-sm text-[#6b7280]">Mekanın listesinde şarkı veya sanatçı ara</p>
             </div>
           )
         ) : artistFilter ? (
@@ -285,31 +234,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
               </button>
             </div>
 
-            {artistVenueSongs.length > 0 && (
-              <>
-                <h2 className="pt-3 text-sm font-bold text-white">Mekan Listesi</h2>
-                {artistVenueSongs.map((song) => (
-                  <SongRow
-                    key={song.youtube_video_id}
-                    song={song}
-                    action={actionFor(song)}
-                    isFav={song.id ? favoriteIds.has(song.id) : false}
-                    onOpen={interact(onOpen)}
-                    onToggleFavorite={onToggleFavorite}
-                    onAdd={interact(onAdd)}
-                    onRequest={interact(onRequest)}
-                  />
-                ))}
-              </>
-            )}
-
-            <div className="flex items-center gap-2 pt-4">
-              <h2 className="text-sm font-bold text-white">YouTube Sonuçları</h2>
-              {searching && (
-                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#6b7280" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
-              )}
-            </div>
-            {artistRemoteSongs.map((song) => (
+            {artistSongs.map((song) => (
               <SongRow
                 key={song.youtube_video_id}
                 song={song}
@@ -321,28 +246,21 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
                 onRequest={interact(onRequest)}
               />
             ))}
-            {!searching && artistRemoteSongs.length === 0 && (
-              <p className="py-8 text-center text-sm text-[#6b7280]">
-                {artistVenueSongs.length > 0 ? "YouTube'da başka şarkı bulunamadı" : "Şarkı bulunamadı"}
-              </p>
-            )}
-            {/* YouTube API branding şartı: sonuçların kaynağı görünür şekilde belirtilmeli */}
-            <p className="pb-2 pt-3 text-center text-[11px] text-[#6b7280]">
-              Arama sonuçları ve müzik verileri{" "}
-              <a
-                href="https://www.youtube.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                YouTube
-              </a>{" "}
-              tarafından sağlanır
-            </p>
+
+            <SuggestBox
+              key={artistFilter.key}
+              variant="inline"
+              defaultTitle=""
+              defaultArtist={artistFilter.name}
+              onSuggest={onSuggest}
+            />
           </>
+        ) : results.length === 0 ? (
+          /* Mekan listesinde karşılığı yok — doğrudan öneri kutusu */
+          <SuggestBox variant="empty" defaultTitle={query.trim()} defaultArtist="" onSuggest={onSuggest} />
         ) : (
           <>
-            {searchArtists.length > 0 && (
+            {searchArtists.length > 1 && (
               <>
                 <h2 className="pt-2 text-sm font-bold text-white">Sanatçılar</h2>
                 <div className="flex gap-4 overflow-x-auto py-3">
@@ -368,31 +286,8 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
               </>
             )}
 
-            {localResults.length > 0 && (
-              <>
-                <h2 className="pt-2 text-sm font-bold text-white">Mekan Listesi</h2>
-                {localResults.map((song) => (
-                  <SongRow
-                    key={song.youtube_video_id}
-                    song={song}
-                    action={actionFor(song)}
-                    isFav={song.id ? favoriteIds.has(song.id) : false}
-                    onOpen={interact(onOpen)}
-                    onToggleFavorite={onToggleFavorite}
-                    onAdd={interact(onAdd)}
-                    onRequest={interact(onRequest)}
-                  />
-                ))}
-              </>
-            )}
-
-            <div className="flex items-center gap-2 pt-4">
-              <h2 className="text-sm font-bold text-white">YouTube Sonuçları</h2>
-              {searching && (
-                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#6b7280" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
-              )}
-            </div>
-            {remoteResults.map((song) => (
+            <h2 className="pt-2 text-sm font-bold text-white">Mekan Listesi</h2>
+            {results.map((song) => (
               <SongRow
                 key={song.youtube_video_id}
                 song={song}
@@ -404,20 +299,24 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
                 onRequest={interact(onRequest)}
               />
             ))}
-            {!searching && remoteResults.length === 0 && (
-              <p className="py-8 text-center text-sm text-[#6b7280]">
-                {localResults.length > 0 ? "YouTube'da başka sonuç bulunamadı" : "Sonuç bulunamadı"}
-              </p>
-            )}
-            {/* YouTube API branding şartı: sonuçların kaynağı görünür şekilde belirtilmeli */}
-            <p className="pb-2 pt-3 text-center text-[11px] text-[#6b7280]">
-              Arama sonuçları ve müzik verileri{" "}
-              <a
-                href="https://www.youtube.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
+
+            {/* Sonuç var ama aradığı bu değilse: aynı öneri kutusu, katlanmış halde */}
+            {suggestOpen ? (
+              <SuggestBox variant="inline" defaultTitle={query.trim()} defaultArtist="" onSuggest={onSuggest} />
+            ) : (
+              <button
+                onClick={() => setSuggestOpen(true)}
+                className="mt-5 w-full rounded-2xl border border-white/10 bg-[#1a0e2a] px-4 py-3.5 text-left"
               >
+                <p className="text-sm font-semibold text-white">Aradığın şarkı listede yok mu?</p>
+                <p className="mt-0.5 text-xs text-[#9ca3af]">Mekana öner — eklerlerse haber vereceğiz</p>
+              </button>
+            )}
+
+            {/* YouTube API branding şartı: şarkı verilerinin kaynağı görünür olmalı */}
+            <p className="pb-2 pt-4 text-center text-[11px] text-[#6b7280]">
+              Şarkı bilgileri ve kapaklar{" "}
+              <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" className="underline">
                 YouTube
               </a>{" "}
               tarafından sağlanır
@@ -425,6 +324,116 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Öneri kutusu: "empty" tam ekran boş sonuç hali, "inline" listenin altındaki kart
+function SuggestBox({
+  variant,
+  defaultTitle,
+  defaultArtist,
+  onSuggest,
+}: {
+  variant: "empty" | "inline";
+  defaultTitle: string;
+  defaultArtist: string;
+  onSuggest: (title: string, artist: string) => Promise<SuggestResult>;
+}) {
+  const [title, setTitle] = useState(defaultTitle);
+  const [artist, setArtist] = useState(defaultArtist);
+  const [touchedTitle, setTouchedTitle] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  // Arama metni değişince kutu yeniden hazır olsun (gönderim onayı takılı kalmasın).
+  // React'in "prop değişince state'i ayarla" kalıbı: effect yerine render sırasında.
+  const [seed, setSeed] = useState(defaultTitle);
+  if (seed !== defaultTitle) {
+    setSeed(defaultTitle);
+    setSent(false);
+    setError("");
+  }
+
+  // Kullanıcı alana dokunmadıysa arama kutusuna yazdığı metin şarkı adı sayılır
+  const titleValue = touchedTitle ? title : defaultTitle;
+  const canSend = titleValue.trim().length > 0 && artist.trim().length > 0 && !sending;
+
+  const submit = async () => {
+    if (!canSend) return;
+    setSending(true);
+    setError("");
+    const result = await onSuggest(titleValue.trim(), artist.trim());
+    setSending(false);
+    if (result === "ok" || result === "duplicate") {
+      setSent(true);
+      return;
+    }
+    if (result === "auth") return; // giriş ekranına yönlendirildi
+    setError(result === "limit" ? "Çok fazla öneri gönderdin, biraz sonra tekrar dene." : "Öneri gönderilemedi, tekrar dene.");
+  };
+
+  if (sent) {
+    return (
+      <div className={`rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/10 p-4 ${variant === "empty" ? "mt-8" : "mt-5"}`}>
+        <div className="flex items-center gap-2">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <p className="text-sm font-semibold text-white">Önerin mekana iletildi</p>
+        </div>
+        <p className="mt-1.5 text-xs text-[#9ca3af]">
+          Mekan şarkıyı listesine eklerse bildirim göndereceğiz — sonra sıraya ekleyebilirsin.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`rounded-2xl border border-[#e91e8c]/25 bg-[#e91e8c]/[0.07] p-4 ${variant === "empty" ? "mt-8" : "mt-5"}`}>
+      {variant === "empty" ? (
+        <>
+          <div className="flex items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#e91e8c" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" /></svg>
+            <p className="text-sm font-bold text-white">Bu şarkı mekanın listesinde yok</p>
+          </div>
+          <p className="mt-1.5 text-xs text-[#9ca3af]">
+            Sanatçı ve şarkı adını yaz, mekana öneri olarak iletelim.
+          </p>
+        </>
+      ) : (
+        <p className="text-sm font-bold text-white">Mekana şarkı öner</p>
+      )}
+
+      <div className="mt-3 space-y-2">
+        <input
+          type="text"
+          value={titleValue}
+          onChange={(e) => { setTouchedTitle(true); setTitle(e.target.value); }}
+          maxLength={120}
+          placeholder="Şarkı adı"
+          className="w-full rounded-xl border border-white/10 bg-[#1a0e2a] px-3.5 py-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
+        />
+        <input
+          type="text"
+          value={artist}
+          onChange={(e) => setArtist(e.target.value)}
+          maxLength={120}
+          placeholder="Sanatçı adı"
+          className="w-full rounded-xl border border-white/10 bg-[#1a0e2a] px-3.5 py-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
+        />
+      </div>
+
+      {error && <p className="mt-2 text-xs text-[#ef4444]">{error}</p>}
+
+      <button
+        onClick={submit}
+        disabled={!canSend}
+        className="mt-3 flex h-11 w-full items-center justify-center rounded-xl text-sm font-bold text-white transition-transform active:scale-[0.98] disabled:opacity-40"
+        style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
+      >
+        {sending ? "Gönderiliyor..." : "Mekana Öner"}
+      </button>
+      <p className="mt-2 text-center text-[11px] text-[#6b7280]">Öneri ücretsizdir, jeton harcamaz</p>
     </div>
   );
 }

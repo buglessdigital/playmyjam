@@ -9,7 +9,7 @@ import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { useNowPlayingClock, waitMs } from "@/lib/wait-time";
 import AddSongSheet from "@/components/browse/AddSongSheet";
 import NowPlayingBanner from "@/components/browse/NowPlayingBanner";
-import SearchView from "@/components/browse/SearchView";
+import SearchView, { type SuggestResult } from "@/components/browse/SearchView";
 import SongCard from "@/components/browse/SongCard";
 import SongRow from "@/components/browse/SongRow";
 import {
@@ -330,6 +330,29 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     });
   }, [venueDbId, venueId, requireAccount]);
 
+  // Mekan listesinde bulunamayan şarkı için serbest metin öneri — jeton harcamaz,
+  // mekanın istekler bölümüne düşer (bkz. /api/venue/[venueId]/request)
+  const handleSuggest = useCallback(async (title: string, artist: string): Promise<SuggestResult> => {
+    if (!requireAccount(`/venue/${venueId}/browse`)) return "auth";
+
+    try {
+      const res = await fetch(`/api/venue/${venueId}/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suggested_title: title, suggested_artist: artist }),
+      });
+      if (res.ok) return "ok";
+      if (res.status === 429) return "limit";
+      if (res.status === 401 || res.status === 403) {
+        router.push(venueLoginPath(venueId, `/venue/${venueId}/browse`));
+        return "auth";
+      }
+      return "error";
+    } catch {
+      return "error";
+    }
+  }, [venueId, requireAccount, router]);
+
   const toggleFavorite = useCallback(async (song: DisplaySong) => {
     if (!song.id) return;
     if (!requireAccount()) return;
@@ -393,13 +416,13 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           )}
         </div>
         <div className="flex gap-2">
-          {/* Arama ucu YouTube kotasını harcadığı için girişe bağlı (bkz. /api/search) */}
+          {/* Arama artık tamamen mekanın kendi listesinde (YouTube'a çıkmaz) — misafire de açık */}
           <button
-            onClick={() => requireAccount() && setSearchOpen(true)}
+            onClick={() => setSearchOpen(true)}
             className="flex h-12 min-w-0 flex-1 items-center gap-3 rounded-2xl border border-white/10 bg-[#1a0e2a] px-4 text-left transition-transform active:scale-[0.98]"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#6b7280" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
-            <span className="text-sm text-[#6b7280]">Şarkı, sanatçı ara...</span>
+            <span className="text-sm text-[#6b7280]">Mekan listesinde ara...</span>
           </button>
           <button
             onClick={luckyPick}
@@ -582,6 +605,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           onToggleFavorite={toggleFavorite}
           onAdd={openSheet}
           onRequest={handleRequest}
+          onSuggest={handleSuggest}
           onClose={() => setSearchOpen(false)}
         />
       )}

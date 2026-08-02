@@ -53,4 +53,9 @@ Doğrulama: `select * from pg_policies where schemaname = 'public';`
 - `song_requests` herkese-SELECT'tir (admin paneli ve realtime anon anahtarla okur);
   istek sahibi kullanıcı adları mekan genelinde görünürdür.
 - `queue` ve `now_playing` herkese-SELECT'tir — kuyruk zaten mekandaki herkese gösterilir.
-- Arama (`/api/search`) oturum istemez; kota koruması yerel katalog + `search_cache` ile sağlanır.
+- Arama (`/api/search`) yalnızca mekan/super-admin oturumuna açıktır: YouTube kota
+  artışı onaylanana kadar müşteri paneli yalnızca mekanın kendi listesinde arıyor,
+  bulamadığını serbest metin öneri olarak gönderiyor (bkz. 0023 migration).
+- `song_requests` satırlarında `song_id` boş olabilir (müşteri önerisi); metin
+  alanları admin panelinde ham gösterildiği için 120 karakterle sınırlı ve kişi
+  başına 10 dakikada 5 öneri ile hız sınırlıdır.

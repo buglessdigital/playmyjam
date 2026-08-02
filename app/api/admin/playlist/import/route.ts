@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { getPlaylistItems, parsePlaylistId, YouTubeQuotaError } from "@/lib/youtube";
+import { resolveMatchingSuggestions } from "@/lib/suggestions";
 
 // Public YouTube playlist'indeki tüm şarkıları mekan playlist'ine toplu ekler.
 // OAuth gerekmez — admin playlist URL'sini yapıştırır. { added, skipped } döner.
@@ -48,31 +49,43 @@ export async function POST(req: NextRequest) {
   const { data: songRows, error: songErr } = await supabaseAdmin
     .from("songs")
     .upsert(rows, { onConflict: "youtube_video_id" })
-    .select("id");
+    .select("id, title, artist, channel_title");
 
   if (songErr || !songRows) {
     return NextResponse.json({ error: songErr?.message ?? "Şarkılar kaydedilemedi" }, { status: 500 });
   }
 
-  const songIds = songRows.map((r) => r.id);
   const { data: existing } = await supabaseAdmin
     .from("venue_songs")
     .select("song_id")
     .eq("venue_id", session.venue_id)
-    .in("song_id", songIds);
+    .in("song_id", songRows.map((r) => r.id));
 
   const existingSet = new Set((existing ?? []).map((e) => e.song_id));
-  const newRows = songIds
-    .filter((id) => !existingSet.has(id))
-    .map((song_id) => ({ venue_id: session.venue_id, song_id, play_count: 0, in_venue_list: true }));
+  const newSongs = songRows.filter((r) => !existingSet.has(r.id));
+  const newRows = newSongs.map((r) => ({
+    venue_id: session.venue_id,
+    song_id: r.id,
+    play_count: 0,
+    in_venue_list: true,
+  }));
 
+  let resolved = 0;
   if (newRows.length > 0) {
     const { error: insErr } = await supabaseAdmin.from("venue_songs").insert(newRows);
     if (insErr) {
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
     revalidateTag(`venue-songs-${session.venue_id}`, "max");
+
+    // Mekan, müşteri önerisini playlist'ine ekleyip yeniden içe aktarmış olabilir:
+    // eşleşen bekleyen öneriler burada kendiliğinden kapanır
+    resolved = await resolveMatchingSuggestions(session.venue_id, newSongs).catch(() => 0);
   }
 
-  return NextResponse.json({ added: newRows.length, skipped: songIds.length - newRows.length });
+  return NextResponse.json({
+    added: newRows.length,
+    skipped: songRows.length - newRows.length,
+    resolved_suggestions: resolved,
+  });
 }

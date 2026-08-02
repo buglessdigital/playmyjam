@@ -1,3 +1,37 @@
+export interface SuggestionInput {
+  suggested_title: string;
+  suggested_artist: string;
+}
+
+// Serbest metin öneri: müşteri mekan listesinde bulamadığı şarkıyı elle yazar.
+// Metin admin panelinde ham gösterildiği için sınırlar dar tutulur.
+const SUGGESTION_MAX = 120;
+
+export function parseSuggestionInput(
+  body: unknown
+): { ok: true; suggestion: SuggestionInput } | { ok: false; error: string } {
+  if (typeof body !== "object" || body === null) {
+    return { ok: false, error: "Geçersiz istek" };
+  }
+  const b = body as Record<string, unknown>;
+
+  // Kontrol karakterleri ve tekrarlı boşluk temizlenir
+  const clean = (v: unknown) =>
+    typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim() : "";
+
+  const suggested_title = clean(b.suggested_title);
+  if (!suggested_title || suggested_title.length > SUGGESTION_MAX) {
+    return { ok: false, error: `Şarkı adı gerekli (en fazla ${SUGGESTION_MAX} karakter)` };
+  }
+
+  const suggested_artist = clean(b.suggested_artist);
+  if (!suggested_artist || suggested_artist.length > SUGGESTION_MAX) {
+    return { ok: false, error: `Sanatçı adı gerekli (en fazla ${SUGGESTION_MAX} karakter)` };
+  }
+
+  return { ok: true, suggestion: { suggested_title, suggested_artist } };
+}
+
 export interface SongInput {
   youtube_video_id: string;
   title: string;

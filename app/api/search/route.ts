@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { searchVideos, YouTubeQuotaError, type TrackDetails } from "@/lib/youtube";
-import { identifyCaller } from "@/lib/api-auth";
+import { getVerifiedAdminSession } from "@/lib/admin-session";
+import { getSuperSession } from "@/lib/session";
 import { consumeRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 gün
 
-// Her cache miss YouTube kotasından ~100 birim yakıyor. Uç açıkken tek bir
-// betik günlük kotayı bitirebilirdi: giriş şartı + kişi başına pencere.
+// Her cache miss YouTube kotasından ~100 birim yakıyor. Kota artışı onaylanana
+// kadar bu uç yalnızca mekan/super-admin paneline açık: müşteri paneli mekanın
+// kendi listesinde arıyor, bulamadığını öneri olarak gönderiyor (bkz. SearchView).
 const SEARCH_LIMIT = 20;
 const SEARCH_WINDOW_SECONDS = 60;
 
@@ -32,9 +34,10 @@ function slim(t: TrackDetails): SearchTrack {
 // Kota savunması üç katman: (1) songs tablosunda yerel arama (0 birim),
 // (2) search_cache — aynı sorgu 30 gün YouTube'a gitmez, (3) ancak o zaman search.list.
 export async function GET(req: NextRequest) {
-  const caller = await identifyCaller(req);
+  const admin = await getVerifiedAdminSession(req);
+  const caller = admin ? `admin:${admin.admin_id}` : getSuperSession(req) ? "super" : null;
   if (!caller) {
-    return NextResponse.json({ error: "Giriş yapmalısın" }, { status: 401 });
+    return NextResponse.json({ error: "Bu uç yalnızca mekan panelinden kullanılır" }, { status: 403 });
   }
 
   const q = req.nextUrl.searchParams.get("q")?.trim();

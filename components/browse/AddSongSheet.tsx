@@ -154,18 +154,25 @@ export default function AddSongSheet({
               </button>
             )}
 
+            {/* Normal sıra rengi (mavi) ana adımdakiyle aynı: "Geri" ile karışmasın,
+                öncelikli butonun pembesiyle de yarışmasın */}
             <button
               onClick={() => canNormal && onAdd(false)}
               disabled={!canNormal}
-              className="w-full py-3.5 rounded-2xl border text-sm font-semibold transition-all"
+              className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
               style={{
-                background: "rgba(255,255,255,0.04)",
-                borderColor: "rgba(255,255,255,0.1)",
-                color: "#9ca3af",
+                background: "rgba(59,130,246,0.14)",
+                borderColor: "rgba(59,130,246,0.4)",
                 opacity: canNormal ? 1 : 0.5,
               }}
             >
-              Yine de normal sıraya ekle ({normalCost} Jeton)
+              <span className="text-white font-semibold text-sm flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                Yine de normal sıraya ekle
+              </span>
+              <span className="font-bold text-sm" style={{ color: "#3b82f6" }}>{normalCost} Jeton</span>
             </button>
           </div>
         ) : (

@@ -22,7 +22,7 @@ export type SimilarArtist = {
 
 // Türkçe karakterleri ASCII'ye indirger, noktalama atar: "Dünyanın Sonuna" → "dunyanin sonuna".
 // ı/İ NFD ile ayrışmadığı için önce elle eşlenir.
-function fold(text: string): string {
+export function fold(text: string): string {
   return text
     .replace(/[İI]/g, "i")
     .replace(/ı/g, "i")

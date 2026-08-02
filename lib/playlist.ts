@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { resolveMatchingSuggestions } from "@/lib/suggestions";
 import type { SongInput } from "@/lib/validate";
 
 // songs'a upsert edip venue playlist'ine ekler; admin playlist ve requests rotaları kullanır
@@ -45,6 +46,11 @@ export async function addSongToVenuePlaylist(
   if (vsErr || !vs) {
     return { error: vsErr?.message ?? "Playlist'e eklenemedi", status: 500 };
   }
+
+  // Bu şarkıyı bekleyen serbest metin öneriler varsa kendiliğinden kapansın
+  await resolveMatchingSuggestions(venueId, [
+    { id: songRow.id, title: song.title, artist: song.artist },
+  ]).catch(() => 0);
 
   return { venueSongId: vs.id, songId: songRow.id };
 }

@@ -44,8 +44,12 @@ export type DisplaySong = {
 
 export const COOLDOWN_MS = 30 * 60 * 1000;
 
+export type CooldownReason = "queued" | "played" | "playing" | null;
+export type Cooldown = { remainingMs: number; reason: CooldownReason };
+
 export type SongActionState =
   | { kind: "cooldown"; mins: number }
+  | { kind: "playing" }
   | { kind: "add" }
   | { kind: "added" }
   | { kind: "request" }
@@ -54,14 +58,20 @@ export type SongActionState =
 export type SongActionContext = {
   queuedSongIds: Set<string>;
   recentlyPlayedAt: Map<string, number>;
+  /** Sahnedeki şarkı — kaynağı ne olursa olsun (auto dahil) sıraya eklenemez */
+  playingSongId?: string | null;
   addedIds: Set<string>;
   requestedIds: Set<string>;
 };
 
 export function getCooldown(
   song: DisplaySong,
-  ctx: Pick<SongActionContext, "queuedSongIds" | "recentlyPlayedAt">
-): { remainingMs: number; reason: "queued" | "played" | null } {
+  ctx: Pick<SongActionContext, "queuedSongIds" | "recentlyPlayedAt" | "playingSongId">
+): Cooldown {
+  // request_song'daki 'playing' kuralının aynası: çalan şarkı hiç eklenemez
+  if (song.id && ctx.playingSongId && song.id === ctx.playingSongId) {
+    return { remainingMs: COOLDOWN_MS, reason: "playing" };
+  }
   if (song.id && ctx.queuedSongIds.has(song.id)) return { remainingMs: COOLDOWN_MS, reason: "queued" };
   if (song.id) {
     const playedAt = ctx.recentlyPlayedAt.get(song.id);
@@ -78,6 +88,7 @@ export function getCooldown(
 export function getSongActionState(song: DisplaySong, ctx: SongActionContext): SongActionState {
   if (song.in_venue_list === true) {
     const cd = getCooldown(song, ctx);
+    if (cd.reason === "playing") return { kind: "playing" };
     if (cd.remainingMs > 0) return { kind: "cooldown", mins: Math.ceil(cd.remainingMs / 60000) };
     return ctx.addedIds.has(song.youtube_video_id) ? { kind: "added" } : { kind: "add" };
   }

@@ -9,13 +9,12 @@ import {
   getCooldown,
   getSongActionState,
   primaryArtist,
+  type Cooldown,
   type DisplaySong,
   type SongActionState,
   type VenueSong,
 } from "@/components/browse/browse-types";
 import { buildSimilar, similarSongsOfArtist, type SimilarArtist } from "@/lib/similar";
-
-type Cooldown = { remainingMs: number; reason: "played" | "queued" | null };
 
 interface Props {
   venueDbId: string;
@@ -65,10 +64,13 @@ export default function SimilarOverlay({
           .from("venue_songs")
           .select("play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
           .eq("venue_id", venueDbId),
-        // request_song'daki cooldown kuralıyla birebir: yalnızca kullanıcı istekleri sayılır
+        // request_song'daki cooldown kuralıyla birebir: yalnızca müşteri istekleri
+        // sayılır ve sayaç şarkının çalmaya başladığı andan işler (0025). played_at
+        // hep started_at'ten sonra olduğu için filtre üst küme, çapa aşağıda süzülür.
+        // (Çalmakta olan şarkı ayrıca playingSongId ile engelli.)
         supabase
           .from("queue")
-          .select("song_id, played_at")
+          .select("song_id, played_at, started_at")
           .eq("venue_id", venueDbId)
           .eq("status", "played")
           .not("user_id", "is", null)
@@ -83,8 +85,15 @@ export default function SimilarOverlay({
           .map((vs) => ({ ...vs.songs!, play_count: vs.play_count, in_venue_list: vs.in_venue_list }))
       );
 
-      const playedRows = (played ?? []) as { song_id: string; played_at: string }[];
-      setRecentlyPlayedAt(new Map(playedRows.map((r) => [r.song_id, new Date(r.played_at).getTime()])));
+      const playedRows = (played ?? []) as { song_id: string; played_at: string | null; started_at: string | null }[];
+      const cutoff = Date.now() - COOLDOWN_MS;
+      const anchors = new Map<string, number>();
+      for (const r of playedRows) {
+        const at = new Date(r.started_at ?? r.played_at ?? 0).getTime();
+        if (at < cutoff) continue;
+        anchors.set(r.song_id, Math.max(anchors.get(r.song_id) ?? 0, at));
+      }
+      setRecentlyPlayedAt(anchors);
     };
 
     load();
@@ -109,18 +118,12 @@ export default function SimilarOverlay({
     [catalog, selectedArtist]
   );
 
-  // Çalmakta olan şarkı da eklenemez (request_song 'playing' ile reddeder) — kuyruktakiler
-  // gibi cooldown gösterilsin
-  const blockedSongIds = useMemo(
-    () => (playingSongId ? new Set(queuedSongIds).add(playingSongId) : queuedSongIds),
-    [queuedSongIds, playingSongId]
-  );
-
+  // Sahnedeki şarkı da eklenemez (request_song 'playing' ile reddeder) — "Çalıyor" rozeti
   const actionFor = (song: VenueSong): SongActionState =>
-    getSongActionState(song, { queuedSongIds: blockedSongIds, recentlyPlayedAt, addedIds, requestedIds: new Set() });
+    getSongActionState(song, { queuedSongIds, recentlyPlayedAt, playingSongId, addedIds, requestedIds: new Set() });
 
   const handleAdd = (song: VenueSong) =>
-    onAddSong(song, getCooldown(song, { queuedSongIds: blockedSongIds, recentlyPlayedAt }));
+    onAddSong(song, getCooldown(song, { queuedSongIds, recentlyPlayedAt, playingSongId }));
 
   const loading = catalog === null;
   const empty = !loading && songs.length === 0;

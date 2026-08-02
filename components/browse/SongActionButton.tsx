@@ -10,6 +10,30 @@ interface Props {
 }
 
 export default function SongActionButton({ state, size, onAdd, onRequest }: Props) {
+  // Sahnedeki şarkı: süre değil "çalıyor" gösterilir — bitince tekrar eklenebilir
+  // (auto çalmalarda hemen, müşteri isteğiyle çalanlarda başlangıçtan 30 dk sonra)
+  if (state.kind === "playing") {
+    const eq = (
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+        <path d="M4 14v-4M9 19V5M14 17V7M19 13v-2" stroke="#e91e8c" strokeWidth="2.5" strokeLinecap="round" />
+      </svg>
+    );
+    if (size === "card") {
+      return (
+        <div className="flex h-7 items-center gap-1 rounded-full bg-black/60 px-2 backdrop-blur-sm">
+          {eq}
+          <span className="text-[11px] font-semibold text-[#e91e8c]">Çalıyor</span>
+        </div>
+      );
+    }
+    return (
+      <div className="flex h-8 items-center justify-center gap-[3px] rounded-[10px] border border-[#e91e8c]/30 bg-[#e91e8c]/10 px-2">
+        {eq}
+        <span className="text-[11px] font-semibold text-[#e91e8c]">Çalıyor</span>
+      </div>
+    );
+  }
+
   if (state.kind === "cooldown") {
     if (size === "card") {
       return (

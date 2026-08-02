@@ -140,18 +140,19 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       setFavoriteIds(new Set(state.favorite_ids ?? []));
       setQueueEntries(state.queue_entries ?? []);
       setRecentPlays(state.recently_played ?? []);
-      // Banner otomatik çalmada da görünsün: kaynak now_playing tablosu;
-      // 0014 öncesi RPC song_id döndürmüyorsa müşteri kuyruğundaki kayda düş
-      setPlayingSongId(state.now_playing?.song_id ?? state.playing?.song_id ?? null);
+      // Hem banner hem "eklenemez" kilidi buradan: kaynak kuyruğun 'playing' satırı —
+      // request_song'ın baktığı yerin aynısı (auto çalmalar da dahil). Satır yoksa
+      // now_playing tablosuna düşülür.
+      setPlayingSongId(state.playing?.song_id ?? state.now_playing?.song_id ?? null);
       setNowPlaying(
         state.now_playing
           ? { ...state.now_playing, started_at: np2?.is_playing ? np2.started_at : null }
           : null
       );
 
-      const played = new Map((state.recently_played ?? []).map((r) => [r.song_id, r.played_at]));
-      if (state.playing?.song_id) played.set(state.playing.song_id, state.playing.started_at);
-      setRecentlyPlayedIds(played);
+      // recently_played artık çalmakta olan müşteri şarkısını da içeriyor ve çapası
+      // çalmaya başlama anı (0025) — sahnedeki şarkının ayrı bloğu playingSongId'de
+      setRecentlyPlayedIds(new Map((state.recently_played ?? []).map((r) => [r.song_id, r.played_at])));
       setStateLoaded(true);
     };
 
@@ -250,8 +251,9 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   );
 
   const actionFor = useCallback(
-    (song: DisplaySong) => getSongActionState(song, { queuedSongIds, recentlyPlayedAt: recentlyPlayedIds, addedIds, requestedIds }),
-    [queuedSongIds, recentlyPlayedIds, addedIds, requestedIds]
+    (song: DisplaySong) =>
+      getSongActionState(song, { queuedSongIds, recentlyPlayedAt: recentlyPlayedIds, playingSongId, addedIds, requestedIds }),
+    [queuedSongIds, recentlyPlayedIds, playingSongId, addedIds, requestedIds]
   );
 
   // Şansına bırak: cooldown'da/kuyrukta olmayan listeden rastgele bir şarkıyla sheet'i aç
@@ -613,7 +615,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       <AddSongSheet
         song={selectedSong}
         tokenBalance={tokenBalance}
-        cooldown={selectedSong ? getCooldown(selectedSong, { queuedSongIds, recentlyPlayedAt: recentlyPlayedIds }) : undefined}
+        cooldown={selectedSong ? getCooldown(selectedSong, { queuedSongIds, recentlyPlayedAt: recentlyPlayedIds, playingSongId }) : undefined}
         waitNormalMs={waitNormalMs}
         waitPriorityMs={waitPriorityMs}
         normalCost={requestCost}

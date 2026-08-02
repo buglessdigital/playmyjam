@@ -75,7 +75,12 @@ export async function playNextFromQueue(venueId: string, retryAfterFill = true):
         started_at: new Date().toISOString(),
       })
       .eq("venue_id", venueId),
-    supabaseAdmin.from("queue").update({ status: "playing" }).eq("id", nextItem.id),
+    // started_at: 30 dk'lık tekrar-çalma kilidinin çapası (0025) — sayaç şarkı
+    // bitince değil, çalmaya başladığı anda başlar
+    supabaseAdmin
+      .from("queue")
+      .update({ status: "playing", started_at: new Date().toISOString() })
+      .eq("id", nextItem.id),
   ]);
 
   // Şarkının sahibine push: uygulama kapalıyken de "şarkın çalıyor" ulaşsın — fire-and-forget.

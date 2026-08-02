@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 import { formatWait } from "@/lib/wait-time";
+import type { Cooldown } from "./browse-types";
 
 interface Song {
   youtube_video_id: string;
@@ -15,7 +16,7 @@ interface Song {
 interface Props {
   song: Song | null;
   tokenBalance: number;
-  cooldown?: { remainingMs: number; reason: "played" | "queued" | null };
+  cooldown?: Cooldown;
   waitNormalMs?: number;
   waitPriorityMs?: number;
   normalCost?: number;
@@ -91,11 +92,17 @@ export default function AddSongSheet({
             </svg>
             <div>
               <p className="text-[#fbbf24] text-sm font-semibold">
-                {cooldownReason === "queued" ? "Bu şarkı zaten sırada" : "Bu şarkı yakın zamanda çaldı"}
+                {cooldownReason === "playing"
+                  ? "Bu şarkı şu an çalıyor"
+                  : cooldownReason === "queued"
+                  ? "Bu şarkı zaten sırada"
+                  : "Bu şarkı yakın zamanda çaldı"}
               </p>
               <p className="text-[#d97706] text-xs mt-0.5">
-                {cooldownReason === "queued"
-                  ? <>Sıraya eklenebileceği en erken süre: <span className="font-bold text-[#fbbf24]">{cooldownMin} dakika</span> sonra (çalındıktan 30 dk geçince).</>
+                {cooldownReason === "playing"
+                  ? <>Sahnedeki şarkı sıraya eklenemez. Bir müşteri isteğiyse <span className="font-bold text-[#fbbf24]">başladıktan 30 dakika</span> sonra, mekanın kendi listesinden çalıyorsa şarkı biter bitmez tekrar eklenebilir.</>
+                  : cooldownReason === "queued"
+                  ? <>Sıraya eklenebileceği en erken süre: <span className="font-bold text-[#fbbf24]">{cooldownMin} dakika</span> sonra (çalmaya başladıktan 30 dk geçince).</>
                   : <>Tekrar ekleyebilmek için <span className="font-bold text-[#fbbf24]">{cooldownMin} dakika</span> beklemeniz gerekiyor.</>
                 }
               </p>

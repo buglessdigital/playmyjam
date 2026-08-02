@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import AddSongSheet from "@/components/browse/AddSongSheet";
 import LyricsOverlay from "@/components/song/LyricsOverlay";
 import SimilarOverlay from "@/components/song/SimilarOverlay";
-import type { DisplaySong, VenueSong } from "@/components/browse/browse-types";
+import type { Cooldown, DisplaySong, VenueSong } from "@/components/browse/browse-types";
 import type { TrackDetails } from "@/lib/youtube";
 import type { LyricsResult } from "@/lib/lyrics";
 import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
@@ -35,6 +35,8 @@ type SongUserState = {
   is_favorite: boolean;
   token_balance: number;
   recently_played_at: number | null;
+  /** Kuyruğun 'playing' satırı — auto çalmalar dahil (0025). Eski RPC'de yok. */
+  playing_song_id?: string | null;
   queue_entries: QueueEntry[];
   now_playing: { song_id: string | null; progress_ms: number; is_playing: boolean; duration_ms: number } | null;
 };
@@ -45,8 +47,6 @@ const COOLDOWN_MS = 30 * 60 * 1000;
 // telafisi — satır vurgusu geç kalmaktansa bir tık erken yansın
 const LYRICS_LEAD_MS = 400;
 
-type Cooldown = { remainingMs: number; reason: "played" | "queued" | null };
-
 // Sıraya ekleme sheet'i hem bu sayfanın şarkısı hem "Benzer" panelindeki öneriler için
 // açılabilir — hangi şarkı için açıldığı tek yerde tutulur
 type SheetTarget = {
@@ -55,8 +55,17 @@ type SheetTarget = {
   cooldown: Cooldown;
 };
 
-// Şarkı kuyruktaysa veya son 30 dk'da çalındıysa cooldown — veri geldiği anda hesaplanır
-function computeCooldown(dbSongId: string | null, entries: QueueEntry[], recentlyPlayedAt: number | null): Cooldown {
+// Şarkı sahnedeyse, kuyruktaysa veya son 30 dk içinde çalmaya başladıysa cooldown —
+// request_song'daki kuralların birebir aynası, veri geldiği anda hesaplanır
+function computeCooldown(
+  dbSongId: string | null,
+  entries: QueueEntry[],
+  recentlyPlayedAt: number | null,
+  playingSongId: string | null
+): Cooldown {
+  if (dbSongId && playingSongId === dbSongId) {
+    return { remainingMs: COOLDOWN_MS, reason: "playing" };
+  }
   if (dbSongId && entries.some((e) => e.song_id === dbSongId)) {
     return { remainingMs: COOLDOWN_MS, reason: "queued" };
   }
@@ -118,6 +127,8 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
   const [sheetTarget, setSheetTarget] = useState<SheetTarget | null>(null);
   const [similarOpen, setSimilarOpen] = useState(false);
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
+  // Sahnedeki şarkı (auto dahil): kuyruğun 'playing' satırı — request_song'ın baktığı yer
+  const [playingSongId, setPlayingSongId] = useState<string | null>(null);
   const [nowPlaying, setNowPlaying] = useState<NowPlayingInfo | null>(null);
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null);
   // track prop'u mount sonrası değişmez — loading'i initializer'da başlatmak
@@ -197,7 +208,10 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
       setIsFavorite(state.is_favorite ?? false);
       setTokenBalance(state.token_balance ?? 0);
       setQueueEntries(state.queue_entries ?? []);
-      setCooldown(computeCooldown(state.db_song_id, state.queue_entries ?? [], state.recently_played_at));
+      // RPC henüz güncellenmemişse (deploy sırası) now_playing'e düşülür
+      const playingId = state.playing_song_id ?? state.now_playing?.song_id ?? null;
+      setPlayingSongId(playingId);
+      setCooldown(computeCooldown(state.db_song_id, state.queue_entries ?? [], state.recently_played_at, playingId));
 
       const np = state.now_playing;
       if (np && np.duration_ms > 0) {
@@ -380,6 +394,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
   };
 
   const isOnCooldown = cooldown.remainingMs > 0;
+  const isPlayingNow = cooldown.reason === "playing";
   const cooldownMins = Math.ceil(cooldown.remainingMs / 60000);
   const added = addedIds.has(track.youtube_video_id);
 
@@ -448,6 +463,8 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     ? ""
     : !dbSongId
     ? "Mekan listesinde değil"
+    : isPlayingNow
+    ? "Şu an sahnede — eklenemez"
     : isOnCooldown
     ? `${cooldownMins} dk sonra eklenebilir`
     : inVenueList
@@ -458,7 +475,21 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     ? "İstendi"
     : "Mekana istek gönder";
 
-  const progressPct = isOnCooldown ? Math.min(100, Math.max(0, 100 - (cooldown.remainingMs / (30 * 60 * 1000)) * 100)) : 0;
+  // Çubuk iki iş görüyor: şarkı sahnedeyken canlı çalma ilerlemesi, cooldown'dayken
+  // kalan bekleme. Diğer hallerde boş.
+  const progressPct = isCurrentlyPlayingThisSong
+    ? Math.min(100, Math.max(0, (progress / Math.max(1, track.duration_ms)) * 100))
+    : isOnCooldown
+    ? Math.min(100, Math.max(0, 100 - (cooldown.remainingMs / COOLDOWN_MS) * 100))
+    : 0;
+  const barLeftLabel = isCurrentlyPlayingThisSong
+    ? formatDuration(progress)
+    : isPlayingNow
+    ? "Çalıyor"
+    : isOnCooldown
+    ? "Bekleme"
+    : "0:00";
+  const barRightLabel = isOnCooldown && !isPlayingNow ? `${cooldownMins} dk` : formatDuration(track.duration_ms);
 
   return (
     <div style={{ width: "100%", background: "#0f0a18" }}>
@@ -567,14 +598,14 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
           )}
         </div>
 
-        {/* İlerleme çubuğu (kuyruk bekleme süresi gösterimi) */}
+        {/* İlerleme çubuğu: sahnedeyken çalma ilerlemesi, cooldown'dayken kalan bekleme */}
         <div style={{ padding: "16px 24px 0" }}>
           <div style={{ width: "100%", height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", position: "relative", overflow: "hidden" }}>
             <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${progressPct}%`, background: "#e91e8c", borderRadius: 2 }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-            <span style={{ color: "#6b7280", fontSize: 11 }}>{isOnCooldown ? "Bekleme" : "0:00"}</span>
-            <span style={{ color: "#6b7280", fontSize: 11 }}>{isOnCooldown ? `${cooldownMins} dk` : formatDuration(track.duration_ms)}</span>
+            <span style={{ color: "#6b7280", fontSize: 11 }}>{barLeftLabel}</span>
+            <span style={{ color: "#6b7280", fontSize: 11 }}>{barRightLabel}</span>
           </div>
         </div>
 
@@ -743,7 +774,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
             duration_ms: track.duration_ms,
           }}
           queuedSongIds={queuedSongIds}
-          playingSongId={nowPlaying?.songId ?? null}
+          playingSongId={playingSongId}
           addedIds={addedIds}
           onOpenSong={openSongPage}
           onAddSong={openSheetFor}

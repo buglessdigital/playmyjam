@@ -54,6 +54,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Bu şarkı son 30 dakika içinde çalındı" }, { status: 429 });
       case "playing":
         return NextResponse.json({ error: "Bu şarkı şu an çalıyor" }, { status: 429 });
+      case "already_queued":
+        return NextResponse.json({ error: "Bu şarkı zaten sırada" }, { status: 429 });
       case "insufficient_tokens":
         return NextResponse.json({ error: "Yetersiz jeton" }, { status: 402 });
       default:

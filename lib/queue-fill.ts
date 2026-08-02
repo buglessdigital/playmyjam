@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const QUEUE_TARGET = 10;
 const AUTO_POSITION_BASE = 9000;
+const COOLDOWN_MS = 30 * 60 * 1000;
 
 export async function fillQueueToTen(venueId: string): Promise<void> {
   // Current queued count (playing is separate status, not counted)
@@ -49,7 +50,7 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
   // Exclude the currently playing song
   const { data: playingNow } = await supabaseAdmin
     .from("queue")
-    .select("song_id")
+    .select("song_id, user_id")
     .eq("venue_id", venueId)
     .eq("status", "playing")
     .limit(1)
@@ -58,7 +59,30 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
   const excludeIds = new Set(inQueueIds);
   if (playingNow?.song_id) excludeIds.add(playingNow.song_id);
 
-  // Venue playlist candidates — auto-fill has no 30-min cooldown.
+  // 30 dk kuralı "eklenemez" değil "çalmaz": müşteri isteğiyle son 30 dk içinde
+  // çalmaya başlamış şarkılar otomatik doldurmaya da girmez. auto-fill'in kendi
+  // çaldıkları bu kurala girmez (user_id null) — onlar hemen tekrar seçilebilir.
+  // played_at hep started_at'ten sonra olduğu için played_at filtresi üst küme;
+  // asıl çapa (başlangıç anı) burada süzülür.
+  const cutoff = Date.now() - COOLDOWN_MS;
+  const { data: recentUserPlays } = await supabaseAdmin
+    .from("queue")
+    .select("song_id, started_at, played_at")
+    .eq("venue_id", venueId)
+    .eq("status", "played")
+    .not("user_id", "is", null)
+    .gte("played_at", new Date(cutoff).toISOString());
+
+  const cooldownIds = new Set(
+    (recentUserPlays ?? [])
+      .filter((r) => new Date(r.started_at ?? r.played_at).getTime() >= cutoff)
+      .map((r) => r.song_id)
+  );
+  // Çalmakta olan müşteri şarkısı da kilitli (zaten excludeIds'de ama bittiğinde
+  // bir sonraki dolumda played satırı üzerinden yakalanır)
+  if (playingNow?.user_id && playingNow.song_id) cooldownIds.add(playingNow.song_id);
+
+  // Venue playlist candidates.
   // Çalınamaz işaretlenen (embed kapalı) videolar otomatik doldurmaya girmez.
   const { data: venueSongs } = await supabaseAdmin
     .from("venue_songs")
@@ -67,9 +91,12 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
     .eq("in_venue_list", true)
     .eq("songs.embeddable", true);
 
-  const candidates = (venueSongs ?? [])
-    .map((vs) => vs.song_id)
-    .filter((id) => !excludeIds.has(id));
+  const available = (venueSongs ?? []).map((vs) => vs.song_id).filter((id) => !excludeIds.has(id));
+
+  // Cooldown'daki şarkılar elenir; ama liste küçük olup hepsi elenirse müzik
+  // susmasın diye cooldown yok sayılır (kuyruğa/sahneye çıkma engeli hep geçerli)
+  const fresh = available.filter((id) => !cooldownIds.has(id));
+  const candidates = fresh.length > 0 ? fresh : available;
 
   if (candidates.length === 0) return;
 

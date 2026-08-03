@@ -30,6 +30,16 @@ const navItems = [
     ),
   },
   {
+    href: "/super-admin/applications",
+    label: "Mekan Talepleri",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M4 4h11l5 5v11a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M14 4v6h6M8 14h7M8 17.5h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/super-admin/pricing",
     label: "Fiyatlandırma",
     icon: (

@@ -16,6 +16,7 @@ type ManagedVenue = {
 export default function SuperAdminDashboard() {
   const [venues, setVenues] = useState<ManagedVenue[]>([]);
   const [loadError, setLoadError] = useState(false);
+  const [newApplications, setNewApplications] = useState(0);
 
   useEffect(() => {
     fetch("/api/super-admin/venues")
@@ -27,6 +28,18 @@ export default function SuperAdminDashboard() {
         if (Array.isArray(data)) setVenues(data);
       })
       .catch(() => setLoadError(true));
+  }, []);
+
+  // Ana sayfadaki kayıt formundan gelen, henüz dokunulmamış talepler
+  useEffect(() => {
+    fetch("/api/super-admin/applications")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setNewApplications(data.filter((a: { status: string }) => a.status === "new").length);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const activeVenues = venues.filter((v) => v.status === "active").length;
@@ -57,6 +70,30 @@ export default function SuperAdminDashboard() {
           </div>
         ))}
       </div>
+
+      {newApplications > 0 && (
+        <Link
+          href="/super-admin/applications"
+          className="flex items-center gap-3 mb-10 px-5 py-4 rounded-2xl border transition-all hover:bg-white/[0.03]"
+          style={{ background: "rgba(245,158,11,0.08)", borderColor: "rgba(245,158,11,0.3)" }}
+        >
+          <span
+            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm"
+            style={{ background: "rgba(245,158,11,0.15)", color: ACCENT }}
+          >
+            {newApplications}
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-white text-sm font-medium">Yeni mekan talebi var</p>
+            <p className="text-[#6b7280] text-xs mt-0.5">
+              Ana sayfadaki kayıt formundan {newApplications} yeni başvuru bekliyor
+            </p>
+          </div>
+          <span className="text-xs font-medium shrink-0" style={{ color: ACCENT }}>
+            İncele →
+          </span>
+        </Link>
+      )}
 
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-white font-semibold text-base">Mekanlar</h2>

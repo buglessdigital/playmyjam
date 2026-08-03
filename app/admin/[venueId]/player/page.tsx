@@ -158,7 +158,7 @@ function PlayerPageContent({ params }: Props) {
 
       <header className="relative z-10 mb-4 flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
-          <Image src="/logo.png" alt="Play My Jam" width={40} height={40} className="h-9 w-9 shrink-0 rounded-xl object-contain md:h-10 md:w-10" />
+          <Image src="/logo-mark.png" alt="Play My Jam" width={454} height={512} className="h-9 w-9 shrink-0 object-contain md:h-10 md:w-10" />
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#6b7280]">Play My Jam</p>
             <h1 className="truncate text-lg font-bold text-white md:text-xl">{venueName || venueId}</h1>

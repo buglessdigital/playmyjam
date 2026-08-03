@@ -2,7 +2,10 @@
 // Statik varlıkları cache'ler, sayfa gezinmelerinde ağ öncelikli çalışır,
 // çevrimdışıyken offline sayfasına düşer. API/auth istekleri asla cache'lenmez.
 
-const CACHE_VERSION = "pmj-v1";
+// Marka varlıkları değişince yükselt: statik varlıklar cache öncelikli servis
+// edildiği için, sürüm sabit kalırsa eski logo/ikonlar cihazlarda takılı kalır
+// (activate eski sürümdeki tüm cache'leri siler).
+const CACHE_VERSION = "pmj-v2";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_URLS = [

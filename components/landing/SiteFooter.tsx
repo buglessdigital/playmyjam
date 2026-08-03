@@ -10,7 +10,7 @@ export default function SiteFooter() {
       <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-14 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <div className="inline-flex items-center">
-            <Image src="/logo.png" alt="PlayMyJam" width={900} height={759} className="h-16 w-auto" />
+            <Image src="/logo.png" alt="PlayMyJam" width={1600} height={500} className="h-10 w-auto" />
           </div>
           <p className="mt-4 max-w-xs text-xs leading-relaxed text-[#6b7280]">
             Kafe ve eğlence mekanlarında müzik sırasını misafirlere açan dijital şarkı istek
@@ -28,6 +28,7 @@ export default function SiteFooter() {
             <li><Link href="/#nasil-calisir" className="hover:text-white">Nasıl Çalışır</Link></li>
             <li><Link href="/#fiyatlar" className="hover:text-white">Fiyatlar</Link></li>
             <li><Link href="/#sss" className="hover:text-white">Sık Sorulan Sorular</Link></li>
+            <li><Link href="/#mekan-basvuru" className="text-[#e91e8c] hover:text-[#ff2d9c]">Mekanını Kaydet</Link></li>
           </ul>
         </div>
 

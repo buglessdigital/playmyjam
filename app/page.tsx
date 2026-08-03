@@ -7,6 +7,7 @@ import Coin from "@/components/ui/Coin";
 import IyzicoBand from "@/components/ui/IyzicoBand";
 import SiteHeader from "@/components/landing/SiteHeader";
 import SiteFooter from "@/components/landing/SiteFooter";
+import VenueApplicationForm from "@/components/landing/VenueApplicationForm";
 
 export const metadata: Metadata = {
   title: "PlayMyJam — Mekanda müziği sen seç",
@@ -445,6 +446,18 @@ export default function HomePage() {
                 Fiyatları Gör
               </a>
             </div>
+
+            {/* Mekan sahipleri kayıt formunu ilk ekranda görsün */}
+            <a
+              href="#mekan-basvuru"
+              className="mt-5 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-[#ff8fd0] transition-colors hover:text-white"
+              style={{ background: "rgba(233,30,140,0.08)", border: "1px solid rgba(233,30,140,0.22)" }}
+            >
+              Mekan sahibi misin? Mekanını ücretsiz kaydet
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </a>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 lg:justify-start">
               <span className="flex items-center gap-1.5 text-xs text-[#9ca3af]">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
@@ -532,11 +545,11 @@ export default function HomePage() {
                 verir.
               </p>
               <a
-                href="#iletisim"
+                href="#mekan-basvuru"
                 className="mt-7 inline-block rounded-2xl px-6 py-3.5 text-sm font-bold text-white transition-transform active:scale-[0.98]"
                 style={{ background: PINK_GRADIENT, boxShadow: "0 10px 28px -10px rgba(233,30,140,0.6)" }}
               >
-                Mekanın için iletişime geç
+                Mekanını ücretsiz kaydet
               </a>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -551,6 +564,34 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* Mekan kayıt formu — talepler super admin panelindeki "Mekan Talepleri"ne düşer */}
+        <section id="mekan-basvuru" className="mx-auto w-full max-w-3xl scroll-mt-24 px-5 py-20">
+          <div className="text-center">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#e91e8c]">Mekan Kaydı</p>
+            <h2 className="mt-3 text-3xl font-black text-white sm:text-4xl">
+              Mekanını PlayMyJam&apos;e kaydet
+            </h2>
+            <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-[#9ca3af] sm:text-base">
+              Formu doldur, ekibimiz seninle iletişime geçip mekanının panelini kursun. Kurulum
+              ücretsizdir ve ek donanım gerektirmez — mevcut ekran ve ses düzenin yeterli.
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <VenueApplicationForm />
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-[#6b7280]">
+            <span>Tercihen doğrudan ulaşmak istersen:</span>
+            <a href={`mailto:${COMPANY.email}`} className="text-[#9ca3af] hover:text-white">
+              {COMPANY.email}
+            </a>
+            <a href={`tel:${COMPANY.phone.replace(/\s/g, "")}`} className="text-[#9ca3af] hover:text-white">
+              {COMPANY.phone}
+            </a>
           </div>
         </section>
 

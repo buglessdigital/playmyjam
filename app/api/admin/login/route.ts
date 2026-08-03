@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { ADMIN_SESSION_COOKIE, cookieOptions, signSession } from "@/lib/session";
+import { ADMIN_SESSION_COOKIE, ADMIN_SESSION_MAX_AGE, cookieOptions, signSession } from "@/lib/session";
 import { clientIp, consumeRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 // Kullanıcı adının var olup olmadığı dışarıya sızmasın: hem mesaj tek tip, hem de
@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
     .eq("id", admin.id)
     .maybeSingle();
 
-  const maxAge = 60 * 60 * 24 * 7; // 7 gün
+  // Süre kayan: her panel isteği ve player heartbeat'i çerezi tazeler
+  const maxAge = ADMIN_SESSION_MAX_AGE;
   const token = signSession({
     kind: "admin",
     admin_id: admin.id,

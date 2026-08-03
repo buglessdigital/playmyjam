@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { getSuperSession } from "@/lib/session";
+import {
+  ADMIN_SESSION_COOKIE,
+  ADMIN_SESSION_MAX_AGE,
+  cookieOptions,
+  getSuperSession,
+  renewedAdminToken,
+} from "@/lib/session";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import {
   clearVenueMemberCookie,
@@ -78,7 +84,14 @@ export async function proxy(req: NextRequest) {
       return NextResponse.redirect(new URL(`/admin/${venueId}/login`, req.url));
     }
 
-    return NextResponse.next();
+    // Kayan süre: panel kullanıldıkça oturum uzar. Mekan ekranındaki player
+    // sayfa gezinmesi yapmadığından asıl yenileme /api/player'dan gelir.
+    const response = NextResponse.next();
+    const renewed = renewedAdminToken(session);
+    if (renewed) {
+      response.cookies.set(ADMIN_SESSION_COOKIE, renewed, cookieOptions(ADMIN_SESSION_MAX_AGE));
+    }
+    return response;
   }
 
   // Müşteri route koruması. Mekanın vitrinini görmek için giriş gerekmez:

@@ -10,10 +10,18 @@ export type NextResult = {
   error?: string;
 };
 
+// Arka arkaya kaç bozuk satır atlanabilir. Tavan yalnızca sonsuz özyinelemeye
+// karşı emniyet; normalde kuyrukta bir iki bozuk satır olur.
+const MAX_SKIPS = 25;
+
 // Kuyruğu ilerletir: çalanı 'played' yapar, sıradakini seçip now_playing'e yazar.
 // Oynatma artık admin cihazındaki gömülü player'da — burada yalnızca durum güncellenir,
 // player now_playing'i Realtime ile dinleyip yeni videoyu yükler.
-export async function playNextFromQueue(venueId: string, retryAfterFill = true): Promise<NextResult> {
+export async function playNextFromQueue(
+  venueId: string,
+  retryAfterFill = true,
+  skips = 0
+): Promise<NextResult> {
   await supabaseAdmin
     .from("queue")
     .update({ status: "played", played_at: new Date().toISOString() })
@@ -35,7 +43,7 @@ export async function playNextFromQueue(venueId: string, retryAfterFill = true):
     // şarkı olduğu sürece "kuyruk boş" dönmemeli, çalma hiç durmamalı
     if (retryAfterFill) {
       await fillQueueToTen(venueId).catch(() => {});
-      return playNextFromQueue(venueId, false);
+      return playNextFromQueue(venueId, false, skips);
     }
     await supabaseAdmin
       .from("now_playing")
@@ -56,13 +64,28 @@ export async function playNextFromQueue(venueId: string, retryAfterFill = true):
   };
   const songRel = nextItem.songs as unknown as SongInfo | SongInfo[] | null;
   const song = Array.isArray(songRel) ? songRel[0] : songRel;
-  if (!song?.youtube_video_id) return { started: false, error: "video_id yok" };
 
-  // Daha önce çalınamadığı işaretlenen video — kuyruktan düş, sıradakini dene
-  if (song.embeddable === false) {
+  // Çalınamaz satır: video kimliği yok (bozuk/eksik kayıt) ya da daha önce
+  // çalınamadığı işaretlenmiş. İkisinde de satır kuyruktan düşer ve sıradakine
+  // geçilir — eskiden video kimliği eksik satır kuyruğun başında kalıp çalmayı
+  // kalıcı olarak kilitliyordu (player "kuyruk boş" sanıp susuyordu).
+  const unplayable = !song?.youtube_video_id ? "video_id yok" : song.embeddable === false ? "embed kapalı" : null;
+
+  if (unplayable) {
     await supabaseAdmin.from("queue").update({ status: "removed" }).eq("id", nextItem.id);
-    return playNextFromQueue(venueId);
+
+    // Bozuk kayıt bir daha seçilmesin: aksi halde otomatik dolum aynı şarkıyı
+    // tekrar tekrar kuyruğa koyup atlatır (embed kapalı olan zaten işaretli)
+    if (!song?.youtube_video_id && nextItem.song_id) {
+      await supabaseAdmin.from("songs").update({ embeddable: false }).eq("id", nextItem.song_id);
+    }
+
+    if (skips >= MAX_SKIPS) {
+      return { started: false, error: `çalınabilir şarkı bulunamadı (${unplayable})` };
+    }
+    return playNextFromQueue(venueId, retryAfterFill, skips + 1);
   }
+  if (!song) return { started: false, error: "şarkı bulunamadı" }; // yukarıda elendi
 
   await Promise.all([
     supabaseAdmin

@@ -52,14 +52,37 @@ type NowPlayingRow = {
   is_playing: boolean;
 };
 
-type NextResponse = {
-  started: boolean;
+type PlayerApiResult = {
+  started?: boolean;
   video_id?: string;
   queueEmpty?: boolean;
   error?: string;
+  ok?: boolean;
+  taken?: boolean;
+  claimed?: boolean;
 };
 
+// Çalmayı durduran engeller: oturum düştü (401) veya sahiplik başka cihaza geçti (409).
+// İkisi de "kuyruk boş" DEĞİLDİR — ekranda ayrı ayrı, doğru mesajla gösterilir.
+type Blocked = "auth" | "claim";
+
 let apiPromise: Promise<void> | null = null;
+
+// Sekme kimliği: sahiplik bunun üzerinden yürür. sessionStorage sekmeye özeldir
+// ve yenilemede korunur — sayfa yenilenince kendi kilidimize takılmayız, ama
+// ikinci bir sekme/cihaz her zaman farklı kimlik alır.
+function playerInstanceId(venueDbId: string): string {
+  const key = `pmj-player-claim:${venueDbId}`;
+  try {
+    const existing = sessionStorage.getItem(key);
+    if (existing) return existing;
+    const fresh = crypto.randomUUID();
+    sessionStorage.setItem(key, fresh);
+    return fresh;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
 
 // IFrame API script'i tek sefer yüklenir; YT hazır olunca resolve eder
 function loadIframeApi(): Promise<void> {
@@ -82,11 +105,13 @@ function loadIframeApi(): Promise<void> {
 
 interface Props {
   venueDbId: string;
+  // Oturum düşerse buraya yönlendiren "Tekrar giriş yap" bağlantısı gösterilir
+  loginHref?: string;
   // Şu an çalan şarkının başlık bilgisi ekranda video DIŞINDA gösterilir (overlay yasak)
   onTrackChange?: (info: { videoId: string | null; isPlaying: boolean }) => void;
 }
 
-export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
+export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
@@ -102,21 +127,48 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
   const [started, setStarted] = useState(false);
   const [idle, setIdle] = useState(false); // kuyruk boş, çalan yok
   const [error, setError] = useState("");
+  const [blocked, setBlocked] = useState<Blocked | null>(null);
+  const [claimTaken, setClaimTaken] = useState(false);
+  // Render beklemeden okunabilsin diye ayna: advance/idle mantığı buna bakar
+  const blockedRef = useRef<Blocked | null>(null);
+  // İlk istekte üretilir: sunucuda çalışmaz, render'ı da etkilemez
+  const claimIdRef = useRef<string | null>(null);
+  const claimId = useCallback(() => {
+    claimIdRef.current ??= playerInstanceId(venueDbId);
+    return claimIdRef.current;
+  }, [venueDbId]);
+
+  const setBlock = useCallback((next: Blocked | null) => {
+    if (blockedRef.current === next) return;
+    blockedRef.current = next;
+    setBlocked(next);
+  }, []);
 
   const api = useCallback(
-    async (payload: Record<string, unknown>): Promise<NextResponse | null> => {
+    async (payload: Record<string, unknown>): Promise<PlayerApiResult | null> => {
       try {
         const res = await fetch(`/api/player/${venueDbId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...payload, claim_id: claimId() }),
         });
-        return res.ok ? res.json() : null;
+        // 401: mekan oturumu düştü. 409: çalma başka bir cihaza geçti.
+        if (res.status === 401) {
+          setBlock("auth");
+          return null;
+        }
+        if (res.status === 409) {
+          setBlock("claim");
+          return null;
+        }
+        if (!res.ok) return null;
+        setBlock(null);
+        return res.json();
       } catch {
         return null;
       }
     },
-    [venueDbId]
+    [venueDbId, claimId, setBlock]
   );
 
   // İlerleme + sağlık sinyali — admin paneli bununla "oynatıcı çevrimdışı" uyarısı verir
@@ -189,7 +241,9 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
         const result = await api(payload);
         if (result?.started && result.video_id) {
           loadVideo(result.video_id);
-        } else {
+        } else if (!blockedRef.current) {
+          // Yalnızca gerçekten sıradaki yoksa idle'a düş. Oturum düşmesi ya da
+          // sahiplik kaybı "kuyruk boş" değildir; kendi ekranını gösterir.
           currentVideoRef.current = null;
           desiredPlayingRef.current = false;
           setIdle(true);
@@ -240,9 +294,19 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
     }
   }, [supabase, venueDbId, loadVideo, nudgePlayback]);
 
-  // "Başlat" — tarayıcı autoplay politikası gereği ilk oynatma kullanıcı dokunuşuyla
-  const start = useCallback(async () => {
+  // "Başlat" — tarayıcı autoplay politikası gereği ilk oynatma kullanıcı dokunuşuyla.
+  // Önce sahiplik alınır: aynı mekanda ikinci bir sekme/cihaz açıksa çift ses olmasın.
+  const start = useCallback(async (force = false) => {
     setError("");
+
+    const claim = await api({ action: "claim", force });
+    if (blockedRef.current === "auth") return;
+    if (claim?.taken) {
+      setClaimTaken(true);
+      return;
+    }
+    setClaimTaken(false);
+
     await loadIframeApi();
     if (!containerRef.current || !window.YT) {
       setError("YouTube player yüklenemedi — sayfayı yenileyin");
@@ -297,26 +361,37 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
     });
 
     setStarted(true);
-  }, [advance, loadVideo, sendHeartbeat, onTrackChange, supabase, venueDbId]);
+  }, [api, advance, loadVideo, sendHeartbeat, onTrackChange, supabase, venueDbId]);
 
+  // Sahiplik başka cihaza geçtiyse bu sekme derhal susar — çift ses olmasın
   useEffect(() => {
-    if (!started) return;
+    if (blocked !== "claim") return;
+    desiredPlayingRef.current = false;
+    try {
+      playerRef.current?.pauseVideo();
+    } catch {}
+  }, [blocked]);
+
+  // Oturum düştüyse heartbeat yollamaya devam et: yeniden giriş yapılınca
+  // (ör. başka sekmede) ilk başarılı istek engeli kaldırır ve çalma sürer.
+  useEffect(() => {
+    if (!started || blocked === "claim") return;
     const interval = setInterval(sendHeartbeat, HEARTBEAT_MS);
     return () => clearInterval(interval);
-  }, [started, sendHeartbeat]);
+  }, [started, blocked, sendHeartbeat]);
 
   // Bekçi: idle'da takılı kalma (kuyruk-boş yarışı, ağ hatası vb.) — periyodik
   // olarak sıradakini iste; sunucu tarafı dolum yaptığı için çalma kendi toparlanır
   useEffect(() => {
-    if (!started || !idle) return;
+    if (!started || !idle || blocked) return;
     const interval = setInterval(() => advance({ action: "next" }), IDLE_RETRY_MS);
     return () => clearInterval(interval);
-  }, [started, idle, advance]);
+  }, [started, idle, blocked, advance]);
 
   // Takılan oynatmayı periyodik dürt; sekme öne gelir gelmez de tam mutabakat —
   // arka planda engellenen autoplay görünürlükte ilk denemede tutar
   useEffect(() => {
-    if (!started) return;
+    if (!started || blocked) return;
     const nudgeInterval = setInterval(nudgePlayback, PLAY_NUDGE_MS);
     const reconcileInterval = setInterval(reconcile, HEARTBEAT_MS);
     const onVisibility = () => {
@@ -328,11 +403,11 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
       clearInterval(reconcileInterval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [started, nudgePlayback, reconcile]);
+  }, [started, blocked, nudgePlayback, reconcile]);
 
   // Dış komutları dinle: admin panelden next/pause, müşteri isteğiyle başlayan çalma
   useEffect(() => {
-    if (!started) return;
+    if (!started || blocked === "claim") return;
 
     const channel = supabase
       .channel(`player-np:${venueDbId}`)
@@ -340,6 +415,8 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` },
         (payload: { new: NowPlayingRow }) => {
+          // Sahiplik kaybedildiyse dinlemeye devam etme — sesi açan taraf sahip
+          if (blockedRef.current === "claim") return;
           const np = payload.new;
           if (np.video_id && np.video_id !== currentVideoRef.current) {
             loadVideo(np.video_id);
@@ -382,7 +459,16 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [started, supabase, venueDbId, loadVideo, onTrackChange, scheduleNudges]);
+  }, [started, blocked, supabase, venueDbId, loadVideo, onTrackChange, scheduleNudges]);
+
+  // "Çalmayı buraya al": sahipliği zorla devral ve kaldığı yerden sürdür
+  const takeOver = useCallback(async () => {
+    const result = await api({ action: "claim", force: true });
+    if (!result?.claimed) return;
+    setClaimTaken(false);
+    setBlock(null);
+    reconcile();
+  }, [api, setBlock, reconcile]);
 
   useEffect(() => {
     return () => {
@@ -399,10 +485,58 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
         <div ref={containerRef} className="h-full w-full" />
       </div>
 
-      {!started && (
+      {/* Oturum düştü — eskiden bu durumda "kuyruk boş" yazıyor, mekan nedenini anlayamıyordu */}
+      {blocked === "auth" ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-[#1a0e2a] px-6 text-center">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <p className="text-sm font-bold text-white">Mekan oturumu düştü — müzik durdu</p>
+          <p className="text-xs text-[#9ca3af]">
+            Tekrar giriş yapıldığı anda çalma kaldığı yerden devam eder.
+          </p>
+          {loginHref && (
+            <a
+              href={loginHref}
+              className="mt-1 rounded-2xl px-6 py-3 text-sm font-bold text-white"
+              style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
+            >
+              Tekrar Giriş Yap
+            </a>
+          )}
+        </div>
+      ) : blocked === "claim" ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-[#1a0e2a] px-6 text-center">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="14" rx="2" stroke="#9ca3af" strokeWidth="2" /><path d="M8 21h8" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
+          <p className="text-sm font-bold text-white">Çalma başka bir cihaza geçti</p>
+          <p className="text-xs text-[#9ca3af]">
+            Çift ses olmasın diye bu ekran susturuldu. Müzik diğer cihazdan çalıyor.
+          </p>
+          <button
+            onClick={takeOver}
+            className="mt-1 rounded-2xl px-6 py-3 text-sm font-bold text-white"
+            style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
+          >
+            Çalmayı Buraya Al
+          </button>
+        </div>
+      ) : claimTaken ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-[#1a0e2a] px-6 text-center">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="14" rx="2" stroke="#9ca3af" strokeWidth="2" /><path d="M8 21h8" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
+          <p className="text-sm font-bold text-white">Player başka bir cihazda/sekmede açık</p>
+          <p className="text-xs text-[#9ca3af]">
+            Buradan da başlatırsan iki ses üst üste biner. Müzik zaten diğer ekrandan çalıyor.
+          </p>
+          <button
+            onClick={() => start(true)}
+            className="mt-1 rounded-2xl px-6 py-3 text-sm font-bold text-white"
+            style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
+          >
+            Yine de Buradan Çal
+          </button>
+        </div>
+      ) : !started ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-2xl bg-[#1a0e2a]">
           <button
-            onClick={start}
+            onClick={() => start()}
             className="flex items-center gap-3 rounded-2xl px-8 py-4 text-lg font-bold text-white transition-transform active:scale-95"
             style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
           >
@@ -414,14 +548,12 @@ export default function YouTubePlayer({ venueDbId, onTrackChange }: Props) {
           </p>
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
-      )}
-
-      {started && idle && (
+      ) : idle ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-[#1a0e2a]">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="2" /><circle cx="18" cy="16" r="3" stroke="#6b7280" strokeWidth="2" /></svg>
           <p className="text-sm text-[#9ca3af]">Kuyruk boş — sıradaki şarkı otomatik denenecek</p>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

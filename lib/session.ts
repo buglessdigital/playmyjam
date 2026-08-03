@@ -20,6 +20,14 @@ export interface SuperSession {
 export const ADMIN_SESSION_COOKIE = "admin_session";
 export const SUPER_SESSION_COOKIE = "sa_session";
 
+export const ADMIN_SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 gün
+
+// Kayan süre eşiği: kalan ömür bunun altına düşünce çerez tazelenir.
+// Mekan ekranındaki player sayfası günlerce hiç gezinme yapmadan açık kaldığı
+// için yenilemeyi yalnızca sayfa isteklerine bırakamayız — player'ın 15 sn'lik
+// heartbeat'i de bu yoldan geçer (bkz. app/api/player/[venueId]/route.ts).
+const ADMIN_RENEW_BELOW = 60 * 60 * 24 * 5;
+
 function getSecret(): Buffer {
   const secret = process.env.SESSION_SECRET;
   if (!secret || secret.length < 32) {
@@ -62,6 +70,15 @@ export function verifySession<T extends { exp: number }>(token: string | undefin
   } catch {
     return null;
   }
+}
+
+// Oturum yenilenmeliyse yeni token, gerekmiyorsa null döner. Çağıran taraf
+// token'ı yanıt çerezine basar; böylece düzenli kullanılan panel ve sürekli
+// açık duran player asla 7. günde sessizce düşmez.
+export function renewedAdminToken(session: AdminSession): string | null {
+  const now = Math.floor(Date.now() / 1000);
+  if (session.exp - now > ADMIN_RENEW_BELOW) return null;
+  return signSession({ ...session, exp: now + ADMIN_SESSION_MAX_AGE });
 }
 
 type CookieSource = Pick<NextRequest, "cookies">;

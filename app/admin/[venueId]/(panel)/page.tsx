@@ -183,9 +183,10 @@ function AdminDashboardContent({ params }: Props) {
       <div className="rounded-2xl border border-white/10 p-5 mb-6" style={{ background: "rgba(255,255,255,0.03)" }}>
         <div className="flex items-center justify-between mb-3">
           <p className="text-[#9ca3af] text-xs font-medium uppercase tracking-wide">Şu An Çalıyor</p>
+          {/* Adlandırılmış pencere: tekrar tıklamak yeni sekme açmaz, aynı player'a döner */}
           <a
             href={`/admin/${venueId}/player`}
-            target="_blank"
+            target={`pmj-player-${venueId}`}
             rel="noopener"
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold"
             style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}

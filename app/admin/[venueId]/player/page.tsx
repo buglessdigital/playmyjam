@@ -189,7 +189,11 @@ function PlayerPageContent({ params }: Props) {
         <div className="flex min-h-0 flex-col gap-4">
           {/* Video sahnesi: geniş ekranda yüksekliğe göre ölçeklenir, taşma olmaz */}
           <div className="flex min-h-0 flex-1 items-center justify-center">
-            <div className="player-stage w-full">{venueDbId && <YouTubePlayer venueDbId={venueDbId} />}</div>
+            <div className="player-stage w-full">
+              {venueDbId && (
+                <YouTubePlayer venueDbId={venueDbId} loginHref={`/admin/${venueId}/login`} />
+              )}
+            </div>
           </div>
 
           <div

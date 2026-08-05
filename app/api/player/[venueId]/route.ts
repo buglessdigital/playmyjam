@@ -128,6 +128,22 @@ export async function POST(
         return reply({ ok: false, claim_lost: true }, { status: 409 });
       }
 
+      // Kuyruk boşken gelen "buradayım" sinyali: çalma durumuna dokunmadan yalnızca
+      // sağlık sinyalini tazeler. Müşteri paneli oynatıcının açık olduğunu bundan
+      // anlar (bkz. lib/player-status.ts).
+      if (body?.presence === true) {
+        await supabaseAdmin
+          .from("now_playing")
+          .update({
+            last_heartbeat_at: new Date().toISOString(),
+            ...(claimId && claimSupported
+              ? { player_claim: claimId, player_claim_at: new Date().toISOString() }
+              : {}),
+          })
+          .eq("venue_id", venueId);
+        return reply({ ok: true });
+      }
+
       let update = supabaseAdmin
         .from("now_playing")
         .update({

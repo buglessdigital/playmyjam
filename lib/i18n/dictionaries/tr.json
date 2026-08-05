@@ -174,6 +174,13 @@
     "priorityBadge": "Önce",
     "addSong": "Şarkı Ekle"
   },
+  "playerOffline": {
+    "badge": "Oynatıcı kapalı",
+    "short": "Kapalı",
+    "title": "Mekanın oynatıcısı kapalı",
+    "desc": "Şu an müzik çalmıyor, bu yüzden şarkı eklenemez — jetonun boşa gitmesin. Oynatıcı açılınca sıra ve bekleme süreleri geri gelir.",
+    "cannotAdd": "Oynatıcı kapalıyken şarkı eklenemez"
+  },
   "browse": {
     "title": "Gözat",
     "balanceAria": "Jeton bakiyen — jeton yükle",

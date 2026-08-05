@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { useNowPlayingClock, waitMs } from "@/lib/wait-time";
 import LangToggle from "@/components/ui/LangToggle";
+import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
+import { usePlayerOnline } from "@/lib/use-player-online";
 import { fmt, useT } from "@/lib/i18n";
 import AddSongSheet from "@/components/browse/AddSongSheet";
 import NowPlayingBanner from "@/components/browse/NowPlayingBanner";
@@ -67,6 +69,9 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   const router = useRouter();
   const { isMember, requireAccount } = useVenueGate(venueId);
   const t = useT();
+  // Oynatıcı kapalıyken ekleme kapalı ve süreler gizli — ilk okuma gelene kadar
+  // (null) açık varsayılır ki yanlış uyarı çakmasın
+  const playerOffline = usePlayerOnline(venueDbId) === false;
 
   useEffect(() => {
     // getSession reads from local cache — no network round-trip
@@ -255,17 +260,18 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
   const actionFor = useCallback(
     (song: DisplaySong) =>
-      getSongActionState(song, { queuedSongIds, recentlyPlayedAt: recentlyPlayedIds, playingSongId, addedIds, requestedIds }),
-    [queuedSongIds, recentlyPlayedIds, playingSongId, addedIds, requestedIds]
+      getSongActionState(song, { queuedSongIds, recentlyPlayedAt: recentlyPlayedIds, playingSongId, addedIds, requestedIds, playerOffline }),
+    [queuedSongIds, recentlyPlayedIds, playingSongId, addedIds, requestedIds, playerOffline]
   );
 
   // Şansına bırak: cooldown'da/kuyrukta olmayan listeden rastgele bir şarkıyla sheet'i aç
   const luckyPick = useCallback(() => {
+    if (playerOffline) return;
     if (!requireAccount()) return;
     const eligible = venueSongs.filter((s) => s.in_venue_list && actionFor(s).kind === "add");
     if (eligible.length === 0) return;
     setSelectedSong(eligible[Math.floor(Math.random() * eligible.length)]);
-  }, [venueSongs, actionFor, requireAccount]);
+  }, [venueSongs, actionFor, requireAccount, playerOffline]);
 
   const openSong = useCallback(
     (song: DisplaySong) => router.push(`/venue/${venueId}/song/${song.youtube_video_id}`),
@@ -275,10 +281,13 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   // Sıraya ekleme, istek, favori ve jeton hesaba bağlı — misafir giriş ekranına gider
   const openSheet = useCallback(
     (song: DisplaySong) => {
+      // Oynatıcı kapalıyken sheet hiç açılmaz: eklenen şarkı çalmayacağı için
+      // jeton boşa gider (aynı kural sunucuda /api/queue içinde)
+      if (playerOffline) return;
       if (!requireAccount()) return;
       setSelectedSong(song);
     },
-    [requireAccount]
+    [requireAccount, playerOffline]
   );
 
   const handleAdd = async (priority: boolean) => {
@@ -443,13 +452,21 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       </div>
 
       <div className="pt-4">
+        {playerOffline && (
+          <div className="mb-6 px-5">
+            <PlayerOfflineNotice />
+          </div>
+        )}
+
         {!selectedArtist && nowPlayingSong && nowPlaying && (
           <div className="mb-6 px-5">
             <NowPlayingBanner
               song={nowPlayingSong}
               progressMs={progressMs}
               durationMs={nowPlaying.duration_ms}
-              isPlaying={nowPlaying.is_playing}
+              isPlaying={nowPlaying.is_playing && !playerOffline}
+              /* Oynatıcı kapalıyken ilerleme donmuş olur — çubuk gösterilmez */
+              showProgress={!playerOffline}
               onClick={() => router.push(`/venue/${venueId}/queue`)}
             />
           </div>

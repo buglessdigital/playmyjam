@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import SongDetailModal, { type SongDetail } from "@/components/queue/SongDetailModal";
 import LangToggle from "@/components/ui/LangToggle";
+import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
+import { usePlayerOnline } from "@/lib/use-player-online";
 import { fmt, useT } from "@/lib/i18n";
 import {
   fetchManualQueueEntries,
@@ -57,6 +59,9 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
   const router = useRouter();
   const { isMember } = useVenueGate(venueId);
   const t = useT();
+  // Oynatıcı kapalıyken süreler donmuş olur: bekleme/ilerleme gösterilmez.
+  // İlk okuma gelene kadar (null) açık varsayılır — yanlış uyarı çakmasın.
+  const playerOffline = usePlayerOnline(venueDbId) === false;
 
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000);
@@ -167,6 +172,10 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
   );
   const { progressMs, remainingMs } = useNowPlayingClock(npClock);
 
+  // Oynatıcı kapalıyken satırdaki is_playing donmuş kalır: canlı süslemeler
+  // (eşitleyici, dönen plak, CANLI rozeti) yanıltıcı olmasın diye susturulur
+  const isLive = !!nowPlaying?.is_playing && !playerOffline;
+
   const dur = nowPlaying?.songs?.duration_ms ?? 1;
   const progressPct = Math.min((progressMs / dur) * 100, 100);
 
@@ -196,6 +205,14 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
         </div>
       </div>
 
+      {playerOffline && (
+        <div className="mx-5 mb-4">
+          <PlayerOfflineNotice />
+        </div>
+      )}
+
+      {/* Bekleme süreleri yalnızca oynatıcı canlıyken anlamlı — kapalıyken sıra ilerlemiyor */}
+      {!playerOffline && (
       <div className="mx-5 mb-4 rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
         <div className="flex">
           <div className="flex-1 flex items-center gap-3 px-4 py-3 border-r border-white/10">
@@ -219,6 +236,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
           </div>
         </div>
       </div>
+      )}
 
       <div
         onClick={() => openSongDetail(nowPlaying?.song_id ?? null)}
@@ -227,7 +245,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            {nowPlaying?.is_playing && (
+            {isLive && (
               <div className="flex gap-0.5 items-end h-4">
                 {[3, 5, 4, 6, 3].map((h, i) => (
                   <div key={i} className="w-1 rounded-full" style={{ height: `${h * 3}px`, background: "#e91e8c", animation: `eq-bar ${0.5 + i * 0.12}s ease-in-out infinite alternate` }} />
@@ -236,7 +254,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
             )}
             <span className="text-white font-bold text-sm">{t.queue.nowPlaying}</span>
           </div>
-          {nowPlaying?.is_playing && (
+          {isLive && (
             <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(233,30,140,0.2)", color: "#e91e8c" }}>{t.queue.live}</span>
           )}
         </div>
@@ -248,7 +266,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
               style={{
                 background: "radial-gradient(circle at 50% 50%, #3d1a5e 0%, #1a0e2a 40%, #0a0612 70%)",
                 boxShadow: "0 0 40px rgba(233,30,140,0.3)",
-                animation: nowPlaying?.is_playing ? "spin 8s linear infinite" : "none",
+                animation: isLive ? "spin 8s linear infinite" : "none",
               }}
             >
               <div className="absolute inset-0 flex items-center justify-center">
@@ -275,15 +293,20 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
             </>
           )}
 
-          <div className="w-full">
-            <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mb-1.5">
-              <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${progressPct}%`, background: "linear-gradient(90deg, #e91e8c, #8b5cf6)" }} />
+          {/* Oynatıcı kapalıyken ilerleme donmuş olur; sayaç göstermek yanıltıcı */}
+          {playerOffline ? (
+            <span className="text-xs font-semibold" style={{ color: "#fbbf24" }}>{t.playerOffline.badge}</span>
+          ) : (
+            <div className="w-full">
+              <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mb-1.5">
+                <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${progressPct}%`, background: "linear-gradient(90deg, #e91e8c, #8b5cf6)" }} />
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6b7280] text-xs">{formatTime(progressMs)}</span>
+                <span className="text-[#6b7280] text-xs">{formatTime(dur === 1 ? 0 : dur)}</span>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-[#6b7280] text-xs">{formatTime(progressMs)}</span>
-              <span className="text-[#6b7280] text-xs">{formatTime(dur === 1 ? 0 : dur)}</span>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -329,7 +352,9 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                   {item.priority && (
                     <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>{t.queue.priorityBadge}</span>
                   )}
-                  <span className="text-xs font-bold" style={{ color: item.priority ? "#e91e8c" : "#9ca3af" }}>{formatWait(getRowWaitMs(idx))}</span>
+                  {!playerOffline && (
+                    <span className="text-xs font-bold" style={{ color: item.priority ? "#e91e8c" : "#9ca3af" }}>{formatWait(getRowWaitMs(idx))}</span>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -341,7 +366,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                         priority: item.priority,
                         tokens_spent: item.tokens_spent,
                         added_by: item.added_by,
-                        wait_ms: getRowWaitMs(idx),
+                        wait_ms: playerOffline ? undefined : getRowWaitMs(idx),
                       });
                     }}
                     className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10"
@@ -358,6 +383,10 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
         )}
       </div>
 
+      {/* Oynatıcı kapalıyken "Şarkı Ekle" butonu hiç çizilmez: eklenen şarkı çalmaz,
+          jeton boşa gider. Gerekçe sayfanın başındaki uyarıda — sabit konumlu ikinci
+          bir şerit kuyruk satırlarının üstüne binip okunmaz hale geliyordu. */}
+      {!playerOffline && (
       <div className="fixed bottom-16 left-0 right-0 px-5 z-40 flex justify-end pointer-events-none">
         <Link
           href={`/venue/${venueId}/browse`}
@@ -369,6 +398,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
           <span className={`whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out ${fabCollapsed ? "max-w-0 opacity-0 ml-0" : "max-w-[160px] opacity-100 ml-2"}`}>{t.queue.addSong}</span>
         </Link>
       </div>
+      )}
 
       <SongDetailModal song={selectedSong} onClose={() => setSelectedSong(null)} />
 

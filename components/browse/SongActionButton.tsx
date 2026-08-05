@@ -37,6 +37,34 @@ export default function SongActionButton({ state, size, onAdd, onRequest }: Prop
     );
   }
 
+  // Oynatıcı kapalı: ekleme butonu yerine sessiz bir rozet — dokunulacak bir şey yok
+  if (state.kind === "offline") {
+    const icon = (
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+        <path d="M12 3v9" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" />
+        <path d="M6.5 6.5a8 8 0 1011 0" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" />
+      </svg>
+    );
+    if (size === "card") {
+      return (
+        <div className="flex h-7 items-center gap-1 rounded-full bg-black/60 px-2 backdrop-blur-sm" title={t.playerOffline.title}>
+          {icon}
+          <span className="text-[11px] font-semibold" style={{ color: "#fbbf24" }}>{t.playerOffline.short}</span>
+        </div>
+      );
+    }
+    return (
+      <div
+        className="flex h-8 items-center justify-center gap-[3px] rounded-[10px] px-2"
+        style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)" }}
+        title={t.playerOffline.title}
+      >
+        {icon}
+        <span className="text-[11px] font-semibold" style={{ color: "#fbbf24" }}>{t.playerOffline.short}</span>
+      </div>
+    );
+  }
+
   if (state.kind === "cooldown") {
     if (size === "card") {
       return (

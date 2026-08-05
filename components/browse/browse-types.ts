@@ -49,6 +49,8 @@ export type Cooldown = { remainingMs: number; reason: CooldownReason };
 
 export type SongActionState =
   | { kind: "cooldown"; mins: number }
+  /** Mekanın oynatıcısı kapalı — şarkı çalmayacağı için ekleme kapatılır */
+  | { kind: "offline" }
   | { kind: "playing" }
   | { kind: "add" }
   | { kind: "added" }
@@ -62,6 +64,8 @@ export type SongActionContext = {
   playingSongId?: string | null;
   addedIds: Set<string>;
   requestedIds: Set<string>;
+  /** Oynatıcı çevrimdışıysa ekleme kapalı (bkz. lib/player-status.ts) */
+  playerOffline?: boolean;
 };
 
 export function getCooldown(
@@ -87,6 +91,8 @@ export function getCooldown(
 // mekan listesinde olmayan şarkılar için istek akışı
 export function getSongActionState(song: DisplaySong, ctx: SongActionContext): SongActionState {
   if (song.in_venue_list === true) {
+    // Oynatıcı kapalıyken şarkı çalmaz: eklemeye izin verip jetonu yakmayalım
+    if (ctx.playerOffline) return { kind: "offline" };
     const cd = getCooldown(song, ctx);
     if (cd.reason === "playing") return { kind: "playing" };
     if (cd.remainingMs > 0) return { kind: "cooldown", mins: Math.ceil(cd.remainingMs / 60000) };

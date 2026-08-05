@@ -26,6 +26,8 @@ interface Props {
   playingSongId: string | null;
   /** Bu oturumda sıraya eklenen video id'leri */
   addedIds: Set<string>;
+  /** Mekanın oynatıcısı kapalı — ekleme kapatılır (bkz. lib/player-status.ts) */
+  playerOffline?: boolean;
   onOpenSong: (song: DisplaySong) => void;
   onAddSong: (song: VenueSong, cooldown: Cooldown) => void;
   onClose: () => void;
@@ -38,7 +40,7 @@ type VenueSongRow = {
 };
 
 export default function SimilarOverlay({
-  venueDbId, track, queuedSongIds, playingSongId, addedIds, onOpenSong, onAddSong, onClose,
+  venueDbId, track, queuedSongIds, playingSongId, addedIds, playerOffline = false, onOpenSong, onAddSong, onClose,
 }: Props) {
   const t = useT();
   const supabase = useMemo(() => createClient(), []);
@@ -122,10 +124,12 @@ export default function SimilarOverlay({
 
   // Sahnedeki şarkı da eklenemez (request_song 'playing' ile reddeder) — "Çalıyor" rozeti
   const actionFor = (song: VenueSong): SongActionState =>
-    getSongActionState(song, { queuedSongIds, recentlyPlayedAt, playingSongId, addedIds, requestedIds: new Set() });
+    getSongActionState(song, { queuedSongIds, recentlyPlayedAt, playingSongId, addedIds, requestedIds: new Set(), playerOffline });
 
-  const handleAdd = (song: VenueSong) =>
+  const handleAdd = (song: VenueSong) => {
+    if (playerOffline) return;
     onAddSong(song, getCooldown(song, { queuedSongIds, recentlyPlayedAt, playingSongId }));
+  };
 
   const loading = catalog === null;
   const empty = !loading && songs.length === 0;

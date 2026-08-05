@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { playNextFromQueue } from "@/lib/queue";
 import { fillQueueToTen } from "@/lib/queue-fill";
 import { hasVenueSession } from "@/lib/venue-auth-cookie";
+import { isPlayerOnline } from "@/lib/player-status";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -34,6 +35,20 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (!venue || !hasVenueSession(req, venue.slug, userId)) {
     return NextResponse.json({ error: "Bu mekana giriş yapmalısın" }, { status: 403 });
+  }
+
+  // Oynatıcı kapalıyken ekleme yapılmaz: şarkı çalmayacağı için jeton boşa gider.
+  // Tazelik eşiği müşteri arayüzüyle aynı (bkz. lib/player-status.ts).
+  const { data: heartbeatRow } = await supabaseAdmin
+    .from("now_playing")
+    .select("last_heartbeat_at")
+    .eq("venue_id", venue_id)
+    .maybeSingle();
+  if (!isPlayerOnline((heartbeatRow as { last_heartbeat_at: string | null } | null)?.last_heartbeat_at)) {
+    return NextResponse.json(
+      { error: "Mekanın oynatıcısı şu an kapalı — şarkı eklenemez", code: "player_offline" },
+      { status: 409 }
+    );
   }
 
   // Cooldown + çalıyor kontrolü + jeton düşümü + pozisyon + insert tek transaction (0005)

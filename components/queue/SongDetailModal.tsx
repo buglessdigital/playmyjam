@@ -12,7 +12,8 @@ export interface SongDetail {
   priority: boolean;
   tokens_spent: number;
   added_by: string;
-  wait_ms: number;
+  /** Oynatıcı kapalıyken verilmez: sıra ilerlemediği için tahmin anlamsız */
+  wait_ms?: number;
 }
 
 interface Props {
@@ -86,10 +87,12 @@ export default function SongDetailModal({ song, onClose }: Props) {
               ) : t.songModal.normal}
             </span>
           </div>
-          <div className="flex justify-between items-center py-3">
-            <span className="text-[#9ca3af] text-sm">{t.songModal.estimatedWait}</span>
-            <span className="text-white text-sm font-medium">{formatWait(song.wait_ms)}</span>
-          </div>
+          {song.wait_ms !== undefined && (
+            <div className="flex justify-between items-center py-3">
+              <span className="text-[#9ca3af] text-sm">{t.songModal.estimatedWait}</span>
+              <span className="text-white text-sm font-medium">{formatWait(song.wait_ms)}</span>
+            </div>
+          )}
         </div>
 
         <button

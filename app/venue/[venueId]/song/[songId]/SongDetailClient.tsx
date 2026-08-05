@@ -12,6 +12,8 @@ import type { TrackDetails } from "@/lib/youtube";
 import type { LyricsResult } from "@/lib/lyrics";
 import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { formatWait, useNowPlayingClock, waitMs } from "@/lib/wait-time";
+import { usePlayerOnline } from "@/lib/use-player-online";
+import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { fmt, useT } from "@/lib/i18n";
 
 type QueueEntry = { song_id: string; priority: boolean; duration_ms: number };
@@ -115,6 +117,8 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
   // Sayfa misafire açık; sıraya ekleme/istek/favori hesaba bağlı
   const { requireAccount } = useVenueGate(venueId);
   const t = useT();
+  // Oynatıcı kapalıyken süre gösterilmez ve ekleme kapatılır (bkz. lib/player-status.ts)
+  const playerOffline = usePlayerOnline(venueDbId) === false;
 
   const [loaded, setLoaded] = useState(false);
   const [dbSongId, setDbSongId] = useState<string | null>(null);
@@ -410,6 +414,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
   };
 
   const openSheetFor = (song: VenueSong, cd: Cooldown) => {
+    if (playerOffline) return;
     if (!requireAccount()) return;
     setSheetTarget({ songId: song.id, song, cooldown: cd });
   };
@@ -429,7 +434,12 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     centerDisabled = true;
     centerIcon = <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#6b7280" strokeWidth="2.5" strokeLinecap="round" /></svg>;
   } else if (inVenueList) {
-    if (isOnCooldown) {
+    // Oynatıcı kapalı: eklenen şarkı çalmayacağı için buton kapalı (jeton yanmasın)
+    if (playerOffline) {
+      centerDisabled = true;
+      centerBg = "rgba(251,191,36,0.15)";
+      centerIcon = <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 3v9" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /><path d="M6.5 6.5a8 8 0 1011 0" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /></svg>;
+    } else if (isOnCooldown) {
       centerDisabled = true;
       centerBg = "rgba(255,255,255,0.1)";
       centerIcon = <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#6b7280" strokeWidth="2" /><path d="M12 7v5l3 3" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>;
@@ -465,6 +475,8 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     ? ""
     : !dbSongId
     ? t.songPage.notInVenueList
+    : inVenueList && playerOffline
+    ? t.playerOffline.cannotAdd
     : isPlayingNow
     ? t.songPage.onStage
     : isOnCooldown
@@ -556,17 +568,24 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
           </button>
           <p style={{ color: "#9ca3af", fontSize: 15, margin: "4px 0 0" }}>{track.artist}</p>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 24, marginTop: 14 }}>
-            <div>
-              <p style={{ color: "white", fontSize: 13, fontWeight: 700, margin: 0 }}>{formatWait(waitNormalMs)}</p>
-              <p style={{ color: "#6b7280", fontSize: 11, margin: "2px 0 0" }}>{t.songPage.normalWait}</p>
+          {/* Bekleme süreleri yalnızca oynatıcı canlıyken anlamlı */}
+          {playerOffline ? (
+            <div style={{ marginTop: 14 }}>
+              <PlayerOfflineNotice compact />
             </div>
-            <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.1)" }} />
-            <div>
-              <p style={{ color: "#e91e8c", fontSize: 13, fontWeight: 700, margin: 0 }}>{formatWait(waitPriorityMs)}</p>
-              <p style={{ color: "#6b7280", fontSize: 11, margin: "2px 0 0" }}>{t.songPage.priorityWait}</p>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 24, marginTop: 14 }}>
+              <div>
+                <p style={{ color: "white", fontSize: 13, fontWeight: 700, margin: 0 }}>{formatWait(waitNormalMs)}</p>
+                <p style={{ color: "#6b7280", fontSize: 11, margin: "2px 0 0" }}>{t.songPage.normalWait}</p>
+              </div>
+              <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.1)" }} />
+              <div>
+                <p style={{ color: "#e91e8c", fontSize: 13, fontWeight: 700, margin: 0 }}>{formatWait(waitPriorityMs)}</p>
+                <p style={{ color: "#6b7280", fontSize: 11, margin: "2px 0 0" }}>{t.songPage.priorityWait}</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Bilgi pilleri — tek satır; sığmayanlara yatay kaydırarak erişilir */}
@@ -600,7 +619,9 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
           )}
         </div>
 
-        {/* İlerleme çubuğu: sahnedeyken çalma ilerlemesi, cooldown'dayken kalan bekleme */}
+        {/* İlerleme çubuğu: sahnedeyken çalma ilerlemesi, cooldown'dayken kalan bekleme.
+            Oynatıcı kapalıyken sayaç donmuş olur — hiç gösterilmez */}
+        {!playerOffline && (
         <div style={{ padding: "16px 24px 0" }}>
           <div style={{ width: "100%", height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", position: "relative", overflow: "hidden" }}>
             <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${progressPct}%`, background: "#e91e8c", borderRadius: 2 }} />
@@ -610,6 +631,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
             <span style={{ color: "#6b7280", fontSize: 11 }}>{barRightLabel}</span>
           </div>
         </div>
+        )}
 
         {/* Kontrol satırı */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 28, padding: "12px 24px 0" }}>
@@ -743,7 +765,9 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
                     {item.priority && (
                       <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>{t.queue.priorityBadge}</span>
                     )}
-                    <span style={{ color: item.priority ? "#e91e8c" : "#9ca3af", fontSize: 12, fontWeight: 700 }}>{formatWait(getQueueWaitMs(idx))}</span>
+                    {!playerOffline && (
+                      <span style={{ color: item.priority ? "#e91e8c" : "#9ca3af", fontSize: 12, fontWeight: 700 }}>{formatWait(getQueueWaitMs(idx))}</span>
+                    )}
                   </div>
                 </div>
               );
@@ -778,6 +802,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
           queuedSongIds={queuedSongIds}
           playingSongId={playingSongId}
           addedIds={addedIds}
+          playerOffline={playerOffline}
           onOpenSong={openSongPage}
           onAddSong={openSheetFor}
           onClose={() => setSimilarOpen(false)}

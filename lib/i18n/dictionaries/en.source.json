@@ -478,5 +478,10 @@
   "venueForm.messagePlaceholder": "Mekanının kapasitesi, müzik düzeni veya sormak istediklerin…",
   "venueForm.sending": "Gönderiliyor…",
   "venueForm.submit": "Başvuruyu Gönder",
-  "venueForm.consent": "Formu göndererek iletişim bilgilerinin başvurunun değerlendirilmesi amacıyla işlenmesini kabul edersin. Kurulum ücretsizdir, ek donanım gerekmez."
+  "venueForm.consent": "Formu göndererek iletişim bilgilerinin başvurunun değerlendirilmesi amacıyla işlenmesini kabul edersin. Kurulum ücretsizdir, ek donanım gerekmez.",
+  "playerOffline.badge": "Oynatıcı kapalı",
+  "playerOffline.short": "Kapalı",
+  "playerOffline.title": "Mekanın oynatıcısı kapalı",
+  "playerOffline.desc": "Şu an müzik çalmıyor, bu yüzden şarkı eklenemez — jetonun boşa gitmesin. Oynatıcı açılınca sıra ve bekleme süreleri geri gelir.",
+  "playerOffline.cannotAdd": "Oynatıcı kapalıyken şarkı eklenemez"
 }

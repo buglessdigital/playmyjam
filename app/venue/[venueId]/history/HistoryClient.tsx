@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { currentDict, fmt, useT } from "@/lib/i18n";
+import { usePlayerOnline } from "@/lib/use-player-online";
+import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 
 type PlayedRow = {
   id: string;
@@ -37,6 +39,8 @@ export default function HistoryClient({ venueDbId, venueName, requestCost }: Pro
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const t = useT();
+  // Oynatıcı kapalıyken tekrar ekleme kapalı: şarkı çalmaz, jeton boşa gider
+  const playerOffline = usePlayerOnline(venueDbId) === false;
   const [loaded, setLoaded] = useState(false);
   const [rows, setRows] = useState<PlayedRow[]>([]);
   // Aynı şarkının birden çok satırı olabilir — durum song_id bazında tutulur
@@ -61,7 +65,7 @@ export default function HistoryClient({ venueDbId, venueName, requestCost }: Pro
 
   // Şarkıyı bulunulan mekanın kuyruğuna tekrar ekler (normal öncelik; ücret mekana göre)
   const requeue = async (songId: string) => {
-    if (!venueDbId || addingIds.has(songId) || addedIds.has(songId)) return;
+    if (!venueDbId || playerOffline || addingIds.has(songId) || addedIds.has(songId)) return;
     setAddingIds((s) => new Set(s).add(songId));
 
     const res = await fetch("/api/queue", {
@@ -87,10 +91,16 @@ export default function HistoryClient({ venueDbId, venueName, requestCost }: Pro
         </button>
         <h1 className="text-white font-bold text-lg">{t.historyPage.title}</h1>
       </div>
-      {venueName && (
+      {venueName && !playerOffline && (
         <p className="px-5 pb-4 text-xs text-[#6b7280]">
           {fmt(t.historyPage.hint, { venue: venueName, cost: requestCost })}
         </p>
+      )}
+
+      {venueDbId && playerOffline && (
+        <div className="px-5 pb-4">
+          <PlayerOfflineNotice compact />
+        </div>
       )}
 
       {!loaded ? (
@@ -134,7 +144,7 @@ export default function HistoryClient({ venueDbId, venueName, requestCost }: Pro
                     {row.played_at != null ? timeAgo(row.played_at) : "—"}
                   </span>
                 </div>
-                {venueDbId && (
+                {venueDbId && !playerOffline && (
                   <button
                     onClick={() => requeue(row.song_id)}
                     disabled={isAdding || isAdded}

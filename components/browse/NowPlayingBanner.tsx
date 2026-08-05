@@ -9,12 +9,14 @@ interface Props {
   progressMs: number;
   durationMs: number;
   isPlaying: boolean;
+  /** Oynatıcı kapalıyken ilerleme donmuş olur; çubuk hiç çizilmez */
+  showProgress?: boolean;
   onClick: () => void;
 }
 
 // progressMs çağıran tarafta duvar saatine sabitlenip her tick tazelenir
 // (useNowPlayingClock) — burada ayrıca sayaç işletilmez
-export default function NowPlayingBanner({ song, progressMs, durationMs, isPlaying, onClick }: Props) {
+export default function NowPlayingBanner({ song, progressMs, durationMs, isPlaying, showProgress = true, onClick }: Props) {
   const t = useT();
   const pct = durationMs > 0 ? Math.min((progressMs / durationMs) * 100, 100) : 0;
 
@@ -46,9 +48,11 @@ export default function NowPlayingBanner({ song, progressMs, durationMs, isPlayi
         </div>
         <svg className="shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </div>
-      <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${pct}%`, background: "linear-gradient(90deg, #e91e8c, #8b5cf6)" }} />
-      </div>
+      {showProgress && (
+        <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${pct}%`, background: "linear-gradient(90deg, #e91e8c, #8b5cf6)" }} />
+        </div>
+      )}
       <style>{`@keyframes eq-bar { from { transform: scaleY(0.4); } to { transform: scaleY(1); } }`}</style>
     </button>
   );

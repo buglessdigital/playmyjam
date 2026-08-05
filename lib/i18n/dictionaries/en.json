@@ -174,6 +174,13 @@
     "priorityBadge": "First",
     "addSong": "Add Song"
   },
+  "playerOffline": {
+    "badge": "Player offline",
+    "short": "Offline",
+    "title": "This venue's player is offline",
+    "desc": "No music is playing right now, so songs can't be added — we don't want your tokens to go to waste. The queue and wait times come back once the player is online.",
+    "cannotAdd": "Songs can't be added while the player is offline"
+  },
   "songModal": {
     "addedBy": "Added by",
     "tokensSpent": "Tokens Spent",

@@ -174,7 +174,14 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // İlerleme + sağlık sinyali — admin paneli bununla "oynatıcı çevrimdışı" uyarısı verir
   const sendHeartbeat = useCallback(() => {
     const player = playerRef.current;
-    if (!player || !currentVideoRef.current) return;
+    if (!player) return;
+    // Kuyruk boşken de sinyal gider: müşteri tarafı "oynatıcı açık mı" sorusunu
+    // heartbeat tazeliğinden okuyor; sessiz kalırsak boş mekanda şarkı eklenemez.
+    // presence:true çalma durumunu yazmaz, yalnızca sağlık sinyalini tazeler.
+    if (!currentVideoRef.current) {
+      api({ action: "heartbeat", presence: true });
+      return;
+    }
     let progress = 0;
     let playing = false;
     try {
@@ -376,6 +383,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // (ör. başka sekmede) ilk başarılı istek engeli kaldırır ve çalma sürer.
   useEffect(() => {
     if (!started || blocked === "claim") return;
+    // İlk sinyal beklemeden gitsin: müşteri tarafı player açılır açılmaz "açık" görsün
+    sendHeartbeat();
     const interval = setInterval(sendHeartbeat, HEARTBEAT_MS);
     return () => clearInterval(interval);
   }, [started, blocked, sendHeartbeat]);

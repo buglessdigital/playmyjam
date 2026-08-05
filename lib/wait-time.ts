@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { createClient } from "@/lib/supabase/client";
+import { currentDict, fmt } from "@/lib/i18n";
 
 /**
  * Bekleme süresinin tek kaynağı. Kuyruk sayfası, şarkı detayı, gözat ve ekleme
@@ -59,15 +60,20 @@ export function waitMs(remainingCurrentMs: number, entries: WaitEntry[], priorit
   return remainingCurrentMs + sumDurations(ahead);
 }
 
-/** Tüm ekranlarda aynı biçim: "Hemen" / "~45 sn" / "~7 dk" / "~1 sa 12 dk". */
+/**
+ * Tüm ekranlarda aynı biçim: "Hemen" / "~45 sn" / "~7 dk" / "~1 sa 12 dk".
+ * Birimler aktif dilden okunur; çağıran bileşen `useT()` kullandığı için dil
+ * değişiminde yeniden render olur ve değer tazelenir.
+ */
 export function formatWait(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return "Hemen";
-  if (ms < 60_000) return `~${Math.max(Math.ceil(ms / 1000), 1)} sn`;
+  const w = currentDict().wait;
+  if (!Number.isFinite(ms) || ms <= 0) return w.now;
+  if (ms < 60_000) return fmt(w.seconds, { n: Math.max(Math.ceil(ms / 1000), 1) });
   const totalMin = Math.max(Math.round(ms / 60_000), 1);
-  if (totalMin < 60) return `~${totalMin} dk`;
+  if (totalMin < 60) return fmt(w.minutes, { n: totalMin });
   const hours = Math.floor(totalMin / 60);
   const mins = totalMin % 60;
-  return mins === 0 ? `~${hours} sa` : `~${hours} sa ${mins} dk`;
+  return mins === 0 ? fmt(w.hours, { n: hours }) : fmt(w.hoursMinutes, { h: hours, m: mins });
 }
 
 /**

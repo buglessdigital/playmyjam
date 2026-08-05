@@ -7,6 +7,8 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { useNowPlayingClock, waitMs } from "@/lib/wait-time";
+import LangToggle from "@/components/ui/LangToggle";
+import { fmt, useT } from "@/lib/i18n";
 import AddSongSheet from "@/components/browse/AddSongSheet";
 import NowPlayingBanner from "@/components/browse/NowPlayingBanner";
 import SearchView, { type SuggestResult } from "@/components/browse/SearchView";
@@ -64,6 +66,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const { isMember, requireAccount } = useVenueGate(venueId);
+  const t = useT();
 
   useEffect(() => {
     // getSession reads from local cache — no network round-trip
@@ -382,9 +385,9 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   );
 
   const sortOptions = [
-    { key: "default", label: "Varsayılan" },
-    { key: "az", label: "A'dan Z'ye" },
-    { key: "plays", label: "En Çok Çalınan" },
+    { key: "default", label: t.browse.sortDefault },
+    { key: "az", label: t.browse.sortAz },
+    { key: "plays", label: t.browse.sortPlays },
   ] as const;
 
   return (
@@ -392,12 +395,14 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       {/* Sticky başlık + sahte arama çubuğu (dokununca tam ekran arama açılır) */}
       <div className="sticky top-0 z-30 bg-[#0f0a18]/95 px-5 pb-3 pt-12 backdrop-blur-md">
         <div className="mb-3 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-white">Gözat</h1>
+          <h1 className="text-xl font-bold text-white">{t.browse.title}</h1>
+          <div className="flex items-center gap-2">
+          <LangToggle />
           {isMember ? (
             <Link
               href={`/venue/${venueId}/tokens`}
               className="flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-[#1a0e2a] px-3 transition-transform active:scale-95"
-              aria-label="Jeton bakiyen — jeton yükle"
+              aria-label={t.browse.balanceAria}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fbbf24" strokeWidth="2" /><circle cx="12" cy="12" r="4" stroke="#fbbf24" strokeWidth="2" /></svg>
               {stateLoaded ? (
@@ -413,9 +418,10 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
               href={venueLoginPath(venueId, `/venue/${venueId}/browse`)}
               className="flex h-8 items-center gap-1.5 rounded-full border border-[#e91e8c]/40 bg-[#e91e8c]/15 px-3 transition-transform active:scale-95"
             >
-              <span className="text-xs font-bold text-white">Giriş Yap</span>
+              <span className="text-xs font-bold text-white">{t.queue.login}</span>
             </Link>
           )}
+          </div>
         </div>
         <div className="flex gap-2">
           {/* Arama artık tamamen mekanın kendi listesinde (YouTube'a çıkmaz) — misafire de açık */}
@@ -424,12 +430,12 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
             className="flex h-12 min-w-0 flex-1 items-center gap-3 rounded-2xl border border-white/10 bg-[#1a0e2a] px-4 text-left transition-transform active:scale-[0.98]"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#6b7280" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
-            <span className="text-sm text-[#6b7280]">Mekan listesinde ara...</span>
+            <span className="text-sm text-[#6b7280]">{t.browse.searchPlaceholder}</span>
           </button>
           <button
             onClick={luckyPick}
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-[#1a0e2a] transition-transform active:scale-95"
-            aria-label="Rastgele şarkı öner"
+            aria-label={t.browse.luckyAria}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
@@ -454,10 +460,10 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
             <div className="mb-3 flex items-center justify-between px-5">
               <div className="flex items-center gap-2">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="#e91e8c"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" /></svg>
-                <h2 className="text-base font-bold text-white">Favorilerin</h2>
+                <h2 className="text-base font-bold text-white">{t.browse.favorites}</h2>
               </div>
               <Link href={`/venue/${venueId}/favorites`} className="text-xs font-semibold text-[#e91e8c]">
-                Tümü
+                {t.browse.seeAll}
               </Link>
             </div>
             <div className="flex gap-3 overflow-x-auto px-5">
@@ -472,7 +478,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           <section className="mb-6">
             <div className="mb-3 flex items-center gap-2 px-5">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2c0 4-5 6-5 11a5 5 0 0010 0c0-2-1-3.5-2-5-1 2-3 2.5-3 0 0-2 0-4 0-6z" stroke="#e91e8c" strokeWidth="2" strokeLinejoin="round" /></svg>
-              <h2 className="text-base font-bold text-white">En Çok İstenenler</h2>
+              <h2 className="text-base font-bold text-white">{t.browse.mostRequested}</h2>
             </div>
             <div className="flex gap-3 overflow-x-auto px-5">
               {topSongs.map((song) => (
@@ -486,7 +492,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           <section className="mb-6">
             <div className="mb-3 flex items-center gap-2 px-5">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2a4 4 0 00-4 4v5a4 4 0 008 0V6a4 4 0 00-4-4z" stroke="#e91e8c" strokeWidth="2" /><path d="M5 11a7 7 0 0014 0M12 18v4" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" /></svg>
-              <h2 className="text-base font-bold text-white">Sanatçılar</h2>
+              <h2 className="text-base font-bold text-white">{t.browse.artists}</h2>
             </div>
             <div className="flex gap-4 overflow-x-auto px-5">
               {artists.map((a) => {
@@ -518,7 +524,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           <section className="mb-6">
             <div className="mb-3 flex items-center gap-2 px-5">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#e91e8c" strokeWidth="2" /><path d="M12 7v5l3 3" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" /></svg>
-              <h2 className="text-base font-bold text-white">Son Çalınanlar</h2>
+              <h2 className="text-base font-bold text-white">{t.browse.recentlyPlayed}</h2>
             </div>
             <div className="flex gap-3 overflow-x-auto px-5">
               {recentSongs.map((song) => (
@@ -533,24 +539,24 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
             {selectedArtist ? (
               <div className="flex min-w-0 items-center gap-2">
                 <h2 className="truncate text-base font-bold text-white">{selectedArtistName}</h2>
-                <span className="shrink-0 text-xs text-[#9ca3af]">{listSongs.length} şarkı</span>
+                <span className="shrink-0 text-xs text-[#9ca3af]">{fmt(t.browse.songCount, { n: listSongs.length })}</span>
                 <button
                   onClick={() => setSelectedArtist(null)}
                   className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10"
-                  aria-label="Sanatçı filtresini kaldır"
+                  aria-label={t.browse.clearArtistAria}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
                 </button>
               </div>
             ) : (
-              <h2 className="text-base font-bold text-white">En Çok Çalınanlar</h2>
+              <h2 className="text-base font-bold text-white">{t.browse.mostPlayed}</h2>
             )}
             {selectedArtist && (
               <div className="relative">
                 <button
                   onClick={() => setSortOpen((v) => !v)}
                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${sortOpen || sortBy !== "default" ? "border border-[#e91e8c]/40 bg-[#e91e8c]/20" : "bg-white/10"}`}
-                  aria-label="Sırala"
+                  aria-label={t.browse.sortAria}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                     <path d="M3 6h18M7 12h10M11 18h2" stroke={sortBy !== "default" ? "#e91e8c" : "#9ca3af"} strokeWidth="2" strokeLinecap="round" />
@@ -578,7 +584,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
           {listSongs.length === 0 && (
             <p className="mt-10 text-center text-[#6b7280]">
-              {selectedArtist ? "Şarkı bulunamadı" : "Henüz şarkı çalınmadı"}
+              {selectedArtist ? t.browse.noSongsFound : t.browse.nothingPlayedYet}
             </p>
           )}
           {listSongs.map((song) => (

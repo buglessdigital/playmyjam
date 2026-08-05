@@ -4,6 +4,7 @@ import { memo } from "react";
 import Image from "next/image";
 import SongActionButton from "./SongActionButton";
 import { actionStatesEqual, type DisplaySong, type SongActionState } from "./browse-types";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   song: DisplaySong;
@@ -17,6 +18,8 @@ interface Props {
 }
 
 function SongRow({ song, action, isFav, showPlayCount = true, onOpen, onToggleFavorite, onAdd, onRequest }: Props) {
+  const t = useT();
+
   return (
     // Ekran dışı satırlar layout/paint maliyetine girmez — büyük kataloglarda kaydırma akıcı kalır
     <div className="border-b border-white/5 [content-visibility:auto] [contain-intrinsic-size:auto_85px]">
@@ -46,7 +49,7 @@ function SongRow({ song, action, isFav, showPlayCount = true, onOpen, onToggleFa
           <button
             onClick={(e) => { e.stopPropagation(); onToggleFavorite(song); }}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-            aria-label={isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
+            aria-label={isFav ? t.songAction.removeFavorite : t.songAction.addFavorite}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill={isFav ? "#e91e8c" : "none"}><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke={isFav ? "#e91e8c" : "#6b7280"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>

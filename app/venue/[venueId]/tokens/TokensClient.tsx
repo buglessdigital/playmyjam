@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAnimatedNumber } from "@/lib/use-animated-number";
 import Coin from "@/components/ui/Coin";
 import type { TokenPackage } from "@/lib/pricing-cache";
+import { currentDict, fmt, useI18n } from "@/lib/i18n";
 
 type WalletTx = {
   id: string;
@@ -23,19 +24,21 @@ const CUSTOM = "custom";
 const MAX_LOOSE = 1000;
 
 function timeAgo(ms: number) {
+  const d = currentDict().historyPage;
   const diff = Date.now() - ms;
   const m = Math.floor(diff / 60000);
-  if (m < 60) return `${m}dk önce`;
+  if (m < 60) return fmt(d.minsAgo, { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}sa önce`;
-  return `${Math.floor(h / 24)} gün önce`;
+  if (h < 24) return fmt(d.hoursAgo, { n: h });
+  return fmt(d.daysAgo, { n: Math.floor(h / 24) });
 }
 
 function txLabel(tx: WalletTx) {
-  if (tx.kind === "spend") return tx.song_title ? `Şarkı: ${tx.song_title}` : "Şarkı isteği";
-  if (tx.kind === "demo") return "Demo jeton";
-  if (tx.kind === "grant") return "Hediye jeton";
-  return "Jeton satın alma";
+  const d = currentDict().tokens;
+  if (tx.kind === "spend") return tx.song_title ? fmt(d.txSong, { title: tx.song_title }) : d.txRequest;
+  if (tx.kind === "demo") return d.txDemo;
+  if (tx.kind === "grant") return d.txGrant;
+  return d.txPurchase;
 }
 
 interface Props {
@@ -58,6 +61,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
+  const { lang, t } = useI18n();
   const [packages] = useState<TokenPackage[]>(initialPackages);
   const [balanceLoaded, setBalanceLoaded] = useState(false);
   const [balance, setBalance] = useState(0);
@@ -152,7 +156,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const handlePurchase = async () => {
     if (purchasing || buyTokens <= 0) return;
     if (!buyerValid) {
-      alert("Ad, soyad, geçerli bir T.C. kimlik no ve şehir gerekli.");
+      alert(t.tokens.buyerRequired);
       return;
     }
     setPurchasing(true);
@@ -170,19 +174,20 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        alert(data?.error ?? "Bir hata oluştu, tekrar dene.");
+        alert(data?.error ?? t.tokens.genericError);
         return;
       }
       localStorage.setItem(BUYER_STORAGE_KEY, JSON.stringify(trimmedBuyer));
       window.location.href = data.paymentPageUrl;
     } catch {
-      alert("Bağlantı hatası, tekrar dene.");
+      alert(t.tokens.connectionError);
       setPurchasing(false);
     }
   };
 
-  const unitLabel = (p: TokenPackage) => (p.price / p.tokens).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
-  const fmtPrice = (n: number) => n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+  const locale = lang === "tr" ? "tr-TR" : "en-US";
+  const unitLabel = (p: TokenPackage) => (p.price / p.tokens).toLocaleString(locale, { maximumFractionDigits: 1 });
+  const fmtPrice = (n: number) => n.toLocaleString(locale, { maximumFractionDigits: 2 });
   const clampQty = (n: number) => Math.min(MAX_LOOSE, Math.max(1, Math.round(n)));
 
   return (
@@ -197,12 +202,12 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
         <div className="mb-6 flex items-center gap-3">
           <button
             onClick={() => router.back()}
-            aria-label="Geri"
+            aria-label={t.common.back}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-transform active:scale-95"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
-          <h1 className="text-lg font-bold text-white">Jeton Satın Al</h1>
+          <h1 className="text-lg font-bold text-white">{t.tokens.title}</h1>
         </div>
 
         <div
@@ -223,16 +228,16 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
           />
           <div className="relative flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">Mevcut Bakiye</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.currentBalance}</p>
               <div className="mt-2 flex items-baseline gap-2">
                 {balanceLoaded ? (
                   <span className="text-[42px] font-black leading-none text-white tabular-nums">{displayBalance}</span>
                 ) : (
                   <span className="inline-block h-10 w-16 animate-pulse rounded-lg bg-white/10" />
                 )}
-                <span className="text-sm font-medium text-[#9ca3af]">jeton</span>
+                <span className="text-sm font-medium text-[#9ca3af]">{t.tokens.tokenUnit}</span>
               </div>
-              <p className="mt-1.5 text-[11px] text-[#6b7280]">Tüm mekanlarda geçerli · 1 jeton = {fmtPrice(unitPrice)}₺</p>
+              <p className="mt-1.5 text-[11px] text-[#6b7280]">{fmt(t.tokens.balanceNote, { price: fmtPrice(unitPrice) })}</p>
             </div>
             <div
               className="flex h-14 w-14 items-center justify-center rounded-2xl"
@@ -256,13 +261,13 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                 : { background: "rgba(233,30,140,0.12)", border: "1px solid rgba(233,30,140,0.4)", color: "#e91e8c" }
             }
           >
-            {paymentResult === "success" ? "Ödeme alındı, jetonların eklendi!" : "Ödeme tamamlanmadı, tekrar dene."}
+            {paymentResult === "success" ? t.tokens.paySuccess : t.tokens.payFail}
           </div>
         )}
 
         {packages.length > 0 && (
           <>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">Paket Seç</p>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.pickPackage}</p>
 
             <div className="mb-4 grid grid-cols-2 gap-3">
               {packages.map((p, idx) => {
@@ -286,7 +291,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                         className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-[3px] text-[9px] font-extrabold uppercase tracking-wider text-white"
                         style={{ background: "linear-gradient(135deg, #ff2d9c, #b3126d)", boxShadow: "0 4px 14px rgba(233,30,140,0.45)" }}
                       >
-                        En Popüler
+                        {t.tokens.mostPopular}
                       </span>
                     )}
                     <div className="flex items-start justify-between">
@@ -310,14 +315,14 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                       </span>
                     </div>
                     <p className="mt-3 text-[26px] font-black leading-none text-white">
-                      {p.tokens} <span className="text-xs font-medium text-[#9ca3af]">jeton</span>
+                      {p.tokens} <span className="text-xs font-medium text-[#9ca3af]">{t.tokens.tokenUnit}</span>
                     </p>
-                    <p className="mt-1 text-[11px] text-[#6b7280]">₺{unitLabel(p)}/jeton</p>
+                    <p className="mt-1 text-[11px] text-[#6b7280]">{fmt(t.tokens.perToken, { price: unitLabel(p) })}</p>
                     <div className="mt-3 flex items-center justify-between gap-1">
                       <p className="text-base font-bold text-[#e91e8c]">{fmtPrice(p.price)}₺</p>
                       {savings > 0 && (
                         <span className="rounded-full bg-[#22c55e]/10 px-2 py-0.5 text-[10px] font-bold text-[#4ade80]">
-                          %{savings} avantaj
+                          {fmt(t.tokens.savings, { percent: savings })}
                         </span>
                       )}
                     </div>
@@ -343,8 +348,8 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
         >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-bold text-white">Tek Jeton</p>
-              <p className="mt-0.5 text-[11px] text-[#6b7280]">İstediğin adette · ₺{fmtPrice(unitPrice)}/jeton</p>
+              <p className="text-sm font-bold text-white">{t.tokens.singleToken}</p>
+              <p className="mt-0.5 text-[11px] text-[#6b7280]">{fmt(t.tokens.singleTokenDesc, { price: fmtPrice(unitPrice) })}</p>
             </div>
             <span
               className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-all"
@@ -363,7 +368,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
               <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                 <span
                   role="button"
-                  aria-label="Azalt"
+                  aria-label={t.tokens.decreaseAria}
                   onClick={() => setQty((q) => clampQty(q - 1))}
                   className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95"
                 >
@@ -383,7 +388,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                 />
                 <span
                   role="button"
-                  aria-label="Artır"
+                  aria-label={t.tokens.increaseAria}
                   onClick={() => setQty((q) => clampQty(q + 1))}
                   className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95"
                 >
@@ -395,50 +400,50 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
           )}
         </button>
 
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">Alıcı Bilgileri</p>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.buyerInfo}</p>
         <div className="mb-4 grid grid-cols-2 gap-3">
           <input
             value={buyer.name}
             onChange={(e) => setBuyer((b) => ({ ...b, name: e.target.value }))}
-            placeholder="Ad"
+            placeholder={t.tokens.firstName}
             className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
           />
           <input
             value={buyer.surname}
             onChange={(e) => setBuyer((b) => ({ ...b, surname: e.target.value }))}
-            placeholder="Soyad"
+            placeholder={t.tokens.lastName}
             className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
           />
           <input
             value={buyer.identityNumber}
             onChange={(e) => setBuyer((b) => ({ ...b, identityNumber: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
-            placeholder="T.C. Kimlik No"
+            placeholder={t.tokens.identityNumber}
             inputMode="numeric"
             className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
           />
           <input
             value={buyer.city}
             onChange={(e) => setBuyer((b) => ({ ...b, city: e.target.value }))}
-            placeholder="Şehir"
+            placeholder={t.tokens.city}
             className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
           />
         </div>
         <p className="-mt-2 mb-4 text-[10px] text-[#6b7280]">
-          iyzico ödeme altyapısının zorunlu tuttuğu bilgilerdir; kart bilgilerin iyzico&apos;nun güvenli sayfasında alınır.
+          {t.tokens.buyerNote}
         </p>
 
         <div className="mb-4 rounded-2xl p-4" style={{ background: "#160d24", border: "1px solid rgba(255,255,255,0.07)" }}>
           <div className="flex justify-between text-sm">
-            <span className="text-[#9ca3af]">Seçilen</span>
-            <span className="font-semibold text-white">{buyTokens} jeton{pkg ? ` · ${pkg.label}` : ""}</span>
+            <span className="text-[#9ca3af]">{t.tokens.selected}</span>
+            <span className="font-semibold text-white">{fmt(t.tokens.selectedValue, { n: buyTokens })}{pkg ? ` · ${pkg.label}` : ""}</span>
           </div>
           <div className="mt-2 flex justify-between text-sm">
-            <span className="text-[#9ca3af]">Birim fiyat</span>
-            <span className="text-white">₺{pkg ? unitLabel(pkg) : fmtPrice(unitPrice)}/jeton</span>
+            <span className="text-[#9ca3af]">{t.tokens.unitPrice}</span>
+            <span className="text-white">{fmt(t.tokens.perToken, { price: pkg ? unitLabel(pkg) : fmtPrice(unitPrice) })}</span>
           </div>
           <div className="my-3 border-t border-dashed border-white/10" />
           <div className="flex items-baseline justify-between">
-            <span className="text-sm text-[#9ca3af]">Toplam</span>
+            <span className="text-sm text-[#9ca3af]">{t.tokens.total}</span>
             <span className="text-xl font-extrabold text-[#e91e8c]">{fmtPrice(buyTotal)}₺</span>
           </div>
         </div>
@@ -460,10 +465,10 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                 <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
                 <path d="M21 12a9 9 0 0 0-9-9" stroke="white" strokeWidth="3" strokeLinecap="round" />
               </svg>
-              iyzico&apos;ya yönlendiriliyor...
+              {t.tokens.redirecting}
             </>
           ) : (
-            <>iyzico ile Öde · {fmtPrice(buyTotal)}₺</>
+            <>{fmt(t.tokens.payWith, { total: fmtPrice(buyTotal) })}</>
           )}
         </button>
 
@@ -472,7 +477,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             <rect x="4" y="10" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="2" />
             <path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="2" />
           </svg>
-          Güvenli ödeme · Jetonlar anında yüklenir
+          {t.tokens.secureNote}
         </div>
         {/* iyzico resmi ödeme rozeti: kart bilgilerinin iyzico güvencesiyle alındığını gösterir (marka kiti şartı) */}
         <div className="mt-3 flex items-center justify-center">
@@ -486,7 +491,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
         </div>
 
         {/* Jeton hareketleri */}
-        <p className="mt-8 mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">Son Hareketler</p>
+        <p className="mt-8 mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.recentActivity}</p>
         {!txLoaded ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
@@ -498,7 +503,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             className="rounded-2xl py-8 text-center text-xs text-[#6b7280]"
             style={{ background: "#160d24", border: "1px solid rgba(255,255,255,0.07)" }}
           >
-            Henüz işlem yok
+            {t.tokens.noActivity}
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl" style={{ background: "#1a0e2a", border: "1px solid rgba(255,255,255,0.07)" }}>
@@ -534,7 +539,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                     <p className={`text-sm font-bold tabular-nums ${positive ? "text-[#4ade80]" : "text-[#e91e8c]"}`}>
                       {positive ? `+${tx.amount}` : tx.amount}
                     </p>
-                    <p className="mt-0.5 text-[10px] text-[#6b7280] tabular-nums">bakiye {tx.balance_after}</p>
+                    <p className="mt-0.5 text-[10px] text-[#6b7280] tabular-nums">{fmt(t.tokens.balanceAfter, { n: tx.balance_after })}</p>
                   </div>
                 </div>
               );

@@ -4,6 +4,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import SongRow from "./SongRow";
 import { artistKey, primaryArtist, type DisplaySong, type SongActionState, type VenueSong } from "./browse-types";
+import { fmt, useT } from "@/lib/i18n";
 
 const MAX_RECENT = 8;
 
@@ -33,6 +34,7 @@ interface Props {
 // Aranan şarkı listede yoksa müşteri sanatçı + şarkı adını yazıp mekana öneri
 // gönderir; öneri mekanın istekler bölümüne düşer.
 export default function SearchView({ venueSongMap, favoriteIds, actionFor, recentKey, onOpen, onToggleFavorite, onAdd, onRequest, onSuggest, onClose }: Props) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [artistFilter, setArtistFilter] = useState<{ key: string; name: string } | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -72,10 +74,10 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
   };
 
   const saveRecent = (term: string) => {
-    const t = term.trim();
-    if (!t) return;
-    const key = t.toLocaleLowerCase("tr");
-    persistRecent([t, ...recent.filter((r) => r.toLocaleLowerCase("tr") !== key)].slice(0, MAX_RECENT));
+    const trimmed = term.trim();
+    if (!trimmed) return;
+    const key = trimmed.toLocaleLowerCase("tr");
+    persistRecent([trimmed, ...recent.filter((r) => r.toLocaleLowerCase("tr") !== key)].slice(0, MAX_RECENT));
   };
 
   const removeRecent = (term: string) => {
@@ -156,7 +158,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
         <button
           onClick={artistFilter ? clearArtist : onClose}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-          aria-label={artistFilter ? "Sanatçıdan çık" : "Aramayı kapat"}
+          aria-label={artistFilter ? t.search.exitArtistAria : t.search.closeAria}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
@@ -165,7 +167,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
             ref={inputRef}
             type="text"
             autoFocus
-            placeholder="Mekan listesinde ara..."
+            placeholder={t.search.placeholder}
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}
             onKeyDown={(e) => {
@@ -180,7 +182,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
             <button
               onClick={() => { setQuery(""); setArtistFilter(null); setSuggestOpen(false); inputRef.current?.focus(); }}
               className="absolute right-3 top-1/2 flex -translate-y-1/2 p-1"
-              aria-label="Temizle"
+              aria-label={t.search.clearAria}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
             </button>
@@ -193,9 +195,9 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
           recent.length > 0 ? (
             <>
               <div className="mb-1 flex items-center justify-between pt-2">
-                <h2 className="text-sm font-bold text-white">Son Aramalar</h2>
+                <h2 className="text-sm font-bold text-white">{t.search.recentTitle}</h2>
                 <button onClick={() => persistRecent([])} className="text-xs font-medium text-[#9ca3af]">
-                  Temizle
+                  {t.search.clear}
                 </button>
               </div>
               {recent.map((term) => (
@@ -207,7 +209,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
                   <button
                     onClick={() => removeRecent(term)}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                    aria-label={`"${term}" aramasını sil`}
+                    aria-label={fmt(t.search.removeRecentAria, { term })}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
                   </button>
@@ -217,18 +219,18 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
           ) : (
             <div className="flex flex-col items-center pt-16 text-center">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#3d3450" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#3d3450" strokeWidth="2" strokeLinecap="round" /></svg>
-              <p className="mt-3 text-sm text-[#6b7280]">Mekanın listesinde şarkı veya sanatçı ara</p>
+              <p className="mt-3 text-sm text-[#6b7280]">{t.search.emptyHint}</p>
             </div>
           )
         ) : artistFilter ? (
           <>
             <div className="flex items-center gap-2 pt-2">
               <h2 className="min-w-0 truncate text-sm font-bold text-white">{artistFilter.name}</h2>
-              <span className="shrink-0 text-xs text-[#9ca3af]">şarkıları</span>
+              <span className="shrink-0 text-xs text-[#9ca3af]">{t.search.artistSongsSuffix}</span>
               <button
                 onClick={clearArtist}
                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10"
-                aria-label="Sanatçı filtresini kaldır"
+                aria-label={t.browse.clearArtistAria}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
               </button>
@@ -262,7 +264,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
           <>
             {searchArtists.length > 1 && (
               <>
-                <h2 className="pt-2 text-sm font-bold text-white">Sanatçılar</h2>
+                <h2 className="pt-2 text-sm font-bold text-white">{t.search.artists}</h2>
                 <div className="flex gap-4 overflow-x-auto py-3">
                   {searchArtists.map((a) => (
                     <button
@@ -286,7 +288,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
               </>
             )}
 
-            <h2 className="pt-2 text-sm font-bold text-white">Mekan Listesi</h2>
+            <h2 className="pt-2 text-sm font-bold text-white">{t.search.venueList}</h2>
             {results.map((song) => (
               <SongRow
                 key={song.youtube_video_id}
@@ -308,18 +310,18 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
                 onClick={() => setSuggestOpen(true)}
                 className="mt-5 w-full rounded-2xl border border-white/10 bg-[#1a0e2a] px-4 py-3.5 text-left"
               >
-                <p className="text-sm font-semibold text-white">Aradığın şarkı listede yok mu?</p>
-                <p className="mt-0.5 text-xs text-[#9ca3af]">Mekana öner — eklerlerse haber vereceğiz</p>
+                <p className="text-sm font-semibold text-white">{t.search.notFoundTitle}</p>
+                <p className="mt-0.5 text-xs text-[#9ca3af]">{t.search.notFoundDesc}</p>
               </button>
             )}
 
             {/* YouTube API branding şartı: şarkı verilerinin kaynağı görünür olmalı */}
             <p className="pb-2 pt-4 text-center text-[11px] text-[#6b7280]">
-              Şarkı bilgileri ve kapaklar{" "}
+              {t.search.youtubePrefix}{" "}
               <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" className="underline">
                 YouTube
               </a>{" "}
-              tarafından sağlanır
+              {t.search.youtubeSuffix}
             </p>
           </>
         )}
@@ -340,6 +342,7 @@ function SuggestBox({
   defaultArtist: string;
   onSuggest: (title: string, artist: string) => Promise<SuggestResult>;
 }) {
+  const t = useT();
   const [title, setTitle] = useState(defaultTitle);
   const [artist, setArtist] = useState(defaultArtist);
   const [touchedTitle, setTouchedTitle] = useState(false);
@@ -371,7 +374,7 @@ function SuggestBox({
       return;
     }
     if (result === "auth") return; // giriş ekranına yönlendirildi
-    setError(result === "limit" ? "Çok fazla öneri gönderdin, biraz sonra tekrar dene." : "Öneri gönderilemedi, tekrar dene.");
+    setError(result === "limit" ? t.suggest.limitError : t.suggest.sendError);
   };
 
   if (sent) {
@@ -379,10 +382,10 @@ function SuggestBox({
       <div className={`rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/10 p-4 ${variant === "empty" ? "mt-8" : "mt-5"}`}>
         <div className="flex items-center gap-2">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          <p className="text-sm font-semibold text-white">Önerin mekana iletildi</p>
+          <p className="text-sm font-semibold text-white">{t.suggest.sentTitle}</p>
         </div>
         <p className="mt-1.5 text-xs text-[#9ca3af]">
-          Mekan şarkıyı listesine eklerse bildirim göndereceğiz — sonra sıraya ekleyebilirsin.
+          {t.suggest.sentDesc}
         </p>
       </div>
     );
@@ -394,14 +397,14 @@ function SuggestBox({
         <>
           <div className="flex items-center gap-2">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#e91e8c" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" /></svg>
-            <p className="text-sm font-bold text-white">Bu şarkı mekanın listesinde yok</p>
+            <p className="text-sm font-bold text-white">{t.suggest.emptyTitle}</p>
           </div>
           <p className="mt-1.5 text-xs text-[#9ca3af]">
-            Sanatçı ve şarkı adını yaz, mekana öneri olarak iletelim.
+            {t.suggest.emptyDesc}
           </p>
         </>
       ) : (
-        <p className="text-sm font-bold text-white">Mekana şarkı öner</p>
+        <p className="text-sm font-bold text-white">{t.suggest.inlineTitle}</p>
       )}
 
       <div className="mt-3 space-y-2">
@@ -410,7 +413,7 @@ function SuggestBox({
           value={titleValue}
           onChange={(e) => { setTouchedTitle(true); setTitle(e.target.value); }}
           maxLength={120}
-          placeholder="Şarkı adı"
+          placeholder={t.suggest.titlePlaceholder}
           className="w-full rounded-xl border border-white/10 bg-[#1a0e2a] px-3.5 py-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
         />
         <input
@@ -418,7 +421,7 @@ function SuggestBox({
           value={artist}
           onChange={(e) => setArtist(e.target.value)}
           maxLength={120}
-          placeholder="Sanatçı adı"
+          placeholder={t.suggest.artistPlaceholder}
           className="w-full rounded-xl border border-white/10 bg-[#1a0e2a] px-3.5 py-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
         />
       </div>
@@ -431,9 +434,9 @@ function SuggestBox({
         className="mt-3 flex h-11 w-full items-center justify-center rounded-xl text-sm font-bold text-white transition-transform active:scale-[0.98] disabled:opacity-40"
         style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
       >
-        {sending ? "Gönderiliyor..." : "Mekana Öner"}
+        {sending ? t.suggest.sending : t.suggest.submit}
       </button>
-      <p className="mt-2 text-center text-[11px] text-[#6b7280]">Öneri ücretsizdir, jeton harcamaz</p>
+      <p className="mt-2 text-center text-[11px] text-[#6b7280]">{t.suggest.freeNote}</p>
     </div>
   );
 }

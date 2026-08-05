@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useT } from "@/lib/i18n";
 
 const MOCK_CARDS = [
   { id: "c1", brand: "Visa", last4: "4242", expiry: "12/26", isDefault: true },
@@ -9,6 +10,7 @@ const MOCK_CARDS = [
 ];
 
 export default function PaymentMethodsPage() {
+  const t = useT();
   const router = useRouter();
   const [cards, setCards] = useState(MOCK_CARDS);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -32,7 +34,7 @@ export default function PaymentMethodsPage() {
             <path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <h1 className="text-white font-bold text-xl">Ödeme Yöntemleri</h1>
+        <h1 className="text-white font-bold text-xl">{t.paymentMethods.title}</h1>
       </div>
 
       {/* Kartlar */}
@@ -73,7 +75,7 @@ export default function PaymentMethodsPage() {
                   className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                   style={{ background: "rgba(233,30,140,0.2)", color: "#e91e8c" }}
                 >
-                  VARSAYILAN
+                  {t.paymentMethods.defaultBadge}
                 </span>
               )}
             </div>
@@ -83,14 +85,14 @@ export default function PaymentMethodsPage() {
                   onClick={() => setDefault(card.id)}
                   className="flex-1 py-2 rounded-xl text-xs font-semibold border border-white/10 text-[#9ca3af] hover:bg-white/5 transition-all"
                 >
-                  Varsayılan Yap
+                  {t.paymentMethods.makeDefault}
                 </button>
               )}
               <button
                 onClick={() => removeCard(card.id)}
                 className="flex-1 py-2 rounded-xl text-xs font-semibold border border-red-500/20 text-red-400 hover:bg-red-500/10 transition-all"
               >
-                Sil
+                {t.paymentMethods.delete}
               </button>
             </div>
           </div>
@@ -107,22 +109,22 @@ export default function PaymentMethodsPage() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <path d="M12 5v14M5 12h14" stroke="white" strokeWidth="2" strokeLinecap="round" />
             </svg>
-            Yeni Kart Ekle
+            {t.paymentMethods.addCard}
           </button>
         ) : (
           <div className="p-5 rounded-2xl" style={{ background: "#1a0e2a" }}>
-            <h3 className="text-white font-bold mb-4">Kart Bilgileri</h3>
+            <h3 className="text-white font-bold mb-4">{t.paymentMethods.cardInfo}</h3>
             <div className="space-y-3">
               <input
                 type="text"
-                placeholder="Kart numarası"
+                placeholder={t.paymentMethods.cardNumber}
                 maxLength={19}
                 className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white placeholder-[#4b5563] text-sm focus:outline-none focus:border-[#e91e8c]/40"
               />
               <div className="flex gap-3">
                 <input
                   type="text"
-                  placeholder="AA/YY"
+                  placeholder={t.paymentMethods.expiry}
                   maxLength={5}
                   className="flex-1 min-w-0 bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white placeholder-[#4b5563] text-sm focus:outline-none focus:border-[#e91e8c]/40"
                 />
@@ -135,7 +137,7 @@ export default function PaymentMethodsPage() {
               </div>
               <input
                 type="text"
-                placeholder="Kart sahibinin adı"
+                placeholder={t.paymentMethods.cardHolder}
                 className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white placeholder-[#4b5563] text-sm focus:outline-none focus:border-[#e91e8c]/40"
               />
               <div className="flex gap-3 pt-1">
@@ -143,14 +145,14 @@ export default function PaymentMethodsPage() {
                   onClick={() => setShowAddForm(false)}
                   className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm"
                 >
-                  İptal
+                  {t.common.cancel}
                 </button>
                 <button
                   onClick={() => setShowAddForm(false)}
                   className="flex-1 py-3 rounded-xl font-bold text-white text-sm"
                   style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
                 >
-                  Kaydet
+                  {t.common.save}
                 </button>
               </div>
             </div>

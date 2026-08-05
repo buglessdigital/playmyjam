@@ -15,6 +15,7 @@ import {
   type VenueSong,
 } from "@/components/browse/browse-types";
 import { buildSimilar, similarSongsOfArtist, type SimilarArtist } from "@/lib/similar";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   venueDbId: string;
@@ -39,6 +40,7 @@ type VenueSongRow = {
 export default function SimilarOverlay({
   venueDbId, track, queuedSongIds, playingSongId, addedIds, onOpenSong, onAddSong, onClose,
 }: Props) {
+  const t = useT();
   const supabase = useMemo(() => createClient(), []);
   const [catalog, setCatalog] = useState<VenueSong[] | null>(null);
   const [recentlyPlayedAt, setRecentlyPlayedAt] = useState<Map<string, number>>(new Map());
@@ -147,7 +149,7 @@ export default function SimilarOverlay({
         <button
           onClick={onClose}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10"
-          aria-label="Benzerleri kapat"
+          aria-label={t.similar.closeAria}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
         </button>
@@ -159,7 +161,7 @@ export default function SimilarOverlay({
             <button
               onClick={() => setSelectedArtist(null)}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10"
-              aria-label="Benzerlere dön"
+              aria-label={t.similar.backAria}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
@@ -167,7 +169,7 @@ export default function SimilarOverlay({
             <span className="shrink-0 text-xs text-[#9ca3af]">{artistSongs.length} şarkı</span>
           </>
         ) : (
-          <h2 className="text-lg font-bold text-white">Benzer</h2>
+          <h2 className="text-lg font-bold text-white">{t.similar.title}</h2>
         )}
       </div>
 
@@ -188,7 +190,7 @@ export default function SimilarOverlay({
 
         {empty && (
           <p className="px-8 pt-16 text-center text-sm text-[#6b7280]">
-            Bu mekanın listesinde benzer başka şarkı yok.
+            {t.similar.empty}
           </p>
         )}
 
@@ -203,8 +205,8 @@ export default function SimilarOverlay({
         {!loading && !selectedArtist && songs.length > 0 && (
           <>
             <section className="pt-2">
-              <h3 className="px-5 pb-1 text-sm font-bold text-white">Şunları da beğenebilirsiniz</h3>
-              <p className="px-5 pb-2 text-[11px] text-[#6b7280]">Bu mekanda çalınabilen şarkılar</p>
+              <h3 className="px-5 pb-1 text-sm font-bold text-white">{t.similar.songsTitle}</h3>
+              <p className="px-5 pb-2 text-[11px] text-[#6b7280]">{t.similar.songsDesc}</p>
               <div className="px-5">
                 {songs.map((song) => (
                   <SimilarRow key={song.youtube_video_id} song={song} action={actionFor(song)} onOpen={onOpenSong} onAdd={handleAdd} />
@@ -214,8 +216,8 @@ export default function SimilarOverlay({
 
             {artists.length > 0 && (
               <section className="pt-5">
-                <h3 className="px-5 pb-1 text-sm font-bold text-white">Önerilen sanatçılar</h3>
-                <p className="px-5 pb-3 text-[11px] text-[#6b7280]">Mekan listesindeki diğer sanatçılar</p>
+                <h3 className="px-5 pb-1 text-sm font-bold text-white">{t.similar.artistsTitle}</h3>
+                <p className="px-5 pb-3 text-[11px] text-[#6b7280]">{t.similar.artistsDesc}</p>
                 <div className="flex gap-4 overflow-x-auto px-5 pb-2">
                   {artists.map((a) => (
                     <button

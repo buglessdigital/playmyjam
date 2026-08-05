@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useVenueGate } from "@/lib/venue-gate";
+import { useT } from "@/lib/i18n";
 
 interface BottomNavProps {
   venueId: string;
@@ -11,10 +12,11 @@ interface BottomNavProps {
 export default function BottomNav({ venueId }: BottomNavProps) {
   const pathname = usePathname();
   const { requireAccount } = useVenueGate(venueId);
+  const t = useT();
 
   const tabs = [
     {
-      label: "KUYRUK",
+      label: t.panelNav.queue,
       segment: "queue",
       href: `/venue/${venueId}/queue`,
       icon: (active: boolean) => (
@@ -28,7 +30,7 @@ export default function BottomNav({ venueId }: BottomNavProps) {
       ),
     },
     {
-      label: "GÖZAT",
+      label: t.panelNav.browse,
       segment: "browse",
       href: `/venue/${venueId}/browse`,
       icon: (active: boolean) => (
@@ -39,7 +41,7 @@ export default function BottomNav({ venueId }: BottomNavProps) {
       ),
     },
     {
-      label: "PROFİL",
+      label: t.panelNav.profile,
       segment: "profile",
       href: `/venue/${venueId}/profile`,
       // Profil hesaba bağlı — misafir önce giriş ekranına gider

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import type { VenueSong } from "./browse-types";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   song: VenueSong;
@@ -14,6 +15,7 @@ interface Props {
 // progressMs çağıran tarafta duvar saatine sabitlenip her tick tazelenir
 // (useNowPlayingClock) — burada ayrıca sayaç işletilmez
 export default function NowPlayingBanner({ song, progressMs, durationMs, isPlaying, onClick }: Props) {
+  const t = useT();
   const pct = durationMs > 0 ? Math.min((progressMs / durationMs) * 100, 100) : 0;
 
   return (
@@ -37,7 +39,7 @@ export default function NowPlayingBanner({ song, progressMs, durationMs, isPlayi
                 ))}
               </div>
             )}
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#e91e8c]">Şu An Çalıyor</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#e91e8c]">{t.queue.nowPlaying}</span>
           </div>
           <p className="mt-0.5 truncate text-sm font-semibold text-white">{song.title}</p>
           <p className="truncate text-xs text-[#9ca3af]">{song.artist}</p>

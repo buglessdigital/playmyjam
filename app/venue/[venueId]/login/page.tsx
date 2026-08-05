@@ -5,13 +5,18 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { safeNextPath } from "@/lib/venue-gate";
+import { currentDict, fmt, useT } from "@/lib/i18n";
 
-const AUTH_ERROR_MESSAGES: Record<string, string> = {
-  oauth_failed: "Google ile giriş tamamlanamadı. Lütfen tekrar deneyin.",
-  confirm_failed: "Onay bağlantısının süresi dolmuş veya daha önce kullanılmış. Giriş yapmayı deneyin; gerekirse yeni onay e-postası gönderebilirsiniz.",
-  confirm_invalid: "Onay bağlantısı geçersiz. Lütfen e-postadaki bağlantıyı tekrar kullanın.",
-  missing_params: "Giriş sırasında bir sorun oluştu. Lütfen tekrar deneyin.",
-};
+function authErrorMessage(code: string): string {
+  const d = currentDict().login;
+  const map: Record<string, string> = {
+    oauth_failed: d.errOauth,
+    confirm_failed: d.errConfirmFailed,
+    confirm_invalid: d.errConfirmInvalid,
+    missing_params: d.errMissingParams,
+  };
+  return map[code] ?? d.errMissingParams;
+}
 
 interface Props {
   params: Promise<{ venueId: string }>;
@@ -42,6 +47,7 @@ function AuthPageContent({ params }: Props) {
   const [resetLoading, setResetLoading] = useState(false);
   const [existingUser, setExistingUser] = useState<{ name: string } | null>(null);
   const [continueLoading, setContinueLoading] = useState(false);
+  const t = useT();
 
   // Hesap gerektiren bir eylem buraya yönlendirdiyse giriş sonrası oraya dönülür
   const nextPath = safeNextPath(searchParams.get("next"), venueId);
@@ -50,7 +56,7 @@ function AuthPageContent({ params }: Props) {
   useEffect(() => {
     const code = searchParams.get("auth_error");
     if (code) {
-      setError(AUTH_ERROR_MESSAGES[code] ?? AUTH_ERROR_MESSAGES.missing_params);
+      setError(authErrorMessage(code));
       const next = searchParams.get("next");
       router.replace(next ? `/venue/${venueId}/login?next=${encodeURIComponent(next)}` : `/venue/${venueId}/login`);
     }
@@ -71,7 +77,7 @@ function AuthPageContent({ params }: Props) {
         .eq("id", user.id)
         .maybeSingle();
       if (cancelled) return;
-      const name = profile?.username || user.email?.split("@")[0] || "Hesabın";
+      const name = profile?.username || user.email?.split("@")[0] || currentDict().login.defaultName;
       setExistingUser({ name });
     };
     check();
@@ -89,11 +95,11 @@ function AuthPageContent({ params }: Props) {
     try {
       const res = await fetch(`/api/venue/${venueId}/auth`, { method: "POST" });
       if (!res.ok) {
-        setError("Oturum doğrulanamadı. Lütfen tekrar giriş yapın.");
+        setError(t.login.errSessionCheck);
         return "unauthorized";
       }
     } catch {
-      setError("Bağlantı kurulamadı. İnternetini kontrol edip tekrar dene.");
+      setError(t.login.errConnection);
       return "network";
     }
     window.location.replace(nextPath);
@@ -126,21 +132,21 @@ function AuthPageContent({ params }: Props) {
     if (error) {
       const msg = error.message.toLowerCase();
       if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("429")) {
-        setError("Çok fazla deneme yapıldı. Lütfen birkaç saniye bekleyip tekrar deneyin.");
+        setError(t.login.errTooMany);
       } else {
-        setError("Onay e-postası gönderilemedi. Lütfen tekrar deneyin.");
+        setError(t.login.errResend);
       }
       return;
     }
     setShowResend(false);
-    setInfo(`${email} adresine yeni bir onay e-postası gönderildi. Lütfen gelen kutunuzu kontrol edin.`);
+    setInfo(fmt(t.login.infoResent, { email }));
   };
 
   const handleForgotPassword = async () => {
     if (!email.trim()) {
       setInfo("");
       setShowResend(false);
-      setError("Şifreni sıfırlamak için önce e-posta adresini yaz.");
+      setError(t.login.errEmailFirst);
       return;
     }
     setResetLoading(true);
@@ -158,9 +164,9 @@ function AuthPageContent({ params }: Props) {
     if (error) {
       const msg = error.message.toLowerCase();
       if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("429")) {
-        setError("Çok fazla deneme yapıldı. Lütfen birkaç saniye bekleyip tekrar deneyin.");
+        setError(t.login.errTooMany);
       } else {
-        setError("Sıfırlama e-postası gönderilemedi. Lütfen tekrar deneyin.");
+        setError(t.login.errReset);
       }
       return;
     }
@@ -180,7 +186,7 @@ function AuthPageContent({ params }: Props) {
       await submitCredentials();
     } catch {
       // Ağ hatası vb. yakalanmazsa buton sonsuza dek "Bekle..." kalıyor
-      setError("Bağlantı kurulamadı. İnternetini kontrol edip tekrar dene.");
+      setError(t.login.errConnection);
       setLoading(false);
     }
   };
@@ -193,10 +199,10 @@ function AuthPageContent({ params }: Props) {
       if (error) {
         const msg = error.message.toLowerCase();
         if (error.code === "email_not_confirmed" || msg.includes("email not confirmed")) {
-          setError("E-posta adresiniz henüz onaylanmadı. Gelen kutunuzdaki onay bağlantısına tıklayın.");
+          setError(t.login.errNotConfirmed);
           setShowResend(true);
         } else {
-          setError("E-posta veya şifre hatalı");
+          setError(t.login.errBadCredentials);
         }
         setLoading(false);
         return;
@@ -210,15 +216,15 @@ function AuthPageContent({ params }: Props) {
       if (error) {
         const msg = error.message.toLowerCase();
         if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("20 seconds") || msg.includes("429")) {
-          setError("Çok fazla deneme yapıldı. Lütfen birkaç saniye bekleyip tekrar deneyin.");
+          setError(t.login.errTooMany);
         } else if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("user already")) {
-          setError("Bu e-posta adresi zaten kayıtlı. Giriş yapmayı deneyin.");
+          setError(t.login.errAlreadyRegistered);
         } else if (msg.includes("password") && msg.includes("short")) {
-          setError("Şifre en az 6 karakter olmalıdır.");
+          setError(t.login.errShortPassword);
         } else if (msg.includes("invalid email")) {
-          setError("Geçersiz e-posta adresi.");
+          setError(t.login.errInvalidEmail);
         } else {
-          setError("Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.");
+          setError(t.login.errSignup);
         }
         setLoading(false);
         return;
@@ -227,7 +233,7 @@ function AuthPageContent({ params }: Props) {
       if (!signUpData.session) {
         setError("");
         setLoading(false);
-        setInfo(`${email} adresine bir onay e-postası gönderildi. E-postanızdaki bağlantıya tıkladığınızda oturumunuz otomatik açılacak.`);
+        setInfo(fmt(t.login.infoSignup, { email }));
         setIsLogin(true);
         return;
       }
@@ -252,7 +258,7 @@ function AuthPageContent({ params }: Props) {
       },
     });
     if (error) {
-      setError("Google ile giriş başlatılamadı. Lütfen tekrar deneyin.");
+      setError(t.login.errGoogleStart);
       setGoogleLoading(false);
     }
   };
@@ -273,11 +279,10 @@ function AuthPageContent({ params }: Props) {
 
       <div className="flex-1 px-6 pt-2 pb-10">
         <h1 className="text-3xl font-bold text-white leading-tight mb-1">
-          Hadi partiyi <span className="text-[#e91e8c]">başlatalım</span>
+          {t.login.headingLead} <span className="text-[#e91e8c]">{t.login.headingAccent}</span>
         </h1>
         <p className="text-[#9ca3af] text-sm mb-8">
-          Şarkı çaldırmak, jeton almak ve favorilerini kaydetmek için hesabın gerekiyor.
-          Kuyruğa bakmak içinse giriş yapmana gerek yok.
+          {t.login.sub}
         </p>
 
         {error && (
@@ -289,7 +294,7 @@ function AuthPageContent({ params }: Props) {
                 disabled={resendLoading}
                 className="block mt-2 font-semibold text-white underline underline-offset-2 disabled:opacity-50"
               >
-                {resendLoading ? "Gönderiliyor..." : "Onay e-postasını tekrar gönder"}
+                {resendLoading ? t.login.sending : t.login.resendConfirm}
               </button>
             )}
           </div>
@@ -318,11 +323,11 @@ function AuthPageContent({ params }: Props) {
                   <circle cx="12" cy="7" r="4" stroke="white" strokeWidth="2" />
                 </svg>
               )}
-              {continueLoading ? "Devam ediliyor..." : `${existingUser.name} olarak devam et`}
+              {continueLoading ? t.login.continuing : fmt(t.login.continueAs, { name: existingUser.name })}
             </button>
             <div className="flex items-center gap-3 mb-4">
               <div className="flex-1 h-px bg-white/10" />
-              <span className="text-xs text-[#4b5563]">veya farklı hesapla</span>
+              <span className="text-xs text-[#4b5563]">{t.login.orDifferentAccount}</span>
               <div className="flex-1 h-px bg-white/10" />
             </div>
           </>
@@ -344,19 +349,19 @@ function AuthPageContent({ params }: Props) {
               <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
             </svg>
           )}
-          {googleLoading ? "Yönlendiriliyor..." : "Google ile devam et"}
+          {googleLoading ? t.login.redirecting : t.login.continueWithGoogle}
         </button>
 
         {/* Ayraç */}
         <div className="flex items-center gap-3 mb-4">
           <div className="flex-1 h-px bg-white/10" />
-          <span className="text-xs text-[#4b5563]">veya e-posta ile</span>
+          <span className="text-xs text-[#4b5563]">{t.login.orWithEmail}</span>
           <div className="flex-1 h-px bg-white/10" />
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="text-xs text-[#9ca3af] mb-1.5 block">E-posta</label>
+            <label className="text-xs text-[#9ca3af] mb-1.5 block">{t.login.email}</label>
             <div className="relative">
               <div className="absolute left-3 top-1/2 -translate-y-1/2">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -376,14 +381,14 @@ function AuthPageContent({ params }: Props) {
 
           <div>
             <div className="flex justify-between items-center mb-1.5">
-              <label className="text-xs text-[#9ca3af]">Şifre</label>
+              <label className="text-xs text-[#9ca3af]">{t.login.password}</label>
               {isLogin && (
                 <button
                   onClick={handleForgotPassword}
                   disabled={resetLoading || loading || googleLoading}
                   className="text-xs text-[#e91e8c] font-semibold disabled:opacity-50"
                 >
-                  {resetLoading ? "Gönderiliyor..." : "Şifremi unuttum"}
+                  {resetLoading ? t.login.sending : t.login.forgotPassword}
                 </button>
               )}
             </div>
@@ -396,7 +401,7 @@ function AuthPageContent({ params }: Props) {
               </div>
               <input
                 type={showPassword ? "text" : "password"}
-                placeholder="Şifrenizi girin"
+                placeholder={t.login.passwordPlaceholder}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
@@ -423,21 +428,21 @@ function AuthPageContent({ params }: Props) {
             className="block w-full text-center py-3.5 rounded-2xl font-bold text-white text-base mt-2 transition-all active:scale-95 disabled:opacity-50"
             style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
           >
-            {loading ? "Bekle..." : isLogin ? "Giriş Yap →" : "Kayıt Ol →"}
+            {loading ? t.login.wait : isLogin ? t.login.signIn : t.login.signUp}
           </button>
 
           <button
             onClick={() => { setIsLogin(!isLogin); setError(""); setInfo(""); setShowResend(false); }}
             className="w-full text-center py-3.5 rounded-2xl font-semibold text-white text-base border border-white/10 bg-white/5 hover:bg-white/10 transition-all"
           >
-            {isLogin ? "Kayıt Ol" : "Giriş Yap"}
+            {isLogin ? t.login.switchToSignUp : t.login.switchToSignIn}
           </button>
 
           <Link
             href={`/venue/${venueId}/queue`}
             className="block w-full text-center py-2 text-sm font-semibold text-[#9ca3af]"
           >
-            Şimdilik sadece bakmak istiyorum
+            {t.login.justLooking}
           </Link>
         </div>
       </div>

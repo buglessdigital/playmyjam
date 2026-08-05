@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import LegalFooter from "@/components/ui/LegalFooter";
+import { useI18n } from "@/lib/i18n";
 
 // Yasal / kurumsal sayfaları iki dilli sunar (Türkçe varsayılan, İngilizce'ye geçiş).
 // Her iki dilin içeriği de DOM'a basılır; dil değişimi yalnızca görünürlüğü değiştirir
 // (SEO ve YouTube API denetimi için her iki metin de kaynakta mevcut kalır).
+// Dil seçimi sitenin geneliyle ortak: buradan değiştirmek tüm siteyi çevirir.
 export default function BilingualLegal({
   tr,
   en,
@@ -15,7 +17,7 @@ export default function BilingualLegal({
   en: ReactNode;
   hidePayment?: boolean;
 }) {
-  const [lang, setLang] = useState<"tr" | "en">("tr");
+  const { lang, t, setLang } = useI18n();
 
   return (
     <>
@@ -29,7 +31,7 @@ export default function BilingualLegal({
               lang === "tr" ? "bg-white text-black" : "text-gray-300 hover:text-white"
             }`}
           >
-            Türkçe
+            {t.lang.tr}
           </button>
           <button
             type="button"
@@ -39,7 +41,7 @@ export default function BilingualLegal({
               lang === "en" ? "bg-white text-black" : "text-gray-300 hover:text-white"
             }`}
           >
-            English
+            {t.lang.en}
           </button>
         </div>
       </div>

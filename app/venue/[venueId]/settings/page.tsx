@@ -3,6 +3,8 @@
 import { useState, useEffect, useSyncExternalStore } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import LangToggle from "@/components/ui/LangToggle";
+import { fmt, useT } from "@/lib/i18n";
 import {
   getNotifPref,
   setNotifPref,
@@ -37,6 +39,7 @@ const DELETE_CONFIRM_PHRASE = "HESABIMI SİL";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const t = useT();
   const venueId = String(useParams()?.venueId ?? "");
   const notifNearby = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("nearby"), () => true);
   const notifQueue = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("queue"), () => false);
@@ -51,7 +54,7 @@ export default function SettingsPage() {
     if (next) {
       const perm = await requestPermission();
       if (perm === "granted" && !getNotifPref(pref)) {
-        notify("Bildirimler açık 🎉", "PlayMyJam bildirimleri bu cihazda etkin.");
+        notify(t.settings.notifEnabledTitle, t.settings.notifEnabledBody);
       }
     }
     // setNotifPref olayı tetikler; toggle ve izin durumu store üzerinden tazelenir
@@ -146,11 +149,11 @@ export default function SettingsPage() {
     setPasswordError("");
     setPasswordInfo("");
     if (newPassword.length < 6) {
-      setPasswordError("Yeni şifre en az 6 karakter olmalı.");
+      setPasswordError(t.settings.errShortPassword);
       return;
     }
     if (hasPassword && !currentPassword) {
-      setPasswordError("Mevcut şifreni gir.");
+      setPasswordError(t.settings.errCurrentPassword);
       return;
     }
 
@@ -163,7 +166,7 @@ export default function SettingsPage() {
       if (hasPassword) {
         const { error } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
         if (error) {
-          setPasswordError("Mevcut şifre hatalı.");
+          setPasswordError(t.settings.errWrongPassword);
           return;
         }
       }
@@ -172,11 +175,11 @@ export default function SettingsPage() {
       if (error) {
         const msg = error.message.toLowerCase();
         if (msg.includes("should be different") || msg.includes("same as the")) {
-          setPasswordError("Yeni şifre eskisiyle aynı olamaz.");
+          setPasswordError(t.settings.errSamePassword);
         } else if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("429")) {
-          setPasswordError("Çok fazla deneme yapıldı. Birkaç saniye bekleyip tekrar dene.");
+          setPasswordError(t.settings.errTooMany);
         } else {
-          setPasswordError("Şifre güncellenemedi. Lütfen tekrar dene.");
+          setPasswordError(t.settings.errPasswordUpdate);
         }
         return;
       }
@@ -196,7 +199,7 @@ export default function SettingsPage() {
     setEmailError("");
     setEmailInfo("");
     if (!target || !target.includes("@")) {
-      setEmailError("Geçerli bir e-posta adresi gir.");
+      setEmailError(t.settings.errInvalidEmail);
       return;
     }
     if (target.toLowerCase() === email.toLowerCase()) {
@@ -214,11 +217,11 @@ export default function SettingsPage() {
       if (error) {
         const msg = error.message.toLowerCase();
         if (msg.includes("already") || msg.includes("registered")) {
-          setEmailError("Bu e-posta adresi başka bir hesapta kayıtlı.");
+          setEmailError(t.settings.errEmailTaken);
         } else if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("429")) {
-          setEmailError("Çok fazla deneme yapıldı. Birkaç saniye bekleyip tekrar dene.");
+          setEmailError(t.settings.errTooMany);
         } else {
-          setEmailError("E-posta güncellenemedi. Lütfen tekrar dene.");
+          setEmailError(t.settings.errEmailUpdate);
         }
         return;
       }
@@ -249,7 +252,7 @@ export default function SettingsPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        setDeleteError(data?.error ?? "Hesap silinemedi. Lütfen tekrar dene.");
+        setDeleteError(data?.error ?? t.settings.errDelete);
         setDeleting(false);
         return;
       }
@@ -259,7 +262,7 @@ export default function SettingsPage() {
       await supabase.auth.signOut().catch(() => null);
       router.replace("/");
     } catch {
-      setDeleteError("Hesap silinemedi. Lütfen tekrar dene.");
+      setDeleteError(t.settings.errDelete);
       setDeleting(false);
     }
   };
@@ -275,32 +278,32 @@ export default function SettingsPage() {
             <path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <h1 className="text-white font-bold text-xl">Ayarlar</h1>
+        <h1 className="text-white font-bold text-xl">{t.settings.title}</h1>
       </div>
 
       {/* Bildirimler */}
       <div className="px-5 mb-4">
-        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">BİLDİRİMLER</h2>
+        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">{t.settings.notifSection}</h2>
         <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
           <div className="flex items-center justify-between px-4 py-4 border-b border-white/5">
             <div className="flex-1 pr-4">
-              <p className="text-white text-sm font-medium">Şarkım çalmaya yakın</p>
-              <p className="text-[#6b7280] text-xs mt-0.5">Şarkın çalmak üzereyken bildirim al</p>
+              <p className="text-white text-sm font-medium">{t.settings.nearbyTitle}</p>
+              <p className="text-[#6b7280] text-xs mt-0.5">{t.settings.nearbyDesc}</p>
             </div>
             <Toggle value={notifNearby} onChange={() => toggleNotif("nearby", notifNearby)} />
           </div>
           <div className="flex items-center justify-between px-4 py-4 border-b border-white/5">
             <div className="flex-1 pr-4">
-              <p className="text-white text-sm font-medium">Kuyruk güncellemeleri</p>
-              <p className="text-[#6b7280] text-xs mt-0.5">Sıra değişimlerinde bildirim al</p>
+              <p className="text-white text-sm font-medium">{t.settings.queueTitle}</p>
+              <p className="text-[#6b7280] text-xs mt-0.5">{t.settings.queueDesc}</p>
             </div>
             <Toggle value={notifQueue} onChange={() => toggleNotif("queue", notifQueue)} />
           </div>
           {pushSupported && (
             <div className="flex items-center justify-between px-4 py-4" style={{ opacity: pushBusy ? 0.6 : 1 }}>
               <div className="flex-1 pr-4">
-                <p className="text-white text-sm font-medium">Şarkım çalınca</p>
-                <p className="text-[#6b7280] text-xs mt-0.5">Uygulama kapalıyken bile şarkın çalınca bildirim al</p>
+                <p className="text-white text-sm font-medium">{t.settings.pushTitle}</p>
+                <p className="text-[#6b7280] text-xs mt-0.5">{t.settings.pushDesc}</p>
               </div>
               <Toggle value={notifPush} onChange={togglePush} />
             </div>
@@ -308,25 +311,36 @@ export default function SettingsPage() {
         </div>
         {permission === "denied" && (notifNearby || notifQueue) && (
           <p className="text-amber-400/80 text-xs mt-2 px-1">
-            Tarayıcı bildirim izni reddedilmiş. Bildirim almak için tarayıcı ayarlarından bu siteye izin ver.
+            {t.settings.permissionDenied}
           </p>
         )}
         {permission === "unsupported" && (
           <p className="text-amber-400/80 text-xs mt-2 px-1">
-            Bu tarayıcı bildirimleri desteklemiyor.
+            {t.settings.unsupported}
           </p>
         )}
       </div>
 
+      {/* Dil */}
+      <div className="px-5 mb-4">
+        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">{t.settings.langSection}</h2>
+        <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
+          <div className="flex items-center justify-between px-4 py-4">
+            <span className="text-white text-sm font-medium">{t.settings.langRow}</span>
+            <LangToggle />
+          </div>
+        </div>
+      </div>
+
       {/* Hesap */}
       <div className="px-5 mb-4">
-        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">HESAP</h2>
+        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">{t.settings.accountSection}</h2>
         <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
           <button
             onClick={() => { setEditName(name); setSaveError(""); setShowUpdateModal(true); }}
             className="w-full flex items-center justify-between px-4 py-4 border-b border-white/5 hover:bg-white/5 transition-colors"
           >
-            <span className="text-white text-sm font-medium">Bilgileri Güncelle</span>
+            <span className="text-white text-sm font-medium">{t.settings.updateInfo}</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" />
             </svg>
@@ -340,11 +354,11 @@ export default function SettingsPage() {
           >
             <div className="text-left">
               <p className="text-white text-sm font-medium">
-                {hasPassword ? "Şifre Değiştir" : "Şifre Belirle"}
+                {hasPassword ? t.settings.changePassword : t.settings.setPassword}
               </p>
               {!hasPassword && (
                 <p className="text-[#6b7280] text-xs mt-0.5">
-                  Google ile giriyorsun; şifre belirlersen e-postayla da girebilirsin
+                  {t.settings.googleNoPassword}
                 </p>
               )}
             </div>
@@ -356,7 +370,7 @@ export default function SettingsPage() {
             onClick={() => { setNewEmail(""); setEmailError(""); setEmailInfo(""); setShowEmailModal(true); }}
             className="w-full flex items-center justify-between px-4 py-4 hover:bg-white/5 transition-colors"
           >
-            <span className="text-white text-sm font-medium">E-posta Değiştir</span>
+            <span className="text-white text-sm font-medium">{t.settings.changeEmail}</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" />
             </svg>
@@ -366,15 +380,15 @@ export default function SettingsPage() {
 
       {/* Hesabı sil */}
       <div className="px-5 mb-4">
-        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">TEHLİKELİ BÖLGE</h2>
+        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">{t.settings.dangerSection}</h2>
         <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
           <button
             onClick={() => { setDeleteConfirm(""); setDeleteError(""); setShowDeleteModal(true); }}
             className="w-full flex items-center justify-between px-4 py-4 hover:bg-white/5 transition-colors"
           >
             <div className="text-left">
-              <p className="text-red-400 text-sm font-medium">Hesabımı Sil</p>
-              <p className="text-[#6b7280] text-xs mt-0.5">Hesabın ve verilerin kalıcı olarak silinir</p>
+              <p className="text-red-400 text-sm font-medium">{t.settings.deleteAccount}</p>
+              <p className="text-[#6b7280] text-xs mt-0.5">{t.settings.deleteAccountDesc}</p>
             </div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" />
@@ -392,13 +406,13 @@ export default function SettingsPage() {
       {showUpdateModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
           <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "#1a0e2a" }}>
-            <h2 className="text-white font-bold text-lg mb-5">Bilgileri Güncelle</h2>
+            <h2 className="text-white font-bold text-lg mb-5">{t.settings.updateInfo}</h2>
             {saveError && (
               <p className="text-red-400 text-sm mb-3">{saveError}</p>
             )}
             <div className="space-y-3 mb-5">
               <div>
-                <label className="text-[#6b7280] text-xs mb-1 block">Kullanıcı Adı</label>
+                <label className="text-[#6b7280] text-xs mb-1 block">{t.settings.username}</label>
                 <input
                   type="text"
                   value={editName}
@@ -407,7 +421,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="text-[#6b7280] text-xs mb-1 block">E-posta</label>
+                <label className="text-[#6b7280] text-xs mb-1 block">{t.settings.email}</label>
                 <input
                   type="email"
                   value={email}
@@ -415,7 +429,7 @@ export default function SettingsPage() {
                   className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-[#6b7280] text-sm focus:outline-none"
                 />
                 <p className="text-[#4b5563] text-xs mt-1">
-                  E-postanı değiştirmek için &quot;E-posta Değiştir&quot;i kullan.
+                  {t.settings.emailChangeHint}
                 </p>
               </div>
             </div>
@@ -424,7 +438,7 @@ export default function SettingsPage() {
                 onClick={() => setShowUpdateModal(false)}
                 className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm"
               >
-                İptal
+                {t.common.cancel}
               </button>
               <button
                 onClick={saveProfile}
@@ -432,7 +446,7 @@ export default function SettingsPage() {
                 className="flex-1 py-3 rounded-xl font-bold text-white text-sm disabled:opacity-60"
                 style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
               >
-                {saving ? "Kaydediliyor..." : "Kaydet"}
+                {saving ? t.settings.saving : t.settings.save}
               </button>
             </div>
           </div>
@@ -444,14 +458,14 @@ export default function SettingsPage() {
         <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
           <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "#1a0e2a" }}>
             <h2 className="text-white font-bold text-lg mb-5">
-              {hasPassword ? "Şifre Değiştir" : "Şifre Belirle"}
+              {hasPassword ? t.settings.changePassword : t.settings.setPassword}
             </h2>
             {passwordError && <p className="text-red-400 text-sm mb-3">{passwordError}</p>}
             {passwordInfo && <p className="text-emerald-400 text-sm mb-3">{passwordInfo}</p>}
             <div className="space-y-3 mb-5">
               {hasPassword && (
                 <div>
-                  <label className="text-[#6b7280] text-xs mb-1 block">Mevcut şifre</label>
+                  <label className="text-[#6b7280] text-xs mb-1 block">{t.settings.currentPassword}</label>
                   <input
                     type="password"
                     value={currentPassword}
@@ -462,7 +476,7 @@ export default function SettingsPage() {
                 </div>
               )}
               <div>
-                <label className="text-[#6b7280] text-xs mb-1 block">Yeni şifre</label>
+                <label className="text-[#6b7280] text-xs mb-1 block">{t.settings.newPassword}</label>
                 <input
                   type="password"
                   value={newPassword}
@@ -471,7 +485,7 @@ export default function SettingsPage() {
                   autoComplete="new-password"
                   className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-[#e91e8c]/40"
                 />
-                <p className="text-[#4b5563] text-xs mt-1">En az 6 karakter.</p>
+                <p className="text-[#4b5563] text-xs mt-1">{t.settings.minChars}</p>
               </div>
             </div>
             <div className="flex gap-3">
@@ -479,7 +493,7 @@ export default function SettingsPage() {
                 onClick={() => setShowPasswordModal(false)}
                 className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm"
               >
-                İptal
+                {t.common.cancel}
               </button>
               <button
                 onClick={savePassword}
@@ -487,7 +501,7 @@ export default function SettingsPage() {
                 className="flex-1 py-3 rounded-xl font-bold text-white text-sm disabled:opacity-60"
                 style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
               >
-                {passwordSaving ? "Kaydediliyor..." : "Kaydet"}
+                {passwordSaving ? t.settings.saving : t.settings.save}
               </button>
             </div>
           </div>
@@ -498,18 +512,18 @@ export default function SettingsPage() {
       {showEmailModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
           <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "#1a0e2a" }}>
-            <h2 className="text-white font-bold text-lg mb-1">E-posta Değiştir</h2>
-            <p className="text-[#6b7280] text-xs mb-5">Mevcut adresin: {email}</p>
+            <h2 className="text-white font-bold text-lg mb-1">{t.settings.changeEmail}</h2>
+            <p className="text-[#6b7280] text-xs mb-5">{fmt(t.settings.currentEmail, { email })}</p>
             {emailError && <p className="text-red-400 text-sm mb-3">{emailError}</p>}
             {emailInfo && <p className="text-emerald-400 text-sm mb-3">{emailInfo}</p>}
             <div className="mb-5">
-              <label className="text-[#6b7280] text-xs mb-1 block">Yeni e-posta</label>
+              <label className="text-[#6b7280] text-xs mb-1 block">{t.settings.newEmail}</label>
               <input
                 type="email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && saveEmail()}
-                placeholder="yeni@ornek.com"
+                placeholder={t.settings.newEmailPlaceholder}
                 className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white text-sm placeholder-[#4b5563] focus:outline-none focus:border-[#e91e8c]/40"
               />
             </div>
@@ -518,7 +532,7 @@ export default function SettingsPage() {
                 onClick={() => setShowEmailModal(false)}
                 className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm"
               >
-                {emailInfo ? "Kapat" : "İptal"}
+                {emailInfo ? t.common.close : t.common.cancel}
               </button>
               <button
                 onClick={saveEmail}
@@ -526,7 +540,7 @@ export default function SettingsPage() {
                 className="flex-1 py-3 rounded-xl font-bold text-white text-sm disabled:opacity-60"
                 style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
               >
-                {emailSaving ? "Gönderiliyor..." : "Onay Gönder"}
+                {emailSaving ? t.settings.sending : t.settings.sendConfirm}
               </button>
             </div>
           </div>
@@ -537,19 +551,17 @@ export default function SettingsPage() {
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
           <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "#1a0e2a" }}>
-            <h2 className="text-white font-bold text-lg mb-2">Hesabını sil</h2>
+            <h2 className="text-white font-bold text-lg mb-2">{t.settings.deleteTitle}</h2>
             <p className="text-[#9ca3af] text-sm mb-3 leading-relaxed">
-              Profilin, jeton bakiyen, favorilerin ve şarkı isteklerin kalıcı olarak silinir.
-              Bu işlem geri alınamaz.
+              {t.settings.deleteDesc}
             </p>
             <p className="text-[#6b7280] text-xs mb-5 leading-relaxed">
-              Satın alma kayıtların yasal saklama yükümlülüğü nedeniyle muhasebe kaydı olarak
-              korunur, ancak hesabınla bağlantısı kesilir.
+              {t.settings.deleteNote}
             </p>
             {deleteError && <p className="text-red-400 text-sm mb-3">{deleteError}</p>}
             <div className="mb-5">
               <label className="text-[#6b7280] text-xs mb-1 block">
-                Onaylamak için <span className="text-white font-semibold">{DELETE_CONFIRM_PHRASE}</span> yaz
+                {t.settings.deleteConfirmPrefix} <span className="text-white font-semibold">{DELETE_CONFIRM_PHRASE}</span> {t.settings.deleteConfirmSuffix}
               </label>
               <input
                 type="text"
@@ -564,14 +576,14 @@ export default function SettingsPage() {
                 disabled={deleting}
                 className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm disabled:opacity-60"
               >
-                Vazgeç
+                {t.common.cancel}
               </button>
               <button
                 onClick={deleteAccount}
                 disabled={deleting || !deleteConfirm.trim()}
                 className="flex-1 py-3 rounded-xl font-bold text-white text-sm bg-red-600 disabled:opacity-60"
               >
-                {deleting ? "Siliniyor..." : "Kalıcı Olarak Sil"}
+                {deleting ? t.settings.deleting : t.settings.deleteButton}
               </button>
             </div>
           </div>

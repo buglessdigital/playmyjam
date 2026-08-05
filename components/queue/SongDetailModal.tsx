@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { formatWait } from "@/lib/wait-time";
+import { fmt, useT } from "@/lib/i18n";
 
 export interface SongDetail {
   id: string;
@@ -20,6 +21,8 @@ interface Props {
 }
 
 export default function SongDetailModal({ song, onClose }: Props) {
+  const t = useT();
+
   if (!song) return null;
 
   return (
@@ -57,17 +60,17 @@ export default function SongDetailModal({ song, onClose }: Props) {
 
         <div className="space-y-3">
           <div className="flex justify-between items-center py-3 border-b border-white/10">
-            <span className="text-[#9ca3af] text-sm">Ekleyen</span>
+            <span className="text-[#9ca3af] text-sm">{t.songModal.addedBy}</span>
             <span className="text-white text-sm font-medium">{song.added_by}</span>
           </div>
           <div className="flex justify-between items-center py-3 border-b border-white/10">
-            <span className="text-[#9ca3af] text-sm">Harcanan Jeton</span>
+            <span className="text-[#9ca3af] text-sm">{t.songModal.tokensSpent}</span>
             <span className="text-sm font-bold" style={{ color: "#e91e8c" }}>
-              {song.tokens_spent} Jeton
+              {fmt(t.songModal.tokensValue, { n: song.tokens_spent })}
             </span>
           </div>
           <div className="flex justify-between items-center py-3 border-b border-white/10">
-            <span className="text-[#9ca3af] text-sm">Sıra Türü</span>
+            <span className="text-[#9ca3af] text-sm">{t.songModal.queueType}</span>
             <span
               className="text-xs font-semibold px-2 py-1 rounded-full"
               style={{
@@ -78,13 +81,13 @@ export default function SongDetailModal({ song, onClose }: Props) {
               {song.priority ? (
                 <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
-                  Öncelikli
+                  {t.songModal.priority}
                 </span>
-              ) : "Normal"}
+              ) : t.songModal.normal}
             </span>
           </div>
           <div className="flex justify-between items-center py-3">
-            <span className="text-[#9ca3af] text-sm">Tahmini Bekleme</span>
+            <span className="text-[#9ca3af] text-sm">{t.songModal.estimatedWait}</span>
             <span className="text-white text-sm font-medium">{formatWait(song.wait_ms)}</span>
           </div>
         </div>
@@ -93,7 +96,7 @@ export default function SongDetailModal({ song, onClose }: Props) {
           onClick={onClose}
           className="w-full mt-6 py-3.5 rounded-2xl font-semibold text-white border border-white/10 bg-white/5 hover:bg-white/10 transition-all"
         >
-          Kapat
+          {t.common.close}
         </button>
       </div>
     </div>

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getNotifPref, notify, type NotifPref } from "@/lib/notifications";
+import { currentDict, fmt } from "@/lib/i18n";
 
 // Venue sayfaları açıkken kuyruğu izler ve tarayıcı bildirimi gönderir:
 // - "nearby": kullanıcının şarkısı sıranın başına geldiğinde (çalmak üzere)
@@ -43,7 +44,7 @@ export default function NotificationWatcher({ venueId }: { venueId: string }) {
 
       notifiedSongs.current.add(next.id);
       if (prefs.current.nearby) {
-        notify("Şarkın çalmak üzere! 🎵", next.songs ? `${next.songs.title} — ${next.songs.artist} sırada bir sonraki şarkı` : "Şarkın sırada bir sonraki");
+        notify(currentDict().notifications.soonTitle, next.songs ? fmt(currentDict().notifications.soonBody, { title: next.songs.title, artist: next.songs.artist }) : currentDict().notifications.soonBodyFallback);
       }
     };
 
@@ -67,7 +68,7 @@ export default function NotificationWatcher({ venueId }: { venueId: string }) {
           if (prefs.current.queue && row.user_id !== user.id && row.song_id) {
             const { data: song } = await supabase.from("songs").select("title, artist").eq("id", row.song_id).single();
             if (!cancelled) {
-              notify("Kuyruk güncellendi", song ? `${song.title} — ${song.artist} kuyruğa eklendi` : "Kuyruğa yeni bir şarkı eklendi");
+              notify(currentDict().notifications.queueTitle, song ? fmt(currentDict().notifications.queueBody, { title: song.title, artist: song.artist }) : currentDict().notifications.queueBodyFallback);
             }
           }
           checkMySongUpNext(venueRow.id, user.id);

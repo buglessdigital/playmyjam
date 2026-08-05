@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import { currentDict, fmt, useT } from "@/lib/i18n";
 
 type Request = {
   id: string;
@@ -35,12 +36,13 @@ type QueueHistoryRow = {
 };
 
 function timeAgo(ts: string) {
+  const d = currentDict().historyPage;
   const diff = Date.now() - new Date(ts).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 60) return `${m}dk önce`;
+  if (m < 60) return fmt(d.minsAgo, { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}sa önce`;
-  return `${Math.floor(h / 24)} gün önce`;
+  if (h < 24) return fmt(d.hoursAgo, { n: h });
+  return fmt(d.daysAgo, { n: Math.floor(h / 24) });
 }
 
 export default function RequestsClient() {
@@ -49,6 +51,9 @@ export default function RequestsClient() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const supabase = useMemo(() => createClient(), []);
+  const t = useT();
+  const statusLabel = (status: string) =>
+    status === "played" ? t.requestsPage.statusPlayed : status === "queued" ? t.requestsPage.statusQueued : status;
 
   useEffect(() => {
     let cancelled = false;
@@ -77,7 +82,7 @@ export default function RequestsClient() {
         const rows = queueHistory as unknown as QueueHistoryRow[];
         setRequests(rows.filter((q) => q.songs).map((q) => ({
           id: q.id,
-          status: q.status === "played" ? "Çalındı" : q.status === "queued" ? "Sırada" : q.status,
+          status: q.status,
           requested_at: q.added_at,
           tokens_spent: q.tokens_spent,
           priority: q.priority,
@@ -124,7 +129,7 @@ export default function RequestsClient() {
         <button onClick={() => router.back()} className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
-        <h1 className="text-white font-bold text-lg">İsteklerim</h1>
+        <h1 className="text-white font-bold text-lg">{t.requestsPage.title}</h1>
       </div>
 
       {!loaded ? (
@@ -140,12 +145,12 @@ export default function RequestsClient() {
           ))}
         </div>
       ) : requests.length === 0 && suggestions.length === 0 ? (
-        <div className="text-center py-16 text-[#6b7280] text-sm">Henüz istek yapılmadı</div>
+        <div className="text-center py-16 text-[#6b7280] text-sm">{t.requestsPage.empty}</div>
       ) : (
         <div className="px-5 space-y-3 pb-20">
           {suggestions.length > 0 && (
             <>
-              <h2 className="text-white font-semibold text-sm pt-1">Mekana Önerdiklerin</h2>
+              <h2 className="text-white font-semibold text-sm pt-1">{t.requestsPage.suggestionsHeading}</h2>
               {suggestions.map((s) => {
                 const added = s.status === "accepted";
                 const rejected = s.status === "rejected";
@@ -164,14 +169,14 @@ export default function RequestsClient() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className="text-xs font-medium" style={{ color: added ? "#22c55e" : rejected ? "#6b7280" : "#fbbf24" }}>
-                        {added ? "Listeye eklendi" : rejected ? "Eklenmedi" : "Mekana iletildi"}
+                        {added ? t.requestsPage.added : rejected ? t.requestsPage.notAdded : t.requestsPage.sent}
                       </p>
                       <p className="text-[#6b7280] text-xs mt-0.5">{timeAgo(s.requested_at)}</p>
                     </div>
                   </div>
                 );
               })}
-              {requests.length > 0 && <h2 className="text-white font-semibold text-sm pt-3">Sıraya Eklediklerin</h2>}
+              {requests.length > 0 && <h2 className="text-white font-semibold text-sm pt-3">{t.requestsPage.queuedHeading}</h2>}
             </>
           )}
           {requests.map((req) => (
@@ -185,11 +190,11 @@ export default function RequestsClient() {
                 <p className="text-white font-semibold text-sm truncate">{req.songs.title}</p>
                 <p className="text-[#6b7280] text-xs">{req.songs.artist}</p>
                 {req.tokens_spent && (
-                  <p className="text-[#9ca3af] text-xs mt-0.5">{req.tokens_spent} jeton{req.priority ? " · Öncelikli" : ""}</p>
+                  <p className="text-[#9ca3af] text-xs mt-0.5">{fmt(t.requestsPage.tokensLine, { n: req.tokens_spent })}{req.priority ? t.requestsPage.prioritySuffix : ""}</p>
                 )}
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="text-[#9ca3af] text-xs">{req.status}</p>
+                <p className="text-[#9ca3af] text-xs">{statusLabel(req.status)}</p>
                 <p className="text-[#6b7280] text-xs mt-0.5">{timeAgo(req.requested_at)}</p>
               </div>
             </div>

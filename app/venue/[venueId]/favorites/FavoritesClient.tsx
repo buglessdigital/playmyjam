@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import { useT } from "@/lib/i18n";
 
 type FavSong = {
   id: string;
@@ -14,6 +15,7 @@ type FavSong = {
 export default function FavoritesClient() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const t = useT();
   const [loaded, setLoaded] = useState(false);
   const [favorites, setFavorites] = useState<FavSong[]>([]);
 
@@ -58,7 +60,7 @@ export default function FavoritesClient() {
         <button onClick={() => router.back()} className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
-        <h1 className="text-white font-bold text-lg">Favorilerim</h1>
+        <h1 className="text-white font-bold text-lg">{t.favoritesPage.title}</h1>
       </div>
 
       {!loaded ? (
@@ -74,7 +76,7 @@ export default function FavoritesClient() {
           ))}
         </div>
       ) : favorites.length === 0 ? (
-        <div className="text-center py-16 text-[#6b7280] text-sm">Henüz favori eklenmedi</div>
+        <div className="text-center py-16 text-[#6b7280] text-sm">{t.favoritesPage.empty}</div>
       ) : (
         <div className="px-5 space-y-3 pb-20">
           {favorites.map((fav) => (

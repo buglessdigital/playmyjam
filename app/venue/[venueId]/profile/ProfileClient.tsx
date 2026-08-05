@@ -7,6 +7,7 @@ import { useAnimatedNumber } from "@/lib/use-animated-number";
 import { useVenueGate } from "@/lib/venue-gate";
 import { AVATARS, AvatarMark, isAvatarId } from "@/lib/avatars";
 import Coin from "@/components/ui/Coin";
+import { useT } from "@/lib/i18n";
 
 type ProfileState = {
   username: string | null;
@@ -24,6 +25,7 @@ interface Props {
 export default function ProfileClient({ venueId, venueDbId }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const { requireAccount } = useVenueGate(venueId);
+  const t = useT();
 
   const [loaded, setLoaded] = useState(false);
   const [username, setUsername] = useState("");
@@ -94,7 +96,7 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
     const { error } = await supabase.from("profiles").upsert({ id: userId, avatar_id: nextId });
     if (error) {
       setAvatarId(previous);
-      setAvatarError("Avatar kaydedilemedi, tekrar dene");
+      setAvatarError(t.profile.avatarError);
     }
   };
 
@@ -112,24 +114,24 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
   const animTokens = useAnimatedNumber(tokenBalance);
 
   const stats = [
-    { label: "İstek", value: animRequests },
-    { label: "Favori", value: animFavs },
-    { label: "Jeton", value: animTokens },
+    { label: t.profile.statRequests, value: animRequests },
+    { label: t.profile.statFavorites, value: animFavs },
+    { label: t.profile.statTokens, value: animTokens },
   ];
 
   const menu = [
     {
       href: `/venue/${venueId}/tokens`,
-      label: "Jeton Satın Al",
-      desc: "Bakiyeni artır",
+      label: t.profile.buyTokens,
+      desc: t.profile.buyTokensDesc,
       tint: "rgba(245,165,36,0.1)",
       border: "rgba(245,165,36,0.2)",
       icon: <Coin size={20} />,
     },
     {
       href: `/venue/${venueId}/favorites`,
-      label: "Favorilerim",
-      desc: "Kaydettiğin şarkılar",
+      label: t.profile.favorites,
+      desc: t.profile.favoritesDesc,
       tint: "rgba(244,63,94,0.1)",
       border: "rgba(244,63,94,0.2)",
       icon: (
@@ -140,8 +142,8 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
     },
     {
       href: `/venue/${venueId}/history`,
-      label: "Son Çaldırılanlar",
-      desc: "Tüm mekanlarda çaldırdığın şarkılar",
+      label: t.profile.history,
+      desc: t.profile.historyDesc,
       tint: "rgba(59,130,246,0.1)",
       border: "rgba(59,130,246,0.2)",
       icon: (
@@ -153,8 +155,8 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
     },
     {
       href: `/venue/${venueId}/settings`,
-      label: "Ayarlar",
-      desc: "Hesap tercihlerin",
+      label: t.profile.settings,
+      desc: t.profile.settingsDesc,
       tint: "rgba(139,92,246,0.1)",
       border: "rgba(139,92,246,0.2)",
       icon: (
@@ -179,7 +181,7 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
         <div className="flex flex-col items-center pb-8 pt-5">
           <button
             onClick={openPicker}
-            aria-label="Avatarını değiştir"
+            aria-label={t.profile.changeAvatarAria}
             className="relative transition-transform active:scale-95"
           >
             <div
@@ -251,7 +253,7 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
         </div>
 
         {/* Menü */}
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">Hesap</p>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.profile.account}</p>
         <div className="overflow-hidden rounded-2xl" style={{ background: "#1a0e2a", border: "1px solid rgba(255,255,255,0.07)" }}>
           {menu.map((item, i) => (
             <Link
@@ -294,8 +296,8 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
             </svg>
           </span>
           <span className="flex-1">
-            <p className="text-[15px] font-semibold text-[#ef4444]">Çıkış Yap</p>
-            <p className="mt-0.5 text-xs text-[#ef4444]/50">Hesabından çık</p>
+            <p className="text-[15px] font-semibold text-[#ef4444]">{t.profile.logout}</p>
+            <p className="mt-0.5 text-xs text-[#ef4444]/50">{t.profile.logoutDesc}</p>
           </span>
         </button>
 
@@ -315,10 +317,10 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white">Avatarını Seç</h2>
+              <h2 className="text-lg font-bold text-white">{t.profile.pickAvatar}</h2>
               <button
                 onClick={() => setPickerOpen(false)}
-                aria-label="Kapat"
+                aria-label={t.common.close}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -354,7 +356,7 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
                 onClick={() => chooseAvatar(null)}
                 className="mt-5 w-full rounded-xl border border-white/10 py-3 text-sm font-semibold text-[#9ca3af]"
               >
-                Avatarı kaldır, baş harfimi kullan
+                {t.profile.removeAvatar}
               </button>
             )}
           </div>

@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 import { formatWait } from "@/lib/wait-time";
 import type { Cooldown } from "./browse-types";
+import { fmt, useT } from "@/lib/i18n";
 
 interface Song {
   youtube_video_id: string;
@@ -31,6 +32,7 @@ export default function AddSongSheet({
 }: Props) {
   const router = useRouter();
   const params = useParams<{ venueId: string }>();
+  const t = useT();
 
   // Normal sıra seçildiğinde araya giren onay adımı: sonradan eklenen öncelikli
   // şarkılar normal sıradakilerin önüne geçtiği için uyarıp yönlendiriyoruz.
@@ -93,25 +95,25 @@ export default function AddSongSheet({
             <div>
               <p className="text-[#fbbf24] text-sm font-semibold">
                 {cooldownReason === "playing"
-                  ? "Bu şarkı şu an çalıyor"
+                  ? t.addSong.playingTitle
                   : cooldownReason === "queued"
-                  ? "Bu şarkı zaten sırada"
-                  : "Bu şarkı yakın zamanda çaldı"}
+                  ? t.addSong.queuedTitle
+                  : t.addSong.playedTitle}
               </p>
               <p className="text-[#d97706] text-xs mt-0.5">
                 {cooldownReason === "playing"
-                  ? <>Sahnedeki şarkı sıraya eklenemez. Bir müşteri isteğiyse <span className="font-bold text-[#fbbf24]">başladıktan 30 dakika</span> sonra, mekanın kendi listesinden çalıyorsa şarkı biter bitmez tekrar eklenebilir.</>
+                  ? <>{t.addSong.playingDescPrefix} <span className="font-bold text-[#fbbf24]">{t.addSong.playingDescBold}</span> {t.addSong.playingDescSuffix}</>
                   : cooldownReason === "queued"
-                  ? <>Sıraya eklenebileceği en erken süre: <span className="font-bold text-[#fbbf24]">{cooldownMin} dakika</span> sonra (çalmaya başladıktan 30 dk geçince).</>
-                  : <>Tekrar ekleyebilmek için <span className="font-bold text-[#fbbf24]">{cooldownMin} dakika</span> beklemeniz gerekiyor.</>
+                  ? <>{t.addSong.queuedDescPrefix} <span className="font-bold text-[#fbbf24]">{fmt(t.addSong.minutesBold, { n: cooldownMin })}</span> {t.addSong.queuedDescSuffix}</>
+                  : <>{t.addSong.playedDescPrefix} <span className="font-bold text-[#fbbf24]">{fmt(t.addSong.minutesBold, { n: cooldownMin })}</span> {t.addSong.playedDescSuffix}</>
                 }
               </p>
             </div>
           </div>
         ) : (
           <p className="text-[#9ca3af] text-sm mb-4">
-            Mevcut bakiye:{" "}
-            <span className="text-white font-bold">{tokenBalance} Jeton</span>
+            {t.addSong.balance}{" "}
+            <span className="text-white font-bold">{fmt(t.addSong.tokensValue, { n: tokenBalance })}</span>
           </p>
         )}
 
@@ -125,12 +127,12 @@ export default function AddSongSheet({
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" />
               </svg>
               <div>
-                <p className="text-white text-sm font-semibold">Öncelikli eklenenler önünüze geçer</p>
+                <p className="text-white text-sm font-semibold">{t.addSong.confirmTitle}</p>
                 <p className="text-[#9ca3af] text-xs mt-1 leading-relaxed">
-                  Normal sıraya eklerseniz, sizden sonra <span className="text-[#e91e8c] font-semibold">öncelikli</span> eklenen
-                  her şarkı şarkınızın önüne geçer ve beklemeniz{" "}
-                  <span className="text-white font-semibold">{formatWait(waitNormalMs)}</span>&apos;dan daha uzun sürebilir.
-                  Öncelikli sırada şarkınız <span className="text-white font-semibold">{formatWait(waitPriorityMs)}</span> içinde çalar.
+                  {t.addSong.confirmDescPrefix} <span className="text-[#e91e8c] font-semibold">{t.addSong.confirmDescPriority}</span>{" "}
+                  {t.addSong.confirmDescMiddle}{" "}
+                  <span className="text-white font-semibold">{formatWait(waitNormalMs)}</span>{t.addSong.confirmDescAfterWait}{" "}
+                  <span className="text-white font-semibold">{formatWait(waitPriorityMs)}</span> {t.addSong.confirmDescEnd}
                 </p>
               </div>
             </div>
@@ -143,9 +145,9 @@ export default function AddSongSheet({
               >
                 <span className="text-white font-semibold text-sm flex items-center gap-2">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
-                  Öncelikli sıraya ekle
+                  {t.addSong.addPriority}
                 </span>
-                <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{priorityCost} Jeton</span>
+                <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{fmt(t.addSong.tokensValue, { n: priorityCost })}</span>
               </button>
             ) : (
               <button
@@ -155,9 +157,9 @@ export default function AddSongSheet({
               >
                 <span className="text-white font-semibold text-sm flex items-center gap-2">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
-                  Öncelikli için jeton yükle
+                  {t.addSong.buyForPriority}
                 </span>
-                <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{priorityCost} Jeton</span>
+                <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{fmt(t.addSong.tokensValue, { n: priorityCost })}</span>
               </button>
             )}
 
@@ -177,9 +179,9 @@ export default function AddSongSheet({
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" />
                 </svg>
-                Yine de normal sıraya ekle
+                {t.addSong.addNormalAnyway}
               </span>
-              <span className="font-bold text-sm" style={{ color: "#3b82f6" }}>{normalCost} Jeton</span>
+              <span className="font-bold text-sm" style={{ color: "#3b82f6" }}>{fmt(t.addSong.tokensValue, { n: normalCost })}</span>
             </button>
           </div>
         ) : (
@@ -205,11 +207,11 @@ export default function AddSongSheet({
                   </svg>
                 </div>
                 <div className="text-left">
-                  <p className="text-white font-semibold text-sm">Normal Sıra</p>
-                  <p className="text-[#6b7280] text-xs">{formatWait(waitNormalMs)} bekleme</p>
+                  <p className="text-white font-semibold text-sm">{t.addSong.normalQueue}</p>
+                  <p className="text-[#6b7280] text-xs">{fmt(t.addSong.waitSuffix, { wait: formatWait(waitNormalMs) })}</p>
                 </div>
               </div>
-              <span className="text-[#3b82f6] font-bold text-sm">{normalCost} Jeton</span>
+              <span className="text-[#3b82f6] font-bold text-sm">{fmt(t.addSong.tokensValue, { n: normalCost })}</span>
             </button>
 
             {/* Öncelikli Sıra */}
@@ -235,23 +237,23 @@ export default function AddSongSheet({
                 <div className="text-left">
                   <p className="text-white font-semibold text-sm flex items-center gap-1.5">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
-                    Öncelikli Sıra
+                    {t.addSong.priorityQueue}
                   </p>
-                  <p className="text-[#6b7280] text-xs">{formatWait(waitPriorityMs)} bekleme</p>
+                  <p className="text-[#6b7280] text-xs">{fmt(t.addSong.waitSuffix, { wait: formatWait(waitPriorityMs) })}</p>
                 </div>
               </div>
-              <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{priorityCost} Jeton</span>
+              <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{fmt(t.addSong.tokensValue, { n: priorityCost })}</span>
             </button>
           </div>
         )}
 
         {!canNormal && (
           <p className="text-center text-[#6b7280] text-xs mt-4">
-            Yetersiz jeton.{" "}
+            {t.addSong.insufficient}{" "}
             <span
               className="text-[#e91e8c] underline cursor-pointer"
               onClick={() => { onClose(); router.push(`/venue/${params.venueId}/tokens`); }}
-            >Jeton Yükle</span>
+            >{t.addSong.topUp}</span>
           </p>
         )}
 
@@ -259,7 +261,7 @@ export default function AddSongSheet({
           onClick={() => (confirmNormal ? setConfirmNormal(false) : onClose())}
           className="w-full mt-4 py-3 rounded-2xl font-semibold text-[#9ca3af] border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-sm"
         >
-          {confirmNormal ? "Geri" : "İptal"}
+          {confirmNormal ? t.common.back : t.common.cancel}
         </button>
       </div>
     </div>

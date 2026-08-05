@@ -7,6 +7,8 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import SongDetailModal, { type SongDetail } from "@/components/queue/SongDetailModal";
+import LangToggle from "@/components/ui/LangToggle";
+import { fmt, useT } from "@/lib/i18n";
 import {
   fetchManualQueueEntries,
   formatWait,
@@ -54,6 +56,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const { isMember } = useVenueGate(venueId);
+  const t = useT();
 
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000);
@@ -178,15 +181,19 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     <div className="min-h-screen bg-[#0f0a18]">
       <div className="flex items-center justify-between px-5 pt-12 pb-4">
         <h1 className="text-white font-bold text-lg">{venueName || venueId}</h1>
-        {/* Kuyruk artık mekanın giriş sayfası — misafire görünür bir giriş kapısı kalsın */}
-        {!isMember && (
-          <Link
-            href={venueLoginPath(venueId, `/venue/${venueId}/queue`)}
-            className="flex h-8 items-center rounded-full border border-[#e91e8c]/40 bg-[#e91e8c]/15 px-3 text-xs font-bold text-white transition-transform active:scale-95"
-          >
-            Giriş Yap
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Turist misafir mekanın panelini kendi dilinde açabilsin */}
+          <LangToggle />
+          {/* Kuyruk artık mekanın giriş sayfası — misafire görünür bir giriş kapısı kalsın */}
+          {!isMember && (
+            <Link
+              href={venueLoginPath(venueId, `/venue/${venueId}/queue`)}
+              className="flex h-8 items-center rounded-full border border-[#e91e8c]/40 bg-[#e91e8c]/15 px-3 text-xs font-bold text-white transition-transform active:scale-95"
+            >
+              {t.queue.login}
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="mx-5 mb-4 rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
@@ -197,7 +204,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
               <path d="M12 7v5l3 3" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             <div>
-              <p className="text-[#6b7280] text-[10px]">Normal Bekleme</p>
+              <p className="text-[#6b7280] text-[10px]">{t.queue.normalWait}</p>
               <p className="text-white font-bold text-sm">{formatWait(waitNormalMs)}</p>
             </div>
           </div>
@@ -206,7 +213,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" />
             </svg>
             <div>
-              <p className="text-[#6b7280] text-[10px]">Öncelikli Bekleme</p>
+              <p className="text-[#6b7280] text-[10px]">{t.queue.priorityWait}</p>
               <p className="font-bold text-sm" style={{ color: "#e91e8c" }}>{formatWait(waitPriorityMs)}</p>
             </div>
           </div>
@@ -227,10 +234,10 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                 ))}
               </div>
             )}
-            <span className="text-white font-bold text-sm">Şu An Çalıyor</span>
+            <span className="text-white font-bold text-sm">{t.queue.nowPlaying}</span>
           </div>
           {nowPlaying?.is_playing && (
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(233,30,140,0.2)", color: "#e91e8c" }}>CANLI</span>
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(233,30,140,0.2)", color: "#e91e8c" }}>{t.queue.live}</span>
           )}
         </div>
 
@@ -258,7 +265,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
 
           {loaded ? (
             <>
-              <h2 className="text-white font-bold text-xl text-center">{nowPlaying?.songs?.title ?? "Şu an çalan yok"}</h2>
+              <h2 className="text-white font-bold text-xl text-center">{nowPlaying?.songs?.title ?? t.queue.nothingPlaying}</h2>
               <p className="text-[#9ca3af] text-sm mb-4">{nowPlaying?.songs?.artist ?? ""}</p>
             </>
           ) : (
@@ -282,8 +289,8 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
 
       <div className="px-5">
         <div className="flex justify-between items-center mb-3">
-          <h3 className="text-white font-bold text-base">Sıradaki Şarkılar</h3>
-          <span className="text-[#9ca3af] text-xs">{loaded ? `Kuyrukta ${queue.length} şarkı` : ""}</span>
+          <h3 className="text-white font-bold text-base">{t.queue.upNext}</h3>
+          <span className="text-[#9ca3af] text-xs">{loaded ? fmt(t.queue.countInQueue, { n: queue.length }) : ""}</span>
         </div>
 
         {!loaded ? (
@@ -299,7 +306,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
             ))}
           </div>
         ) : queue.length === 0 ? (
-          <div className="text-center py-12 text-[#6b7280] text-sm">Kuyruk boş — ilk şarkıyı sen ekle!</div>
+          <div className="text-center py-12 text-[#6b7280] text-sm">{t.queue.empty}</div>
         ) : (
           <div className="space-y-2 pb-6">
             {queue.map((item, idx) => (
@@ -320,7 +327,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {item.priority && (
-                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>Önce</span>
+                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>{t.queue.priorityBadge}</span>
                   )}
                   <span className="text-xs font-bold" style={{ color: item.priority ? "#e91e8c" : "#9ca3af" }}>{formatWait(getRowWaitMs(idx))}</span>
                   <button
@@ -354,12 +361,12 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
       <div className="fixed bottom-16 left-0 right-0 px-5 z-40 flex justify-end pointer-events-none">
         <Link
           href={`/venue/${venueId}/browse`}
-          aria-label="Şarkı Ekle"
+          aria-label={t.queue.addSong}
           className={`pointer-events-auto flex items-center justify-center overflow-hidden font-bold text-white text-base transition-all duration-300 ease-in-out active:scale-95 ${fabCollapsed ? "w-14 h-14 rounded-full" : "w-full h-14 rounded-2xl"}`}
           style={{ background: "linear-gradient(135deg, #3b82f6, #2563eb)", boxShadow: "0 0 20px rgba(59,130,246,0.35)" }}
         >
           <svg className="flex-shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" /><path d="M12 8v8M8 12h8" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
-          <span className={`whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out ${fabCollapsed ? "max-w-0 opacity-0 ml-0" : "max-w-[160px] opacity-100 ml-2"}`}>Şarkı Ekle</span>
+          <span className={`whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out ${fabCollapsed ? "max-w-0 opacity-0 ml-0" : "max-w-[160px] opacity-100 ml-2"}`}>{t.queue.addSong}</span>
         </Link>
       </div>
 

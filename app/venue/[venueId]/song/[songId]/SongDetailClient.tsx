@@ -12,6 +12,7 @@ import type { TrackDetails } from "@/lib/youtube";
 import type { LyricsResult } from "@/lib/lyrics";
 import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { formatWait, useNowPlayingClock, waitMs } from "@/lib/wait-time";
+import { fmt, useT } from "@/lib/i18n";
 
 type QueueEntry = { song_id: string; priority: boolean; duration_ms: number };
 type NowPlayingInfo = {
@@ -113,6 +114,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
   const supabase = useMemo(() => createClient(), []);
   // Sayfa misafire açık; sıraya ekleme/istek/favori hesaba bağlı
   const { requireAccount } = useVenueGate(venueId);
+  const t = useT();
 
   const [loaded, setLoaded] = useState(false);
   const [dbSongId, setDbSongId] = useState<string | null>(null);
@@ -319,12 +321,12 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
   if (!track) {
     return (
       <div style={{ background: "#0f0a18", minHeight: "100dvh", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20 }}>
-        <p style={{ color: "#9ca3af", fontSize: 14, marginBottom: 16 }}>Şarkı bulunamadı</p>
+        <p style={{ color: "#9ca3af", fontSize: 14, marginBottom: 16 }}>{t.songPage.notFound}</p>
         <button
           onClick={() => router.back()}
           style={{ padding: "10px 20px", borderRadius: 12, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "white", fontSize: 14, cursor: "pointer" }}
         >
-          Geri Dön
+          {t.songPage.goBack}
         </button>
       </div>
     );
@@ -462,18 +464,18 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
   const centerCaption = !loaded
     ? ""
     : !dbSongId
-    ? "Mekan listesinde değil"
+    ? t.songPage.notInVenueList
     : isPlayingNow
-    ? "Şu an sahnede — eklenemez"
+    ? t.songPage.onStage
     : isOnCooldown
-    ? `${cooldownMins} dk sonra eklenebilir`
+    ? fmt(t.songPage.addableIn, { n: cooldownMins })
     : inVenueList
     ? added
-      ? "Sıraya eklendi"
-      : "Sıraya ekle"
+      ? t.songPage.addedToQueue
+      : t.songPage.addToQueue
     : requested
-    ? "İstendi"
-    : "Mekana istek gönder";
+    ? t.songPage.requested
+    : t.songPage.sendRequest;
 
   // Çubuk iki iş görüyor: şarkı sahnedeyken canlı çalma ilerlemesi, cooldown'dayken
   // kalan bekleme. Diğer hallerde boş.
@@ -485,11 +487,11 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
   const barLeftLabel = isCurrentlyPlayingThisSong
     ? formatDuration(progress)
     : isPlayingNow
-    ? "Çalıyor"
+    ? t.songPage.playing
     : isOnCooldown
-    ? "Bekleme"
+    ? t.songPage.waiting
     : "0:00";
-  const barRightLabel = isOnCooldown && !isPlayingNow ? `${cooldownMins} dk` : formatDuration(track.duration_ms);
+  const barRightLabel = isOnCooldown && !isPlayingNow ? fmt(t.songPage.cooldownMins, { n: cooldownMins }) : formatDuration(track.duration_ms);
 
   return (
     <div style={{ width: "100%", background: "#0f0a18" }}>
@@ -547,7 +549,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
           <button
             onClick={() => setSimilarOpen(true)}
             style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: 0, background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
-            aria-label="Benzer şarkı ve sanatçıları gör"
+            aria-label={t.songPage.similarAria}
           >
             <h1 style={{ color: "white", fontWeight: 700, fontSize: 21, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.title}</h1>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -557,12 +559,12 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
           <div style={{ display: "flex", alignItems: "center", gap: 24, marginTop: 14 }}>
             <div>
               <p style={{ color: "white", fontSize: 13, fontWeight: 700, margin: 0 }}>{formatWait(waitNormalMs)}</p>
-              <p style={{ color: "#6b7280", fontSize: 11, margin: "2px 0 0" }}>Normal sıra bekleme</p>
+              <p style={{ color: "#6b7280", fontSize: 11, margin: "2px 0 0" }}>{t.songPage.normalWait}</p>
             </div>
             <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.1)" }} />
             <div>
               <p style={{ color: "#e91e8c", fontSize: 13, fontWeight: 700, margin: 0 }}>{formatWait(waitPriorityMs)}</p>
-              <p style={{ color: "#6b7280", fontSize: 11, margin: "2px 0 0" }}>Öncelikli sıra bekleme</p>
+              <p style={{ color: "#6b7280", fontSize: 11, margin: "2px 0 0" }}>{t.songPage.priorityWait}</p>
             </div>
           </div>
         </div>
@@ -574,7 +576,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
             style={{ ...pillStyle, background: "rgba(255,255,255,0.08)", border: "none", cursor: "pointer" }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13M9 9l12-2" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            <span style={{ color: "white", fontSize: 13, fontWeight: 600 }}>Sözler</span>
+            <span style={{ color: "white", fontSize: 13, fontWeight: 600 }}>{t.songPage.lyrics}</span>
           </button>
           {dbSongId && (
             <button
@@ -582,13 +584,13 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
               style={{ ...pillStyle, background: "rgba(255,255,255,0.08)", border: "none", cursor: "pointer" }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill={isFavorite ? "#e91e8c" : "none"}><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke={isFavorite ? "#e91e8c" : "white"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              <span style={{ color: "white", fontSize: 13, fontWeight: 600 }}>{isFavorite ? "Favoride" : "Favorile"}</span>
+              <span style={{ color: "white", fontSize: 13, fontWeight: 600 }}>{isFavorite ? t.songPage.favorited : t.songPage.favorite}</span>
             </button>
           )}
           {playCount > 0 && (
             <span style={{ ...pillStyle, background: "rgba(233,30,140,0.12)" }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="#e91e8c" strokeWidth="2" /><circle cx="18" cy="16" r="3" stroke="#e91e8c" strokeWidth="2" /></svg>
-              <span style={{ color: "#e91e8c", fontSize: 13, fontWeight: 600 }}>{playCount} kez çalındı</span>
+              <span style={{ color: "#e91e8c", fontSize: 13, fontWeight: 600 }}>{fmt(t.songPage.playedTimes, { n: playCount })}</span>
             </span>
           )}
           {track.release_date && (
@@ -642,7 +644,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
               onClick={() => queueSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, background: "none", border: "none", cursor: "pointer", padding: 6 }}
             >
-              <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 600 }}>Sıra</span>
+              <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 600 }}>{t.songPage.queueHint}</span>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#6b7280" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
           )}
@@ -652,10 +654,10 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
       {/* Sıra bölümü: aşağı kaydırınca görünür — şu an çalan + sıradaki şarkılar */}
       {hasQueueSection && (
         <div ref={queueSectionRef} style={{ padding: "20px 20px 40px", scrollMarginTop: 8 }}>
-          <p style={{ color: "#6b7280", fontSize: 12, margin: 0 }}>Şuradan çalınıyor</p>
+          <p style={{ color: "#6b7280", fontSize: 12, margin: 0 }}>{t.songPage.playingFrom}</p>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "4px 0 14px" }}>
-            <h3 style={{ color: "white", fontSize: 17, fontWeight: 700, margin: 0 }}>Mekan Sırası</h3>
-            {fullQueue.length > 0 && <span style={{ color: "#9ca3af", fontSize: 12 }}>Kuyrukta {fullQueue.length} şarkı</span>}
+            <h3 style={{ color: "white", fontSize: 17, fontWeight: 700, margin: 0 }}>{t.songPage.venueQueue}</h3>
+            {fullQueue.length > 0 && <span style={{ color: "#9ca3af", fontSize: 12 }}>{fmt(t.queue.countInQueue, { n: fullQueue.length })}</span>}
           </div>
 
           {/* Şu an çalan — listenin başında vurgulu satır; yoksa sessiz durum */}
@@ -664,7 +666,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
               <div style={{ width: 48, height: 48, borderRadius: 12, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="1.8" strokeLinecap="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="1.8" /><circle cx="18" cy="16" r="3" stroke="#6b7280" strokeWidth="1.8" /></svg>
               </div>
-              <p style={{ color: "#6b7280", fontSize: 13, margin: 0 }}>Şu an çalan yok</p>
+              <p style={{ color: "#6b7280", fontSize: 13, margin: 0 }}>{t.songPage.nothingPlaying}</p>
             </div>
           )}
           {npDetail?.songs && (
@@ -698,13 +700,13 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
                 <p style={{ color: "white", fontWeight: 600, fontSize: 14, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{npDetail.songs.title}</p>
                 <p style={{ color: "#9ca3af", fontSize: 12, margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{npDetail.songs.artist}</p>
               </div>
-              <span style={{ color: "#e91e8c", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{npDetail.is_playing ? "ÇALIYOR" : "DURAKLADI"}</span>
+              <span style={{ color: "#e91e8c", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{npDetail.is_playing ? t.songPage.playingBadge : t.songPage.pausedBadge}</span>
             </div>
           )}
 
           {/* Sıradaki şarkılar — sıra numarası + bekleme süresi; bu sayfanın şarkısı vurgulanır */}
           {fullQueue.length === 0 ? (
-            <p style={{ color: "#6b7280", fontSize: 13, textAlign: "center", padding: "20px 0", margin: 0 }}>Kuyruk boş — ilk şarkıyı sen ekle!</p>
+            <p style={{ color: "#6b7280", fontSize: 13, textAlign: "center", padding: "20px 0", margin: 0 }}>{t.queue.empty}</p>
           ) : (
             fullQueue.map((item, idx) => {
               const isThisSong = !!dbSongId && item.song_id === dbSongId;
@@ -736,10 +738,10 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                     {isThisSong && (
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>Bu şarkı</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>{t.songPage.thisSong}</span>
                     )}
                     {item.priority && (
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>Önce</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>{t.queue.priorityBadge}</span>
                     )}
                     <span style={{ color: item.priority ? "#e91e8c" : "#9ca3af", fontSize: 12, fontWeight: 700 }}>{formatWait(getQueueWaitMs(idx))}</span>
                   </div>

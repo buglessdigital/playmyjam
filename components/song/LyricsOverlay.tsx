@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Montserrat } from "next/font/google";
 import type { LyricsResult } from "@/lib/lyrics";
+import { useT } from "@/lib/i18n";
 
 // Şarkı sözleri için ayrı, kalın ve sahneye yakışan bir font — Türkçe karakterler için latin-ext şart
 const lyricsFont = Montserrat({
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function LyricsOverlay({ title, artist, lyrics, loading, activeIndex, onClose }: Props) {
+  const t = useT();
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export default function LyricsOverlay({ title, artist, lyrics, loading, activeIn
         <button
           onClick={onClose}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10"
-          aria-label="Sözleri kapat"
+          aria-label={t.lyrics.closeAria}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
         </button>
@@ -60,7 +62,7 @@ export default function LyricsOverlay({ title, artist, lyrics, loading, activeIn
             <svg className="animate-spin" width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#6b7280" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
           </div>
         ) : !lyrics || lyrics.lines.length === 0 ? (
-          <p className="pt-16 text-center text-sm text-[#6b7280]">Söz bulunamadı</p>
+          <p className="pt-16 text-center text-sm text-[#6b7280]">{t.lyrics.notFound}</p>
         ) : (
           <div className={`${lyricsFont.className} flex flex-col gap-4`}>
             {lyrics.lines.map((line, i) => {

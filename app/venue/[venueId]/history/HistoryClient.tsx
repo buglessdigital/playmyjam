@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import { currentDict, fmt, useT } from "@/lib/i18n";
 
 type PlayedRow = {
   id: string;
@@ -23,17 +24,19 @@ interface Props {
 }
 
 function timeAgo(ms: number) {
+  const d = currentDict().historyPage;
   const diff = Date.now() - ms;
   const m = Math.floor(diff / 60000);
-  if (m < 60) return `${m}dk önce`;
+  if (m < 60) return fmt(d.minsAgo, { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}sa önce`;
-  return `${Math.floor(h / 24)} gün önce`;
+  if (h < 24) return fmt(d.hoursAgo, { n: h });
+  return fmt(d.daysAgo, { n: Math.floor(h / 24) });
 }
 
 export default function HistoryClient({ venueDbId, venueName, requestCost }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const t = useT();
   const [loaded, setLoaded] = useState(false);
   const [rows, setRows] = useState<PlayedRow[]>([]);
   // Aynı şarkının birden çok satırı olabilir — durum song_id bazında tutulur
@@ -72,7 +75,7 @@ export default function HistoryClient({ venueDbId, venueName, requestCost }: Pro
       setAddedIds((s) => new Set(s).add(songId));
     } else {
       const data = await res.json().catch(() => null);
-      alert(data?.error ?? "Şarkı eklenemedi, tekrar dene.");
+      alert(data?.error ?? t.historyPage.addError);
     }
   };
 
@@ -82,11 +85,11 @@ export default function HistoryClient({ venueDbId, venueName, requestCost }: Pro
         <button onClick={() => router.back()} className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
-        <h1 className="text-white font-bold text-lg">Son Çaldırılanlar</h1>
+        <h1 className="text-white font-bold text-lg">{t.historyPage.title}</h1>
       </div>
       {venueName && (
         <p className="px-5 pb-4 text-xs text-[#6b7280]">
-          + ile şarkıyı {venueName} kuyruğuna {requestCost} jetonla tekrar ekleyebilirsin
+          {fmt(t.historyPage.hint, { venue: venueName, cost: requestCost })}
         </p>
       )}
 
@@ -103,7 +106,7 @@ export default function HistoryClient({ venueDbId, venueName, requestCost }: Pro
           ))}
         </div>
       ) : rows.length === 0 ? (
-        <div className="text-center py-16 text-[#6b7280] text-sm">Henüz hiç şarkı çaldırmadın</div>
+        <div className="text-center py-16 text-[#6b7280] text-sm">{t.historyPage.empty}</div>
       ) : (
         <div className="px-5 space-y-3 pb-20">
           {rows.map((row) => {
@@ -135,7 +138,7 @@ export default function HistoryClient({ venueDbId, venueName, requestCost }: Pro
                   <button
                     onClick={() => requeue(row.song_id)}
                     disabled={isAdding || isAdded}
-                    aria-label={isAdded ? "Kuyruğa eklendi" : "Tekrar çaldır"}
+                    aria-label={isAdded ? t.historyPage.addedAria : t.historyPage.requeueAria}
                     className="w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0 transition-all active:scale-95 disabled:pointer-events-none"
                     style={
                       isAdded

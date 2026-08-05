@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, use, Suspense } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, use, Suspense } from "react";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
@@ -15,12 +15,13 @@ function formatTime(ms: number) {
 
 type QueueItem = {
   id: string;
+  user_id: string | null;
   added_by: string;
   tokens_spent: number;
   priority: boolean;
   position: number;
   added_at: string;
-  songs: { title: string; artist: string; album_cover_url: string; duration_ms: number };
+  songs: { youtube_video_id: string; title: string; artist: string; album_cover_url: string; duration_ms: number };
 };
 
 type NowPlaying = {
@@ -31,11 +32,23 @@ type NowPlaying = {
   songs: { title: string; artist: string; album_cover_url: string; duration_ms: number } | null;
 };
 
+type SearchTrack = {
+  youtube_video_id: string;
+  title: string;
+  artist: string;
+  album_cover_url: string;
+  duration_ms: number;
+};
+
 const QUEUE_SELECT =
-  "id, added_by, tokens_spent, priority, position, added_at, songs(title, artist, album_cover_url, duration_ms)";
+  "id, user_id, added_by, tokens_spent, priority, position, added_at, songs(youtube_video_id, title, artist, album_cover_url, duration_ms)";
 
 // Player 15 sn'de bir heartbeat yollar — bunun ~3 katı sessizlik "çevrimdışı" sayılır
 const OFFLINE_AFTER_MS = 45_000;
+
+// Müşterinin jetonla aldığı sıra taşınamaz; taşınabilen tek blok otomatik/elle
+// eklenen şarkılardır (user_id null). Sunucu tarafı da aynı kuralı uygular.
+const isMovable = (item: QueueItem) => item.user_id === null;
 
 export default function AdminDashboard({ params }: Props) {
   return (
@@ -54,7 +67,33 @@ function AdminDashboardContent({ params }: Props) {
   const [playerLoading, setPlayerLoading] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
+  const [queueError, setQueueError] = useState("");
+  const [reordering, setReordering] = useState(false);
+  const [dragId, setDragId] = useState<string | null>(null);
+
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchTrack[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const supabase = useMemo(() => createClient(), []);
+
+  const fetchQueue = useCallback(
+    async (dbId: string) => {
+      const { data } = await supabase
+        .from("queue")
+        .select(QUEUE_SELECT)
+        .eq("venue_id", dbId)
+        .eq("status", "queued")
+        .order("priority", { ascending: false })
+        .order("position", { ascending: true });
+      if (data) setQueue(data as unknown as QueueItem[]);
+    },
+    [supabase]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -89,19 +128,12 @@ function AdminDashboardContent({ params }: Props) {
         }
       };
 
-      const fetchQueue = async () => {
-        const { data } = await supabase
-          .from("queue")
-          .select(QUEUE_SELECT)
-          .eq("venue_id", dbId)
-          .eq("status", "queued")
-          .order("priority", { ascending: false })
-          .order("position", { ascending: true });
-        if (!cancelled && data) setQueue(data as unknown as QueueItem[]);
+      const reloadQueue = () => {
+        if (!cancelled) fetchQueue(dbId);
       };
 
       fetchNowPlaying();
-      fetchQueue();
+      reloadQueue();
 
       channels.push(
         supabase
@@ -110,7 +142,7 @@ function AdminDashboardContent({ params }: Props) {
           .subscribe(),
         supabase
           .channel(`admin-queue:${dbId}`)
-          .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${dbId}` }, fetchQueue)
+          .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${dbId}` }, reloadQueue)
           .subscribe()
       );
     };
@@ -121,7 +153,7 @@ function AdminDashboardContent({ params }: Props) {
       cancelled = true;
       channels.forEach((c) => supabase.removeChannel(c));
     };
-  }, [venueId, supabase]);
+  }, [venueId, supabase, fetchQueue]);
 
   // Progress + heartbeat tazeliği için saniyelik tick
   useEffect(() => {
@@ -164,6 +196,126 @@ function AdminDashboardContent({ params }: Props) {
       setQueue((prev) => prev.filter((q) => q.id !== id));
     }
   };
+
+  // Yeni sırayı önce ekranda uygular, sonra sunucuya yazar. Sunucu reddederse
+  // (araya otomatik dolum girmişse) liste tazelenip gerçek durum gösterilir.
+  const persistOrder = async (next: QueueItem[]) => {
+    const previous = queue;
+    setQueue(next);
+    setQueueError("");
+    setReordering(true);
+    try {
+      const res = await fetch("/api/admin/queue", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: next.filter(isMovable).map((q) => q.id) }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setQueueError(data.error ?? "Sıra kaydedilemedi");
+        if (venueDbId) await fetchQueue(venueDbId);
+        else setQueue(previous);
+      }
+    } catch {
+      setQueueError("Bağlantı hatası, sıra kaydedilemedi");
+      setQueue(previous);
+    } finally {
+      setReordering(false);
+    }
+  };
+
+  // Taşınabilir blok kuyruğun sonunda tek parça durur (müşteri satırları
+  // position < 9000). Bu yüzden taşıma, blok içi indeks değişiminden ibaret.
+  const moveWithinAuto = (fromId: string, toId: string) => {
+    const movable = queue.filter(isMovable);
+    const from = movable.findIndex((q) => q.id === fromId);
+    const to = movable.findIndex((q) => q.id === toId);
+    if (from < 0 || to < 0 || from === to) return;
+
+    const reordered = [...movable];
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moved);
+    persistOrder([...queue.filter((q) => !isMovable(q)), ...reordered]);
+  };
+
+  const nudge = (id: string, delta: -1 | 1) => {
+    const movable = queue.filter(isMovable);
+    const index = movable.findIndex((q) => q.id === id);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= movable.length) return;
+    moveWithinAuto(id, movable[target].id);
+  };
+
+  const doSearch = async (q: string) => {
+    if (!q.trim()) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    setSearchError("");
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setSearchError(data.error ?? "Arama başarısız");
+        return;
+      }
+      setSearchResults(data.tracks ?? []);
+    } catch {
+      setSearchError("Bağlantı hatası, tekrar deneyin");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setSearchError("");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!value.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    debounceRef.current = setTimeout(() => doSearch(value), 350);
+  };
+
+  const addToQueue = async (track: SearchTrack) => {
+    setAddingId(track.youtube_video_id);
+    setSearchError("");
+    try {
+      const res = await fetch("/api/admin/queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(track),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSearchError(data.error ?? "Eklenemedi");
+        return;
+      }
+      if (venueDbId) await fetchQueue(venueDbId);
+    } catch {
+      setSearchError("Bağlantı hatası, tekrar deneyin");
+    } finally {
+      setAddingId(null);
+    }
+  };
+
+  const closeAddModal = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setShowAddModal(false);
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearchError("");
+  };
+
+  const queuedVideoIds = useMemo(
+    () => new Set(queue.map((q) => q.songs?.youtube_video_id).filter(Boolean)),
+    [queue]
+  );
+
+  const movableCount = queue.filter(isMovable).length;
 
   const dur = nowPlaying?.songs?.duration_ms ?? 1;
   const progressPct = Math.min((progress / dur) * 100, 100);
@@ -258,36 +410,202 @@ function AdminDashboardContent({ params }: Props) {
 
       {/* Kuyruk */}
       <div className="rounded-2xl border border-white/10 overflow-hidden">
-        <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between">
-          <p className="text-white font-semibold text-sm">Kuyruk</p>
-          <span className="text-[#6b7280] text-xs">{queue.length} şarkı</span>
+        <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-white font-semibold text-sm">Kuyruk</p>
+            <p className="text-[#6b7280] text-xs mt-0.5">{queue.length} şarkı · {movableCount} tanesi taşınabilir</p>
+          </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0"
+            style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+            Sıraya Şarkı Ekle
+          </button>
         </div>
+
+        {queueError && (
+          <div className="px-5 py-2.5 text-xs" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171" }}>
+            {queueError}
+          </div>
+        )}
 
         {queue.length === 0 ? (
           <div className="px-5 py-8 text-center text-[#6b7280] text-sm">Kuyruk boş</div>
         ) : (
           <div>
-            {queue.map((item, i) => (
-              <div key={item.id} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors" style={{ borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined }}>
-                <span className="text-[#6b7280] text-xs w-5 shrink-0">{i + 1}</span>
-                {item.songs.album_cover_url ? (
-                  <Image src={item.songs.album_cover_url} alt="" width={40} height={40} className="w-10 h-10 rounded-lg object-cover shrink-0" />
-                ) : (
-                  <div className="w-10 h-10 rounded-lg bg-white/10 shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{item.songs.title}</p>
-                  <p className="text-[#6b7280] text-xs">{item.songs.artist} · {item.added_by} · {item.tokens_spent} jeton</p>
+            {queue.map((item, i) => {
+              const movable = isMovable(item);
+              const movableIndex = movable ? queue.filter(isMovable).findIndex((q) => q.id === item.id) : -1;
+              const isAdminAdded = movable && item.added_by === "admin";
+
+              return (
+                <div
+                  key={item.id}
+                  draggable={movable && !reordering}
+                  onDragStart={() => movable && setDragId(item.id)}
+                  onDragEnd={() => setDragId(null)}
+                  onDragOver={(e) => {
+                    // Müşteri satırlarının üstüne bırakmaya izin verme
+                    if (movable && dragId && dragId !== item.id) e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (movable && dragId) moveWithinAuto(dragId, item.id);
+                    setDragId(null);
+                  }}
+                  className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors"
+                  style={{
+                    borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined,
+                    opacity: dragId === item.id ? 0.4 : 1,
+                    cursor: movable && !reordering ? "grab" : "default",
+                  }}
+                >
+                  <span className="text-[#6b7280] text-xs w-5 shrink-0">{i + 1}</span>
+
+                  {movable ? (
+                    <span className="text-[#6b7280] shrink-0 hidden md:block" title="Sürükleyerek taşı">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
+                    </span>
+                  ) : (
+                    <span className="text-[#6b7280] shrink-0 hidden md:block" title="Jetonla alınan sıra — taşınamaz">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M8 11V7a4 4 0 018 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                    </span>
+                  )}
+
+                  {item.songs.album_cover_url ? (
+                    <Image src={item.songs.album_cover_url} alt="" width={40} height={40} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-white/10 shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{item.songs.title}</p>
+                    <p className="text-[#6b7280] text-xs truncate">
+                      {item.songs.artist} ·{" "}
+                      {movable
+                        ? isAdminAdded
+                          ? "mekan ekledi"
+                          : "otomatik"
+                        : `${item.added_by} · ${item.tokens_spent} jeton`}
+                    </p>
+                  </div>
+
+                  {item.priority && <span className="text-xs px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>Önce</span>}
+
+                  {movable && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => nudge(item.id, -1)}
+                        disabled={reordering || movableIndex <= 0}
+                        title="Yukarı taşı"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg transition-all hover:bg-white/10 disabled:opacity-25"
+                        style={{ background: "rgba(255,255,255,0.05)" }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </button>
+                      <button
+                        onClick={() => nudge(item.id, 1)}
+                        disabled={reordering || movableIndex < 0 || movableIndex >= movableCount - 1}
+                        title="Aşağı taşı"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg transition-all hover:bg-white/10 disabled:opacity-25"
+                        style={{ background: "rgba(255,255,255,0.05)" }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12l7 7 7-7" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </button>
+                    </div>
+                  )}
+
+                  <button onClick={() => removeFromQueue(item.id)} className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 transition-all hover:bg-red-500/20" style={{ background: "rgba(239,68,68,0.1)" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" /></svg>
+                  </button>
                 </div>
-                {item.priority && <span className="text-xs px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>Önce</span>}
-                <button onClick={() => removeFromQueue(item.id)} className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 transition-all hover:bg-red-500/20" style={{ background: "rgba(239,68,68,0.1)" }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" /></svg>
-                </button>
-              </div>
-            ))}
+              );
+            })}
+          </div>
+        )}
+
+        {movableCount > 0 && (
+          <div className="px-5 py-2.5 border-t border-white/10 text-[#6b7280] text-xs">
+            Yalnızca otomatik ve mekanın eklediği şarkılar taşınabilir. Müşterilerin jetonla aldığı sıra değiştirilemez.
           </div>
         )}
       </div>
+
+      {/* Sıraya şarkı ekle */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-6">
+          <div className="absolute inset-0 bg-black/70" onClick={closeAddModal} />
+          <div
+            className="relative w-full md:max-w-lg max-h-[85vh] flex flex-col rounded-t-3xl md:rounded-2xl border border-white/10"
+            style={{ background: "#150e21" }}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+              <div>
+                <p className="text-white font-semibold text-sm">Sıraya Şarkı Ekle</p>
+                <p className="text-[#6b7280] text-xs mt-0.5">Otomatik çalanların arasına girer, jeton harcanmaz</p>
+              </div>
+              <button onClick={closeAddModal} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
+              </button>
+            </div>
+
+            <div className="px-5 py-4 border-b border-white/10">
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder="Şarkı veya sanatçı ara..."
+                className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none"
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+              />
+              {searchError && <p className="text-xs mt-2" style={{ color: "#f87171" }}>{searchError}</p>}
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {searching ? (
+                <p className="px-5 py-8 text-center text-[#6b7280] text-sm">Aranıyor...</p>
+              ) : searchResults.length === 0 ? (
+                <p className="px-5 py-8 text-center text-[#6b7280] text-sm">
+                  {searchQuery.trim() ? "Sonuç bulunamadı" : "Aramak için yazmaya başlayın"}
+                </p>
+              ) : (
+                searchResults.map((track, i) => {
+                  const already = queuedVideoIds.has(track.youtube_video_id);
+                  return (
+                    <div
+                      key={track.youtube_video_id}
+                      className="flex items-center gap-3 px-5 py-3"
+                      style={{ borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined }}
+                    >
+                      {track.album_cover_url ? (
+                        <Image src={track.album_cover_url} alt="" width={40} height={40} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-white/10 shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium truncate">{track.title}</p>
+                        <p className="text-[#6b7280] text-xs truncate">
+                          {track.artist}
+                          {track.duration_ms > 0 && ` · ${formatTime(track.duration_ms)}`}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => addToQueue(track)}
+                        disabled={already || addingId === track.youtube_video_id}
+                        className="px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 disabled:opacity-40"
+                        style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}
+                      >
+                        {already ? "Sırada" : addingId === track.youtube_video_id ? "..." : "Ekle"}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

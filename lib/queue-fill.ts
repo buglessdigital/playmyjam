@@ -1,8 +1,14 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const QUEUE_TARGET = 10;
-const AUTO_POSITION_BASE = 9000;
+export const AUTO_POSITION_BASE = 9000;
 const COOLDOWN_MS = 30 * 60 * 1000;
+
+// Kuyruktaki üç sınıf added_by ile ayrılır: müşteri satırlarında kullanıcı adı,
+// otomatik dolumda "auto", adminin panelden elle eklediğinde "admin". İkincisi
+// budanabilir, üçüncüsü budanamaz — admin bilerek koymuştur.
+export const ADMIN_ADDED_BY = "admin";
+const AUTO_ADDED_BY = "auto";
 
 // Aktif playlist'lerin şarkı kimlikleri. Hiç aktif playlist yoksa null döner:
 // çağıran taraf bunu "havuz = tüm katalog" diye okur, böylece admin tüm listeleri
@@ -27,15 +33,17 @@ async function getActivePlaylistSongIds(venueId: string): Promise<Set<string> | 
 }
 
 // Aktif playlist seçimi değişince çağrılır: kuyrukta bekleyen OTOMATİK şarkılar
-// (user_id null) düşer ve yeni havuzdan yeniden doldurulur. Müşterinin jeton
-// harcayarak eklediği şarkılara ve sahnede çalana dokunulmaz.
+// (added_by='auto') düşer ve yeni havuzdan yeniden doldurulur. Müşterinin jeton
+// harcayarak eklediği şarkılara, adminin elle eklediklerine ve sahnede çalana
+// dokunulmaz.
 export async function resetAutoQueue(venueId: string): Promise<void> {
   await supabaseAdmin
     .from("queue")
     .update({ status: "removed" })
     .eq("venue_id", venueId)
     .eq("status", "queued")
-    .is("user_id", null);
+    .is("user_id", null)
+    .eq("added_by", AUTO_ADDED_BY);
 
   await fillQueueToTen(venueId);
 }
@@ -50,7 +58,8 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
 
   const current = totalQueued ?? 0;
 
-  // If over target, trim excess auto-fill songs (customer songs are never removed here)
+  // If over target, trim excess auto-fill songs (customer songs are never removed
+  // here; adminin elle eklediği satırlar da korunur — added_by filtresi)
   if (current > QUEUE_TARGET) {
     const excess = current - QUEUE_TARGET;
     const { data: autoFills } = await supabaseAdmin
@@ -59,6 +68,7 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
       .eq("venue_id", venueId)
       .eq("status", "queued")
       .is("user_id", null)
+      .eq("added_by", AUTO_ADDED_BY)
       .order("position", { ascending: false })
       .limit(excess);
 
@@ -168,7 +178,7 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
       venue_id: venueId,
       song_id,
       user_id: null,
-      added_by: "auto",
+      added_by: AUTO_ADDED_BY,
       tokens_spent: 0,
       priority: false,
       position: startPos + i,

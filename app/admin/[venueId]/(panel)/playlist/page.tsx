@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, use, Suspense } from "react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface Props {
@@ -47,12 +48,14 @@ export default function PlaylistPage({ params }: Props) {
 
 function PlaylistPageContent({ params }: Props) {
   const { venueId } = use(params);
+  // Playlistler ekranından "Düzenle" ile gelindiğinde ilgili sekme açık başlar
+  const initialListId = useSearchParams().get("list") ?? ALL;
   const [venueDbId, setVenueDbId] = useState("");
   const [songs, setSongs] = useState<Song[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   // song_id -> üyesi olduğu playlist id'leri
   const [memberships, setMemberships] = useState<Record<string, string[]>>({});
-  const [selectedId, setSelectedId] = useState<string>(ALL);
+  const [selectedId, setSelectedId] = useState<string>(initialListId);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);

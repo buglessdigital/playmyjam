@@ -123,6 +123,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // Son loadVideo zamanı — pause yankısı grace penceresinin çapası
   const lastLoadAtRef = useRef(0);
   const nudgeTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // new YT.Player() nesnesi ANINDA döner ama metotları (loadVideoById vb.) ancak
+  // iframe yüklenip onReady tetiklenince eklenir. Arada gelen realtime komutu
+  // "loadVideoById is not a function" ile patlıyordu — hazır olana dek beklet.
+  const readyRef = useRef(false);
+  const pendingVideoRef = useRef<string | null>(null);
 
   const [started, setStarted] = useState(false);
   const [idle, setIdle] = useState(false); // kuyruk boş, çalan yok
@@ -232,9 +237,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       desiredPlayingRef.current = true;
       lastLoadAtRef.current = Date.now();
       setIdle(false);
-      playerRef.current?.loadVideoById(videoId);
+      const player = playerRef.current;
+      if (readyRef.current && typeof player?.loadVideoById === "function") {
+        pendingVideoRef.current = null;
+        player.loadVideoById(videoId);
+        scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
+      } else {
+        // Player henüz hazır değil — onReady bu videoyu yükleyecek
+        pendingVideoRef.current = videoId;
+      }
       onTrackChange?.({ videoId, isPlaying: true });
-      scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
     },
     [onTrackChange, scheduleNudges]
   );
@@ -323,10 +335,20 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     const el = document.createElement("div");
     containerRef.current.replaceChildren(el);
 
+    readyRef.current = false;
+    pendingVideoRef.current = null;
+
     playerRef.current = new window.YT.Player(el, {
       playerVars: { playsinline: 1, rel: 0, autoplay: 0 },
       events: {
         onReady: async () => {
+          readyRef.current = true;
+          // Hazır olmadan gelen komut biriktiyse önce onu çal
+          const pending = pendingVideoRef.current;
+          if (pending) {
+            loadVideo(pending);
+            return;
+          }
           // Kaldığı yerden devam: now_playing'de video varsa onu, yoksa sıradakini çal
           const { data } = await supabase
             .from("now_playing")
@@ -435,7 +457,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             currentVideoRef.current = null;
             desiredPlayingRef.current = false;
             setIdle(true);
-            playerRef.current?.pauseVideo();
+            pendingVideoRef.current = null;
+            try {
+              playerRef.current?.pauseVideo();
+            } catch {}
             onTrackChange?.({ videoId: null, isPlaying: false });
             return;
           }
@@ -443,7 +468,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           if (np.video_id) {
             if (np.is_playing) {
               desiredPlayingRef.current = true;
-              playerRef.current?.playVideo();
+              try {
+                playerRef.current?.playVideo();
+              } catch {}
               scheduleNudges([PLAY_NUDGE_MS]);
             } else {
               // "Durdu" gerçek bir duraklatma komutu mu, yoksa takılı player'ın
@@ -457,7 +484,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               } catch {}
               if (!neverStarted && Date.now() - lastLoadAtRef.current > PAUSE_ECHO_GRACE_MS) {
                 desiredPlayingRef.current = false;
-                playerRef.current?.pauseVideo();
+                try {
+                  playerRef.current?.pauseVideo();
+                } catch {}
               }
             }
           }
@@ -482,8 +511,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   useEffect(() => {
     return () => {
       nudgeTimersRef.current.forEach(clearTimeout);
-      playerRef.current?.destroy();
+      try {
+        playerRef.current?.destroy();
+      } catch {}
       playerRef.current = null;
+      readyRef.current = false;
     };
   }, []);
 

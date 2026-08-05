@@ -62,8 +62,39 @@ export async function PATCH(req: NextRequest) {
   const playlistId = typeof body?.playlist_id === "string" ? body.playlist_id : "";
   const hasName = body?.name !== undefined;
   const hasActive = typeof body?.is_active === "boolean";
-  if (!playlistId || (!hasName && !hasActive)) {
+  const hasAutoSync = typeof body?.auto_sync === "boolean";
+  if (!playlistId || (!hasName && !hasActive && !hasAutoSync)) {
     return NextResponse.json({ error: "Eksik alan" }, { status: 400 });
+  }
+
+  // Otomatik senkron anahtarı playlist_sources'ta durur — yalnızca YouTube'dan
+  // içe aktarılmış listelerde satır vardır, elle kurulan listede açılamaz.
+  if (hasAutoSync) {
+    const { data: source, error: sourceErr } = await supabaseAdmin
+      .from("playlist_sources")
+      .update({
+        auto_sync: body.auto_sync,
+        // Yeniden açılırken hata sayacı sıfırlanır: liste tekrar herkese açık
+        // yapılmış olabilir, 10 hatada kapanmış senkron böyle canlanır.
+        ...(body.auto_sync ? { fail_count: 0, last_error: null, next_check_at: new Date().toISOString() } : {}),
+      })
+      .eq("playlist_id", playlistId)
+      .eq("venue_id", session.venue_id)
+      .select("playlist_id")
+      .maybeSingle();
+
+    if (sourceErr) {
+      return NextResponse.json({ error: sourceErr.message }, { status: 500 });
+    }
+    if (!source) {
+      return NextResponse.json(
+        { error: "Bu liste YouTube'dan içe aktarılmadı — otomatik güncelleme açılamaz" },
+        { status: 400 }
+      );
+    }
+    if (!hasName && !hasActive) {
+      return NextResponse.json({ ok: true });
+    }
   }
 
   const patch: { name?: string; is_active?: boolean } = {};

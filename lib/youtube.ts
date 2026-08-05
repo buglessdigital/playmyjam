@@ -232,24 +232,74 @@ export function parsePlaylistId(input: string): string | null {
   return null;
 }
 
-// playlists.list (1 birim) — içe aktarılan liste yeni bir playlist'e gidiyorsa
-// varsayılan ad olarak YouTube'daki başlık kullanılır. Başarısız olursa null.
-export async function getPlaylistTitle(playlistId: string): Promise<string | null> {
-  const params = new URLSearchParams({ part: "snippet", id: playlistId, key: API_KEY });
+type PlaylistInfo = { title: string | null; itemCount: number | null };
+
+// playlists.list (1 birim) — başlık + şarkı sayısı tek çağrıda.
+// itemCount otomatik senkronun ön kontrolü: sayı değişmediyse liste hiç açılmaz
+// (bkz. lib/playlist-sync.ts). Başarısız olursa null'lar döner, çağıran taraf akar.
+export async function getPlaylistInfo(playlistId: string): Promise<PlaylistInfo> {
+  const params = new URLSearchParams({
+    part: "snippet,contentDetails",
+    id: playlistId,
+    key: API_KEY,
+  });
   try {
-    const data = await fetchJson<{ items?: Array<{ snippet?: { title?: string } }> }>(
-      `${API_BASE}/playlists?${params}`
-    );
-    return data.items?.[0]?.snippet?.title?.trim() || null;
+    const data = await fetchJson<{
+      items?: Array<{ snippet?: { title?: string }; contentDetails?: { itemCount?: number } }>;
+    }>(`${API_BASE}/playlists?${params}`);
+    const item = data.items?.[0];
+    if (!item) return { title: null, itemCount: null };
+    return {
+      title: item.snippet?.title?.trim() || null,
+      itemCount: typeof item.contentDetails?.itemCount === "number" ? item.contentDetails.itemCount : null,
+    };
   } catch {
-    return null;
+    return { title: null, itemCount: null };
   }
 }
 
-// playlistItems.list (1 birim/sayfa) — public playlist'ler için OAuth gerekmez
-export async function getPlaylistItems(playlistId: string): Promise<TrackDetails[]> {
+// playlists.list toplu (1 birim / 50 liste) — cron'un ön kontrolü.
+// 100 mekanın listesini yoklamak günde 2 birim eder; asıl tasarruf burada.
+// Yanıtta dönmeyen kimlik = liste silinmiş veya gizlenmiş → map'te yer almaz.
+export async function getPlaylistItemCounts(
+  playlistIds: string[]
+): Promise<{ counts: Map<string, number>; units: number }> {
+  const counts = new Map<string, number>();
+  let units = 0;
+
+  for (let i = 0; i < playlistIds.length; i += 50) {
+    const batch = playlistIds.slice(i, i + 50);
+    const params = new URLSearchParams({
+      part: "contentDetails",
+      id: batch.join(","),
+      maxResults: "50",
+      key: API_KEY,
+    });
+    const data = await fetchJson<{
+      items?: Array<{ id?: string; contentDetails?: { itemCount?: number } }>;
+    }>(`${API_BASE}/playlists?${params}`);
+    units++;
+    for (const item of data.items ?? []) {
+      if (item.id && typeof item.contentDetails?.itemCount === "number") {
+        counts.set(item.id, item.contentDetails.itemCount);
+      }
+    }
+  }
+
+  return { counts, units };
+}
+
+const PLAYLIST_MAX_ITEMS = 500;
+
+// playlistItems.list (1 birim/sayfa) — public playlist'ler için OAuth gerekmez.
+// Yalnızca ham video kimlikleri: detay (videos.list) ayrı bir adım, çünkü senkronda
+// zaten tanıdığımız videolar için o çağrıyı hiç atmıyoruz.
+export async function getPlaylistVideoIds(
+  playlistId: string
+): Promise<{ videoIds: string[]; units: number }> {
   const videoIds: string[] = [];
   let pageToken: string | undefined;
+  let units = 0;
 
   do {
     const params = new URLSearchParams({
@@ -263,11 +313,12 @@ export async function getPlaylistItems(playlistId: string): Promise<TrackDetails
       nextPageToken?: string;
       items?: Array<{ contentDetails?: { videoId?: string } }>;
     }>(`${API_BASE}/playlistItems?${params}`);
+    units++;
     for (const item of data.items ?? []) {
       if (item.contentDetails?.videoId) videoIds.push(item.contentDetails.videoId);
     }
     pageToken = data.nextPageToken;
-  } while (pageToken && videoIds.length < 500);
+  } while (pageToken && videoIds.length < PLAYLIST_MAX_ITEMS);
 
-  return getVideoDetails([...new Set(videoIds)]);
+  return { videoIds: [...new Set(videoIds)], units };
 }

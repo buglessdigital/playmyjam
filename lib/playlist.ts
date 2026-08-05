@@ -1,5 +1,6 @@
+import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { resolveMatchingSuggestions } from "@/lib/suggestions";
+import { resolveMatchingSuggestions, type MatchableSong } from "@/lib/suggestions";
 import type { SongInput } from "@/lib/validate";
 
 export type PlaylistRow = {
@@ -44,6 +45,51 @@ export async function assertVenuePlaylist(venueId: string, playlistId: string): 
     .eq("venue_id", venueId)
     .maybeSingle();
   return !!data;
+}
+
+export type AttachableSong = MatchableSong;
+
+// Hazır songs satırlarını topluca mekanın kataloguna + hedef playlist'e bağlar.
+// Toplu içe aktarım (YouTube playlist) ve günlük otomatik senkron aynı yoldan
+// geçsin diye ortak: "zaten var" ölçütü HEDEF LİSTEDEKİ üyeliktir — aynı şarkı
+// başka bir listede duruyor olabilir, katalog satırı o zaman korunur (play_count
+// kaybolmaz), yalnızca yeni üyelik açılır.
+export async function attachSongsToPlaylist(
+  venueId: string,
+  playlistId: string,
+  songs: AttachableSong[]
+): Promise<{ added: number; skipped: number; resolvedSuggestions: number }> {
+  if (songs.length === 0) return { added: 0, skipped: 0, resolvedSuggestions: 0 };
+
+  const { data: existing } = await supabaseAdmin
+    .from("playlist_songs")
+    .select("song_id")
+    .eq("playlist_id", playlistId)
+    .in("song_id", songs.map((s) => s.id));
+
+  const existingSet = new Set((existing ?? []).map((e) => e.song_id));
+  const fresh = songs.filter((s) => !existingSet.has(s.id));
+  if (fresh.length === 0) return { added: 0, skipped: songs.length, resolvedSuggestions: 0 };
+
+  const { error: catalogErr } = await supabaseAdmin.from("venue_songs").upsert(
+    fresh.map((s) => ({ venue_id: venueId, song_id: s.id, play_count: 0, in_venue_list: true })),
+    { onConflict: "venue_id,song_id", ignoreDuplicates: true }
+  );
+  if (catalogErr) throw new Error(catalogErr.message);
+
+  const { error: memberErr } = await supabaseAdmin.from("playlist_songs").upsert(
+    fresh.map((s) => ({ venue_id: venueId, playlist_id: playlistId, song_id: s.id })),
+    { onConflict: "playlist_id,song_id", ignoreDuplicates: true }
+  );
+  if (memberErr) throw new Error(memberErr.message);
+
+  revalidateTag(`venue-songs-${venueId}`, "max");
+
+  // Mekan, müşterinin serbest metin önerisini listesine eklemiş olabilir:
+  // eşleşen bekleyen öneriler burada kendiliğinden kapanır
+  const resolvedSuggestions = await resolveMatchingSuggestions(venueId, fresh).catch(() => 0);
+
+  return { added: fresh.length, skipped: songs.length - fresh.length, resolvedSuggestions };
 }
 
 // songs'a upsert eder, mekan kataloguna (venue_songs) ve hedef playlist'e ekler.

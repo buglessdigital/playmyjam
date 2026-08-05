@@ -23,6 +23,17 @@ type PlaylistSong = {
   album_cover_url: string | null;
 };
 
+// YouTube'dan içe aktarılmış listelerde bulunur (bkz. 0029). Günlük cron kaynağı
+// yoklayıp yeni şarkıları ekler; listeden çıkarılanlar PMJ'den silinmez.
+type PlaylistSource = {
+  playlist_id: string;
+  youtube_playlist_id: string;
+  auto_sync: boolean;
+  last_synced_at: string | null;
+  last_added: number;
+  last_error: string | null;
+};
+
 // Playlist'lerin toplu görünümü: /playlist ekranı tek listeyi düzenlemek için,
 // burası "hangi listeler var, içlerinde ne var" sorusu için.
 export default function PlaylistsPage({ params }: Props) {
@@ -39,6 +50,9 @@ function PlaylistsPageContent({ params }: Props) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   // playlist_id -> şarkılar
   const [songsByList, setSongsByList] = useState<Record<string, PlaylistSong[]>>({});
+  const [sourceByList, setSourceByList] = useState<Record<string, PlaylistSource>>({});
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [syncNote, setSyncNote] = useState("");
   const [loading, setLoading] = useState(true);
 
   const [query, setQuery] = useState("");
@@ -59,7 +73,7 @@ function PlaylistsPageContent({ params }: Props) {
         songs: PlaylistSong | null;
       };
 
-      const [lists, members] = await Promise.all([
+      const [lists, members, sources] = await Promise.all([
         supabase
           .from("playlists")
           .select("id, name, is_active, sort_order")
@@ -70,9 +84,18 @@ function PlaylistsPageContent({ params }: Props) {
           .select("playlist_id, songs(id, title, artist, album_cover_url)")
           .eq("venue_id", venueDbIdArg)
           .order("added_at", { ascending: false }),
+        supabase
+          .from("playlist_sources")
+          .select("playlist_id, youtube_playlist_id, auto_sync, last_synced_at, last_added, last_error")
+          .eq("venue_id", venueDbIdArg),
       ]);
 
       if (lists.data) setPlaylists(lists.data as Playlist[]);
+      if (sources.data) {
+        setSourceByList(
+          Object.fromEntries((sources.data as PlaylistSource[]).map((s) => [s.playlist_id, s]))
+        );
+      }
       if (members.data) {
         const map: Record<string, PlaylistSong[]> = {};
         for (const m of members.data as unknown as MemberRow[]) {
@@ -101,6 +124,7 @@ function PlaylistsPageContent({ params }: Props) {
         .channel(`venue_playlists_overview:${venue.id}`)
         .on("postgres_changes", { event: "*", schema: "public", table: "playlists", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
         .on("postgres_changes", { event: "*", schema: "public", table: "playlist_songs", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
+        .on("postgres_changes", { event: "*", schema: "public", table: "playlist_sources", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
         .subscribe();
     };
     load();
@@ -146,6 +170,52 @@ function PlaylistsPageContent({ params }: Props) {
     });
     if (!res.ok) {
       setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, is_active: !next } : p)));
+    }
+  };
+
+  // Günlük senkron anahtarı. Yalnızca YouTube'dan içe aktarılmış listelerde var —
+  // playlist_sources satırı yoksa API 400 döner, o yüzden buton da gösterilmez.
+  const toggleAutoSync = async (playlist: Playlist) => {
+    const source = sourceByList[playlist.id];
+    if (!source) return;
+    const next = !source.auto_sync;
+    setSourceByList((prev) => ({ ...prev, [playlist.id]: { ...source, auto_sync: next } }));
+
+    const res = await fetch("/api/admin/playlists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playlist_id: playlist.id, auto_sync: next }),
+    });
+    if (!res.ok) {
+      setSourceByList((prev) => ({ ...prev, [playlist.id]: { ...source, auto_sync: !next } }));
+    }
+  };
+
+  const syncNow = async (playlist: Playlist) => {
+    if (syncingId) return;
+    setSyncingId(playlist.id);
+    setSyncNote("");
+    try {
+      const res = await fetch("/api/admin/playlist/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlist_id: playlist.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncNote(data.error ?? "Güncellenemedi");
+        return;
+      }
+      setSyncNote(
+        data.added > 0
+          ? `"${playlist.name}" listesine ${data.added} yeni şarkı eklendi`
+          : `"${playlist.name}" zaten güncel`
+      );
+      if (venueDbId) await fetchAll(venueDbId);
+    } catch {
+      setSyncNote("Bağlantı hatası, tekrar deneyin");
+    } finally {
+      setSyncingId(null);
     }
   };
 
@@ -279,6 +349,15 @@ function PlaylistsPageContent({ params }: Props) {
         )}
       </div>
 
+      {syncNote && (
+        <p
+          className="text-sm rounded-xl px-3.5 py-2.5 mb-3"
+          style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}
+        >
+          {syncNote}
+        </p>
+      )}
+
       {searching && (
         <p className="text-[#6b7280] text-xs mb-3">
           {visible.length} liste
@@ -296,6 +375,7 @@ function PlaylistsPageContent({ params }: Props) {
         <div className="flex flex-col gap-3">
           {visible.map(({ playlist, songs, matchedSongs, nameMatch }) => {
             const isOpen = expanded === playlist.id;
+            const source = sourceByList[playlist.id];
             // Aramada eşleşen şarkılar öne çıkar; liste adı eşleştiyse tüm liste görünür
             const preview = searching && !nameMatch ? matchedSongs : songs;
             const shown = isOpen ? preview : preview.slice(0, 3);
@@ -321,6 +401,26 @@ function PlaylistsPageContent({ params }: Props) {
                       {" · "}
                       {playlist.is_active ? "Aktif" : "Pasif"}
                     </p>
+                    {source && (
+                      <p className="text-[11px] mt-1 flex items-center gap-1.5 flex-wrap">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                          <path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke="#FF0000" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                        <span style={{ color: source.last_error ? "#f87171" : source.auto_sync ? "#22c55e" : "#6b7280" }}>
+                          {source.last_error
+                            ? `Senkron hatası: ${source.last_error}`
+                            : source.auto_sync
+                              ? "Her gün otomatik güncelleniyor"
+                              : "Otomatik güncelleme kapalı"}
+                        </span>
+                        {source.last_synced_at && !source.last_error && (
+                          <span className="text-[#4b5563]">
+                            · Son: {new Date(source.last_synced_at).toLocaleDateString("tr-TR")}
+                            {source.last_added > 0 ? ` (+${source.last_added})` : ""}
+                          </span>
+                        )}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -339,6 +439,42 @@ function PlaylistsPageContent({ params }: Props) {
                     >
                       {playlist.is_active ? "Aktif" : "Pasif"}
                     </button>
+                    {source && (
+                      <>
+                        <button
+                          onClick={() => toggleAutoSync(playlist)}
+                          className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
+                          style={{
+                            background: source.auto_sync ? "rgba(255,0,0,0.12)" : "rgba(255,255,255,0.08)",
+                            color: source.auto_sync ? "#fca5a5" : "#9ca3af",
+                          }}
+                          title={
+                            source.auto_sync
+                              ? "YouTube listesine eklenen yeni şarkılar her gün buraya da eklenir"
+                              : "Otomatik güncelleme kapalı — liste olduğu gibi kalır"
+                          }
+                        >
+                          {source.auto_sync ? "Senkron açık" : "Senkron kapalı"}
+                        </button>
+                        <button
+                          onClick={() => syncNow(playlist)}
+                          disabled={syncingId !== null}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg disabled:opacity-40"
+                          style={{ background: "rgba(255,255,255,0.08)" }}
+                          title="YouTube'dan şimdi güncelle"
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            className={syncingId === playlist.id ? "animate-spin" : ""}
+                          >
+                            <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </button>
+                      </>
+                    )}
                     <Link
                       href={`/admin/${venueId}/playlist?list=${playlist.id}`}
                       className="text-xs px-3 py-1.5 rounded-lg font-semibold"

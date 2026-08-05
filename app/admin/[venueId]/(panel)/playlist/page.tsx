@@ -74,6 +74,9 @@ function PlaylistPageContent({ params }: Props) {
   const [importing, setImporting] = useState(false);
   const [playlistError, setPlaylistError] = useState("");
   const [importResult, setImportResult] = useState("");
+  // Günlük otomatik güncelleme: YouTube listesine sonradan eklenen şarkılar
+  // kendiliğinden gelsin. Varsayılan açık — içe aktaran mekan genelde bunu ister.
+  const [autoSync, setAutoSync] = useState(true);
 
   // YouTube search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -387,6 +390,7 @@ function PlaylistPageContent({ params }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           playlist_url: playlistUrl.trim(),
+          auto_sync: autoSync,
           ...(importAsNew
             ? { new_playlist: true, new_playlist_name: newListName.trim() || undefined }
             : { playlist_id: targetId }),
@@ -399,7 +403,8 @@ function PlaylistPageContent({ params }: Props) {
       }
       setImportResult(
         `${data.added} şarkı eklendi${data.skipped ? `, ${data.skipped} şarkı zaten vardı` : ""}` +
-          (data.resolved_suggestions ? `, ${data.resolved_suggestions} müşteri önerisi karşılandı` : "")
+          (data.resolved_suggestions ? `, ${data.resolved_suggestions} müşteri önerisi karşılandı` : "") +
+          (data.auto_sync ? ". Otomatik güncelleme açık — yeni şarkılar her gün eklenecek." : "")
       );
       setPlaylistUrl("");
       if (venueDbId) await fetchAll(venueDbId);
@@ -660,6 +665,39 @@ function PlaylistPageContent({ params }: Props) {
                 ))}
               </select>
             )}
+
+            {/* Günlük senkron: YouTube listesine sonradan eklenen şarkılar
+                kendiliğinden gelir. Silinenler PMJ'den düşmez — mekanın elle
+                yaptığı düzenlemeler korunur. */}
+            <button
+              onClick={() => setAutoSync((v) => !v)}
+              className="w-full flex items-start gap-3 rounded-xl px-3.5 py-3 mb-3 text-left"
+              style={{
+                background: autoSync ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${autoSync ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.08)"}`,
+              }}
+            >
+              <span
+                className="w-4 h-4 rounded shrink-0 mt-0.5 flex items-center justify-center"
+                style={{
+                  background: autoSync ? "#22c55e" : "transparent",
+                  border: `1.5px solid ${autoSync ? "#22c55e" : "rgba(255,255,255,0.25)"}`,
+                }}
+              >
+                {autoSync && (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+                    <path d="M4 12l5 5L20 6" stroke="#0b0710" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-white text-xs font-semibold">Her gün otomatik güncelle</span>
+                <span className="block text-[#6b7280] text-[11px] mt-0.5">
+                  YouTube listesine yeni şarkı eklendiğinde buraya da eklenir. Listeden
+                  çıkarılanlar silinmez.
+                </span>
+              </span>
+            </button>
 
             <button
               onClick={importPlaylist}

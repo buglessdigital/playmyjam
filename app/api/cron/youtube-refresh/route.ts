@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { refreshVideoMetadata, YouTubeQuotaError } from "@/lib/youtube";
+import { syncPlaylistSources } from "@/lib/playlist-sync";
 
 // YouTube API veri saklama uyumu (Developer Policy III.E.4): günlük cron.
 // 1) 30 günden eski search_cache satırları silinir.
 // 2) 30 gündür tazelenmemiş songs metadata'sı videos.list ile yenilenir
 //    (50'lik parti = 1 birim → günlük 500 şarkı ≈ 10 birim, kota etkisi ihmal edilir).
+// 3) Otomatik senkronu açık YouTube playlist'lerine eklenen yeni şarkılar alınır
+//    (bkz. lib/playlist-sync.ts — tipik gün ~20 birim).
+// Üçü tek route'ta: Vercel'in cron sayısı plana göre sınırlı, ayrıca üçü de aynı
+// kota havuzunu kullanıyor — tek yerde toplamak bütçeyi görünür kılıyor.
 const RETENTION_DAYS = 30;
 const REFRESH_BATCH = 500;
 const UPDATE_CONCURRENCY = 20;
+
+// Haftada bir tam tarama: itemCount ön kontrolü aynı gün 1 ekleyip 1 silmeyi
+// göremiyor (sayı sabit kalır), pazar turu o kör noktayı kapatır.
+const FULL_SWEEP_WEEKDAY = 0;
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -37,6 +46,7 @@ export async function GET(req: NextRequest) {
   const rows = stale ?? [];
   let refreshed = 0;
   let delisted = 0;
+  let quotaExceeded = false;
 
   try {
     const meta = await refreshVideoMetadata(rows.map((r) => r.youtube_video_id));
@@ -67,10 +77,25 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     if (err instanceof YouTubeQuotaError) {
       // Kota dolu — tazeleme yarınki çalışmaya kalır, cache temizliği yine de yapıldı
-      return NextResponse.json({ ok: true, quota_exceeded: true, refreshed, delisted });
+      quotaExceeded = true;
+    } else {
+      const message = err instanceof Error ? err.message : "refresh failed";
+      return NextResponse.json({ error: message }, { status: 500 });
     }
-    const message = err instanceof Error ? err.message : "refresh failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+  }
+
+  // 3) Playlist senkronu. Kota zaten dolduysa hiç denenmez — dokunulmayan
+  //    kaynakların sırası bozulmadan yarına devreder.
+  let sync = null;
+  let syncError: string | null = null;
+  if (!quotaExceeded) {
+    try {
+      sync = await syncPlaylistSources({
+        force: new Date().getUTCDay() === FULL_SWEEP_WEEKDAY,
+      });
+    } catch (err) {
+      syncError = err instanceof Error ? err.message : "playlist sync failed";
+    }
   }
 
   return NextResponse.json({
@@ -79,5 +104,8 @@ export async function GET(req: NextRequest) {
     stale_found: rows.length,
     refreshed,
     delisted,
+    quota_exceeded: quotaExceeded,
+    playlist_sync: sync,
+    playlist_sync_error: syncError,
   });
 }

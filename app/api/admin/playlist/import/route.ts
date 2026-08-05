@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
-import { getPlaylistItems, getPlaylistTitle, parsePlaylistId, YouTubeQuotaError } from "@/lib/youtube";
-import { resolveMatchingSuggestions } from "@/lib/suggestions";
-import { assertVenuePlaylist, getDefaultPlaylistId } from "@/lib/playlist";
+import {
+  getPlaylistInfo,
+  getPlaylistVideoIds,
+  getVideoDetails,
+  parsePlaylistId,
+  YouTubeQuotaError,
+} from "@/lib/youtube";
+import { assertVenuePlaylist, attachSongsToPlaylist, getDefaultPlaylistId } from "@/lib/playlist";
 
 // Public YouTube playlist'indeki tüm şarkıları mekanın bir playlist'ine toplu ekler.
 // OAuth gerekmez — admin playlist URL'sini yapıştırır.
 // Hedef: body.playlist_id (mevcut liste) | body.new_playlist (yeni liste açılır) | varsayılan.
+// body.auto_sync ile günlük otomatik güncelleme açılır (bkz. lib/playlist-sync.ts).
 // { added, skipped, playlist } döner.
 export async function POST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
@@ -27,9 +32,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
   }
 
+  // Ham kimlikler (snapshot için) ile filtrelenmiş şarkılar ayrı: embed'e kapalı
+  // videolar listeye girmez ama snapshot'ta durmalı, yoksa senkron her gün onları
+  // yeniden dener. Şarkı sayısı da buradan gelir — playlists.list'in verdiği ham
+  // sayı (silinmiş videolar dahil) senkronun ucuz ön kontrolünün dayanağıdır.
+  let videoIds: string[] = [];
+  let playlistTitle: string | null = null;
+  let itemCount: number | null = null;
   let tracks;
   try {
-    tracks = await getPlaylistItems(playlistId);
+    const [items, info] = await Promise.all([
+      getPlaylistVideoIds(playlistId),
+      getPlaylistInfo(playlistId),
+    ]);
+    videoIds = items.videoIds;
+    playlistTitle = info.title;
+    itemCount = info.itemCount;
+    tracks = await getVideoDetails(videoIds);
   } catch (err) {
     if (err instanceof YouTubeQuotaError) {
       return NextResponse.json({ error: err.message }, { status: 429 });
@@ -39,6 +58,8 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+
+  const autoSync = body?.auto_sync === true;
 
   const rows = tracks.map((t) => ({
     youtube_video_id: t.youtube_video_id,
@@ -61,7 +82,7 @@ export async function POST(req: NextRequest) {
 
   if (!target && body?.new_playlist) {
     const requested = typeof body?.new_playlist_name === "string" ? body.new_playlist_name.trim() : "";
-    const name = (requested || (await getPlaylistTitle(playlistId)) || "Yeni Playlist").slice(0, 40);
+    const name = (requested || playlistTitle || "Yeni Playlist").slice(0, 40);
 
     const { data: last } = await supabaseAdmin
       .from("playlists")
@@ -105,50 +126,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: songErr?.message ?? "Şarkılar kaydedilemedi" }, { status: 500 });
   }
 
-  // "Zaten var" ölçütü hedef listedeki üyelik: aynı şarkı başka listede olabilir
-  const { data: existing } = await supabaseAdmin
-    .from("playlist_songs")
-    .select("song_id")
-    .eq("playlist_id", target)
-    .in("song_id", songRows.map((r) => r.id));
-
-  const existingSet = new Set((existing ?? []).map((e) => e.song_id));
-  const newSongs = songRows.filter((r) => !existingSet.has(r.id));
-
-  let resolved = 0;
-  if (newSongs.length > 0) {
-    // Katalog satırı: başka listeden zaten varsa korunur (play_count kaybolmaz)
-    const { error: catalogErr } = await supabaseAdmin.from("venue_songs").upsert(
-      newSongs.map((r) => ({
-        venue_id: session.venue_id,
-        song_id: r.id,
-        play_count: 0,
-        in_venue_list: true,
-      })),
-      { onConflict: "venue_id,song_id", ignoreDuplicates: true }
-    );
-    if (catalogErr) {
-      return NextResponse.json({ error: catalogErr.message }, { status: 500 });
-    }
-
-    const { error: insErr } = await supabaseAdmin.from("playlist_songs").insert(
-      newSongs.map((r) => ({ venue_id: session.venue_id, playlist_id: target, song_id: r.id }))
-    );
-    if (insErr) {
-      return NextResponse.json({ error: insErr.message }, { status: 500 });
-    }
-    revalidateTag(`venue-songs-${session.venue_id}`, "max");
-
-    // Mekan, müşteri önerisini playlist'ine ekleyip yeniden içe aktarmış olabilir:
-    // eşleşen bekleyen öneriler burada kendiliğinden kapanır
-    resolved = await resolveMatchingSuggestions(session.venue_id, newSongs).catch(() => 0);
+  let result;
+  try {
+    result = await attachSongsToPlaylist(session.venue_id, target, songRows);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Şarkılar eklenemedi";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
+  // Kaynağı hatırla: otomatik senkron kapalı olsa bile URL saklanır, mekan
+  // anahtarı sonradan açtığında yeniden yapıştırmak gerekmez.
+  // snapshot ham kimlik listesidir (embed'e kapalı videolar dahil) — "bu şarkıyı
+  // zaten gördük" ölçütü budur, mekanın elle sildiği şarkı geri gelmesin diye
+  // playlist_songs'tan ayrı durur.
+  const { error: sourceErr } = await supabaseAdmin.from("playlist_sources").upsert(
+    {
+      playlist_id: target,
+      venue_id: session.venue_id,
+      youtube_playlist_id: playlistId,
+      auto_sync: autoSync,
+      snapshot_video_ids: videoIds,
+      last_item_count: itemCount,
+      last_synced_at: new Date().toISOString(),
+      last_added: result.added,
+      unchanged_streak: 0,
+      next_check_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      fail_count: 0,
+      last_error: null,
+    },
+    { onConflict: "playlist_id" }
+  );
+
   return NextResponse.json({
-    added: newSongs.length,
-    skipped: songRows.length - newSongs.length,
-    resolved_suggestions: resolved,
+    added: result.added,
+    skipped: result.skipped,
+    resolved_suggestions: result.resolvedSuggestions,
     playlist_id: target,
     playlist: createdPlaylist,
+    auto_sync: autoSync && !sourceErr,
   });
 }

@@ -174,6 +174,7 @@
     "countInQueue": "{n} songs in queue",
     "empty": "The queue is empty — add the first song!",
     "priorityBadge": "First",
+    "tokenBadge": "Token",
     "addSong": "Add Song"
   },
   "playerOffline": {

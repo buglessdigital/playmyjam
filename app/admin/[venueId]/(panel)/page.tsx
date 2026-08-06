@@ -429,6 +429,18 @@ function AdminDashboardContent({ params }: Props) {
           </button>
         </div>
 
+        <div className="px-5 py-2 border-b border-white/10 flex items-center gap-4 flex-wrap text-[#6b7280] text-[11px]">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: "#e91e8c" }} /> Öncelikli (jeton)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: "#8b5cf6" }} /> Normal (jeton)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(255,255,255,0.15)" }} /> Otomatik / mekan
+          </span>
+        </div>
+
         {queueError && (
           <div className="px-5 py-2.5 text-xs" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171" }}>
             {queueError}
@@ -443,6 +455,14 @@ function AdminDashboardContent({ params }: Props) {
               const movable = isMovable(item);
               const movableIndex = movable ? queue.filter(isMovable).findIndex((q) => q.id === item.id) : -1;
               const isAdminAdded = movable && item.added_by === "admin";
+              // Jetonla eklenenler renkle ayrışsın: öncelikli = pembe, normal = mor,
+              // otomatik/mekan = renksiz.
+              const accent = item.tokens_spent > 0 ? (item.priority ? "#e91e8c" : "#8b5cf6") : null;
+              const accentBg = item.tokens_spent > 0
+                ? item.priority
+                  ? "rgba(233,30,140,0.08)"
+                  : "rgba(139,92,246,0.08)"
+                : undefined;
 
               return (
                 <div
@@ -462,6 +482,8 @@ function AdminDashboardContent({ params }: Props) {
                   className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors"
                   style={{
                     borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined,
+                    borderLeft: accent ? `3px solid ${accent}` : "3px solid transparent",
+                    background: accentBg,
                     opacity: dragId === item.id ? 0.4 : 1,
                     cursor: movable && !reordering ? "grab" : "default",
                   }}
@@ -491,11 +513,22 @@ function AdminDashboardContent({ params }: Props) {
                         ? isAdminAdded
                           ? "mekan ekledi"
                           : "otomatik"
-                        : `${item.added_by} · ${item.tokens_spent} jeton`}
+                        : <>{item.added_by} · <span style={{ color: accent ?? undefined, fontWeight: 600 }}>{item.tokens_spent} jeton</span></>}
                     </p>
                   </div>
 
-                  {item.priority && <span className="text-xs px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>Önce</span>}
+                  {item.tokens_spent > 0 && (
+                    <span
+                      className="text-xs px-1.5 py-0.5 rounded-full shrink-0"
+                      style={
+                        item.priority
+                          ? { background: "rgba(233,30,140,0.15)", color: "#e91e8c" }
+                          : { background: "rgba(139,92,246,0.15)", color: "#a78bfa" }
+                      }
+                    >
+                      {item.priority ? "Önce" : "Jeton"}
+                    </span>
+                  )}
 
                   {movable && (
                     <div className="flex items-center gap-1 shrink-0">

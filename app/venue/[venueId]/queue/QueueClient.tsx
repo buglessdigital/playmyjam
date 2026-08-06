@@ -337,7 +337,15 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                 key={item.id}
                 onClick={() => openSongDetail(item.song_id)}
                 className="flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-transform active:scale-[0.98]"
-                style={{ background: "#1a0e2a" }}
+                style={
+                  // Jetonla eklenenler renkle ayrışır: öncelikli pembe, normal mor,
+                  // otomatik/mekan nötr.
+                  item.tokens_spent > 0
+                    ? item.priority
+                      ? { background: "linear-gradient(90deg, rgba(233,30,140,0.16), #1a0e2a 55%)", borderLeft: "3px solid #e91e8c" }
+                      : { background: "linear-gradient(90deg, rgba(139,92,246,0.16), #1a0e2a 55%)", borderLeft: "3px solid #8b5cf6" }
+                    : { background: "#1a0e2a", borderLeft: "3px solid transparent" }
+                }
               >
                 <div className="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden bg-[#0f0a18]">
                   {item.songs.album_cover_url && (
@@ -349,8 +357,17 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                   <p className="text-[#6b7280] text-xs truncate">{item.songs.artist}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {item.priority && (
-                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>{t.queue.priorityBadge}</span>
+                  {item.tokens_spent > 0 && (
+                    <span
+                      className="text-xs font-bold px-1.5 py-0.5 rounded-full"
+                      style={
+                        item.priority
+                          ? { background: "rgba(233,30,140,0.15)", color: "#e91e8c" }
+                          : { background: "rgba(139,92,246,0.15)", color: "#a78bfa" }
+                      }
+                    >
+                      {item.priority ? t.queue.priorityBadge : t.queue.tokenBadge}
+                    </span>
                   )}
                   {!playerOffline && (
                     <span className="text-xs font-bold" style={{ color: item.priority ? "#e91e8c" : "#9ca3af" }}>{formatWait(getRowWaitMs(idx))}</span>

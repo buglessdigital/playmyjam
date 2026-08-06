@@ -109,3 +109,52 @@ details.faq-item summary::-webkit-details-marker {
 details.faq-item[open] .faq-chevron {
   transform: rotate(180deg);
 }
+
+/* Admin paneli: ses kaydırıcısı. Tarayıcı varsayılanı kalın ve mavi odak
+   halkalı geliyordu; ince ray + pembe topuz ile panelin diline uyduruluyor. */
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 14px;
+}
+.volume-slider:focus {
+  outline: none;
+}
+/* Doldurulmuş kısım satır içi --pct değişkeninden gelir */
+.volume-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e91e8c 0%, #8b5cf6 var(--pct, 100%), rgba(255, 255, 255, 0.12) var(--pct, 100%));
+}
+.volume-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 999px;
+  background: #e91e8c;
+  transition: transform 0.12s ease;
+}
+.volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 999px;
+  background: #e91e8c;
+}
+.volume-slider:hover::-webkit-slider-thumb,
+.volume-slider:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+.volume-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e91e8c, #8b5cf6);
+}

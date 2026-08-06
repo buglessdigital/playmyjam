@@ -465,19 +465,27 @@ function AdminDashboardContent({ params }: Props) {
           <p className="text-[#6b7280] text-sm">Şu an çalan şarkı yok — kuyruğa şarkı eklenince Player&apos;da otomatik başlar</p>
         )}
 
-        {/* Ses seviyesi — player'ın açık olduğu cihaza uzaktan uygulanır. Çalan
-            şarkı yokken de görünür: mekan sesi önceden ayarlayıp bırakabilsin. */}
-        <div className="mt-5 pt-4 border-t border-white/10">
-          <div className="flex items-center gap-3">
+        {/* Ses seviyesi — sağ altta kompakt hap. Çalan şarkı yokken de görünür:
+            mekan sesi önceden ayarlayıp bırakabilsin. Uzun açıklama tooltip'te. */}
+        <div className="mt-4 flex justify-end">
+          <div
+            title={
+              playerOffline
+                ? "Player çevrimdışı — ayarladığınız seviye kaydedilir, oynatıcı açılınca uygulanır."
+                : "Player'ın açık olduğu cihazın sesi. iPad/iPhone'da sistem sesi geçerlidir, bu kaydırıcı etkisiz kalır."
+            }
+            className="flex items-center gap-2 rounded-full border border-white/10 px-2.5 py-1.5"
+            style={{ background: "rgba(255,255,255,0.03)" }}
+          >
             <button
               onClick={() => changeVolume(volume === 0 ? lastAudibleVolumeRef.current || 100 : 0)}
               aria-label={volume === 0 ? "Sesi aç" : "Sesi kapat"}
-              className="w-9 h-9 flex items-center justify-center rounded-full shrink-0 transition-all hover:bg-white/10"
+              className="w-6 h-6 flex items-center justify-center rounded-full shrink-0 transition-colors hover:bg-white/10"
             >
               {volume === 0 ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M11 5 6 9H3v6h3l5 4V5z" fill="#9ca3af" /><path d="m16 9 5 6m0-6-5 6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M11 5 6 9H3v6h3l5 4V5z" fill="#6b7280" /><path d="m16 9 5 6m0-6-5 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
               ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M11 5 6 9H3v6h3l5 4V5z" fill="#e91e8c" /><path d="M16 9a4 4 0 0 1 0 6" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />{volume > 50 && <path d="M18.5 6.5a7.5 7.5 0 0 1 0 11" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />}</svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M11 5 6 9H3v6h3l5 4V5z" fill="#e91e8c" /><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />{volume > 50 && <path d="M18.5 7a7 7 0 0 1 0 10" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />}</svg>
               )}
             </button>
 
@@ -489,24 +497,17 @@ function AdminDashboardContent({ params }: Props) {
               value={volume}
               onChange={(e) => changeVolume(Number(e.target.value))}
               aria-label="Ses seviyesi"
-              className="flex-1 h-1.5 cursor-pointer accent-[#e91e8c]"
+              className="volume-slider w-24 cursor-pointer sm:w-28"
+              style={{ "--pct": `${volume}%` } as React.CSSProperties}
             />
 
-            <span className="text-white text-xs font-bold tabular-nums w-10 text-right shrink-0">%{volume}</span>
+            <span className="text-[#9ca3af] text-[11px] font-semibold tabular-nums w-8 text-right shrink-0">%{volume}</span>
           </div>
-
-          {volumeError ? (
-            <p className="mt-2 text-xs" style={{ color: "#f87171" }}>{volumeError}</p>
-          ) : playerOffline ? (
-            <p className="mt-2 text-[#6b7280] text-xs">
-              Player çevrimdışı — ayarladığınız seviye kaydedilir, oynatıcı açılınca uygulanır.
-            </p>
-          ) : (
-            <p className="mt-2 text-[#6b7280] text-xs">
-              Player&apos;ın açık olduğu cihazın sesi. iPad/iPhone&apos;da sistem sesi geçerlidir, bu kaydırıcı etkisiz kalır.
-            </p>
-          )}
         </div>
+
+        {volumeError && (
+          <p className="mt-2 text-xs text-right" style={{ color: "#f87171" }}>{volumeError}</p>
+        )}
       </div>
 
       {/* Kuyruk */}

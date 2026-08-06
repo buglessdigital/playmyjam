@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
@@ -93,6 +93,88 @@ export async function PATCH(req: NextRequest) {
     const failed = results.find((r) => r.error);
     if (failed?.error) {
       return NextResponse.json({ error: failed.error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // Liste İÇİNDEKİ şarkı sırası: gelen song_id dizisi baştan sona position olur.
+  // Sıralı listelerde çalma sırası budur; karışık listelerde yalnızca panel görünümü.
+  if (body?.song_order !== undefined) {
+    const listId = typeof body?.playlist_id === "string" ? body.playlist_id : "";
+    const songOrder: string[] | null = Array.isArray(body.song_order)
+      ? body.song_order.filter((id: unknown): id is string => typeof id === "string")
+      : null;
+    if (!listId || !songOrder || songOrder.length === 0) {
+      return NextResponse.json({ error: "Eksik alan" }, { status: 400 });
+    }
+
+    // İki sorgu birbirine bağlı değil — sırayla değil birlikte gider
+    const [{ data: playlist }, { data: members, error: membersErr }] = await Promise.all([
+      supabaseAdmin
+        .from("playlists")
+        .select("id, is_active, shuffle")
+        .eq("id", listId)
+        .eq("venue_id", session.venue_id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("playlist_songs")
+        .select("id, song_id, position")
+        .eq("venue_id", session.venue_id)
+        .eq("playlist_id", listId),
+    ]);
+
+    if (!playlist) {
+      return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
+    }
+    if (membersErr) {
+      return NextResponse.json({ error: membersErr.message }, { status: 500 });
+    }
+
+    // Gelen dizi listenin tamamını birebir kapsamalı. Panel araya şarkı eklenmiş
+    // eski bir görünümden sıra yollarsa yazmak yerine yenilenmesi istenir.
+    const byId = new Map((members ?? []).map((m) => [m.song_id, m]));
+    const unique = new Set(songOrder);
+    if (
+      unique.size !== songOrder.length ||
+      songOrder.length !== byId.size ||
+      songOrder.some((id: string) => !byId.has(id))
+    ) {
+      return NextResponse.json(
+        { error: "Liste bu arada değişmiş — sayfayı yenileyip tekrar deneyin" },
+        { status: 409 }
+      );
+    }
+
+    // Yalnızca yeri değişen satırlar yazılır: tek adımlık taşımada iki satır eder.
+    // Uzak bir noktaya sürüklemede aradaki tüm satırlar kayar, o yüzden yazma
+    // öbekler halinde gider — büyük listede yüzlerce eşzamanlı istek olmasın.
+    const changed = songOrder
+      .map((songId, i) => ({ row: byId.get(songId)!, position: i + 1 }))
+      .filter(({ row, position }) => row.position !== position)
+      .map(({ row, position }) => ({ id: row.id, position }));
+
+    for (let i = 0; i < changed.length; i += 25) {
+      const results = await Promise.all(
+        changed.slice(i, i + 25).map(({ id, position }) =>
+          supabaseAdmin
+            .from("playlist_songs")
+            .update({ position })
+            .eq("id", id)
+            .eq("venue_id", session.venue_id)
+        )
+      );
+      const failed = results.find((r) => r.error);
+      if (failed?.error) {
+        return NextResponse.json({ error: failed.error.message }, { status: 500 });
+      }
+    }
+
+    // Bekleyen otomatik şarkılar yeni sıraya göre yeniden seçilsin. Karışık
+    // listede sıranın çalmaya etkisi yok, kuyruğu boşuna tazelemeyiz.
+    // Yanıttan SONRA çalışır: panel sıra değişikliğini beklemeden görür, kuyruk
+    // birkaç yüz ms sonra kendi kendine düzelir.
+    if (changed.length > 0 && playlist.is_active && !playlist.shuffle) {
+      after(resetAutoQueue(session.venue_id).catch(() => {}));
     }
     return NextResponse.json({ ok: true });
   }

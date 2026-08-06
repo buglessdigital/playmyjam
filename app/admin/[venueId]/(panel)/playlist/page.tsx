@@ -118,6 +118,16 @@ function PlaylistPageContent({ params }: Props) {
   // playlist_id -> bu turda tüketilmiş şarkı sayısı (ilerleme göstergesi)
   const [consumed, setConsumed] = useState<Record<string, number>>({});
   const [reordering, setReordering] = useState(false);
+  // Liste içi şarkı taşıma: sürüklenen satır ve üzerine gelinen satır
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [orderError, setOrderError] = useState("");
+  const [savingOrder, setSavingOrder] = useState(false);
+  // Henüz sunucuya gitmemiş sıra + geri dönüş noktası
+  const pendingOrderRef = useRef<{ listId: string; ids: string[]; previous: Record<string, number> } | null>(null);
+  const orderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Yazma sürerken gelen realtime tazelemesi ekrandaki sırayı geri almasın
+  const savingOrderRef = useRef(false);
 
   // Katalogdaki şarkı araması
   const [query, setQuery] = useState("");
@@ -239,6 +249,23 @@ function PlaylistPageContent({ params }: Props) {
   useEffect(() => {
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Tek işlem çok satır değiştirebiliyor (içe aktarma, liste içi sıralama) —
+    // her olayda değil, olay yağmuru dindikten sonra bir kez tazelenir.
+    const scheduleRefresh = (id: string) => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        if (cancelled) return;
+        // Kaydedilmemiş ya da yolda olan sıra varsa tazeleme beklesin: sunucudan
+        // gelen eski sıra kullanıcının ekranındaki taşımaları geri alırdı.
+        if (pendingOrderRef.current || savingOrderRef.current) {
+          scheduleRefresh(id);
+          return;
+        }
+        fetchAll(id);
+      }, 300);
+    };
 
     const load = async () => {
       const { data: venue } = await supabase.from("venues").select("id").eq("slug", venueId).single();
@@ -249,21 +276,39 @@ function PlaylistPageContent({ params }: Props) {
 
       channel = supabase
         .channel(`venue_playlists:${venue.id}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "venue_songs", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
-        .on("postgres_changes", { event: "*", schema: "public", table: "playlists", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
-        .on("postgres_changes", { event: "*", schema: "public", table: "playlist_songs", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
-        .on("postgres_changes", { event: "*", schema: "public", table: "playlist_sources", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
+        .on("postgres_changes", { event: "*", schema: "public", table: "venue_songs", filter: `venue_id=eq.${venue.id}` }, () => scheduleRefresh(venue.id))
+        .on("postgres_changes", { event: "*", schema: "public", table: "playlists", filter: `venue_id=eq.${venue.id}` }, () => scheduleRefresh(venue.id))
+        .on("postgres_changes", { event: "*", schema: "public", table: "playlist_songs", filter: `venue_id=eq.${venue.id}` }, () => scheduleRefresh(venue.id))
+        .on("postgres_changes", { event: "*", schema: "public", table: "playlist_sources", filter: `venue_id=eq.${venue.id}` }, () => scheduleRefresh(venue.id))
         // Sıralı moddaki "şu an çalan liste — 12/40" göstergesi her dolumda tazelensin
-        .on("postgres_changes", { event: "*", schema: "public", table: "playlist_rotation", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
+        .on("postgres_changes", { event: "*", schema: "public", table: "playlist_rotation", filter: `venue_id=eq.${venue.id}` }, () => scheduleRefresh(venue.id))
         .subscribe();
     };
     load();
 
     return () => {
       cancelled = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
       if (channel) supabase.removeChannel(channel);
     };
   }, [venueId, supabase, fetchAll]);
+
+  // Son taşımanın ardından hemen sayfadan çıkılırsa bekleyen sıra kaybolmasın:
+  // keepalive ile sayfa kapanırken de tamamlanacak bir istek yollanır.
+  useEffect(() => {
+    return () => {
+      if (orderTimerRef.current) clearTimeout(orderTimerRef.current);
+      const pending = pendingOrderRef.current;
+      if (!pending) return;
+      pendingOrderRef.current = null;
+      fetch("/api/admin/playlists", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlist_id: pending.listId, song_order: pending.ids }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+  }, []);
 
   const activeLists = useMemo(() => playlists.filter((p) => p.is_active), [playlists]);
 
@@ -348,6 +393,11 @@ function PlaylistPageContent({ params }: Props) {
     return q ? inView.filter(matchesQuery) : inView;
   }, [songs, memberships, positions, viewId, q, matchesQuery]);
 
+  // Sıra değiştirme yalnızca tek listenin tamamı ekrandayken açık: "Tüm Şarkılar"
+  // görünümünde ortak bir sıra yok, aramada ise ekrandaki satırlar listenin
+  // tamamı değil.
+  const orderable = viewId !== ALL && !filtering;
+
   // Modal açılırken hedef liste: seçili liste, yoksa ilk aktif, o da yoksa ilk liste
   const defaultTarget = useCallback(() => {
     if (viewId !== ALL) return viewId;
@@ -428,6 +478,61 @@ function PlaylistPageContent({ params }: Props) {
     } finally {
       setReordering(false);
     }
+  };
+
+  // Bekleyen sıra yazımı: art arda taşımalar tek isteğe toplanır. Sunucu diziyi
+  // olduğu gibi yazdığı için son gönderim yeterli — aradaki adımlar atlanabilir.
+  const flushOrder = useCallback(async () => {
+    const pending = pendingOrderRef.current;
+    if (!pending) return;
+    pendingOrderRef.current = null;
+    savingOrderRef.current = true;
+    setSavingOrder(true);
+
+    try {
+      const res = await fetch("/api/admin/playlists", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlist_id: pending.listId, song_order: pending.ids }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        // Sunucu yazmadı: ekrandaki sıra da son bilinen doğru haline dönmeli
+        setPositions((prev) => ({ ...prev, [pending.listId]: pending.previous }));
+        setOrderError(data.error ?? "Sıra kaydedilemedi");
+      }
+    } catch {
+      setPositions((prev) => ({ ...prev, [pending.listId]: pending.previous }));
+      setOrderError("Bağlantı hatası, tekrar deneyin");
+    } finally {
+      savingOrderRef.current = false;
+      setSavingOrder(false);
+    }
+  }, []);
+
+  // Şarkıyı liste içinde taşır. Ekranda anında uygulanır, yazma yarım saniye
+  // beklemeden gitmez — üst üste taşımalarda arayüz kilitlenmez.
+  // Yalnızca tek bir liste seçiliyken ve arama kapalıyken anlamlı: süzülmüş
+  // görünümde taşımak listenin görünmeyen kısmını sessizce bozardı.
+  const moveSong = (from: number, to: number) => {
+    if (viewId === ALL || filtering) return;
+    if (from === to || from < 0 || to < 0 || to >= visibleSongs.length) return;
+
+    const next = [...visibleSongs];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+
+    // Geri dönüş noktası ilk taşımadaki sıradır; aradaki adımlar zaten kaydedilmedi
+    const previous = pendingOrderRef.current?.previous ?? positions[viewId] ?? {};
+    setPositions((prev) => ({
+      ...prev,
+      [viewId]: Object.fromEntries(next.map((s, i) => [s.id, i + 1])),
+    }));
+    setOrderError("");
+
+    pendingOrderRef.current = { listId: viewId, ids: next.map((s) => s.id), previous };
+    if (orderTimerRef.current) clearTimeout(orderTimerRef.current);
+    orderTimerRef.current = setTimeout(flushOrder, 500);
   };
 
   // Liste içi çalma sırası: eklenme sırası mı, rastgele mi. Değişince bekleyen
@@ -1040,6 +1145,21 @@ function PlaylistPageContent({ params }: Props) {
             )}
           </div>
 
+          {orderable && visibleSongs.length > 1 && (
+            <p className="text-[#6b7280] text-xs mb-2 px-1">
+              {selectedList?.shuffle
+                ? "Şarkıları sürükleyerek ya da oklarla sıralayabilirsiniz — liste karışık modda olduğu için sıra çalmayı etkilemez."
+                : "Şarkıları sürükleyerek ya da oklarla sıralayın; liste bu sırayla çalar."}
+              {savingOrder && <span className="text-[#4b5563]"> · kaydediliyor</span>}
+            </p>
+          )}
+
+          {orderError && (
+            <p className="text-sm rounded-xl px-3.5 py-2.5 mb-2" style={{ background: "rgba(239,68,68,0.1)", color: "#f87171" }}>
+              {orderError}
+            </p>
+          )}
+
           <div className="rounded-2xl border border-white/10 overflow-hidden">
             {loading ? (
               <div className="py-10 text-center text-[#6b7280] text-sm">Yükleniyor...</div>
@@ -1053,7 +1173,56 @@ function PlaylistPageContent({ params }: Props) {
               </div>
             ) : (
               visibleSongs.map((song, i) => (
-                <div key={song.venueSongId} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors" style={{ borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined }}>
+                <div
+                  key={song.venueSongId}
+                  draggable={orderable}
+                  onDragStart={() => orderable && setDragIndex(i)}
+                  onDragOver={(e) => {
+                    if (dragIndex === null) return;
+                    e.preventDefault();
+                    setDragOverIndex(i);
+                  }}
+                  onDrop={(e) => {
+                    if (dragIndex === null) return;
+                    e.preventDefault();
+                    moveSong(dragIndex, i);
+                    setDragIndex(null);
+                    setDragOverIndex(null);
+                  }}
+                  onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
+                  className={`flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors ${orderable ? "cursor-grab active:cursor-grabbing" : ""}`}
+                  style={{
+                    borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined,
+                    opacity: dragIndex === i ? 0.4 : 1,
+                    background: dragOverIndex === i && dragIndex !== i ? "rgba(233,30,140,0.08)" : undefined,
+                  }}
+                >
+                  {/* Liste içi sıra: sürükle-bırak ya da oklar */}
+                  {orderable && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => moveSong(i, i - 1)}
+                          disabled={i === 0}
+                          className="w-5 h-5 flex items-center justify-center rounded disabled:opacity-25"
+                          style={{ background: "rgba(255,255,255,0.06)" }}
+                          title="Yukarı taşı"
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 15l6-6 6 6" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </button>
+                        <button
+                          onClick={() => moveSong(i, i + 1)}
+                          disabled={i === visibleSongs.length - 1}
+                          className="w-5 h-5 flex items-center justify-center rounded disabled:opacity-25"
+                          style={{ background: "rgba(255,255,255,0.06)" }}
+                          title="Aşağı taşı"
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </button>
+                      </div>
+                      <span className="text-[#4b5563] text-xs tabular-nums w-6 text-right">{i + 1}</span>
+                    </div>
+                  )}
                   <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/10">
                     {song.album_cover_url ? (
                       <Image src={song.album_cover_url} alt="" width={40} height={40} className="w-full h-full object-cover" />

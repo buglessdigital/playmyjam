@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -115,8 +116,8 @@ export default function AdminSidebar({ venueId }: Props) {
         style={{ background: "#0f0a18" }}
       >
         <div className="mb-8 px-1">
-          <p className="text-[#e91e8c] font-black text-lg tracking-tight">PlayMyJam</p>
-          <p className="text-[#6b7280] text-xs mt-0.5">Admin Paneli</p>
+          <Image src="/logo.png" alt="PlayMyJam" width={1600} height={500} priority className="h-11 w-auto object-contain" />
+          <p className="text-[#6b7280] text-xs mt-1.5">Admin Paneli</p>
         </div>
         <NavContent venueId={venueId} pathname={pathname} onNavigate={() => setOpen(false)} />
       </aside>
@@ -126,7 +127,7 @@ export default function AdminSidebar({ venueId }: Props) {
         className="md:hidden flex items-center justify-between px-4 py-3 border-b border-white/10 sticky top-0 z-30"
         style={{ background: "#0f0a18" }}
       >
-        <p className="text-[#e91e8c] font-black text-base tracking-tight">PlayMyJam Admin</p>
+        <Image src="/logo.png" alt="PlayMyJam" width={1600} height={500} priority className="h-11 w-auto object-contain" />
         <button
           onClick={() => setOpen(true)}
           className="w-9 h-9 flex items-center justify-center rounded-xl"
@@ -147,8 +148,8 @@ export default function AdminSidebar({ venueId }: Props) {
             style={{ background: "#0f0a18" }}
           >
             <div className="mb-8 px-1">
-              <p className="text-[#e91e8c] font-black text-lg tracking-tight">PlayMyJam</p>
-              <p className="text-[#6b7280] text-xs mt-0.5">Admin Paneli</p>
+              <Image src="/logo.png" alt="PlayMyJam" width={1600} height={500} className="h-11 w-auto object-contain" />
+              <p className="text-[#6b7280] text-xs mt-1.5">Admin Paneli</p>
             </div>
             <NavContent venueId={venueId} pathname={pathname} onNavigate={() => setOpen(false)} />
           </aside>

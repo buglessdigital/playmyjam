@@ -29,17 +29,6 @@ const navItems = (venueId: string) => [
     ),
   },
   {
-    href: `/admin/${venueId}/playlists`,
-    label: "Playlistler",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <path d="M3 6h11M3 12h11M3 18h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M20 8v8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <circle cx="18" cy="16" r="2.2" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-    ),
-  },
-  {
     href: `/admin/${venueId}/requests`,
     label: "İstekler",
     icon: (

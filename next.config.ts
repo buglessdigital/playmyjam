@@ -10,6 +10,17 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "picsum.photos" },
     ],
   },
+  async redirects() {
+    return [
+      {
+        // Playlistler ayrı bir ekrandı; artık /playlist tek ekranda hem listeleri
+        // hem şarkıları yönetiyor. Eski yer imleri kırılmasın.
+        source: "/admin/:venueId/playlists",
+        destination: "/admin/:venueId/playlist",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {

@@ -28,6 +28,17 @@ type Playlist = {
   sort_order: number;
 };
 
+// YouTube'dan içe aktarılmış listelerde bulunur (bkz. 0029). Günlük cron kaynağı
+// yoklayıp yeni şarkıları ekler; listeden çıkarılanlar PMJ'den silinmez.
+type PlaylistSource = {
+  playlist_id: string;
+  youtube_playlist_id: string;
+  auto_sync: boolean;
+  last_synced_at: string | null;
+  last_added: number;
+  last_error: string | null;
+};
+
 type SearchTrack = {
   youtube_video_id: string;
   title: string;
@@ -48,14 +59,21 @@ export default function PlaylistPage({ params }: Props) {
 
 function PlaylistPageContent({ params }: Props) {
   const { venueId } = use(params);
-  // Playlistler ekranından "Düzenle" ile gelindiğinde ilgili sekme açık başlar
+  // Dışarıdan ?list=... ile gelindiğinde ilgili liste seçili başlar
   const initialListId = useSearchParams().get("list") ?? ALL;
   const [venueDbId, setVenueDbId] = useState("");
   const [songs, setSongs] = useState<Song[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   // song_id -> üyesi olduğu playlist id'leri
   const [memberships, setMemberships] = useState<Record<string, string[]>>({});
+  const [sourceByList, setSourceByList] = useState<Record<string, PlaylistSource>>({});
   const [selectedId, setSelectedId] = useState<string>(initialListId);
+  const [loading, setLoading] = useState(true);
+
+  // Katalogdaki şarkı araması
+  const [query, setQuery] = useState("");
+  // Sol raydaki liste adı araması
+  const [listQuery, setListQuery] = useState("");
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
@@ -78,6 +96,9 @@ function PlaylistPageContent({ params }: Props) {
   // kendiliğinden gelsin. Varsayılan açık — içe aktaran mekan genelde bunu ister.
   const [autoSync, setAutoSync] = useState(true);
 
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [syncNote, setSyncNote] = useState("");
+
   // YouTube search state
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchTrack[]>([]);
@@ -96,7 +117,7 @@ function PlaylistPageContent({ params }: Props) {
       songs: Omit<Song, "venueSongId" | "play_count" | "in_venue_list"> | null;
     };
 
-    const [catalog, lists, members] = await Promise.all([
+    const [catalog, lists, members, sources] = await Promise.all([
       supabase
         .from("venue_songs")
         .select("id, play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
@@ -111,6 +132,10 @@ function PlaylistPageContent({ params }: Props) {
         .from("playlist_songs")
         .select("playlist_id, song_id")
         .eq("venue_id", venueDbIdArg),
+      supabase
+        .from("playlist_sources")
+        .select("playlist_id, youtube_playlist_id, auto_sync, last_synced_at, last_added, last_error")
+        .eq("venue_id", venueDbIdArg),
     ]);
 
     if (catalog.data) {
@@ -122,6 +147,11 @@ function PlaylistPageContent({ params }: Props) {
       );
     }
     if (lists.data) setPlaylists(lists.data as Playlist[]);
+    if (sources.data) {
+      setSourceByList(
+        Object.fromEntries((sources.data as PlaylistSource[]).map((s) => [s.playlist_id, s]))
+      );
+    }
     if (members.data) {
       const map: Record<string, string[]> = {};
       for (const m of members.data as { playlist_id: string; song_id: string }[]) {
@@ -129,6 +159,7 @@ function PlaylistPageContent({ params }: Props) {
       }
       setMemberships(map);
     }
+    setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
@@ -147,6 +178,7 @@ function PlaylistPageContent({ params }: Props) {
         .on("postgres_changes", { event: "*", schema: "public", table: "venue_songs", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
         .on("postgres_changes", { event: "*", schema: "public", table: "playlists", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
         .on("postgres_changes", { event: "*", schema: "public", table: "playlist_songs", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
+        .on("postgres_changes", { event: "*", schema: "public", table: "playlist_sources", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
         .subscribe();
     };
     load();
@@ -165,6 +197,7 @@ function PlaylistPageContent({ params }: Props) {
 
   // Seçilen liste silinirse (ya da veri henüz gelmediyse) görünüm "Tümü"ne düşer
   const viewId = selectedList ? selectedId : ALL;
+  const selectedSource = selectedList ? sourceByList[selectedList.id] : undefined;
 
   const countFor = useCallback(
     (playlistId: string) =>
@@ -172,10 +205,36 @@ function PlaylistPageContent({ params }: Props) {
     [songs, memberships]
   );
 
+  const normalize = (value: string) => value.toLocaleLowerCase("tr");
+  const q = normalize(query.trim());
+  const filtering = q.length > 0;
+
+  const matchesQuery = useCallback(
+    (song: Song) => !q || normalize(song.title).includes(q) || normalize(song.artist ?? "").includes(q),
+    [q]
+  );
+
+  // Aramada her listenin kaç eşleşmesi olduğunu yan rayda göstermek için
+  const matchCountFor = useCallback(
+    (playlistId: string) =>
+      songs.reduce(
+        (n, s) => n + ((memberships[s.id] ?? []).includes(playlistId) && matchesQuery(s) ? 1 : 0),
+        0
+      ),
+    [songs, memberships, matchesQuery]
+  );
+
+  // Raydaki listeler: ad araması süzer, seçili liste her zaman görünür kalır
+  const listQ = normalize(listQuery.trim());
+  const visiblePlaylists = useMemo(() => {
+    if (!listQ) return playlists;
+    return playlists.filter((p) => normalize(p.name).includes(listQ) || p.id === viewId);
+  }, [playlists, listQ, viewId]);
+
   const visibleSongs = useMemo(() => {
-    if (viewId === ALL) return songs;
-    return songs.filter((s) => (memberships[s.id] ?? []).includes(viewId));
-  }, [songs, memberships, viewId]);
+    const inView = viewId === ALL ? songs : songs.filter((s) => (memberships[s.id] ?? []).includes(viewId));
+    return q ? inView.filter(matchesQuery) : inView;
+  }, [songs, memberships, viewId, q, matchesQuery]);
 
   // Modal açılırken hedef liste: seçili liste, yoksa ilk aktif, o da yoksa ilk liste
   const defaultTarget = useCallback(() => {
@@ -227,6 +286,52 @@ function PlaylistPageContent({ params }: Props) {
     });
     if (!res.ok) {
       setPlaylists((prev) => prev.map((p) => p.id === playlist.id ? { ...p, is_active: !next } : p));
+    }
+  };
+
+  // Günlük senkron anahtarı. Yalnızca YouTube'dan içe aktarılmış listelerde var —
+  // playlist_sources satırı yoksa API 400 döner, o yüzden buton da gösterilmez.
+  const toggleAutoSync = async (playlist: Playlist) => {
+    const source = sourceByList[playlist.id];
+    if (!source) return;
+    const next = !source.auto_sync;
+    setSourceByList((prev) => ({ ...prev, [playlist.id]: { ...source, auto_sync: next } }));
+
+    const res = await fetch("/api/admin/playlists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playlist_id: playlist.id, auto_sync: next }),
+    });
+    if (!res.ok) {
+      setSourceByList((prev) => ({ ...prev, [playlist.id]: { ...source, auto_sync: !next } }));
+    }
+  };
+
+  const syncNow = async (playlist: Playlist) => {
+    if (syncingId) return;
+    setSyncingId(playlist.id);
+    setSyncNote("");
+    try {
+      const res = await fetch("/api/admin/playlist/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlist_id: playlist.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncNote(data.error ?? "Güncellenemedi");
+        return;
+      }
+      setSyncNote(
+        data.added > 0
+          ? `"${playlist.name}" listesine ${data.added} yeni şarkı eklendi`
+          : `"${playlist.name}" zaten güncel`
+      );
+      if (venueDbId) await fetchAll(venueDbId);
+    } catch {
+      setSyncNote("Bağlantı hatası, tekrar deneyin");
+    } finally {
+      setSyncingId(null);
     }
   };
 
@@ -295,12 +400,12 @@ function PlaylistPageContent({ params }: Props) {
     }
   };
 
-  const doSearch = async (q: string) => {
-    if (!q.trim()) { setSearchResults([]); setSearching(false); return; }
+  const doSearch = async (value: string) => {
+    if (!value.trim()) { setSearchResults([]); setSearching(false); return; }
     setSearching(true);
     setSearchError("");
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(value)}`);
       const data = await res.json();
       if (!res.ok) { setSearchError(data.error ?? "Arama başarısız"); return; }
       setSearchResults(data.tracks ?? []);
@@ -426,14 +531,27 @@ function PlaylistPageContent({ params }: Props) {
     color: selected ? "#f9a8d4" : "#9ca3af",
   });
 
+  const railStyle = (selected: boolean, dim: boolean) => ({
+    background: selected ? "rgba(233,30,140,0.12)" : "rgba(255,255,255,0.02)",
+    border: `1px solid ${selected ? "rgba(233,30,140,0.45)" : "rgba(255,255,255,0.07)"}`,
+    opacity: dim ? 0.45 : 1,
+  });
+
   return (
-    <div className="p-4 md:p-8 max-w-4xl">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h1 className="text-white font-bold text-2xl">Playlist</h1>
+    <div className="p-4 md:p-8 max-w-6xl">
+      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <h1 className="text-white font-bold text-2xl">Playlist</h1>
+          <p className="text-xs mt-1" style={{ color: activeLists.length ? "#22c55e" : "#f59e0b" }}>
+            {activeLists.length
+              ? `Sıra boşken çalan: ${activeLists.map((p) => p.name).join(", ")}`
+              : "Aktif playlist yok — sıra boşken tüm katalogdan rastgele çalınır"}
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <button onClick={openPlaylistModal} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold" style={{ background: "#FF0000", color: "white" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
-            İçe Aktar
+            Playlist Ekle
           </button>
           <button onClick={openAddModal} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold" style={{ background: "#e91e8c", color: "white" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="white" strokeWidth="2.5" strokeLinecap="round" /></svg>
@@ -442,127 +560,277 @@ function PlaylistPageContent({ params }: Props) {
         </div>
       </div>
 
-      {/* Şu an otomatik çalan repertuvar */}
-      <p className="text-xs mb-4" style={{ color: activeLists.length ? "#22c55e" : "#f59e0b" }}>
-        {activeLists.length
-          ? `Sıra boşken çalan: ${activeLists.map((p) => p.name).join(", ")}`
-          : "Aktif playlist yok — sıra boşken tüm katalogdan rastgele çalınır"}
-      </p>
-
-      {/* Liste sekmeleri */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <button onClick={() => setSelectedId(ALL)} className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={tabStyle(viewId === ALL)}>
-          Tümü ({songs.length})
-        </button>
-        {playlists.map((p) => (
-          <button key={p.id} onClick={() => setSelectedId(p.id)} className="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5" style={tabStyle(viewId === p.id)}>
-            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: p.is_active ? "#22c55e" : "rgba(255,255,255,0.2)" }} />
-            {p.name} ({countFor(p.id)})
+      {/* Katalog araması — hem listeleri hem şarkıları süzer */}
+      <div className="relative mb-4">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="absolute left-3.5 top-1/2 -translate-y-1/2">
+          <circle cx="11" cy="11" r="7" stroke="#6b7280" strokeWidth="2" />
+          <path d="M20 20l-3.5-3.5" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Katalogda şarkı veya sanatçı ara..."
+          className="w-full rounded-xl pl-10 pr-10 py-2.5 text-sm text-white outline-none"
+          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+        />
+        {query && (
+          <button
+            onClick={() => setQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6b7280] hover:text-white"
+            title="Aramayı temizle"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </button>
-        ))}
-        <button
-          onClick={() => { setNewListName(""); setListError(""); setShowNewListModal(true); }}
-          className="px-3 py-1.5 rounded-xl text-xs font-semibold"
-          style={{ background: "rgba(255,255,255,0.05)", border: "1px dashed rgba(255,255,255,0.2)", color: "#9ca3af" }}
-        >
-          + Yeni Liste
-        </button>
+        )}
       </div>
 
-      {/* Seçili listenin araç çubuğu */}
-      {selectedList ? (
-        <div className="rounded-2xl border border-white/10 px-4 py-3 mb-4 flex items-center justify-between gap-3 flex-wrap" style={{ background: "rgba(255,255,255,0.02)" }}>
-          <div className="min-w-0">
-            <p className="text-white text-sm font-semibold truncate">{selectedList.name}</p>
-            <p className="text-[#6b7280] text-xs">
-              {selectedList.is_active
-                ? "Aktif — sıra boşken bu listedeki şarkılar çalar"
-                : "Pasif — şarkıları müşteri yine de seçebilir, otomatik çalmaz"}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => toggleActive(selectedList)}
-              className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
-              style={{
-                background: selectedList.is_active ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.08)",
-                color: selectedList.is_active ? "#22c55e" : "#9ca3af",
-              }}
-            >
-              {selectedList.is_active ? "Aktif" : "Pasif"}
-            </button>
-            <button
-              onClick={() => { setRenaming(selectedList); setNewListName(selectedList.name); setListError(""); }}
-              className="w-8 h-8 flex items-center justify-center rounded-lg"
-              style={{ background: "rgba(255,255,255,0.08)" }}
-              title="Yeniden adlandır"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4z" stroke="#9ca3af" strokeWidth="1.8" strokeLinejoin="round" /></svg>
-            </button>
-            <button
-              onClick={() => deleteList(selectedList)}
-              className="w-8 h-8 flex items-center justify-center rounded-lg"
-              style={{ background: "rgba(239,68,68,0.1)" }}
-              title="Listeyi sil"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" /></svg>
-            </button>
-          </div>
-        </div>
-      ) : (
-        <p className="text-[#6b7280] text-xs mb-4">
-          Mekanın tüm şarkıları. Müşteriler hangi liste aktif olursa olsun bu havuzun tamamından seçebilir.
+      {syncNote && (
+        <p className="text-sm rounded-xl px-3.5 py-2.5 mb-3" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}>
+          {syncNote}
         </p>
       )}
 
-      <div className="rounded-2xl border border-white/10 overflow-hidden">
-        {visibleSongs.length === 0 ? (
-          <div className="py-10 text-center text-[#6b7280] text-sm">
-            {selectedList ? "Bu listede henüz şarkı yok" : "Henüz şarkı yok"}
+      <div className="grid gap-4 lg:grid-cols-[260px_1fr] items-start">
+        {/* Sol ray: listeler. Mobilde yatay kaydırılan şeritler. */}
+        <div className="flex flex-col gap-2 lg:sticky lg:top-4">
+          {/* Liste araması — playlist'ler arasında ada göre süzer */}
+          <div className="relative">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="absolute left-3 top-1/2 -translate-y-1/2">
+              <circle cx="11" cy="11" r="7" stroke="#6b7280" strokeWidth="2" />
+              <path d="M20 20l-3.5-3.5" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <input
+              value={listQuery}
+              onChange={(e) => setListQuery(e.target.value)}
+              placeholder="Playlist ara..."
+              className="w-full rounded-xl pl-9 pr-9 py-2 text-xs text-white outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
+            />
+            {listQuery && (
+              <button
+                onClick={() => setListQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6b7280] hover:text-white"
+                title="Aramayı temizle"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+              </button>
+            )}
           </div>
-        ) : (
-          visibleSongs.map((song, i) => (
-            <div key={song.venueSongId} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors" style={{ borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined }}>
-              <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/10">
-                {song.album_cover_url ? (
-                  <Image src={song.album_cover_url} alt="" width={40} height={40} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="2" /></svg>
+
+          <div className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
+            <button
+              onClick={() => setSelectedId(ALL)}
+              className="text-left rounded-2xl px-3.5 py-3 shrink-0 min-w-[160px] lg:min-w-0 transition-all"
+              style={railStyle(viewId === ALL, false)}
+            >
+              <p className="text-sm font-semibold" style={{ color: viewId === ALL ? "#f9a8d4" : "#e5e7eb" }}>
+                Tüm Şarkılar
+              </p>
+              <p className="text-[#6b7280] text-[11px] mt-0.5">
+                {songs.length} şarkı
+                {filtering ? ` · ${songs.filter(matchesQuery).length} eşleşme` : ""}
+              </p>
+            </button>
+
+            {visiblePlaylists.map((p) => {
+              const total = countFor(p.id);
+              const matches = filtering ? matchCountFor(p.id) : total;
+              const source = sourceByList[p.id];
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setSelectedId(p.id)}
+                  className="text-left rounded-2xl px-3.5 py-3 shrink-0 min-w-[160px] lg:min-w-0 transition-all"
+                  style={railStyle(viewId === p.id, filtering && matches === 0)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: p.is_active ? "#22c55e" : "rgba(255,255,255,0.2)" }} />
+                    <p className="text-sm font-semibold truncate" style={{ color: viewId === p.id ? "#f9a8d4" : "#e5e7eb" }}>
+                      {p.name}
+                    </p>
+                    {source && (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className="shrink-0 ml-auto">
+                        <path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke={source.last_error ? "#f87171" : source.auto_sync ? "#FF0000" : "#4b5563"} strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    )}
                   </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-medium truncate">{song.title}</p>
-                <p className="text-[#6b7280] text-xs truncate">
-                  {song.artist} {song.duration_ms ? `· ${formatDur(song.duration_ms)}` : ""} · {song.play_count} çalınma
-                  {viewId === ALL && (memberships[song.id] ?? []).length > 0
-                    ? ` · ${(memberships[song.id] ?? [])
-                        .map((id) => playlists.find((p) => p.id === id)?.name)
-                        .filter(Boolean)
-                        .join(", ")}`
-                    : ""}
+                  <p className="text-[#6b7280] text-[11px] mt-0.5">
+                    {total} şarkı
+                    {filtering ? ` · ${matches} eşleşme` : ` · ${p.is_active ? "Aktif" : "Pasif"}`}
+                  </p>
+                </button>
+              );
+            })}
+
+            <button
+              onClick={() => { setNewListName(""); setListError(""); setShowNewListModal(true); }}
+              className="rounded-2xl px-3.5 py-3 text-sm font-semibold shrink-0 min-w-[140px] lg:min-w-0"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(255,255,255,0.2)", color: "#9ca3af" }}
+            >
+              + Yeni Liste
+            </button>
+          </div>
+
+          {listQ && visiblePlaylists.length === 0 && (
+            <p className="text-[#6b7280] text-[11px] px-1">Eşleşen playlist yok</p>
+          )}
+        </div>
+
+        {/* Sağ pano: seçili görünümün başlığı, araçları ve şarkıları */}
+        <div className="min-w-0">
+          <div className="rounded-2xl border border-white/10 px-4 py-3 mb-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: "rgba(255,255,255,0.02)" }}>
+            <div className="min-w-0">
+              <p className="text-white text-sm font-semibold truncate">
+                {selectedList ? selectedList.name : "Tüm Şarkılar"}
+              </p>
+              <p className="text-[#6b7280] text-xs mt-0.5">
+                {selectedList
+                  ? selectedList.is_active
+                    ? "Aktif — sıra boşken bu listedeki şarkılar çalar"
+                    : "Pasif — şarkıları müşteri yine de seçebilir, otomatik çalmaz"
+                  : "Mekanın tüm şarkıları. Müşteriler hangi liste aktif olursa olsun bu havuzun tamamından seçebilir."}
+              </p>
+              {selectedSource && (
+                <p className="text-[11px] mt-1 flex items-center gap-1.5 flex-wrap">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                    <path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke="#FF0000" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  <span style={{ color: selectedSource.last_error ? "#f87171" : selectedSource.auto_sync ? "#22c55e" : "#6b7280" }}>
+                    {selectedSource.last_error
+                      ? `Senkron hatası: ${selectedSource.last_error}`
+                      : selectedSource.auto_sync
+                        ? "Her gün otomatik güncelleniyor"
+                        : "Otomatik güncelleme kapalı"}
+                  </span>
+                  {selectedSource.last_synced_at && !selectedSource.last_error && (
+                    <span className="text-[#4b5563]">
+                      · Son: {new Date(selectedSource.last_synced_at).toLocaleDateString("tr-TR")}
+                      {selectedSource.last_added > 0 ? ` (+${selectedSource.last_added})` : ""}
+                    </span>
+                  )}
                 </p>
-              </div>
-              <button
-                onClick={() => toggleInList(song.venueSongId, song.in_venue_list)}
-                className="text-xs px-2.5 py-1.5 rounded-lg font-medium shrink-0 transition-all"
-                style={{ background: song.in_venue_list ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.08)", color: song.in_venue_list ? "#22c55e" : "#9ca3af" }}
-                title={song.in_venue_list ? "Müşteri panelinde görünüyor" : "Müşteriden gizli — otomatik de çalmaz"}
-              >
-                {song.in_venue_list ? "Görünür" : "Gizli"}
-              </button>
-              <button
-                onClick={() => removeSong(song)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0"
-                style={{ background: "rgba(239,68,68,0.1)" }}
-                title={selectedList ? "Bu listeden çıkar" : "Mekandan tamamen kaldır"}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" /></svg>
-              </button>
+              )}
             </div>
-          ))
-        )}
+
+            {selectedList && (
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => toggleActive(selectedList)}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
+                  style={{
+                    background: selectedList.is_active ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.08)",
+                    color: selectedList.is_active ? "#22c55e" : "#9ca3af",
+                  }}
+                  title={selectedList.is_active
+                    ? "Sıra boşken bu listedeki şarkılar çalar"
+                    : "Pasif — müşteri yine seçebilir, otomatik çalmaz"}
+                >
+                  {selectedList.is_active ? "Aktif" : "Pasif"}
+                </button>
+                {selectedSource && (
+                  <>
+                    <button
+                      onClick={() => toggleAutoSync(selectedList)}
+                      className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
+                      style={{
+                        background: selectedSource.auto_sync ? "rgba(255,0,0,0.12)" : "rgba(255,255,255,0.08)",
+                        color: selectedSource.auto_sync ? "#fca5a5" : "#9ca3af",
+                      }}
+                      title={selectedSource.auto_sync
+                        ? "YouTube listesine eklenen yeni şarkılar her gün buraya da eklenir"
+                        : "Otomatik güncelleme kapalı — liste olduğu gibi kalır"}
+                    >
+                      {selectedSource.auto_sync ? "Senkron açık" : "Senkron kapalı"}
+                    </button>
+                    <button
+                      onClick={() => syncNow(selectedList)}
+                      disabled={syncingId !== null}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg disabled:opacity-40"
+                      style={{ background: "rgba(255,255,255,0.08)" }}
+                      title="YouTube'dan şimdi güncelle"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={syncingId === selectedList.id ? "animate-spin" : ""}>
+                        <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => { setRenaming(selectedList); setNewListName(selectedList.name); setListError(""); }}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg"
+                  style={{ background: "rgba(255,255,255,0.08)" }}
+                  title="Yeniden adlandır"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4z" stroke="#9ca3af" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+                </button>
+                <button
+                  onClick={() => deleteList(selectedList)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg"
+                  style={{ background: "rgba(239,68,68,0.1)" }}
+                  title="Listeyi sil"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-white/10 overflow-hidden">
+            {loading ? (
+              <div className="py-10 text-center text-[#6b7280] text-sm">Yükleniyor...</div>
+            ) : visibleSongs.length === 0 ? (
+              <div className="py-10 text-center text-[#6b7280] text-sm">
+                {filtering
+                  ? "Eşleşen şarkı yok"
+                  : selectedList
+                    ? "Bu listede henüz şarkı yok"
+                    : "Henüz şarkı yok"}
+              </div>
+            ) : (
+              visibleSongs.map((song, i) => (
+                <div key={song.venueSongId} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors" style={{ borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined }}>
+                  <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/10">
+                    {song.album_cover_url ? (
+                      <Image src={song.album_cover_url} alt="" width={40} height={40} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="2" /></svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{song.title}</p>
+                    <p className="text-[#6b7280] text-xs truncate">
+                      {song.artist} {song.duration_ms ? `· ${formatDur(song.duration_ms)}` : ""} · {song.play_count} çalınma
+                      {viewId === ALL && (memberships[song.id] ?? []).length > 0
+                        ? ` · ${(memberships[song.id] ?? [])
+                            .map((id) => playlists.find((p) => p.id === id)?.name)
+                            .filter(Boolean)
+                            .join(", ")}`
+                        : ""}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleInList(song.venueSongId, song.in_venue_list)}
+                    className="text-xs px-2.5 py-1.5 rounded-lg font-medium shrink-0 transition-all"
+                    style={{ background: song.in_venue_list ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.08)", color: song.in_venue_list ? "#22c55e" : "#9ca3af" }}
+                    title={song.in_venue_list ? "Müşteri panelinde görünüyor" : "Müşteriden gizli — otomatik de çalmaz"}
+                  >
+                    {song.in_venue_list ? "Görünür" : "Gizli"}
+                  </button>
+                  <button
+                    onClick={() => removeSong(song)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0"
+                    style={{ background: "rgba(239,68,68,0.1)" }}
+                    title={selectedList ? "Bu listeden çıkar" : "Mekandan tamamen kaldır"}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Yeni liste / yeniden adlandırma */}

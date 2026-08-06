@@ -88,8 +88,12 @@ function AdminDashboardContent({ params }: Props) {
         .select(QUEUE_SELECT)
         .eq("venue_id", dbId)
         .eq("status", "queued")
+        // added_at + id: beraberlik kırıcı (0034). Öncelikli satırların hepsi
+        // position = 0 ile yazılıyor; bunlar olmadan sıra rastgele kayıyordu.
         .order("priority", { ascending: false })
-        .order("position", { ascending: true });
+        .order("position", { ascending: true })
+        .order("added_at", { ascending: true })
+        .order("id", { ascending: true });
       if (data) setQueue(data as unknown as QueueItem[]);
     },
     [supabase]

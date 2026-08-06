@@ -33,8 +33,15 @@ export async function playNextFromQueue(
     .select("id, song_id, user_id, songs(youtube_video_id, embeddable, title, artist, album_cover_url)")
     .eq("venue_id", venueId)
     .eq("status", "queued")
+    // Sıra: öncelikliler her zaman üstte (sonradan eklenmiş olsa bile), her iki
+    // sınıf da kendi içinde ekleme sırasıyla. added_at + id beraberlik kırıcıdır
+    // (0034): request_song tüm öncelikli satırları position = 0 ile yazdığı için
+    // bunlar olmadan sıra rastgeleydi — sonradan eklenen öncelikli, önce
+    // eklenenin önüne geçebiliyordu.
     .order("priority", { ascending: false })
     .order("position", { ascending: true })
+    .order("added_at", { ascending: true })
+    .order("id", { ascending: true })
     .limit(1)
     .maybeSingle();
 

@@ -49,6 +49,20 @@ export async function assertVenuePlaylist(venueId: string, playlistId: string): 
 
 export type AttachableSong = MatchableSong;
 
+// Liste içi sıra (0032): sıralı modda şarkılar bu sırayla çalar. Yeni şarkı hep
+// listenin sonuna eklenir — içe aktarımda kaynak listenin sırası korunur.
+async function nextPlaylistPosition(playlistId: string): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from("playlist_songs")
+    .select("position")
+    .eq("playlist_id", playlistId)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return (data?.position ?? 0) + 1;
+}
+
 // Hazır songs satırlarını topluca mekanın kataloguna + hedef playlist'e bağlar.
 // Toplu içe aktarım (YouTube playlist) ve günlük otomatik senkron aynı yoldan
 // geçsin diye ortak: "zaten var" ölçütü HEDEF LİSTEDEKİ üyeliktir — aynı şarkı
@@ -77,8 +91,15 @@ export async function attachSongsToPlaylist(
   );
   if (catalogErr) throw new Error(catalogErr.message);
 
+  const basePosition = await nextPlaylistPosition(playlistId);
+
   const { error: memberErr } = await supabaseAdmin.from("playlist_songs").upsert(
-    fresh.map((s) => ({ venue_id: venueId, playlist_id: playlistId, song_id: s.id })),
+    fresh.map((s, i) => ({
+      venue_id: venueId,
+      playlist_id: playlistId,
+      song_id: s.id,
+      position: basePosition + i,
+    })),
     { onConflict: "playlist_id,song_id", ignoreDuplicates: true }
   );
   if (memberErr) throw new Error(memberErr.message);
@@ -163,9 +184,12 @@ export async function addSongToVenuePlaylist(
     venueSongId = existingVs.id;
   }
 
-  const { error: memberErr } = await supabaseAdmin
-    .from("playlist_songs")
-    .insert({ venue_id: venueId, playlist_id: targetPlaylistId, song_id: songRow.id });
+  const { error: memberErr } = await supabaseAdmin.from("playlist_songs").insert({
+    venue_id: venueId,
+    playlist_id: targetPlaylistId,
+    song_id: songRow.id,
+    position: await nextPlaylistPosition(targetPlaylistId),
+  });
 
   if (memberErr) {
     return { error: memberErr.message, status: 500 };

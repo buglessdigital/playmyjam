@@ -18,7 +18,7 @@ export async function getTokenUnitPrice(): Promise<number> {
     .maybeSingle();
 
   const price = Number(data?.value);
-  return Number.isFinite(price) && price > 0 ? price : 30;
+  return Number.isFinite(price) && price > 0 ? price : 40;
 }
 
 export async function getGlobalTokenPackages(): Promise<TokenPackage[]> {

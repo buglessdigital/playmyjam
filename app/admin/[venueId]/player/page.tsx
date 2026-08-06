@@ -91,8 +91,11 @@ function PlayerPageContent({ params }: Props) {
           .select(QUEUE_SELECT, { count: "exact" })
           .eq("venue_id", venue.id)
           .eq("status", "queued")
+          // Beraberlik kırıcı (0034) — bkz. lib/queue.ts
           .order("priority", { ascending: false })
           .order("position", { ascending: true })
+          .order("added_at", { ascending: true })
+          .order("id", { ascending: true })
           .limit(QUEUE_LIMIT);
         if (cancelled) return;
         if (data) setQueue(data as unknown as QueueItem[]);

@@ -20,8 +20,9 @@ type WalletTx = {
   created_at: number;
 };
 
-const CUSTOM = "custom";
-const MAX_LOOSE = 1000;
+// Paket adedi: seçili paket kendi katları halinde artar (1'lik paket 1+40₺,
+// 3'lük paket 3 jeton+100₺ adımlarla). Toplam jeton bu tavanı aşamaz.
+const MAX_TOKENS = 1000;
 const TX_PREVIEW = 3;
 
 const PINK = "#e91e8c";
@@ -114,8 +115,14 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const [packages] = useState<TokenPackage[]>(initialPackages);
   const [balanceLoaded, setBalanceLoaded] = useState(false);
   const [balance, setBalance] = useState(0);
-  const [selected, setSelected] = useState<string>(initialSelectedId || CUSTOM);
-  const [qty, setQty] = useState(1);
+  const [selected, setSelected] = useState<string>(initialSelectedId);
+  // Seçili paketin kaç kez alınacağı; paket değişince 1'e döner
+  const [multiplier, setMultiplier] = useState(1);
+
+  const selectPackage = (id: string) => {
+    setSelected(id);
+    setMultiplier(1);
+  };
 
   const [txs, setTxs] = useState<WalletTx[]>([]);
   const [txLoaded, setTxLoaded] = useState(false);
@@ -188,18 +195,18 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
 
   const displayBalance = useAnimatedNumber(balance);
 
-  const pkg = selected === CUSTOM ? null : packages.find((p) => p.id === selected);
-  const buyTokens = pkg ? pkg.tokens : qty;
-  const buyTotal = pkg ? pkg.price : qty * unitPrice;
+  const pkg = packages.find((p) => p.id === selected) ?? null;
+  const buyTokens = pkg ? pkg.tokens * multiplier : 0;
+  const buyTotal = pkg ? pkg.price * multiplier : 0;
 
   const handlePurchase = async () => {
-    if (purchasing || buyTokens <= 0) return;
+    if (purchasing || !pkg || buyTokens <= 0) return;
     setPurchasing(true);
     try {
       const res = await fetch(`/api/venue/${venueId}/tokens/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pkg ? { package_id: pkg.id } : { tokens: qty }),
+        body: JSON.stringify({ package_id: pkg.id, quantity: multiplier }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -216,7 +223,9 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const locale = lang === "tr" ? "tr-TR" : "en-US";
   const unitLabel = (p: TokenPackage) => (p.price / p.tokens).toLocaleString(locale, { maximumFractionDigits: 1 });
   const fmtPrice = (n: number) => n.toLocaleString(locale, { maximumFractionDigits: 2 });
-  const clampQty = (n: number) => Math.min(MAX_LOOSE, Math.max(1, Math.round(n)));
+  // Adet tavanı pakete göre: toplam jeton MAX_TOKENS'ı aşamaz
+  const clampMultiplier = (n: number, p: TokenPackage) =>
+    Math.min(Math.max(1, Math.floor(MAX_TOKENS / p.tokens)), Math.max(1, Math.round(n)));
 
   const visibleTxs = txExpanded ? txs : txs.slice(0, TX_PREVIEW);
 
@@ -280,21 +289,25 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
           </div>
         )}
 
-        {/* Miktar seçimi: paketler ve tek jeton tek listede, eşit ağırlıkta */}
+        {/* Miktar seçimi: yalnızca paketler; seçili paket kendi katlarıyla artar */}
         <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.chooseAmount}</p>
 
         <div className="space-y-2.5" role="radiogroup" aria-label={t.tokens.chooseAmount}>
           {packages.map((p) => {
             const isSel = selected === p.id;
             const savings = unitPrice > 0 ? Math.round((1 - p.price / p.tokens / unitPrice) * 100) : 0;
+            // Seçili satırda gösterilen değerler adede göre katlanır
+            const mult = isSel ? multiplier : 1;
+            const rowTokens = p.tokens * mult;
+            const rowPrice = p.price * mult;
             return (
-              <OptionRow key={p.id} selected={isSel} onSelect={() => setSelected(p.id)}>
+              <OptionRow key={p.id} selected={isSel} onSelect={() => selectPackage(p.id)}>
                 <div className="flex items-center gap-3.5">
                   <Radio selected={isSel} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="text-[19px] font-extrabold leading-none text-white">
-                        {p.tokens} <span className="text-xs font-medium text-[#9ca3af]">{t.tokens.tokenUnit}</span>
+                      <p className="text-[19px] font-extrabold leading-none text-white tabular-nums">
+                        {rowTokens} <span className="text-xs font-medium text-[#9ca3af]">{t.tokens.tokenUnit}</span>
                       </p>
                       {p.popular && (
                         <span
@@ -308,7 +321,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                     <p className="mt-1.5 text-[11px] text-[#6b7280]">{fmt(t.tokens.perToken, { price: unitLabel(p) })}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-base font-bold text-white tabular-nums">{fmtPrice(p.price)}₺</p>
+                    <p className="text-base font-bold text-white tabular-nums">{fmtPrice(rowPrice)}₺</p>
                     {savings > 0 && (
                       <span className="mt-1 inline-block rounded-full bg-[#22c55e]/10 px-2 py-0.5 text-[10px] font-bold text-[#4ade80]">
                         {fmt(t.tokens.savings, { percent: savings })}
@@ -316,58 +329,39 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                     )}
                   </div>
                 </div>
+
+                {/* Adet: her dokunuş paketin kendi katı kadar jeton ve fiyat ekler */}
+                {isSel && (
+                  <div
+                    className="mt-4 flex items-center justify-center gap-4 rounded-xl bg-black/20 py-2.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      aria-label={t.tokens.decreaseAria}
+                      onClick={() => setMultiplier((m) => clampMultiplier(m - 1, p))}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95 disabled:opacity-40"
+                      disabled={multiplier <= 1}
+                    >
+                      −
+                    </button>
+                    <span className="min-w-20 text-center text-lg font-extrabold text-white tabular-nums">
+                      {rowTokens}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={t.tokens.increaseAria}
+                      onClick={() => setMultiplier((m) => clampMultiplier(m + 1, p))}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95 disabled:opacity-40"
+                      disabled={rowTokens + p.tokens > MAX_TOKENS}
+                    >
+                      +
+                    </button>
+                  </div>
+                )}
               </OptionRow>
             );
           })}
-
-          {/* Tekli jeton: adet × global birim fiyat */}
-          <OptionRow selected={selected === CUSTOM} onSelect={() => setSelected(CUSTOM)}>
-            <div className="flex items-center gap-3.5">
-              <Radio selected={selected === CUSTOM} />
-              <div className="min-w-0 flex-1">
-                <p className="text-[15px] font-bold leading-none text-white">{t.tokens.customAmountTitle}</p>
-                <p className="mt-1.5 text-[11px] text-[#6b7280]">{t.tokens.customAmountDesc}</p>
-              </div>
-              <p className="shrink-0 text-right text-base font-bold text-white tabular-nums">
-                {selected === CUSTOM ? `${fmtPrice(qty * unitPrice)}₺` : fmt(t.tokens.perToken, { price: fmtPrice(unitPrice) })}
-              </p>
-            </div>
-            {selected === CUSTOM && (
-              <div
-                className="mt-4 flex items-center justify-center gap-4 rounded-xl bg-black/20 py-2.5"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  aria-label={t.tokens.decreaseAria}
-                  onClick={() => setQty((q) => clampQty(q - 1))}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95"
-                >
-                  −
-                </button>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={MAX_LOOSE}
-                  value={qty}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    setQty(Number.isFinite(n) && n >= 1 ? clampQty(n) : 1);
-                  }}
-                  className="h-9 w-20 rounded-xl bg-transparent text-center text-lg font-extrabold text-white outline-none tabular-nums"
-                />
-                <button
-                  type="button"
-                  aria-label={t.tokens.increaseAria}
-                  onClick={() => setQty((q) => clampQty(q + 1))}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95"
-                >
-                  +
-                </button>
-              </div>
-            )}
-          </OptionRow>
         </div>
 
         <div className="mt-6 flex items-center justify-center gap-3">

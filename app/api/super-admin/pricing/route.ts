@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   const unitPrice = Number(setting?.value);
   return NextResponse.json({
-    unit_price: Number.isFinite(unitPrice) && unitPrice > 0 ? unitPrice : 30,
+    unit_price: Number.isFinite(unitPrice) && unitPrice > 0 ? unitPrice : 40,
     packages: packages ?? [],
   });
 }

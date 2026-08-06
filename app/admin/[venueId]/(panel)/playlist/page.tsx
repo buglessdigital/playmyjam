@@ -26,7 +26,12 @@ type Playlist = {
   name: string;
   is_active: boolean;
   sort_order: number;
+  // Sıralı modda liste İÇİNDEKİ sıra yerine rastgele çalar (0032)
+  shuffle: boolean;
 };
+
+// Rotasyon imleci: hangi listedeyiz ve kaçıncı turdayız (0032)
+type Rotation = { playlist_id: string | null; cycle: number };
 
 // YouTube'dan içe aktarılmış listelerde bulunur (bkz. 0029). Günlük cron kaynağı
 // yoklayıp yeni şarkıları ekler; listeden çıkarılanlar PMJ'den silinmez.
@@ -66,9 +71,16 @@ function PlaylistPageContent({ params }: Props) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   // song_id -> üyesi olduğu playlist id'leri
   const [memberships, setMemberships] = useState<Record<string, string[]>>({});
+  // playlist_id -> (song_id -> liste içi sıra). Liste görünümü bu sırayla dizilir.
+  const [positions, setPositions] = useState<Record<string, Record<string, number>>>({});
   const [sourceByList, setSourceByList] = useState<Record<string, PlaylistSource>>({});
   const [selectedId, setSelectedId] = useState<string>(initialListId);
   const [loading, setLoading] = useState(true);
+
+  const [rotation, setRotation] = useState<Rotation | null>(null);
+  // playlist_id -> bu turda tüketilmiş şarkı sayısı (ilerleme göstergesi)
+  const [consumed, setConsumed] = useState<Record<string, number>>({});
+  const [reordering, setReordering] = useState(false);
 
   // Katalogdaki şarkı araması
   const [query, setQuery] = useState("");
@@ -117,7 +129,7 @@ function PlaylistPageContent({ params }: Props) {
       songs: Omit<Song, "venueSongId" | "play_count" | "in_venue_list"> | null;
     };
 
-    const [catalog, lists, members, sources] = await Promise.all([
+    const [catalog, lists, members, sources, rotationRow] = await Promise.all([
       supabase
         .from("venue_songs")
         .select("id, play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
@@ -125,18 +137,40 @@ function PlaylistPageContent({ params }: Props) {
         .order("added_at", { ascending: false }),
       supabase
         .from("playlists")
-        .select("id, name, is_active, sort_order")
+        .select("id, name, is_active, sort_order, shuffle")
         .eq("venue_id", venueDbIdArg)
         .order("sort_order", { ascending: true }),
       supabase
         .from("playlist_songs")
-        .select("playlist_id, song_id")
-        .eq("venue_id", venueDbIdArg),
+        .select("playlist_id, song_id, position")
+        .eq("venue_id", venueDbIdArg)
+        .order("position", { ascending: true }),
       supabase
         .from("playlist_sources")
         .select("playlist_id, youtube_playlist_id, auto_sync, last_synced_at, last_added, last_error")
         .eq("venue_id", venueDbIdArg),
+      supabase
+        .from("playlist_rotation")
+        .select("playlist_id, cycle")
+        .eq("venue_id", venueDbIdArg)
+        .maybeSingle(),
     ]);
+
+    const rot = (rotationRow.data as Rotation | null) ?? null;
+    setRotation(rot);
+
+    // Bu turda hangi listeden kaç şarkı çalındı — ilerleme göstergesi
+    const { data: consumedRows } = await supabase
+      .from("playlist_rotation_consumed")
+      .select("playlist_id")
+      .eq("venue_id", venueDbIdArg)
+      .eq("cycle", rot?.cycle ?? 1);
+
+    const counts: Record<string, number> = {};
+    for (const row of (consumedRows ?? []) as { playlist_id: string }[]) {
+      counts[row.playlist_id] = (counts[row.playlist_id] ?? 0) + 1;
+    }
+    setConsumed(counts);
 
     if (catalog.data) {
       const rows = catalog.data as unknown as VenueSongRow[];
@@ -154,10 +188,13 @@ function PlaylistPageContent({ params }: Props) {
     }
     if (members.data) {
       const map: Record<string, string[]> = {};
-      for (const m of members.data as { playlist_id: string; song_id: string }[]) {
+      const order: Record<string, Record<string, number>> = {};
+      for (const m of members.data as { playlist_id: string; song_id: string; position: number }[]) {
         (map[m.song_id] ??= []).push(m.playlist_id);
+        (order[m.playlist_id] ??= {})[m.song_id] = m.position;
       }
       setMemberships(map);
+      setPositions(order);
     }
     setLoading(false);
   }, [supabase]);
@@ -179,6 +216,8 @@ function PlaylistPageContent({ params }: Props) {
         .on("postgres_changes", { event: "*", schema: "public", table: "playlists", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
         .on("postgres_changes", { event: "*", schema: "public", table: "playlist_songs", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
         .on("postgres_changes", { event: "*", schema: "public", table: "playlist_sources", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
+        // Sıralı moddaki "şu an çalan liste — 12/40" göstergesi her dolumda tazelensin
+        .on("postgres_changes", { event: "*", schema: "public", table: "playlist_rotation", filter: `venue_id=eq.${venue.id}` }, () => fetchAll(venue.id))
         .subscribe();
     };
     load();
@@ -190,6 +229,13 @@ function PlaylistPageContent({ params }: Props) {
   }, [venueId, supabase, fetchAll]);
 
   const activeLists = useMemo(() => playlists.filter((p) => p.is_active), [playlists]);
+
+  // Şu an hangi listeden çalınıyor. İmleçteki liste pasife alınmış ya da
+  // silinmişse sunucu da ilk aktif listeye düşeceği için burada da öyle.
+  const currentList = useMemo(() => {
+    const pointed = activeLists.find((p) => p.id === rotation?.playlist_id);
+    return pointed ?? activeLists[0] ?? null;
+  }, [activeLists, rotation]);
   const selectedList = useMemo(
     () => playlists.find((p) => p.id === selectedId) ?? null,
     [playlists, selectedId]
@@ -232,9 +278,16 @@ function PlaylistPageContent({ params }: Props) {
   }, [playlists, listQ, viewId]);
 
   const visibleSongs = useMemo(() => {
-    const inView = viewId === ALL ? songs : songs.filter((s) => (memberships[s.id] ?? []).includes(viewId));
+    if (viewId === ALL) {
+      return q ? songs.filter(matchesQuery) : songs;
+    }
+    // Liste görünümü: katalog sırası değil, listenin kendi çalma sırası
+    const order = positions[viewId] ?? {};
+    const inView = songs
+      .filter((s) => (memberships[s.id] ?? []).includes(viewId))
+      .sort((a, b) => (order[a.id] ?? 0) - (order[b.id] ?? 0));
     return q ? inView.filter(matchesQuery) : inView;
-  }, [songs, memberships, viewId, q, matchesQuery]);
+  }, [songs, memberships, positions, viewId, q, matchesQuery]);
 
   // Modal açılırken hedef liste: seçili liste, yoksa ilk aktif, o da yoksa ilk liste
   const defaultTarget = useCallback(() => {
@@ -287,6 +340,52 @@ function PlaylistPageContent({ params }: Props) {
     if (!res.ok) {
       setPlaylists((prev) => prev.map((p) => p.id === playlist.id ? { ...p, is_active: !next } : p));
     }
+  };
+
+  // Listeyi bir yukarı/aşağı taşır. Sıra sunucuda dizinin kendisi olarak yazılır;
+  // çalan listenin imleci korunur, yani sıra değiştirmek turu başa sarmaz.
+  const moveList = async (playlist: Playlist, delta: -1 | 1) => {
+    if (reordering) return;
+    const ordered = [...playlists].sort((a, b) => a.sort_order - b.sort_order);
+    const from = ordered.findIndex((p) => p.id === playlist.id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ordered.length) return;
+
+    const next = [...ordered];
+    [next[from], next[to]] = [next[to], next[from]];
+    const withOrder = next.map((p, i) => ({ ...p, sort_order: i }));
+    setPlaylists(withOrder);
+    setReordering(true);
+
+    try {
+      const res = await fetch("/api/admin/playlists", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: withOrder.map((p) => p.id) }),
+      });
+      if (!res.ok) setPlaylists(ordered);
+    } catch {
+      setPlaylists(ordered);
+    } finally {
+      setReordering(false);
+    }
+  };
+
+  // Liste içi çalma sırası: eklenme sırası mı, rastgele mi. Değişince bekleyen
+  // otomatik şarkılar da yeni düzene göre yeniden seçilir (API tarafında).
+  const setShuffle = async (playlist: Playlist, next: boolean) => {
+    if (playlist.shuffle === next) return;
+    setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, shuffle: next } : p)));
+    const res = await fetch("/api/admin/playlists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playlist_id: playlist.id, shuffle: next }),
+    });
+    if (!res.ok) {
+      setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, shuffle: !next } : p)));
+      return;
+    }
+    if (venueDbId) await fetchAll(venueDbId);
   };
 
   // Günlük senkron anahtarı. Yalnızca YouTube'dan içe aktarılmış listelerde var —
@@ -543,9 +642,11 @@ function PlaylistPageContent({ params }: Props) {
         <div>
           <h1 className="text-white font-bold text-2xl">Playlist</h1>
           <p className="text-xs mt-1" style={{ color: activeLists.length ? "#22c55e" : "#f59e0b" }}>
-            {activeLists.length
-              ? `Sıra boşken çalan: ${activeLists.map((p) => p.name).join(", ")}`
-              : "Aktif playlist yok — sıra boşken tüm katalogdan rastgele çalınır"}
+            {!activeLists.length
+              ? "Aktif playlist yok — sıra boşken tüm katalogdan rastgele çalınır"
+              : `Sırada: ${activeLists.map((p) => p.name).join(" → ")}${
+                  currentList ? ` · Şu an ${currentList.name}` : ""
+                }`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -590,6 +691,18 @@ function PlaylistPageContent({ params }: Props) {
         </p>
       )}
 
+      {/* Düzenin özeti: listeler hep sırayla çalar, sıra oklarla değiştirilir */}
+      <div
+        className="rounded-2xl border border-white/10 px-4 py-3 mb-4"
+        style={{ background: "rgba(255,255,255,0.02)" }}
+      >
+        <p className="text-white text-sm font-semibold">Otomatik çalma düzeni</p>
+        <p className="text-[#6b7280] text-xs mt-0.5">
+          Aktif listeler yukarıdan aşağıya sırayla çalar; biri bitmeden diğerine geçilmez. Sırayı
+          soldaki oklarla değiştirin. Müşterilerin jetonla eklediği şarkılar her zaman öncelikli çalar.
+        </p>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[260px_1fr] items-start">
         {/* Sol ray: listeler. Mobilde yatay kaydırılan şeritler. */}
         <div className="flex flex-col gap-2 lg:sticky lg:top-4">
@@ -632,33 +745,84 @@ function PlaylistPageContent({ params }: Props) {
               </p>
             </button>
 
-            {visiblePlaylists.map((p) => {
+            {visiblePlaylists.map((p, railIndex) => {
               const total = countFor(p.id);
               const matches = filtering ? matchCountFor(p.id) : total;
               const source = sourceByList[p.id];
+              // Çalma sırası yalnızca aktif listeler üzerinden numaralanır;
+              // pasif listelerin sırada yeri yoktur.
+              const turn = p.is_active ? activeLists.findIndex((a) => a.id === p.id) + 1 : 0;
+              const isCurrent = currentList?.id === p.id;
+              const done = consumed[p.id] ?? 0;
+
               return (
-                <button
+                <div
                   key={p.id}
-                  onClick={() => setSelectedId(p.id)}
-                  className="text-left rounded-2xl px-3.5 py-3 shrink-0 min-w-[160px] lg:min-w-0 transition-all"
+                  className="rounded-2xl shrink-0 min-w-[160px] lg:min-w-0 transition-all flex items-stretch"
                   style={railStyle(viewId === p.id, filtering && matches === 0)}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: p.is_active ? "#22c55e" : "rgba(255,255,255,0.2)" }} />
-                    <p className="text-sm font-semibold truncate" style={{ color: viewId === p.id ? "#f9a8d4" : "#e5e7eb" }}>
-                      {p.name}
+                  <button
+                    onClick={() => setSelectedId(p.id)}
+                    className="text-left px-3.5 py-3 flex-1 min-w-0"
+                  >
+                    <div className="flex items-center gap-2">
+                      {turn > 0 ? (
+                        <span
+                          className="w-4 h-4 rounded-md shrink-0 text-[10px] font-bold flex items-center justify-center"
+                          style={{
+                            background: isCurrent ? "#22c55e" : "rgba(34,197,94,0.15)",
+                            color: isCurrent ? "#0b1220" : "#22c55e",
+                          }}
+                          title={isCurrent ? "Şu an bu liste çalıyor" : `Çalma sırası: ${turn}`}
+                        >
+                          {turn}
+                        </span>
+                      ) : (
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: p.is_active ? "#22c55e" : "rgba(255,255,255,0.2)" }} />
+                      )}
+                      <p className="text-sm font-semibold truncate" style={{ color: viewId === p.id ? "#f9a8d4" : "#e5e7eb" }}>
+                        {p.name}
+                      </p>
+                      {source && (
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className="shrink-0 ml-auto">
+                          <path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke={source.last_error ? "#f87171" : source.auto_sync ? "#FF0000" : "#4b5563"} strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      )}
+                    </div>
+                    <p className="text-[#6b7280] text-[11px] mt-0.5">
+                      {total} şarkı
+                      {filtering
+                        ? ` · ${matches} eşleşme`
+                        : isCurrent
+                          ? ` · Çalıyor ${done}/${total}`
+                          : ` · ${p.is_active ? "Aktif" : "Pasif"}`}
                     </p>
-                    {source && (
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className="shrink-0 ml-auto">
-                        <path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke={source.last_error ? "#f87171" : source.auto_sync ? "#FF0000" : "#4b5563"} strokeWidth="2" strokeLinecap="round" />
-                      </svg>
-                    )}
-                  </div>
-                  <p className="text-[#6b7280] text-[11px] mt-0.5">
-                    {total} şarkı
-                    {filtering ? ` · ${matches} eşleşme` : ` · ${p.is_active ? "Aktif" : "Pasif"}`}
-                  </p>
-                </button>
+                  </button>
+
+                  {/* Listelerin çalma sırası buradan değiştirilir */}
+                  {!listQ && (
+                    <div className="flex flex-col justify-center gap-1 pr-2 py-2 shrink-0">
+                      <button
+                        onClick={() => moveList(p, -1)}
+                        disabled={reordering || railIndex === 0}
+                        className="w-5 h-5 flex items-center justify-center rounded disabled:opacity-25"
+                        style={{ background: "rgba(255,255,255,0.06)" }}
+                        title="Yukarı taşı"
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 15l6-6 6 6" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </button>
+                      <button
+                        onClick={() => moveList(p, 1)}
+                        disabled={reordering || railIndex === visiblePlaylists.length - 1}
+                        className="w-5 h-5 flex items-center justify-center rounded disabled:opacity-25"
+                        style={{ background: "rgba(255,255,255,0.06)" }}
+                        title="Aşağı taşı"
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })}
 
@@ -684,11 +848,13 @@ function PlaylistPageContent({ params }: Props) {
                 {selectedList ? selectedList.name : "Tüm Şarkılar"}
               </p>
               <p className="text-[#6b7280] text-xs mt-0.5">
-                {selectedList
-                  ? selectedList.is_active
-                    ? "Aktif — sıra boşken bu listedeki şarkılar çalar"
-                    : "Pasif — şarkıları müşteri yine de seçebilir, otomatik çalmaz"
-                  : "Mekanın tüm şarkıları. Müşteriler hangi liste aktif olursa olsun bu havuzun tamamından seçebilir."}
+                {!selectedList
+                  ? "Mekanın tüm şarkıları. Müşteriler hangi liste aktif olursa olsun bu havuzun tamamından seçebilir."
+                  : !selectedList.is_active
+                    ? "Pasif — şarkıları müşteri yine de seçebilir, otomatik çalmaz"
+                    : currentList?.id === selectedList.id
+                      ? `Şu an çalıyor — bu turda ${consumed[selectedList.id] ?? 0}/${countFor(selectedList.id)} şarkı çalındı`
+                      : `Sırada ${activeLists.findIndex((a) => a.id === selectedList.id) + 1}. — kendinden öncekiler bitince başlar`}
               </p>
               {selectedSource && (
                 <p className="text-[11px] mt-1 flex items-center gap-1.5 flex-wrap">
@@ -727,6 +893,31 @@ function PlaylistPageContent({ params }: Props) {
                 >
                   {selectedList.is_active ? "Aktif" : "Pasif"}
                 </button>
+                {/* Liste İÇİNDEKİ şarkıların sırası: eklenme sırası mı, rastgele mi */}
+                <div className="flex rounded-lg p-0.5 shrink-0" style={{ background: "rgba(255,255,255,0.05)" }}>
+                  <button
+                    onClick={() => setShuffle(selectedList, false)}
+                    className="text-xs px-3 py-1 rounded-md font-semibold transition-all"
+                    style={{
+                      background: selectedList.shuffle ? "transparent" : "rgba(233,30,140,0.2)",
+                      color: selectedList.shuffle ? "#9ca3af" : "#f9a8d4",
+                    }}
+                    title="Listedeki şarkılar aşağıdaki sırayla çalar"
+                  >
+                    Sıralı
+                  </button>
+                  <button
+                    onClick={() => setShuffle(selectedList, true)}
+                    className="text-xs px-3 py-1 rounded-md font-semibold transition-all"
+                    style={{
+                      background: selectedList.shuffle ? "rgba(233,30,140,0.2)" : "transparent",
+                      color: selectedList.shuffle ? "#f9a8d4" : "#9ca3af",
+                    }}
+                    title="Listedeki şarkılar rastgele sırayla çalar"
+                  >
+                    Karışık
+                  </button>
+                </div>
                 {selectedSource && (
                   <>
                     <button

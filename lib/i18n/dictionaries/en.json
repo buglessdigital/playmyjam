@@ -368,8 +368,6 @@
     "noActivity": "No transactions yet",
     "balanceAfter": "balance {n}",
     "chooseAmount": "How Many Tokens?",
-    "customAmountTitle": "Choose Your Own",
-    "customAmountDesc": "Start from 1 token, any amount",
     "showAll": "Show all ({n})",
     "showLess": "Show less"
   },

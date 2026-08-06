@@ -33,8 +33,12 @@ export default function NotificationWatcher({ venueId }: { venueId: string }) {
         .select("id, user_id, songs(title, artist)")
         .eq("venue_id", venueDbId)
         .eq("status", "queued")
+        // Sıra anahtarı lib/queue.ts ile birebir aynı olmalı — yoksa "sıradaki
+        // şarkın" bildirimi başka satır için gidebilir (beraberlik kırıcı: 0034)
         .order("priority", { ascending: false })
         .order("position", { ascending: true })
+        .order("added_at", { ascending: true })
+        .order("id", { ascending: true })
         .limit(1);
       if (cancelled || !data || data.length === 0) return;
 

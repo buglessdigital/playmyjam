@@ -368,8 +368,6 @@
     "noActivity": "Henüz işlem yok",
     "balanceAfter": "bakiye {n}",
     "chooseAmount": "Ne Kadar Jeton?",
-    "customAmountTitle": "Kendin Belirle",
-    "customAmountDesc": "1 jetondan başla, istediğin kadar",
     "showAll": "Tümünü göster ({n})",
     "showLess": "Daha az göster"
   },

@@ -41,7 +41,12 @@ export default function PricingSection({
       </div>
 
       {packages.length > 0 && (
-        <div className="mt-12 grid grid-cols-2 gap-3.5 sm:gap-4 lg:grid-cols-4">
+        <div
+          className={`mt-12 grid grid-cols-2 gap-3.5 sm:gap-4 ${
+            // 1-2 paket dar ve ortalanmış durur; 3+ pakette geniş ızgaraya açılır
+            packages.length <= 2 ? "mx-auto max-w-xl" : "lg:grid-cols-4"
+          }`}
+        >
           {packages.map((p) => {
             const savings = unitPrice > 0 ? Math.round((1 - p.price / p.tokens / unitPrice) * 100) : 0;
             return (

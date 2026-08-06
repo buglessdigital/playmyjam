@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createCheckoutForm } from "@/lib/iyzico";
 import { hasVenueSession } from "@/lib/venue-auth-cookie";
 
-const MAX_LOOSE = 1000;
+const MAX_TOKENS = 1000;
 // iyzico şemasında zorunlu ama doğrulanmayan alanlar için yer tutucular
 const PLACEHOLDER_IDENTITY = "11111111111";
 const PLACEHOLDER_CITY = "İstanbul";
@@ -38,13 +38,16 @@ export async function POST(
     return NextResponse.json({ error: "Bu mekana giriş yapmalısın" }, { status: 403 });
   }
 
-  // Fiyat/tutar asla client'tan alınmaz: ya paket id'si (fiyat DB satırından)
-  // ya da tekli adet (fiyat = adet × app_settings'teki birim fiyat) gelir.
+  // Fiyat/tutar asla client'tan alınmaz: paket id'si + adet gelir, birim fiyatlar
+  // DB satırından okunur (toplam = paket fiyatı × adet).
   const body = await req.json().catch(() => null);
   const packageId = typeof body?.package_id === "string" ? body.package_id : "";
-  const looseTokens = body?.tokens;
-  if ((packageId && looseTokens !== undefined) || (!packageId && looseTokens === undefined)) {
-    return NextResponse.json({ error: "Paket veya jeton adedi seçilmeli" }, { status: 400 });
+  if (!packageId) {
+    return NextResponse.json({ error: "Paket seçilmeli" }, { status: 400 });
+  }
+  const quantity = body?.quantity === undefined ? 1 : Number(body.quantity);
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    return NextResponse.json({ error: "Adet pozitif tam sayı olmalı" }, { status: 400 });
   }
 
   // Alıcı bilgisi kullanıcıya sorulmuyor: iyzico buyer objesinde zorunlu olan alanlar
@@ -68,40 +71,22 @@ export async function POST(
     return NextResponse.json({ error: "Mekan bulunamadı" }, { status: 404 });
   }
 
-  let amount: number;
-  let total: number;
-  let resolvedPackageId: string | null = null;
-
-  if (packageId) {
-    const { data: pkg } = await supabaseAdmin
-      .from("global_token_packages")
-      .select("id, tokens, price")
-      .eq("id", packageId)
-      .single();
-    if (!pkg) {
-      return NextResponse.json({ error: "Paket bulunamadı" }, { status: 404 });
-    }
-    amount = pkg.tokens;
-    total = Number(pkg.price);
-    resolvedPackageId = pkg.id;
-  } else {
-    const qty = Number(looseTokens);
-    if (!Number.isInteger(qty) || qty < 1 || qty > MAX_LOOSE) {
-      return NextResponse.json({ error: `Jeton adedi 1-${MAX_LOOSE} arası tam sayı olmalı` }, { status: 400 });
-    }
-    // Para hesabı: birim fiyat cache'ten değil doğrudan DB'den okunur
-    const { data: setting } = await supabaseAdmin
-      .from("app_settings")
-      .select("value")
-      .eq("key", "token_unit_price")
-      .maybeSingle();
-    const unitPrice = Number(setting?.value);
-    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-      return NextResponse.json({ error: "Fiyat bilgisi alınamadı" }, { status: 500 });
-    }
-    amount = qty;
-    total = qty * unitPrice;
+  // Para hesabı cache'ten değil doğrudan DB satırından
+  const { data: pkg } = await supabaseAdmin
+    .from("global_token_packages")
+    .select("id, tokens, price")
+    .eq("id", packageId)
+    .single();
+  if (!pkg) {
+    return NextResponse.json({ error: "Paket bulunamadı" }, { status: 404 });
   }
+
+  const amount = pkg.tokens * quantity;
+  if (amount > MAX_TOKENS) {
+    return NextResponse.json({ error: `Tek seferde en fazla ${MAX_TOKENS} jeton alınabilir` }, { status: 400 });
+  }
+  const total = Number(pkg.price) * quantity;
+  const resolvedPackageId = pkg.id;
 
   // Sipariş: jeton yalnızca iyzico callback'i doğrulandığında eklenir (bkz. 0017 migration)
   const { data: order, error: orderError } = await supabaseAdmin

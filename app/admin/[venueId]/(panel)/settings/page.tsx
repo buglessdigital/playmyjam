@@ -46,6 +46,36 @@ const inputStyle = {
   color: "white",
 };
 
+// Şifre alanlarında göz butonu: tıklayınca metin görünür olur
+function EyeIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {open ? (
+        <>
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+          <circle cx="12" cy="12" r="3" />
+        </>
+      ) : (
+        <>
+          <path d="M10.7 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a18.5 18.5 0 0 1-3.2 4.2M6.6 6.6A18.5 18.5 0 0 0 2 12s3.5 7 10 7a10.7 10.7 0 0 0 4.4-.9" />
+          <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+          <path d="M2 2l20 20" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function TextField({
   label,
   type,
@@ -61,18 +91,36 @@ function TextField({
   autoComplete?: string;
   onChange: (v: string) => void;
 }) {
+  const [revealed, setRevealed] = useState(false);
+  const isPassword = type === "password";
+
   return (
     <div>
       <label className="block text-[#9ca3af] text-xs mb-1.5">{label}</label>
-      <input
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none"
-        style={inputStyle}
-      />
+      <div className="relative">
+        <input
+          type={isPassword && revealed ? "text" : type}
+          value={value}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full rounded-xl py-2.5 text-sm outline-none ${
+            isPassword ? "pl-3.5 pr-11" : "px-3.5"
+          }`}
+          style={inputStyle}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setRevealed((v) => !v)}
+            aria-label={revealed ? "Şifreyi gizle" : "Şifreyi göster"}
+            title={revealed ? "Şifreyi gizle" : "Şifreyi göster"}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-lg text-[#9ca3af] hover:text-white transition-colors"
+          >
+            <EyeIcon open={revealed} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

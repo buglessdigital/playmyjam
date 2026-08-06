@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import GoogleAccountCard, { type AdminAccount } from "@/components/admin/GoogleAccountCard";
 
 const ACCENT = "#e91e8c";
 
@@ -39,8 +40,175 @@ function CostField({
   );
 }
 
+const inputStyle = {
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  color: "white",
+};
+
+function TextField({
+  label,
+  type,
+  value,
+  placeholder,
+  autoComplete,
+  onChange,
+}: {
+  label: string;
+  type: "text" | "password";
+  value: string;
+  placeholder?: string;
+  autoComplete?: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-[#9ca3af] text-xs mb-1.5">{label}</label>
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none"
+        style={inputStyle}
+      />
+    </div>
+  );
+}
+
+// Giriş bilgileri ayrı bir form: mevcut şifre doğrulanmadan değişmez ve
+// kaydedildiğinde diğer cihazlardaki oturumlar düşer.
+function CredentialsCard({ account, loading }: { account: AdminAccount | null; loading: boolean }) {
+  // Kullanıcı alana dokunana kadar sunucudan gelen ad gösterilir
+  const [usernameInput, setUsernameInput] = useState<string | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newPassword2, setNewPassword2] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  const username = usernameInput ?? account?.username ?? "";
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (saving) return;
+    setError("");
+
+    if (!currentPassword) {
+      setError("Mevcut şifrenizi girin");
+      return;
+    }
+    if (newPassword && newPassword !== newPassword2) {
+      setError("Yeni şifreler eşleşmiyor");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/credentials", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newUsername: username, newPassword }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error ?? "Kaydedilemedi");
+        return;
+      }
+      setUsernameInput(data?.username ?? username);
+      setCurrentPassword("");
+      setNewPassword("");
+      setNewPassword2("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch {
+      setError("Bağlantı hatası, tekrar deneyin");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-4">
+      <div
+        className="rounded-2xl border border-white/10 p-5 flex flex-col gap-4"
+        style={{ background: "rgba(255,255,255,0.03)" }}
+      >
+        <div>
+          <p className="text-white text-sm font-semibold">Giriş Bilgileri</p>
+          <p className="text-[#6b7280] text-xs mt-1">
+            Panel giriş kullanıcı adınızı ve şifrenizi buradan değiştirebilirsiniz. Kaydettiğinizde
+            diğer cihazlardaki oturumlar (mekan ekranı dahil) kapanır; oralarda yeni bilgilerle
+            tekrar giriş yapmanız gerekir.
+          </p>
+        </div>
+
+        <TextField
+          label="Kullanıcı adı"
+          type="text"
+          value={username}
+          autoComplete="username"
+          onChange={setUsernameInput}
+        />
+
+        <TextField
+          label="Mevcut şifre"
+          type="password"
+          value={currentPassword}
+          placeholder="Doğrulama için gerekli"
+          autoComplete="current-password"
+          onChange={setCurrentPassword}
+        />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <TextField
+            label="Yeni şifre"
+            type="password"
+            value={newPassword}
+            placeholder="Değiştirmeyecekseniz boş bırakın"
+            autoComplete="new-password"
+            onChange={setNewPassword}
+          />
+          <TextField
+            label="Yeni şifre (tekrar)"
+            type="password"
+            value={newPassword2}
+            autoComplete="new-password"
+            onChange={setNewPassword2}
+          />
+        </div>
+
+        <p className="text-[#6b7280] text-xs">Şifre en az 8 karakter olmalı.</p>
+
+        {error && (
+          <div className="px-4 py-3 rounded-xl text-sm text-red-400 bg-red-500/10 border border-red-500/20">
+            {error}
+          </div>
+        )}
+      </div>
+
+      <button
+        type="submit"
+        disabled={saving || loading}
+        className="w-full py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-70"
+        style={{
+          background: saved ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.08)",
+          color: saved ? "#22c55e" : "white",
+          border: "1px solid rgba(255,255,255,0.12)",
+        }}
+      >
+        {saved ? "Giriş bilgileri güncellendi!" : saving ? "Kaydediliyor..." : "Giriş Bilgilerini Güncelle"}
+      </button>
+    </form>
+  );
+}
+
 export default function AdminSettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [account, setAccount] = useState<AdminAccount | null>(null);
+  const [accountLoading, setAccountLoading] = useState(true);
   const [requestCost, setRequestCost] = useState("1");
   const [priorityCost, setPriorityCost] = useState("2");
   const [loading, setLoading] = useState(true);
@@ -58,6 +226,14 @@ export default function AdminSettingsPage() {
       })
       .catch(() => setError("Ayarlar yüklenemedi"))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/admin/credentials")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((a: AdminAccount) => setAccount(a))
+      .catch(() => setAccount(null))
+      .finally(() => setAccountLoading(false));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -148,6 +324,12 @@ export default function AdminSettingsPage() {
           {saved ? "Kaydedildi!" : saving ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
         </button>
       </form>
+
+      <Suspense fallback={null}>
+        <GoogleAccountCard account={account} loading={accountLoading} />
+      </Suspense>
+
+      <CredentialsCard account={account} loading={accountLoading} />
     </div>
   );
 }

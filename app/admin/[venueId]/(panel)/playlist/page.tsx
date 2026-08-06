@@ -54,6 +54,43 @@ type SearchTrack = {
 
 const ALL = "all";
 
+// Liste kapağı: Spotify'daki gibi listenin ilk şarkılarının kapaklarından üretilir.
+// 4+ kapak varsa 2x2 mozaik, azsa tek görsel, hiç yoksa nota rozeti.
+function ListCover({ covers, size, rounded = "rounded-lg" }: { covers: string[]; size: number; rounded?: string }) {
+  const base = `${rounded} overflow-hidden shrink-0`;
+
+  if (covers.length >= 4) {
+    const half = Math.round(size / 2);
+    return (
+      <div className={`${base} grid grid-cols-2 grid-rows-2`} style={{ width: size, height: size }}>
+        {covers.slice(0, 4).map((url, i) => (
+          <Image key={`${url}-${i}`} src={url} alt="" width={half} height={half} className="w-full h-full object-cover" />
+        ))}
+      </div>
+    );
+  }
+
+  if (covers.length > 0) {
+    return (
+      <div className={base} style={{ width: size, height: size }}>
+        <Image src={covers[0]} alt="" width={size} height={size} className="w-full h-full object-cover" />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`${base} flex items-center justify-center`}
+      style={{ width: size, height: size, background: "linear-gradient(135deg, rgba(233,30,140,0.35), rgba(88,28,135,0.5))" }}
+    >
+      <svg width={Math.round(size * 0.42)} height={Math.round(size * 0.42)} viewBox="0 0 24 24" fill="none">
+        <path d="M9 18V5l12-2v13" stroke="rgba(255,255,255,0.75)" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="6" cy="18" r="3" stroke="rgba(255,255,255,0.75)" strokeWidth="2" />
+      </svg>
+    </div>
+  );
+}
+
 export default function PlaylistPage({ params }: Props) {
   return (
     <Suspense fallback={null}>
@@ -249,6 +286,28 @@ function PlaylistPageContent({ params }: Props) {
     (playlistId: string) =>
       songs.reduce((n, s) => n + ((memberships[s.id] ?? []).includes(playlistId) ? 1 : 0), 0),
     [songs, memberships]
+  );
+
+  // playlist_id -> kapak için ilk 4 şarkı görseli (liste içi sıraya göre)
+  const coversByList = useMemo(() => {
+    const buckets: Record<string, { pos: number; url: string }[]> = {};
+    for (const song of songs) {
+      if (!song.album_cover_url) continue;
+      for (const pid of memberships[song.id] ?? []) {
+        (buckets[pid] ??= []).push({ pos: positions[pid]?.[song.id] ?? 0, url: song.album_cover_url });
+      }
+    }
+    const out: Record<string, string[]> = {};
+    for (const [pid, items] of Object.entries(buckets)) {
+      out[pid] = items.sort((a, b) => a.pos - b.pos).slice(0, 4).map((i) => i.url);
+    }
+    return out;
+  }, [songs, memberships, positions]);
+
+  // "Tüm Şarkılar" kutusunun kapağı: katalogun en son eklenen şarkıları
+  const catalogCovers = useMemo(
+    () => songs.map((s) => s.album_cover_url).filter((url): url is string => Boolean(url)).slice(0, 4),
+    [songs]
   );
 
   const normalize = (value: string) => value.toLocaleLowerCase("tr");
@@ -735,16 +794,19 @@ function PlaylistPageContent({ params }: Props) {
           <div className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
             <button
               onClick={() => setSelectedId(ALL)}
-              className="text-left rounded-2xl px-3.5 py-3 shrink-0 min-w-[160px] lg:min-w-0 transition-all"
+              className="text-left rounded-2xl px-3.5 py-3 shrink-0 min-w-[180px] lg:min-w-0 transition-all flex items-center gap-3"
               style={railStyle(viewId === ALL, false)}
             >
-              <p className="text-sm font-semibold" style={{ color: viewId === ALL ? "#f9a8d4" : "#e5e7eb" }}>
-                Tüm Şarkılar
-              </p>
-              <p className="text-[#6b7280] text-[11px] mt-0.5">
-                {songs.length} şarkı
-                {filtering ? ` · ${songs.filter(matchesQuery).length} eşleşme` : ""}
-              </p>
+              <ListCover covers={catalogCovers} size={40} />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate" style={{ color: viewId === ALL ? "#f9a8d4" : "#e5e7eb" }}>
+                  Tüm Şarkılar
+                </p>
+                <p className="text-[#6b7280] text-[11px] mt-0.5">
+                  {songs.length} şarkı
+                  {filtering ? ` · ${songs.filter(matchesQuery).length} eşleşme` : ""}
+                </p>
+              </div>
             </button>
 
             {visiblePlaylists.map((p, railIndex) => {
@@ -760,45 +822,48 @@ function PlaylistPageContent({ params }: Props) {
               return (
                 <div
                   key={p.id}
-                  className="rounded-2xl shrink-0 min-w-[160px] lg:min-w-0 transition-all flex items-stretch"
+                  className="rounded-2xl shrink-0 min-w-[180px] lg:min-w-0 transition-all flex items-stretch"
                   style={railStyle(viewId === p.id, filtering && matches === 0)}
                 >
                   <button
                     onClick={() => setSelectedId(p.id)}
-                    className="text-left px-3.5 py-3 flex-1 min-w-0"
+                    className="text-left px-3.5 py-3 flex-1 min-w-0 flex items-center gap-3"
                   >
-                    <div className="flex items-center gap-2">
-                      {turn > 0 ? (
-                        <span
-                          className="w-4 h-4 rounded-md shrink-0 text-[10px] font-bold flex items-center justify-center"
-                          style={{
-                            background: isCurrent ? "#22c55e" : "rgba(34,197,94,0.15)",
-                            color: isCurrent ? "#0b1220" : "#22c55e",
-                          }}
-                          title={isCurrent ? "Şu an bu liste çalıyor" : `Çalma sırası: ${turn}`}
-                        >
-                          {turn}
-                        </span>
-                      ) : (
-                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: p.is_active ? "#22c55e" : "rgba(255,255,255,0.2)" }} />
-                      )}
-                      <p className="text-sm font-semibold truncate" style={{ color: viewId === p.id ? "#f9a8d4" : "#e5e7eb" }}>
-                        {p.name}
+                    <ListCover covers={coversByList[p.id] ?? []} size={40} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        {turn > 0 ? (
+                          <span
+                            className="w-4 h-4 rounded-md shrink-0 text-[10px] font-bold flex items-center justify-center"
+                            style={{
+                              background: isCurrent ? "#22c55e" : "rgba(34,197,94,0.15)",
+                              color: isCurrent ? "#0b1220" : "#22c55e",
+                            }}
+                            title={isCurrent ? "Şu an bu liste çalıyor" : `Çalma sırası: ${turn}`}
+                          >
+                            {turn}
+                          </span>
+                        ) : (
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: p.is_active ? "#22c55e" : "rgba(255,255,255,0.2)" }} />
+                        )}
+                        <p className="text-sm font-semibold truncate" style={{ color: viewId === p.id ? "#f9a8d4" : "#e5e7eb" }}>
+                          {p.name}
+                        </p>
+                        {source && (
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className="shrink-0 ml-auto">
+                            <path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke={source.last_error ? "#f87171" : source.auto_sync ? "#FF0000" : "#4b5563"} strokeWidth="2" strokeLinecap="round" />
+                          </svg>
+                        )}
+                      </div>
+                      <p className="text-[#6b7280] text-[11px] mt-0.5">
+                        {total} şarkı
+                        {filtering
+                          ? ` · ${matches} eşleşme`
+                          : isCurrent
+                            ? ` · Çalıyor ${done}/${total}`
+                            : ` · ${p.is_active ? "Aktif" : "Pasif"}`}
                       </p>
-                      {source && (
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className="shrink-0 ml-auto">
-                          <path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke={source.last_error ? "#f87171" : source.auto_sync ? "#FF0000" : "#4b5563"} strokeWidth="2" strokeLinecap="round" />
-                        </svg>
-                      )}
                     </div>
-                    <p className="text-[#6b7280] text-[11px] mt-0.5">
-                      {total} şarkı
-                      {filtering
-                        ? ` · ${matches} eşleşme`
-                        : isCurrent
-                          ? ` · Çalıyor ${done}/${total}`
-                          : ` · ${p.is_active ? "Aktif" : "Pasif"}`}
-                    </p>
                   </button>
 
                   {/* Listelerin çalma sırası buradan değiştirilir */}
@@ -845,39 +910,46 @@ function PlaylistPageContent({ params }: Props) {
         {/* Sağ pano: seçili görünümün başlığı, araçları ve şarkıları */}
         <div className="min-w-0">
           <div className="rounded-2xl border border-white/10 px-4 py-3 mb-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: "rgba(255,255,255,0.02)" }}>
-            <div className="min-w-0">
-              <p className="text-white text-sm font-semibold truncate">
-                {selectedList ? selectedList.name : "Tüm Şarkılar"}
-              </p>
-              <p className="text-[#6b7280] text-xs mt-0.5">
-                {!selectedList
-                  ? "Mekanın tüm şarkıları. Müşteriler hangi liste aktif olursa olsun bu havuzun tamamından seçebilir."
-                  : !selectedList.is_active
-                    ? "Pasif — şarkıları müşteri yine de seçebilir, otomatik çalmaz"
-                    : currentList?.id === selectedList.id
-                      ? `Şu an çalıyor — bu turda ${consumed[selectedList.id] ?? 0}/${countFor(selectedList.id)} şarkı çalındı`
-                      : `Sırada ${activeLists.findIndex((a) => a.id === selectedList.id) + 1}. — kendinden öncekiler bitince başlar`}
-              </p>
-              {selectedSource && (
-                <p className="text-[11px] mt-1 flex items-center gap-1.5 flex-wrap">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                    <path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke="#FF0000" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                  <span style={{ color: selectedSource.last_error ? "#f87171" : selectedSource.auto_sync ? "#22c55e" : "#6b7280" }}>
-                    {selectedSource.last_error
-                      ? `Senkron hatası: ${selectedSource.last_error}`
-                      : selectedSource.auto_sync
-                        ? "Her gün otomatik güncelleniyor"
-                        : "Otomatik güncelleme kapalı"}
-                  </span>
-                  {selectedSource.last_synced_at && !selectedSource.last_error && (
-                    <span className="text-[#4b5563]">
-                      · Son: {new Date(selectedSource.last_synced_at).toLocaleDateString("tr-TR")}
-                      {selectedSource.last_added > 0 ? ` (+${selectedSource.last_added})` : ""}
-                    </span>
-                  )}
+            <div className="min-w-0 flex items-start gap-3">
+              <ListCover
+                covers={selectedList ? coversByList[selectedList.id] ?? [] : catalogCovers}
+                size={56}
+                rounded="rounded-xl"
+              />
+              <div className="min-w-0">
+                <p className="text-white text-sm font-semibold truncate">
+                  {selectedList ? selectedList.name : "Tüm Şarkılar"}
                 </p>
-              )}
+                <p className="text-[#6b7280] text-xs mt-0.5">
+                  {!selectedList
+                    ? "Mekanın tüm şarkıları. Müşteriler hangi liste aktif olursa olsun bu havuzun tamamından seçebilir."
+                    : !selectedList.is_active
+                      ? "Pasif — şarkıları müşteri yine de seçebilir, otomatik çalmaz"
+                      : currentList?.id === selectedList.id
+                        ? `Şu an çalıyor — bu turda ${consumed[selectedList.id] ?? 0}/${countFor(selectedList.id)} şarkı çalındı`
+                        : `Sırada ${activeLists.findIndex((a) => a.id === selectedList.id) + 1}. — kendinden öncekiler bitince başlar`}
+                </p>
+                {selectedSource && (
+                  <p className="text-[11px] mt-1 flex items-center gap-1.5 flex-wrap">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                      <path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke="#FF0000" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                    <span style={{ color: selectedSource.last_error ? "#f87171" : selectedSource.auto_sync ? "#22c55e" : "#6b7280" }}>
+                      {selectedSource.last_error
+                        ? `Senkron hatası: ${selectedSource.last_error}`
+                        : selectedSource.auto_sync
+                          ? "Her gün otomatik güncelleniyor"
+                          : "Otomatik güncelleme kapalı"}
+                    </span>
+                    {selectedSource.last_synced_at && !selectedSource.last_error && (
+                      <span className="text-[#4b5563]">
+                        · Son: {new Date(selectedSource.last_synced_at).toLocaleDateString("tr-TR")}
+                        {selectedSource.last_added > 0 ? ` (+${selectedSource.last_added})` : ""}
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
             </div>
 
             {selectedList && (

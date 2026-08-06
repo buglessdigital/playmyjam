@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { VenueListItem } from "@/lib/venue-cache";
+import VenueLogo from "@/components/VenueLogo";
 import { fmt, useT } from "@/lib/i18n";
 
 const PINK_GRADIENT = "linear-gradient(135deg, #ff2d9c 0%, #e91e8c 45%, #a8125f 100%)";
@@ -134,7 +135,13 @@ export default function VenueAdminLogin({ venues }: { venues: VenueListItem[] })
                     }}
                     className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] px-4 py-3 text-left transition-colors hover:border-[#e91e8c]/40 hover:bg-white/[0.04]"
                   >
-                    <span className="min-w-0">
+                    <VenueLogo
+                      name={v.name}
+                      logoUrl={v.logo_url}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-black text-white"
+                      fallbackStyle={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}
+                    />
+                    <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-bold text-white">{v.name}</span>
                       <span className="block truncate text-[11px] text-[#6b7280]">/{v.slug}</span>
                     </span>

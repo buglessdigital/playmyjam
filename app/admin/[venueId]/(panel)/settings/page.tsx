@@ -2,10 +2,11 @@
 
 import { Suspense, useEffect, useState } from "react";
 import GoogleAccountCard, { type AdminAccount } from "@/components/admin/GoogleAccountCard";
+import VenueLogoUploader from "@/components/admin/VenueLogoUploader";
 
 const ACCENT = "#e91e8c";
 
-type Settings = { name: string; request_cost: number; priority_cost: number };
+type Settings = { name: string; request_cost: number; priority_cost: number; logo_url: string };
 
 function CostField({
   label,
@@ -259,6 +260,7 @@ export default function AdminSettingsPage() {
   const [accountLoading, setAccountLoading] = useState(true);
   const [requestCost, setRequestCost] = useState("1");
   const [priorityCost, setPriorityCost] = useState("2");
+  const [logoUrl, setLogoUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -271,6 +273,7 @@ export default function AdminSettingsPage() {
         setSettings(s);
         setRequestCost(String(s.request_cost));
         setPriorityCost(String(s.priority_cost));
+        setLogoUrl(s.logo_url ?? "");
       })
       .catch(() => setError("Ayarlar yüklenemedi"))
       .finally(() => setLoading(false));
@@ -293,7 +296,11 @@ export default function AdminSettingsPage() {
       const res = await fetch("/api/admin/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestCost: Number(requestCost), priorityCost: Number(priorityCost) }),
+        body: JSON.stringify({
+          requestCost: Number(requestCost),
+          priorityCost: Number(priorityCost),
+          logoUrl: logoUrl.trim(),
+        }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -327,6 +334,26 @@ export default function AdminSettingsPage() {
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div
+          className="rounded-2xl border border-white/10 p-5 flex flex-col gap-4"
+          style={{ background: "rgba(255,255,255,0.03)" }}
+        >
+          <div>
+            <p className="text-white text-sm font-semibold">Mekan Logosu</p>
+            <p className="text-[#6b7280] text-xs mt-1">
+              Mekan listelerinde adınızın yanında görünür. Logo yüklemezseniz mekan adınızın baş
+              harfi gösterilir. Seçtiğiniz görsel anında kaydedilir.
+            </p>
+          </div>
+
+          <VenueLogoUploader
+            venueName={settings?.name ?? ""}
+            logoUrl={logoUrl}
+            onChange={setLogoUrl}
+            accent={ACCENT}
+          />
+        </div>
+
         <div
           className="rounded-2xl border border-white/10 p-5 flex flex-col gap-4"
           style={{ background: "rgba(255,255,255,0.03)" }}

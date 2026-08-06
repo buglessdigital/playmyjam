@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import VenueLogo from "@/components/VenueLogo";
 
 const ACCENT = "#f59e0b";
 
@@ -9,6 +10,7 @@ type ManagedVenue = {
   id: string;
   slug: string;
   name: string;
+  logo_url: string | null;
   status: "active" | "inactive";
   venue_admins: { username: string }[];
 };
@@ -120,10 +122,12 @@ export default function SuperAdminDashboard() {
             className="flex items-center gap-4 px-5 py-4 transition-all hover:bg-white/[0.03]"
             style={{ borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined }}
           >
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm"
-              style={{ background: venue.status === "active" ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.06)", color: venue.status === "active" ? ACCENT : "#6b7280" }}>
-              {venue.name.charAt(0)}
-            </div>
+            <VenueLogo
+              name={venue.name}
+              logoUrl={venue.logo_url}
+              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm"
+              fallbackStyle={{ background: venue.status === "active" ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.06)", color: venue.status === "active" ? ACCENT : "#6b7280" }}
+            />
             <div className="flex-1 min-w-0">
               <p className="text-white text-sm font-medium truncate">{venue.name}</p>
               <p className="text-[#6b7280] text-xs font-mono">{venue.slug} · {venue.venue_admins?.[0]?.username ?? "-"}</p>

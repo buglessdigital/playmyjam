@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import type { VenueListItem } from "@/lib/venue-cache";
+import VenueLogo from "@/components/VenueLogo";
 import { fmt, useT } from "@/lib/i18n";
 
 const PINK_GRADIENT = "linear-gradient(135deg, #ff2d9c 0%, #e91e8c 45%, #a8125f 100%)";
 
-// Baş harf avatarı: mekan adından deterministik gradient (logo host'ları değişken
-// olduğu için remote görsel yerine tutarlı bir görsel dil tercih edildi)
+// Logosu olmayan mekanlar için baş harf avatarı: mekan adından deterministik gradient
 const AVATAR_GRADIENTS = [
   "linear-gradient(140deg, #e91e8c, #8b5cf6)",
   "linear-gradient(140deg, #8b5cf6, #3b82f6)",
@@ -53,12 +53,13 @@ export default function VenueGrid({ venues }: { venues: VenueListItem[] }) {
           style={{ background: "#160d24" }}
         >
           <div className="flex items-center gap-4">
-            <span
+            <VenueLogo
+              name={v.name}
+              logoUrl={v.logo_url}
               className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-xl font-black text-white"
-              style={{ background: venueGradient(v.name), boxShadow: "0 8px 20px -8px rgba(233,30,140,0.4)" }}
-            >
-              {v.name.trim().charAt(0).toLocaleUpperCase("tr-TR")}
-            </span>
+              style={{ boxShadow: "0 8px 20px -8px rgba(233,30,140,0.4)" }}
+              fallbackStyle={{ background: venueGradient(v.name) }}
+            />
             <div className="min-w-0">
               <h2 className="truncate text-base font-extrabold text-white">{v.name}</h2>
               <p className="mt-0.5 truncate text-xs text-[#9ca3af]">

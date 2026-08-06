@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import VenueLogo from "@/components/VenueLogo";
 
 type ManagedVenue = {
   id: string;
@@ -290,12 +291,12 @@ export default function VenuesPage() {
               >
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-3">
-                    <div
+                    <VenueLogo
+                      name={venue.name}
+                      logoUrl={venue.logo_url}
                       className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm shrink-0"
-                      style={{ background: "rgba(245,158,11,0.1)", color: ACCENT }}
-                    >
-                      {venue.name.charAt(0)}
-                    </div>
+                      fallbackStyle={{ background: "rgba(245,158,11,0.1)", color: ACCENT }}
+                    />
                     <div>
                       <p className="text-white text-sm font-medium">{venue.name}</p>
                       <p className="text-[#6b7280] text-xs">{venue.tagline}</p>
@@ -383,12 +384,12 @@ export default function VenuesPage() {
           >
             <div className="flex items-start justify-between gap-3 mb-3">
               <div className="flex items-center gap-3">
-                <div
+                <VenueLogo
+                  name={venue.name}
+                  logoUrl={venue.logo_url}
                   className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0"
-                  style={{ background: "rgba(245,158,11,0.1)", color: ACCENT }}
-                >
-                  {venue.name.charAt(0)}
-                </div>
+                  fallbackStyle={{ background: "rgba(245,158,11,0.1)", color: ACCENT }}
+                />
                 <div>
                   <p className="text-white text-sm font-medium">{venue.name}</p>
                   <p className="text-[#6b7280] text-xs font-mono">{venue.slug}</p>

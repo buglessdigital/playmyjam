@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type VenueRow = { id: string; name: string; request_cost: number; priority_cost: number };
 
-export type VenueListItem = { slug: string; name: string; tagline: string | null };
+export type VenueListItem = { slug: string; name: string; tagline: string | null; logo_url: string | null };
 
 // Ana sayfadaki "Mekanlar" listesi — super admin mekan ekleyince/düzenleyince
 // "venues-list" tag'i revalidate edilir, aksi halde dakikalar içinde tazelenir.
@@ -14,7 +14,7 @@ export async function getActiveVenues(): Promise<VenueListItem[]> {
 
   const { data } = await supabaseAdmin
     .from("venues")
-    .select("slug, name, tagline")
+    .select("slug, name, tagline, logo_url")
     .eq("status", "active")
     .order("name");
 

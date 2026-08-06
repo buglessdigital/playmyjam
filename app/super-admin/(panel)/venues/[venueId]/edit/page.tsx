@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { generatePassword } from "@/lib/utils";
+import VenueLogoUploader from "@/components/admin/VenueLogoUploader";
 
 const ACCENT = "#f59e0b";
 
@@ -169,6 +170,17 @@ function EditVenueForm() {
             <p className="text-[#6b7280] text-xs mt-1">Slug değiştirilemez — mevcut linkler bozulur.</p>
           </div>
           <Field label="Tagline" value={tagline} onChange={setTagline} />
+          <div>
+            <label className="block text-[#9ca3af] text-xs mb-1.5">Logo</label>
+            {/* Yükleme anında kaydedilir; alttaki URL alanı hazır bir bağlantı için */}
+            <VenueLogoUploader
+              venueName={name}
+              logoUrl={logoUrl}
+              onChange={setLogoUrl}
+              accent={ACCENT}
+              venueSlug={venue.slug}
+            />
+          </div>
           <Field label="Logo URL" value={logoUrl} onChange={setLogoUrl} placeholder="https://..." />
         </div>
 

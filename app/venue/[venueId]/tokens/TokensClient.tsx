@@ -22,6 +22,10 @@ type WalletTx = {
 
 const CUSTOM = "custom";
 const MAX_LOOSE = 1000;
+const TX_PREVIEW = 3;
+
+const PINK = "#e91e8c";
+const CARD = "#170e25";
 
 function timeAgo(ms: number) {
   const d = currentDict().historyPage;
@@ -48,13 +52,58 @@ interface Props {
   unitPrice: number;
 }
 
-const BUYER_STORAGE_KEY = "pmj_buyer_info";
+// Eski sürümde ödeme formundan toplanan alıcı bilgisi; artık istenmiyor, kalıntı temizleniyor.
+const LEGACY_BUYER_STORAGE_KEY = "pmj_buyer_info";
 
-interface BuyerInfo {
-  name: string;
-  surname: string;
-  identityNumber: string;
-  city: string;
+/** Seçilebilir satır kabuğu: paketler ve tek jeton aynı görsel dilde. */
+function OptionRow({
+  selected,
+  onSelect,
+  children,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      onClick={onSelect}
+      role="radio"
+      aria-checked={selected}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className="cursor-pointer rounded-2xl p-4 transition-all active:scale-[0.99]"
+      style={{
+        background: selected ? "rgba(233,30,140,0.07)" : CARD,
+        border: selected ? `1px solid rgba(233,30,140,0.5)` : "1px solid rgba(255,255,255,0.07)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Radio({ selected }: { selected: boolean }) {
+  return (
+    <span
+      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-all"
+      style={{
+        background: selected ? PINK : "transparent",
+        border: selected ? `1px solid ${PINK}` : "1px solid rgba(255,255,255,0.22)",
+      }}
+    >
+      {selected && (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+          <path d="M5 13l4 4L19 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </span>
+  );
 }
 
 export default function TokensClient({ venueId, initialPackages, initialSelectedId, unitPrice }: Props) {
@@ -70,6 +119,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
 
   const [txs, setTxs] = useState<WalletTx[]>([]);
   const [txLoaded, setTxLoaded] = useState(false);
+  const [txExpanded, setTxExpanded] = useState(false);
 
   const loadTxs = useCallback(async () => {
     // Jeton hareketleri tek RPC'de (mekan adı + şarkı bilgisiyle, RLS: kendi satırları)
@@ -108,17 +158,12 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const [purchasing, setPurchasing] = useState(false);
   const [paymentResult, setPaymentResult] = useState<"success" | "fail" | null>(null);
 
-  const [buyer, setBuyer] = useState<BuyerInfo>({ name: "", surname: "", identityNumber: "", city: "" });
-
   useEffect(() => {
-    (async () => {
-      try {
-        const raw = localStorage.getItem(BUYER_STORAGE_KEY);
-        if (raw) setBuyer((b) => ({ ...b, ...JSON.parse(raw) }));
-      } catch {
-        // localStorage yok/erişilemez — form boş başlar
-      }
-    })();
+    try {
+      localStorage.removeItem(LEGACY_BUYER_STORAGE_KEY);
+    } catch {
+      // localStorage yok/erişilemez — sorun değil
+    }
   }, []);
 
   // iyzico'dan dönüş: ?payment=success|fail — bakiyeyi yenile, banner göster, URL'i temizle
@@ -147,37 +192,20 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const buyTokens = pkg ? pkg.tokens : qty;
   const buyTotal = pkg ? pkg.price : qty * unitPrice;
 
-  const buyerValid =
-    buyer.name.trim().length > 0 &&
-    buyer.surname.trim().length > 0 &&
-    buyer.city.trim().length > 0 &&
-    /^[1-9][0-9]{10}$/.test(buyer.identityNumber.trim());
-
   const handlePurchase = async () => {
     if (purchasing || buyTokens <= 0) return;
-    if (!buyerValid) {
-      alert(t.tokens.buyerRequired);
-      return;
-    }
     setPurchasing(true);
     try {
-      const trimmedBuyer: BuyerInfo = {
-        name: buyer.name.trim(),
-        surname: buyer.surname.trim(),
-        identityNumber: buyer.identityNumber.trim(),
-        city: buyer.city.trim(),
-      };
       const res = await fetch(`/api/venue/${venueId}/tokens/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...(pkg ? { package_id: pkg.id } : { tokens: qty }), buyer: trimmedBuyer }),
+        body: JSON.stringify(pkg ? { package_id: pkg.id } : { tokens: qty }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         alert(data?.error ?? t.tokens.genericError);
         return;
       }
-      localStorage.setItem(BUYER_STORAGE_KEY, JSON.stringify(trimmedBuyer));
       window.location.href = data.paymentPageUrl;
     } catch {
       alert(t.tokens.connectionError);
@@ -190,15 +218,17 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const fmtPrice = (n: number) => n.toLocaleString(locale, { maximumFractionDigits: 2 });
   const clampQty = (n: number) => Math.min(MAX_LOOSE, Math.max(1, Math.round(n)));
 
+  const visibleTxs = txExpanded ? txs : txs.slice(0, TX_PREVIEW);
+
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-[#0f0a18] px-5 pt-12 pb-24">
+    <div className="relative min-h-dvh overflow-hidden bg-[#0f0a18] px-5 pt-12 pb-44">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-72"
-        style={{ background: "radial-gradient(70% 60% at 50% 0%, rgba(233,30,140,0.14), rgba(139,92,246,0.07) 45%, transparent 75%)" }}
+        className="pointer-events-none absolute inset-x-0 top-0 h-64"
+        style={{ background: "radial-gradient(70% 60% at 50% 0%, rgba(233,30,140,0.12), rgba(139,92,246,0.05) 45%, transparent 75%)" }}
       />
 
-      <div className="relative">
+      <div className="relative mx-auto w-full max-w-md">
         <div className="mb-6 flex items-center gap-3">
           <button
             onClick={() => router.back()}
@@ -210,46 +240,31 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
           <h1 className="text-lg font-bold text-white">{t.tokens.title}</h1>
         </div>
 
+        {/* Bakiye: tek satır, sade */}
         <div
-          className="relative mb-7 overflow-hidden rounded-3xl p-5"
-          style={{
-            background: "linear-gradient(135deg, #241238 0%, #1a0e2a 55%, #150c22 100%)",
-            border: "1px solid rgba(233,30,140,0.18)",
-            boxShadow: "0 18px 40px -18px rgba(233,30,140,0.35)",
-          }}
+          className="mb-6 flex items-center gap-4 rounded-3xl px-5 py-4"
+          style={{ background: CARD, border: "1px solid rgba(255,255,255,0.07)" }}
         >
-          <div aria-hidden className="absolute -right-7 -top-9 rotate-12 opacity-[0.06]">
-            <Coin size={150} />
-          </div>
-          <div
-            aria-hidden
-            className="absolute inset-0"
-            style={{ background: "radial-gradient(120% 80% at 85% 0%, rgba(233,30,140,0.12), transparent 55%)" }}
-          />
-          <div className="relative flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.currentBalance}</p>
-              <div className="mt-2 flex items-baseline gap-2">
-                {balanceLoaded ? (
-                  <span className="text-[42px] font-black leading-none text-white tabular-nums">{displayBalance}</span>
-                ) : (
-                  <span className="inline-block h-10 w-16 animate-pulse rounded-lg bg-white/10" />
-                )}
-                <span className="text-sm font-medium text-[#9ca3af]">{t.tokens.tokenUnit}</span>
-              </div>
-              <p className="mt-1.5 text-[11px] text-[#6b7280]">{fmt(t.tokens.balanceNote, { price: fmtPrice(unitPrice) })}</p>
-            </div>
-            <div
-              className="flex h-14 w-14 items-center justify-center rounded-2xl"
-              style={{
-                background: "rgba(233,30,140,0.1)",
-                border: "1px solid rgba(233,30,140,0.25)",
-                boxShadow: "0 0 24px rgba(233,30,140,0.18)",
-              }}
-            >
-              <Coin size={30} />
+          <span
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
+            style={{ background: "rgba(233,30,140,0.1)", border: "1px solid rgba(233,30,140,0.22)" }}
+          >
+            <Coin size={26} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.currentBalance}</p>
+            <div className="mt-1 flex items-baseline gap-1.5">
+              {balanceLoaded ? (
+                <span className="text-[30px] font-black leading-none text-white tabular-nums">{displayBalance}</span>
+              ) : (
+                <span className="inline-block h-7 w-14 animate-pulse rounded-lg bg-white/10" />
+              )}
+              <span className="text-sm font-medium text-[#9ca3af]">{t.tokens.tokenUnit}</span>
             </div>
           </div>
+          <p className="max-w-[7.5rem] shrink-0 text-right text-[10px] leading-tight text-[#6b7280]">
+            {fmt(t.tokens.balanceNote, { price: fmtPrice(unitPrice) })}
+          </p>
         </div>
 
         {paymentResult && (
@@ -258,122 +273,78 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             style={
               paymentResult === "success"
                 ? { background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.4)", color: "#4ade80" }
-                : { background: "rgba(233,30,140,0.12)", border: "1px solid rgba(233,30,140,0.4)", color: "#e91e8c" }
+                : { background: "rgba(233,30,140,0.12)", border: "1px solid rgba(233,30,140,0.4)", color: PINK }
             }
           >
             {paymentResult === "success" ? t.tokens.paySuccess : t.tokens.payFail}
           </div>
         )}
 
-        {packages.length > 0 && (
-          <>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.pickPackage}</p>
+        {/* Miktar seçimi: paketler ve tek jeton tek listede, eşit ağırlıkta */}
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.chooseAmount}</p>
 
-            <div className="mb-4 grid grid-cols-2 gap-3">
-              {packages.map((p, idx) => {
-                const isSel = selected === p.id;
-                const savings = unitPrice > 0 ? Math.round((1 - p.price / p.tokens / unitPrice) * 100) : 0;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => setSelected(p.id)}
-                    className="relative rounded-2xl p-4 text-left transition-all active:scale-[0.97]"
-                    style={{
-                      background: isSel
-                        ? "linear-gradient(160deg, rgba(233,30,140,0.16), rgba(139,92,246,0.08) 60%, #1a0e2a)"
-                        : "#1a0e2a",
-                      border: isSel ? "1px solid rgba(233,30,140,0.55)" : "1px solid rgba(255,255,255,0.08)",
-                      boxShadow: isSel ? "0 0 28px rgba(233,30,140,0.22)" : "none",
-                    }}
-                  >
-                    {p.popular && (
-                      <span
-                        className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-[3px] text-[9px] font-extrabold uppercase tracking-wider text-white"
-                        style={{ background: "linear-gradient(135deg, #ff2d9c, #b3126d)", boxShadow: "0 4px 14px rgba(233,30,140,0.45)" }}
-                      >
-                        {t.tokens.mostPopular}
-                      </span>
-                    )}
-                    <div className="flex items-start justify-between">
-                      <div className="flex">
-                        {Array.from({ length: Math.min(idx + 1, 4) }).map((_, i) => (
-                          <span key={i} className={`relative inline-flex ${i > 0 ? "-ml-2.5" : ""}`} style={{ zIndex: 4 - i }}>
-                            <Coin size={22} />
-                          </span>
-                        ))}
-                      </div>
-                      <span
-                        className="flex h-5 w-5 items-center justify-center rounded-full transition-all"
-                        style={{
-                          background: isSel ? "#e91e8c" : "transparent",
-                          border: isSel ? "1px solid #e91e8c" : "1px solid rgba(255,255,255,0.25)",
-                        }}
-                      >
-                        {isSel && (
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        )}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-[26px] font-black leading-none text-white">
-                      {p.tokens} <span className="text-xs font-medium text-[#9ca3af]">{t.tokens.tokenUnit}</span>
-                    </p>
-                    <p className="mt-1 text-[11px] text-[#6b7280]">{fmt(t.tokens.perToken, { price: unitLabel(p) })}</p>
-                    <div className="mt-3 flex items-center justify-between gap-1">
-                      <p className="text-base font-bold text-[#e91e8c]">{fmtPrice(p.price)}₺</p>
-                      {savings > 0 && (
-                        <span className="rounded-full bg-[#22c55e]/10 px-2 py-0.5 text-[10px] font-bold text-[#4ade80]">
-                          {fmt(t.tokens.savings, { percent: savings })}
+        <div className="space-y-2.5" role="radiogroup" aria-label={t.tokens.chooseAmount}>
+          {packages.map((p) => {
+            const isSel = selected === p.id;
+            const savings = unitPrice > 0 ? Math.round((1 - p.price / p.tokens / unitPrice) * 100) : 0;
+            return (
+              <OptionRow key={p.id} selected={isSel} onSelect={() => setSelected(p.id)}>
+                <div className="flex items-center gap-3.5">
+                  <Radio selected={isSel} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-[19px] font-extrabold leading-none text-white">
+                        {p.tokens} <span className="text-xs font-medium text-[#9ca3af]">{t.tokens.tokenUnit}</span>
+                      </p>
+                      {p.popular && (
+                        <span
+                          className="rounded-full px-2 py-[2px] text-[9px] font-extrabold uppercase tracking-wider text-white"
+                          style={{ background: "linear-gradient(135deg, #ff2d9c, #b3126d)" }}
+                        >
+                          {t.tokens.mostPopular}
                         </span>
                       )}
                     </div>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
+                    <p className="mt-1.5 text-[11px] text-[#6b7280]">{fmt(t.tokens.perToken, { price: unitLabel(p) })}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-base font-bold text-white tabular-nums">{fmtPrice(p.price)}₺</p>
+                    {savings > 0 && (
+                      <span className="mt-1 inline-block rounded-full bg-[#22c55e]/10 px-2 py-0.5 text-[10px] font-bold text-[#4ade80]">
+                        {fmt(t.tokens.savings, { percent: savings })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </OptionRow>
+            );
+          })}
 
-        {/* Tekli jeton: adet × global birim fiyat */}
-        <button
-          onClick={() => setSelected(CUSTOM)}
-          className="mb-6 w-full rounded-2xl p-4 text-left transition-all active:scale-[0.99]"
-          style={{
-            background:
-              selected === CUSTOM
-                ? "linear-gradient(160deg, rgba(233,30,140,0.16), rgba(139,92,246,0.08) 60%, #1a0e2a)"
-                : "#1a0e2a",
-            border: selected === CUSTOM ? "1px solid rgba(233,30,140,0.55)" : "1px solid rgba(255,255,255,0.08)",
-            boxShadow: selected === CUSTOM ? "0 0 28px rgba(233,30,140,0.22)" : "none",
-          }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-white">{t.tokens.singleToken}</p>
-              <p className="mt-0.5 text-[11px] text-[#6b7280]">{fmt(t.tokens.singleTokenDesc, { price: fmtPrice(unitPrice) })}</p>
+          {/* Tekli jeton: adet × global birim fiyat */}
+          <OptionRow selected={selected === CUSTOM} onSelect={() => setSelected(CUSTOM)}>
+            <div className="flex items-center gap-3.5">
+              <Radio selected={selected === CUSTOM} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-bold leading-none text-white">{t.tokens.customAmountTitle}</p>
+                <p className="mt-1.5 text-[11px] text-[#6b7280]">{t.tokens.customAmountDesc}</p>
+              </div>
+              <p className="shrink-0 text-right text-base font-bold text-white tabular-nums">
+                {selected === CUSTOM ? `${fmtPrice(qty * unitPrice)}₺` : fmt(t.tokens.perToken, { price: fmtPrice(unitPrice) })}
+              </p>
             </div>
-            <span
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-all"
-              style={{
-                background: selected === CUSTOM ? "#e91e8c" : "transparent",
-                border: selected === CUSTOM ? "1px solid #e91e8c" : "1px solid rgba(255,255,255,0.25)",
-              }}
-            >
-              {selected === CUSTOM && (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              )}
-            </span>
-          </div>
-          {selected === CUSTOM && (
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                <span
-                  role="button"
+            {selected === CUSTOM && (
+              <div
+                className="mt-4 flex items-center justify-center gap-4 rounded-xl bg-black/20 py-2.5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
                   aria-label={t.tokens.decreaseAria}
                   onClick={() => setQty((q) => clampQty(q - 1))}
                   className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95"
                 >
                   −
-                </span>
+                </button>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -384,100 +355,29 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                     const n = Number(e.target.value);
                     setQty(Number.isFinite(n) && n >= 1 ? clampQty(n) : 1);
                   }}
-                  className="h-9 w-16 rounded-xl bg-white/10 text-center text-sm font-bold text-white outline-none tabular-nums"
+                  className="h-9 w-20 rounded-xl bg-transparent text-center text-lg font-extrabold text-white outline-none tabular-nums"
                 />
-                <span
-                  role="button"
+                <button
+                  type="button"
                   aria-label={t.tokens.increaseAria}
                   onClick={() => setQty((q) => clampQty(q + 1))}
                   className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95"
                 >
                   +
-                </span>
+                </button>
               </div>
-              <p className="text-base font-bold text-[#e91e8c] tabular-nums">{fmtPrice(qty * unitPrice)}₺</p>
-            </div>
-          )}
-        </button>
-
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.buyerInfo}</p>
-        <div className="mb-4 grid grid-cols-2 gap-3">
-          <input
-            value={buyer.name}
-            onChange={(e) => setBuyer((b) => ({ ...b, name: e.target.value }))}
-            placeholder={t.tokens.firstName}
-            className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
-          />
-          <input
-            value={buyer.surname}
-            onChange={(e) => setBuyer((b) => ({ ...b, surname: e.target.value }))}
-            placeholder={t.tokens.lastName}
-            className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
-          />
-          <input
-            value={buyer.identityNumber}
-            onChange={(e) => setBuyer((b) => ({ ...b, identityNumber: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
-            placeholder={t.tokens.identityNumber}
-            inputMode="numeric"
-            className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
-          />
-          <input
-            value={buyer.city}
-            onChange={(e) => setBuyer((b) => ({ ...b, city: e.target.value }))}
-            placeholder={t.tokens.city}
-            className="col-span-1 h-11 rounded-xl bg-white/10 px-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
-          />
-        </div>
-        <p className="-mt-2 mb-4 text-[10px] text-[#6b7280]">
-          {t.tokens.buyerNote}
-        </p>
-
-        <div className="mb-4 rounded-2xl p-4" style={{ background: "#160d24", border: "1px solid rgba(255,255,255,0.07)" }}>
-          <div className="flex justify-between text-sm">
-            <span className="text-[#9ca3af]">{t.tokens.selected}</span>
-            <span className="font-semibold text-white">{fmt(t.tokens.selectedValue, { n: buyTokens })}{pkg ? ` · ${pkg.label}` : ""}</span>
-          </div>
-          <div className="mt-2 flex justify-between text-sm">
-            <span className="text-[#9ca3af]">{t.tokens.unitPrice}</span>
-            <span className="text-white">{fmt(t.tokens.perToken, { price: pkg ? unitLabel(pkg) : fmtPrice(unitPrice) })}</span>
-          </div>
-          <div className="my-3 border-t border-dashed border-white/10" />
-          <div className="flex items-baseline justify-between">
-            <span className="text-sm text-[#9ca3af]">{t.tokens.total}</span>
-            <span className="text-xl font-extrabold text-[#e91e8c]">{fmtPrice(buyTotal)}₺</span>
-          </div>
+            )}
+          </OptionRow>
         </div>
 
-        <button
-          onClick={handlePurchase}
-          disabled={buyTokens <= 0 || purchasing}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold transition-all active:scale-[0.98] disabled:pointer-events-none"
-          style={{
-            background: "linear-gradient(135deg, #ff2d9c 0%, #e91e8c 45%, #a8125f 100%)",
-            boxShadow: "0 10px 32px -8px rgba(233,30,140,0.55)",
-            color: "white",
-            opacity: purchasing ? 0.8 : 1,
-          }}
-        >
-          {purchasing ? (
-            <>
-              <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
-                <path d="M21 12a9 9 0 0 0-9-9" stroke="white" strokeWidth="3" strokeLinecap="round" />
-              </svg>
-              {t.tokens.redirecting}
-            </>
-          ) : (
-            <>{fmt(t.tokens.payWith, { total: fmtPrice(buyTotal) })}</>
-          )}
-        </button>
-
-        <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-[#9ca3af]">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-            <rect x="4" y="10" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="2" />
-            <path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="2" />
-          </svg>
-          {t.tokens.secureNote}
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <div className="flex items-center gap-1.5 text-[11px] text-[#6b7280]">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <rect x="4" y="10" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="2" />
+              <path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="2" />
+            </svg>
+            {t.tokens.secureNote}
+          </div>
         </div>
         {/* iyzico resmi ödeme rozeti: kart bilgilerinin iyzico güvencesiyle alındığını gösterir (marka kiti şartı) */}
         <div className="mt-3 flex items-center justify-center">
@@ -486,66 +386,115 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             alt="iyzico ile Öde"
             width={210}
             height={31}
-            className="h-5 w-auto opacity-80"
+            className="h-5 w-auto opacity-70"
           />
         </div>
 
         {/* Jeton hareketleri */}
-        <p className="mt-8 mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.recentActivity}</p>
+        <p className="mt-9 mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.recentActivity}</p>
         {!txLoaded ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-14 animate-pulse rounded-2xl" style={{ background: "#1a0e2a" }} />
+              <div key={i} className="h-14 animate-pulse rounded-2xl" style={{ background: CARD }} />
             ))}
           </div>
         ) : txs.length === 0 ? (
           <div
             className="rounded-2xl py-8 text-center text-xs text-[#6b7280]"
-            style={{ background: "#160d24", border: "1px solid rgba(255,255,255,0.07)" }}
+            style={{ background: CARD, border: "1px solid rgba(255,255,255,0.07)" }}
           >
             {t.tokens.noActivity}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl" style={{ background: "#1a0e2a", border: "1px solid rgba(255,255,255,0.07)" }}>
-            {txs.map((tx, i) => {
-              const positive = tx.amount > 0;
-              return (
-                <div
-                  key={tx.id}
-                  className="flex items-center gap-3 px-4 py-3"
-                  style={i > 0 ? { borderTop: "1px solid rgba(255,255,255,0.06)" } : undefined}
-                >
-                  <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-                    style={
-                      positive
-                        ? { background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)" }
-                        : { background: "rgba(233,30,140,0.1)", border: "1px solid rgba(233,30,140,0.2)" }
-                    }
+          <>
+            <div className="overflow-hidden rounded-2xl" style={{ background: CARD, border: "1px solid rgba(255,255,255,0.07)" }}>
+              {visibleTxs.map((tx, i) => {
+                const positive = tx.amount > 0;
+                return (
+                  <div
+                    key={tx.id}
+                    className="flex items-center gap-3 px-4 py-3"
+                    style={i > 0 ? { borderTop: "1px solid rgba(255,255,255,0.06)" } : undefined}
                   >
-                    {positive ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" /></svg>
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V6l10 6-10 6z" stroke="#e91e8c" strokeWidth="2" strokeLinejoin="round" /></svg>
-                    )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-white">{txLabel(tx)}</p>
-                    <p className="mt-0.5 text-[11px] text-[#6b7280]">
-                      {tx.venue_name ? `${tx.venue_name} · ` : ""}{timeAgo(tx.created_at)}
-                    </p>
+                    <span
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                      style={
+                        positive
+                          ? { background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)" }
+                          : { background: "rgba(233,30,140,0.1)", border: "1px solid rgba(233,30,140,0.2)" }
+                      }
+                    >
+                      {positive ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" /></svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V6l10 6-10 6z" stroke={PINK} strokeWidth="2" strokeLinejoin="round" /></svg>
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-white">{txLabel(tx)}</p>
+                      <p className="mt-0.5 text-[11px] text-[#6b7280]">
+                        {tx.venue_name ? `${tx.venue_name} · ` : ""}{timeAgo(tx.created_at)}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className={`text-sm font-bold tabular-nums ${positive ? "text-[#4ade80]" : "text-[#e91e8c]"}`}>
+                        {positive ? `+${tx.amount}` : tx.amount}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-[#6b7280] tabular-nums">{fmt(t.tokens.balanceAfter, { n: tx.balance_after })}</p>
+                    </div>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <p className={`text-sm font-bold tabular-nums ${positive ? "text-[#4ade80]" : "text-[#e91e8c]"}`}>
-                      {positive ? `+${tx.amount}` : tx.amount}
-                    </p>
-                    <p className="mt-0.5 text-[10px] text-[#6b7280] tabular-nums">{fmt(t.tokens.balanceAfter, { n: tx.balance_after })}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+            {txs.length > TX_PREVIEW && (
+              <button
+                onClick={() => setTxExpanded((v) => !v)}
+                className="mt-3 w-full rounded-xl py-2.5 text-xs font-semibold text-[#9ca3af] transition-colors active:text-white"
+                style={{ background: "rgba(255,255,255,0.04)" }}
+              >
+                {txExpanded ? t.tokens.showLess : fmt(t.tokens.showAll, { n: txs.length })}
+              </button>
+            )}
+          </>
         )}
+      </div>
+
+      {/* Ödeme çubuğu: alt gezinmenin (h-16) hemen üstünde sabit */}
+      <div
+        className="fixed inset-x-0 bottom-16 z-30 border-t border-white/10 px-5 py-3 backdrop-blur-xl"
+        style={{ background: "rgba(15,10,24,0.9)" }}
+      >
+        <div className="mx-auto flex w-full max-w-md items-center gap-3">
+          <div className="min-w-0 shrink-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]">{t.tokens.selected}</p>
+            <p className="mt-1 text-lg font-extrabold leading-none text-white tabular-nums">
+              {fmt(t.tokens.selectedValue, { n: buyTokens })}
+            </p>
+          </div>
+          <button
+            onClick={handlePurchase}
+            disabled={buyTokens <= 0 || purchasing}
+            className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl px-4 text-[15px] font-bold transition-all active:scale-[0.98] disabled:pointer-events-none"
+            style={{
+              background: "linear-gradient(135deg, #ff2d9c 0%, #e91e8c 45%, #a8125f 100%)",
+              boxShadow: "0 10px 28px -10px rgba(233,30,140,0.6)",
+              color: "white",
+              opacity: purchasing ? 0.8 : 1,
+            }}
+          >
+            {purchasing ? (
+              <>
+                <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                  <path d="M21 12a9 9 0 0 0-9-9" stroke="white" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                {t.tokens.redirecting}
+              </>
+            ) : (
+              <>{fmt(t.tokens.payWith, { total: fmtPrice(buyTotal) })}</>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

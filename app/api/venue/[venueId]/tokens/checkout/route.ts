@@ -5,6 +5,20 @@ import { createCheckoutForm } from "@/lib/iyzico";
 import { hasVenueSession } from "@/lib/venue-auth-cookie";
 
 const MAX_LOOSE = 1000;
+// iyzico şemasında zorunlu ama doğrulanmayan alanlar için yer tutucular
+const PLACEHOLDER_IDENTITY = "11111111111";
+const PLACEHOLDER_CITY = "İstanbul";
+const BUYER_SURNAME = "Kullanıcı";
+const BUYER_FALLBACK_NAME = "PlayMyJam";
+
+/**
+ * iyzico'ya gidecek alıcı adı: profil kullanıcı adı, yoksa e-postanın yerel kısmı.
+ * iyzico ad alanında yalnızca harf/rakam/boşluk kabul ettiği için temizleniyor.
+ */
+function buyerNameFrom(username: string | null | undefined, email: string | undefined) {
+  const raw = (username || email?.split("@")[0] || "").replace(/[^\p{L}\p{N} ]/gu, " ").trim();
+  return raw ? raw.slice(0, 40) : BUYER_FALLBACK_NAME;
+}
 
 export async function POST(
   req: NextRequest,
@@ -33,18 +47,17 @@ export async function POST(
     return NextResponse.json({ error: "Paket veya jeton adedi seçilmeli" }, { status: 400 });
   }
 
-  // iyzico Checkout Form'un zorunlu tuttuğu alıcı bilgisi — sitede sadece e-posta
-  // toplandığı için ödeme anında kısa bir formla alınıyor.
-  const buyerName = typeof body?.buyer?.name === "string" ? body.buyer.name.trim() : "";
-  const buyerSurname = typeof body?.buyer?.surname === "string" ? body.buyer.surname.trim() : "";
-  const buyerIdentity = typeof body?.buyer?.identityNumber === "string" ? body.buyer.identityNumber.trim() : "";
-  const buyerCity = typeof body?.buyer?.city === "string" ? body.buyer.city.trim() : "";
-  if (!buyerName || !buyerSurname || !buyerCity) {
-    return NextResponse.json({ error: "Ad, soyad ve şehir gerekli" }, { status: 400 });
-  }
-  if (!/^[1-9][0-9]{10}$/.test(buyerIdentity)) {
-    return NextResponse.json({ error: "Geçerli bir T.C. kimlik numarası gir" }, { status: 400 });
-  }
+  // Alıcı bilgisi kullanıcıya sorulmuyor: iyzico buyer objesinde zorunlu olan alanlar
+  // hesaptan türetiliyor (kullanıcı adı / e-posta), doğrulanmayanlar yer tutucu.
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("username")
+    .eq("id", userId)
+    .maybeSingle();
+  const buyerName = buyerNameFrom(profile?.username, email);
+  const buyerSurname = BUYER_SURNAME;
+  const buyerIdentity = PLACEHOLDER_IDENTITY;
+  const buyerCity = PLACEHOLDER_CITY;
 
   const { data: venue } = await supabaseAdmin
     .from("venues")
@@ -98,7 +111,7 @@ export async function POST(
       venue_id: venue.id,
       tokens: amount,
       total,
-      buyer: { name: buyerName, surname: buyerSurname, identityNumber: buyerIdentity, city: buyerCity },
+      buyer: { name: buyerName, surname: buyerSurname },
     })
     .select("id")
     .single();
@@ -107,7 +120,7 @@ export async function POST(
   }
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "85.34.78.112";
-  const registrationAddress = `${buyerCity} - dijital ürün (fiziksel teslimat yok)`;
+  const registrationAddress = "Dijital ürün - fiziksel teslimat yok";
   const priceStr = total.toFixed(2);
 
   try {

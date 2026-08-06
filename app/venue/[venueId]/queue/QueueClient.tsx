@@ -54,6 +54,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
   const [selectedSong, setSelectedSong] = useState<SongDetail | null>(null);
   const [trackIdBySongId, setTrackIdBySongId] = useState<Map<string, string>>(new Map());
   const [fabCollapsed, setFabCollapsed] = useState(false);
+  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -144,6 +145,32 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     };
   }, [queue, nowPlaying, trackIdBySongId, supabase]);
 
+  // Üstteki jeton çipi (gözat sayfasındakinin aynısı). Bakiye global cüzdandan
+  // (0010) tek satır okunur; kuyruk uzunluğu değişince tazelenir — jeton harcanan
+  // tek yer sıraya ekleme, satın alma da /tokens'tan dönüşte yeniden okunur.
+  useEffect(() => {
+    if (!isMember) return;
+    let cancelled = false;
+
+    const loadBalance = async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+      if (cancelled || !userId) return;
+      const { data } = await supabase
+        .from("user_wallets")
+        .select("balance")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (cancelled) return;
+      setTokenBalance((data as { balance: number } | null)?.balance ?? 0);
+    };
+    loadBalance();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMember, supabase, queue.length]);
+
   // Sayfanın en üstünde tam genişlik kart; aşağı kaydırınca sağda yuvarlak butona daralır
   useEffect(() => {
     const onScroll = () => setFabCollapsed(window.scrollY > 40);
@@ -189,12 +216,26 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
   return (
     <div className="min-h-screen bg-[#0f0a18]">
       <div className="flex items-center justify-between px-5 pt-12 pb-4">
-        <h1 className="text-white font-bold text-lg">{venueName || venueId}</h1>
-        <div className="flex items-center gap-2">
+        <h1 className="min-w-0 truncate text-white font-bold text-lg">{venueName || venueId}</h1>
+        <div className="flex shrink-0 items-center gap-2">
           {/* Turist misafir mekanın panelini kendi dilinde açabilsin */}
           <LangToggle />
           {/* Kuyruk artık mekanın giriş sayfası — misafire görünür bir giriş kapısı kalsın */}
-          {!isMember && (
+          {isMember ? (
+            <Link
+              href={`/venue/${venueId}/tokens`}
+              className="flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-[#1a0e2a] px-3 transition-transform active:scale-95"
+              aria-label={t.browse.balanceAria}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fbbf24" strokeWidth="2" /><circle cx="12" cy="12" r="4" stroke="#fbbf24" strokeWidth="2" /></svg>
+              {tokenBalance === null ? (
+                <span className="h-3.5 w-4 animate-pulse rounded bg-white/10" />
+              ) : (
+                <span className="text-sm font-bold text-white">{tokenBalance}</span>
+              )}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /></svg>
+            </Link>
+          ) : (
             <Link
               href={venueLoginPath(venueId, `/venue/${venueId}/queue`)}
               className="flex h-8 items-center rounded-full border border-[#e91e8c]/40 bg-[#e91e8c]/15 px-3 text-xs font-bold text-white transition-transform active:scale-95"

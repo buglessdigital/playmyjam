@@ -33,6 +33,8 @@ export default function SiteHeader() {
           <Link href="/#fiyatlar" className="transition-colors hover:text-[#ff2d9c]">{t.nav.pricing}</Link>
           <Link href="/#sss" className="transition-colors hover:text-[#ff2d9c]">{t.nav.faq}</Link>
           <Link href="/#iletisim" className="transition-colors hover:text-[#ff2d9c]">{t.nav.contact}</Link>
+          {/* Mekan sahibi panele her sayfadan ulaşsın */}
+          <Link href="/mekan-girisi" className="transition-colors hover:text-[#ff2d9c]">{t.nav.venueLogin}</Link>
         </nav>
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           {/* Mobilde dil anahtarı ve mekan kayıt linki alt satıra taşınıyor, üst satır taşmasın */}
@@ -56,16 +58,26 @@ export default function SiteHeader() {
           </Link>
         </div>
       </div>
-      {/* Mobil: dil anahtarı + mekan kaydı üst menünün altında kendi satırında */}
-      <div className="flex items-center justify-between gap-3 border-t border-white/[0.05] px-4 py-2 sm:hidden">
-        <Link
-          href="/#mekan-basvuru"
-          className="truncate rounded-lg border border-[#e91e8c]/30 px-3 py-1.5 text-[11px] font-bold text-[#ff8fd0]"
-          style={{ background: "rgba(233,30,140,0.06)" }}
-        >
-          {t.nav.registerVenue}
-        </Link>
-        <LangToggle />
+      {/* Mobil: dil anahtarı + mekan kaydı/girişi üst menünün altında kendi satırında */}
+      <div className="flex items-center justify-between gap-2 border-t border-white/[0.05] px-4 py-2 sm:hidden">
+        <div className="flex min-w-0 items-center gap-2">
+          <Link
+            href="/#mekan-basvuru"
+            className="truncate rounded-lg border border-[#e91e8c]/30 px-3 py-1.5 text-[11px] font-bold text-[#ff8fd0]"
+            style={{ background: "rgba(233,30,140,0.06)" }}
+          >
+            {t.nav.registerVenue}
+          </Link>
+          <Link
+            href="/mekan-girisi"
+            className="truncate rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-bold text-[#9ca3af]"
+          >
+            {t.nav.venueLogin}
+          </Link>
+        </div>
+        <div className="shrink-0">
+          <LangToggle />
+        </div>
       </div>
     </header>
   );

@@ -34,6 +34,7 @@ export default function SiteFooter() {
             <li><Link href="/#fiyatlar" className="hover:text-white">{t.nav.pricing}</Link></li>
             <li><Link href="/#sss" className="hover:text-white">{t.footer.faqLong}</Link></li>
             <li><Link href="/#mekan-basvuru" className="text-[#e91e8c] hover:text-[#ff2d9c]">{t.nav.registerVenue}</Link></li>
+            <li><Link href="/mekan-girisi" className="hover:text-white">{t.footer.venueLogin}</Link></li>
           </ul>
         </div>
 

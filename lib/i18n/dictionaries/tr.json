@@ -12,7 +12,8 @@
     "faq": "SSS",
     "contact": "İletişim",
     "registerVenue": "Mekanını Kaydet",
-    "findVenue": "Mekanı Bul"
+    "findVenue": "Mekanı Bul",
+    "venueLogin": "Mekan Girişi"
   },
   "footer": {
     "tagline": "Kafe ve eğlence mekanlarında müzik sırasını misafirlere açan dijital şarkı istek platformu. {company} tarafından işletilmektedir.",
@@ -27,7 +28,8 @@
     "delivery": "Teslimat ve İade",
     "contactPage": "İletişim sayfası →",
     "rights": "© 2026 PlayMyJam · Tüm hakları saklıdır · Tüm ödemeler SSL ile güvence altındadır",
-    "youtubeTerms": "YouTube Hizmet Şartları"
+    "youtubeTerms": "YouTube Hizmet Şartları",
+    "venueLogin": "Mekan Girişi"
   },
   "common": {
     "loading": "Yükleniyor…",
@@ -561,5 +563,33 @@
     "sending": "Gönderiliyor…",
     "submit": "Başvuruyu Gönder",
     "consent": "Formu göndererek iletişim bilgilerinin başvurunun değerlendirilmesi amacıyla işlenmesini kabul edersin. Kurulum ücretsizdir, ek donanım gerekmez."
+  },
+  "venueAdminLogin": {
+    "eyebrow": "Mekan Girişi",
+    "heading": "Mekanını seç, panele gir",
+    "desc": "Mekan sahibi misin? Mekanını aratıp seç, panel kullanıcı adın ve şifrenle giriş yap. Panelden kuyruğu yönetir, playlistlerini düzenler ve istatistiklerini görürsün.",
+    "step1Title": "1. Mekanını bul",
+    "step1Desc": "Mekan adını yazmaya başla, listeden kendi mekanını seç.",
+    "searchPlaceholder": "Mekan adı ara...",
+    "noResults": "Bu isimde bir mekan bulunamadı. Yazımı kontrol et veya doğrudan giriş yap.",
+    "cantFind": "Mekanımı bulamıyorum, doğrudan giriş yapayım",
+    "step2TitleGeneric": "Panel girişi",
+    "step2DescGeneric": "Kullanıcı adın hangi mekana bağlıysa o panele gidersin",
+    "change": "Değiştir",
+    "username": "Kullanıcı Adı",
+    "password": "Şifre",
+    "showPassword": "Şifreyi göster",
+    "hidePassword": "Şifreyi gizle",
+    "signIn": "Panele Giriş Yap →",
+    "signingIn": "Giriş yapılıyor...",
+    "errMissing": "Kullanıcı adı ve şifre gereklidir",
+    "errFailed": "Giriş başarısız",
+    "errConnection": "Bağlantı hatası, tekrar deneyin",
+    "errWrongVenue": "Bu kullanıcı {venue} mekanına ait değil. Mekan seçimini değiştirip tekrar deneyin.",
+    "customerHintPrefix": "Müşteri misin? Şarkı istemek için",
+    "customerHintLink": "mekanlar sayfasına git",
+    "applyHintPrefix": "Mekanın henüz PlayMyJam kullanmıyorsa",
+    "applyHintLink": "başvuru formunu doldur",
+    "homeCta": "Zaten mekanım var, panele gir"
   }
 }

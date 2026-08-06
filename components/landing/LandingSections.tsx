@@ -221,13 +221,22 @@ export function ForVenuesSection() {
           <p className="mt-4 max-w-md text-sm leading-relaxed text-[#9ca3af] sm:text-base">
             {t.home.venues.desc}
           </p>
-          <a
-            href="#mekan-basvuru"
-            className="mt-7 inline-block rounded-2xl px-6 py-3.5 text-sm font-bold text-white transition-transform active:scale-[0.98]"
-            style={{ background: PINK_GRADIENT, boxShadow: "0 10px 28px -10px rgba(233,30,140,0.6)" }}
-          >
-            {t.home.venues.cta}
-          </a>
+          <div className="mt-7 flex flex-wrap items-center gap-3">
+            <a
+              href="#mekan-basvuru"
+              className="inline-block rounded-2xl px-6 py-3.5 text-sm font-bold text-white transition-transform active:scale-[0.98]"
+              style={{ background: PINK_GRADIENT, boxShadow: "0 10px 28px -10px rgba(233,30,140,0.6)" }}
+            >
+              {t.home.venues.cta}
+            </a>
+            {/* Zaten kayıtlı mekanlar başvuru formunu doldurmasın, doğrudan panele gitsin */}
+            <Link
+              href="/mekan-girisi"
+              className="inline-block rounded-2xl border border-white/12 px-6 py-3.5 text-sm font-bold text-[#c7cad1] transition-colors hover:bg-white/[0.06] hover:text-white"
+            >
+              {t.venueAdminLogin.homeCta}
+            </Link>
+          </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           {features.map((f) => (

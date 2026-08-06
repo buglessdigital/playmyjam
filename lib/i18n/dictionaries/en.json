@@ -12,7 +12,8 @@
     "faq": "FAQ",
     "contact": "Contact",
     "registerVenue": "Register Your Venue",
-    "findVenue": "Find a Venue"
+    "findVenue": "Find a Venue",
+    "venueLogin": "Venue Login"
   },
   "footer": {
     "tagline": "The digital song request platform that hands the music queue to guests in cafés and entertainment venues. Operated by {company}.",
@@ -27,7 +28,8 @@
     "delivery": "Delivery and Returns",
     "contactPage": "Contact page →",
     "rights": "© 2026 PlayMyJam · All rights reserved · All payments are secured with SSL",
-    "youtubeTerms": "YouTube Terms of Service"
+    "youtubeTerms": "YouTube Terms of Service",
+    "venueLogin": "Venue Login"
   },
   "common": {
     "loading": "Loading…",
@@ -561,5 +563,33 @@
     "sending": "Sending…",
     "submit": "Submit Application",
     "consent": "By submitting the form, you agree to the processing of your contact information for the purpose of evaluating your application. Installation is free; no additional hardware is required."
+  },
+  "venueAdminLogin": {
+    "eyebrow": "Venue Login",
+    "heading": "Pick your venue, open your panel",
+    "desc": "Are you a venue owner? Search for your venue, select it and sign in with your panel username and password. From the panel you manage the queue, edit your playlists and see your stats.",
+    "step1Title": "1. Find your venue",
+    "step1Desc": "Start typing your venue name and pick it from the list.",
+    "searchPlaceholder": "Search venue name...",
+    "noResults": "No venue found with that name. Check the spelling or sign in directly.",
+    "cantFind": "I can not find my venue, let me sign in directly",
+    "step2TitleGeneric": "Panel login",
+    "step2DescGeneric": "You will land on the panel your username belongs to",
+    "change": "Change",
+    "username": "Username",
+    "password": "Password",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "signIn": "Sign In to Panel →",
+    "signingIn": "Signing in...",
+    "errMissing": "Username and password are required",
+    "errFailed": "Sign-in failed",
+    "errConnection": "Connection error, please try again",
+    "errWrongVenue": "This user does not belong to {venue}. Change the venue selection and try again.",
+    "customerHintPrefix": "Are you a guest? To request songs",
+    "customerHintLink": "go to the venues page",
+    "applyHintPrefix": "If your venue does not use PlayMyJam yet",
+    "applyHintLink": "fill in the application form",
+    "homeCta": "I already have a venue, open the panel"
   }
 }

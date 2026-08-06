@@ -569,7 +569,9 @@ function PlaylistPageContent({ params }: Props) {
   const openPlaylistModal = () => {
     const target = defaultTarget();
     setTargetId(target);
-    setImportAsNew(!target);
+    // İçe aktarma çoğunlukla yeni bir liste oluşturmak için yapılıyor —
+    // varsayılan sekme "Yeni liste".
+    setImportAsNew(true);
     setNewListName("");
     setShowPlaylistModal(true);
   };

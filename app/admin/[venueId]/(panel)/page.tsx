@@ -29,8 +29,16 @@ type NowPlaying = {
   progress_ms: number;
   started_at: string | null;
   last_heartbeat_at: string | null;
+  volume?: number | null;
   songs: { title: string; artist: string; album_cover_url: string; duration_ms: number } | null;
 };
+
+const NP_COLUMNS = "is_playing, progress_ms, started_at, last_heartbeat_at, volume";
+// 0036 uygulanmadan deploy edilirse volume kolonu yoktur; select'in tamamı
+// düşüp panel boş kalmasın diye kolonsuz sürüme dönülür
+const NP_COLUMNS_LEGACY = "is_playing, progress_ms, started_at, last_heartbeat_at";
+const NP_SONGS = "songs(title, artist, album_cover_url, duration_ms)";
+let volumeColumnMissing = false;
 
 type SearchTrack = {
   youtube_video_id: string;
@@ -65,6 +73,12 @@ function AdminDashboardContent({ params }: Props) {
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [progress, setProgress] = useState(0);
   const [playerLoading, setPlayerLoading] = useState<string | null>(null);
+  const [volume, setVolume] = useState(100);
+  const [volumeError, setVolumeError] = useState("");
+  // Sessize alma eski seviyeyi hatırlar (ayrı bir mute kolonu yok — bkz. 0036)
+  const lastAudibleVolumeRef = useRef(100);
+  const volumeTouchedAtRef = useRef(0);
+  const volumeSendRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const [queueError, setQueueError] = useState("");
@@ -115,15 +129,28 @@ function AdminDashboardContent({ params }: Props) {
 
       // Şu an çalan: Spotify'a sormak yerine now_playing tablosu Realtime ile izlenir
       const fetchNowPlaying = async () => {
-        const { data } = await supabase
-          .from("now_playing")
-          .select("is_playing, progress_ms, started_at, last_heartbeat_at, songs(title, artist, album_cover_url, duration_ms)")
-          .eq("venue_id", dbId)
-          .maybeSingle();
+        const run = () =>
+          supabase
+            .from("now_playing")
+            .select(`${volumeColumnMissing ? NP_COLUMNS_LEGACY : NP_COLUMNS}, ${NP_SONGS}`)
+            .eq("venue_id", dbId)
+            .maybeSingle();
+        const first = await run();
+        let data = first.data;
+        if (first.error && !volumeColumnMissing) {
+          volumeColumnMissing = true;
+          ({ data } = await run());
+        }
         if (cancelled || !data) return;
         const raw = data as unknown as Omit<NowPlaying, "songs"> & { songs: NowPlaying["songs"] | NowPlaying["songs"][] };
         const songs = Array.isArray(raw.songs) ? raw.songs[0] ?? null : raw.songs;
         setNowPlaying({ ...raw, songs });
+        // Kaydırıcıyı sunucudan tazele — ama kullanıcı az önce oynadıysa dokunma,
+        // yoksa henüz yazılmamış değer parmağın altından geri sıçrar
+        if (typeof raw.volume === "number" && Date.now() - volumeTouchedAtRef.current > 2_000) {
+          setVolume(raw.volume);
+          if (raw.volume > 0) lastAudibleVolumeRef.current = raw.volume;
+        }
         // İlerlemeyi started_at çapasından hesapla — progress_ms yazıldığı andan itibaren bayat
         if (raw.is_playing && raw.started_at) {
           setProgress(Math.max(Date.now() - Date.parse(raw.started_at), 0));
@@ -189,6 +216,33 @@ function AdminDashboardContent({ params }: Props) {
       setPlayerLoading(null);
     }
   };
+
+  // Kaydırıcı anında tepki verir, sunucuya yazma 250 ms sonra: sürüklerken
+  // onlarca istek gitmesin. Player değişikliği Realtime ile duyar.
+  const changeVolume = (next: number) => {
+    if (!venueDbId) return;
+    const value = Math.min(100, Math.max(0, Math.round(next)));
+    setVolume(value);
+    volumeTouchedAtRef.current = Date.now();
+    if (value > 0) lastAudibleVolumeRef.current = value;
+    if (volumeSendRef.current) clearTimeout(volumeSendRef.current);
+    volumeSendRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/player/${venueDbId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "volume", volume: value }),
+        });
+        setVolumeError(res.ok ? "" : "Ses seviyesi kaydedilemedi");
+      } catch {
+        setVolumeError("Ses seviyesi kaydedilemedi");
+      }
+    }, 250);
+  };
+
+  useEffect(() => () => {
+    if (volumeSendRef.current) clearTimeout(volumeSendRef.current);
+  }, []);
 
   const removeFromQueue = async (id: string) => {
     const res = await fetch("/api/admin/queue", {
@@ -410,6 +464,49 @@ function AdminDashboardContent({ params }: Props) {
         ) : (
           <p className="text-[#6b7280] text-sm">Şu an çalan şarkı yok — kuyruğa şarkı eklenince Player&apos;da otomatik başlar</p>
         )}
+
+        {/* Ses seviyesi — player'ın açık olduğu cihaza uzaktan uygulanır. Çalan
+            şarkı yokken de görünür: mekan sesi önceden ayarlayıp bırakabilsin. */}
+        <div className="mt-5 pt-4 border-t border-white/10">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => changeVolume(volume === 0 ? lastAudibleVolumeRef.current || 100 : 0)}
+              aria-label={volume === 0 ? "Sesi aç" : "Sesi kapat"}
+              className="w-9 h-9 flex items-center justify-center rounded-full shrink-0 transition-all hover:bg-white/10"
+            >
+              {volume === 0 ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M11 5 6 9H3v6h3l5 4V5z" fill="#9ca3af" /><path d="m16 9 5 6m0-6-5 6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M11 5 6 9H3v6h3l5 4V5z" fill="#e91e8c" /><path d="M16 9a4 4 0 0 1 0 6" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />{volume > 50 && <path d="M18.5 6.5a7.5 7.5 0 0 1 0 11" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />}</svg>
+              )}
+            </button>
+
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={volume}
+              onChange={(e) => changeVolume(Number(e.target.value))}
+              aria-label="Ses seviyesi"
+              className="flex-1 h-1.5 cursor-pointer accent-[#e91e8c]"
+            />
+
+            <span className="text-white text-xs font-bold tabular-nums w-10 text-right shrink-0">%{volume}</span>
+          </div>
+
+          {volumeError ? (
+            <p className="mt-2 text-xs" style={{ color: "#f87171" }}>{volumeError}</p>
+          ) : playerOffline ? (
+            <p className="mt-2 text-[#6b7280] text-xs">
+              Player çevrimdışı — ayarladığınız seviye kaydedilir, oynatıcı açılınca uygulanır.
+            </p>
+          ) : (
+            <p className="mt-2 text-[#6b7280] text-xs">
+              Player&apos;ın açık olduğu cihazın sesi. iPad/iPhone&apos;da sistem sesi geçerlidir, bu kaydırıcı etkisiz kalır.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Kuyruk */}

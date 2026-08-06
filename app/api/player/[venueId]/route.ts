@@ -104,6 +104,25 @@ export async function POST(
       return reply({ ok: true });
     }
 
+    // Panelden ses seviyesi (0-100). Ses üretmeyen bir komut olduğu için claim
+    // aranmaz; player değişikliği Realtime ile duyup YT.setVolume çağırır.
+    case "volume": {
+      const raw = typeof body?.volume === "number" ? body.volume : NaN;
+      if (!Number.isFinite(raw)) return reply({ error: "volume gerekli" }, { status: 400 });
+      const volume = Math.min(100, Math.max(0, Math.round(raw)));
+      const { error } = await supabaseAdmin
+        .from("now_playing")
+        .update({ volume })
+        .eq("venue_id", venueId);
+      // 0036 uygulanmadan deploy edilirse kolon yoktur — panel bunu anlaşılır
+      // bir uyarıya çevirsin diye hatayı yutmuyoruz
+      if (error) {
+        console.error("[player] ses seviyesi yazılamadı:", error.message);
+        return reply({ error: "Ses seviyesi kaydedilemedi" }, { status: 500 });
+      }
+      return reply({ ok: true, volume });
+    }
+
     // Player'ın onError'u: video embed'e kapalı/kaldırılmış/bölge engelli —
     // şarkıyı işaretle ve sıradakine geç
     case "error": {

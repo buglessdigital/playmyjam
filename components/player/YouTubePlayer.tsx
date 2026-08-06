@@ -10,6 +10,9 @@ type YTPlayer = {
   pauseVideo: () => void;
   getCurrentTime: () => number;
   getPlayerState: () => number;
+  setVolume: (volume: number) => void;
+  isMuted?: () => boolean;
+  unMute?: () => void;
   destroy: () => void;
 };
 
@@ -50,7 +53,36 @@ type NowPlayingRow = {
   video_id: string | null;
   song_id: string | null;
   is_playing: boolean;
+  volume?: number | null;
 };
+
+// 0036 uygulanmadan kod deploy edilirse volume kolonu yoktur ve select komple
+// düşerdi — ilk hatada anlaşılıp kolonsuz sürüme dönülür (bkz. route.ts'teki
+// claimSupported ile aynı yaklaşım)
+const NP_SELECT = "video_id, song_id, is_playing, volume";
+const NP_SELECT_LEGACY = "video_id, song_id, is_playing";
+let volumeColumnMissing = false;
+
+async function readNowPlaying(
+  supabase: ReturnType<typeof createClient>,
+  venueDbId: string
+): Promise<NowPlayingRow | null> {
+  const run = () =>
+    supabase
+      .from("now_playing")
+      .select(volumeColumnMissing ? NP_SELECT_LEGACY : NP_SELECT)
+      .eq("venue_id", venueDbId)
+      .maybeSingle();
+
+  const first = await run();
+  if (first.error && !volumeColumnMissing) {
+    console.error("[player] now_playing okunamadı, volume kolonsuz denenecek:", first.error.message);
+    volumeColumnMissing = true;
+    const retry = await run();
+    return (retry.data as NowPlayingRow | null) ?? null;
+  }
+  return (first.data as NowPlayingRow | null) ?? null;
+}
 
 type PlayerApiResult = {
   started?: boolean;
@@ -142,6 +174,22 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     claimIdRef.current ??= playerInstanceId(venueDbId);
     return claimIdRef.current;
   }, [venueDbId]);
+
+  // Panelden gelen ses seviyesi. Player hazır olmadan komut gelirse burada
+  // bekler, onReady bunu uygular.
+  const volumeRef = useRef<number | null>(null);
+  const applyVolume = useCallback((value: number | null | undefined) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return;
+    const volume = Math.min(100, Math.max(0, Math.round(value)));
+    volumeRef.current = volume;
+    const player = playerRef.current;
+    if (!readyRef.current || typeof player?.setVolume !== "function") return;
+    try {
+      player.setVolume(volume);
+      // setVolume, sessize alınmış player'ın sesini geri açmaz — elle aç
+      if (volume > 0 && player.isMuted?.()) player.unMute?.();
+    } catch {}
+  }, []);
 
   const setBlock = useCallback((next: Blocked | null) => {
     if (blockedRef.current === next) return;
@@ -296,13 +344,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // panelden gelen next/play komutları kaçar — now_playing ile mutabakat kur
   const reconcile = useCallback(async () => {
     if (advancingRef.current) return;
-    const { data } = await supabase
-      .from("now_playing")
-      .select("video_id, song_id, is_playing")
-      .eq("venue_id", venueDbId)
-      .maybeSingle();
-    const np = data as NowPlayingRow | null;
+    const np = await readNowPlaying(supabase, venueDbId);
     if (!np || advancingRef.current) return;
+    // Realtime kopmuşken değişen ses seviyesi de burada yakalanır
+    if (np.volume !== volumeRef.current) applyVolume(np.volume);
     if (np.video_id && np.video_id !== currentVideoRef.current) {
       loadVideo(np.video_id);
       return;
@@ -311,7 +356,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       desiredPlayingRef.current = true;
       nudgePlayback();
     }
-  }, [supabase, venueDbId, loadVideo, nudgePlayback]);
+  }, [supabase, venueDbId, loadVideo, nudgePlayback, applyVolume]);
 
   // "Başlat" — tarayıcı autoplay politikası gereği ilk oynatma kullanıcı dokunuşuyla.
   // Önce sahiplik alınır: aynı mekanda ikinci bir sekme/cihaz açıksa çift ses olmasın.
@@ -343,6 +388,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       events: {
         onReady: async () => {
           readyRef.current = true;
+          // Player hazır olmadan gelen ses komutu biriktiyse şimdi uygula
+          if (volumeRef.current !== null) applyVolume(volumeRef.current);
           // Hazır olmadan gelen komut biriktiyse önce onu çal
           const pending = pendingVideoRef.current;
           if (pending) {
@@ -350,12 +397,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             return;
           }
           // Kaldığı yerden devam: now_playing'de video varsa onu, yoksa sıradakini çal
-          const { data } = await supabase
-            .from("now_playing")
-            .select("video_id, song_id, is_playing")
-            .eq("venue_id", venueDbId)
-            .maybeSingle();
-          const np = data as NowPlayingRow | null;
+          const np = await readNowPlaying(supabase, venueDbId);
+          // Mekanın en son ayarladığı ses seviyesiyle aç — yeniden başlatmada sıfırlanmaz
+          applyVolume(np?.volume);
           if (np?.video_id) {
             loadVideo(np.video_id);
           } else {
@@ -368,6 +412,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             advance({ action: "next" });
           } else if (e.data === YT.PlayerState.PLAYING) {
             desiredPlayingRef.current = true;
+            // Yeni video/aygıt değişiminde player varsayılan sese dönebilir
+            if (volumeRef.current !== null) applyVolume(volumeRef.current);
             onTrackChange?.({ videoId: currentVideoRef.current, isPlaying: true });
             sendHeartbeat();
           } else if (e.data === YT.PlayerState.PAUSED) {
@@ -390,7 +436,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     });
 
     setStarted(true);
-  }, [api, advance, loadVideo, sendHeartbeat, onTrackChange, supabase, venueDbId]);
+  }, [api, advance, loadVideo, sendHeartbeat, onTrackChange, supabase, venueDbId, applyVolume]);
 
   // Sahiplik başka cihaza geçtiyse bu sekme derhal susar — çift ses olmasın
   useEffect(() => {
@@ -449,6 +495,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           // Sahiplik kaybedildiyse dinlemeye devam etme — sesi açan taraf sahip
           if (blockedRef.current === "claim") return;
           const np = payload.new;
+          // Ses seviyesi her daldan önce uygulanır: şarkı değişimiyle aynı
+          // güncellemede gelse bile (aşağıdaki dallar return ediyor) kaçmasın.
+          // Heartbeat yankılarında değer değişmediği için setVolume çağrılmaz.
+          if (np.volume !== volumeRef.current) applyVolume(np.volume);
           if (np.video_id && np.video_id !== currentVideoRef.current) {
             loadVideo(np.video_id);
             return;
@@ -497,7 +547,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [started, blocked, supabase, venueDbId, loadVideo, onTrackChange, scheduleNudges]);
+  }, [started, blocked, supabase, venueDbId, loadVideo, onTrackChange, scheduleNudges, applyVolume]);
 
   // "Çalmayı buraya al": sahipliği zorla devral ve kaldığı yerden sürdür
   const takeOver = useCallback(async () => {

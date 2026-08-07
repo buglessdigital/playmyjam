@@ -18,9 +18,13 @@ export type Song = {
 export type Playlist = {
   id: string;
   name: string;
-  is_active: boolean;
+  // Çalma kuyruğundaki yer; null = sırada değil (0037)
+  queue_position: number | null;
+  // Bir turunu bitirince kuyruktan düşer (0037)
+  play_once: boolean;
+  // Sırada olmayan listelerin raydaki görünüm sırası
   sort_order: number;
-  // Sıralı modda liste İÇİNDEKİ sıra yerine rastgele çalar (0032)
+  // Liste İÇİNDEKİ sıra yerine rastgele çalar (0032)
   shuffle: boolean;
 };
 
@@ -101,7 +105,7 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
           .order("added_at", { ascending: false }),
         supabase
           .from("playlists")
-          .select("id, name, is_active, sort_order, shuffle")
+          .select("id, name, queue_position, play_once, sort_order, shuffle")
           .eq("venue_id", venueDbIdArg)
           .order("sort_order", { ascending: true }),
         supabase
@@ -228,14 +232,22 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     };
   }, []);
 
-  const activeLists = useMemo(() => playlists.filter((p) => p.is_active), [playlists]);
+  // Çalma kuyruğu: sıraya alınmış listeler, çalacakları sırayla (0037)
+  const queueLists = useMemo(
+    () =>
+      playlists
+        .filter((p) => p.queue_position !== null)
+        .sort((a, b) => (a.queue_position ?? 0) - (b.queue_position ?? 0)),
+    [playlists]
+  );
 
-  // Şu an hangi listeden çalınıyor. İmleçteki liste pasife alınmış ya da
-  // silinmişse sunucu da ilk aktif listeye düşeceği için burada da öyle.
+  // Şu an hangi listeden çalınıyor. İmleçteki liste kuyruktan çıkarılmış ya da
+  // silinmişse sunucu da kuyruğun başına döneceği için burada da öyle.
+  // Kuyruk boşsa null — o zaman tüm katalogdan karışık çalınır.
   const currentList = useMemo(() => {
-    const pointed = activeLists.find((p) => p.id === rotation?.playlist_id);
-    return pointed ?? activeLists[0] ?? null;
-  }, [activeLists, rotation]);
+    const pointed = queueLists.find((p) => p.id === rotation?.playlist_id);
+    return pointed ?? queueLists[0] ?? null;
+  }, [queueLists, rotation]);
 
   const selectedList = useMemo(
     () => playlists.find((p) => p.id === selectedId) ?? null,
@@ -288,12 +300,22 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     [songs, memberships, matchesQuery]
   );
 
+  // Raydaki sıralama: önce çalma kuyruğu (çalacakları sırayla), sonra sırada
+  // olmayan listeler. Böylece "ne zaman çalacak" sorusunun cevabı yukarıdan
+  // aşağı okunur.
+  const railLists = useMemo(() => {
+    const idle = playlists
+      .filter((p) => p.queue_position === null)
+      .sort((a, b) => a.sort_order - b.sort_order);
+    return [...queueLists, ...idle];
+  }, [playlists, queueLists]);
+
   // Raydaki listeler: ad araması süzer, seçili liste her zaman görünür kalır
   const listQ = normalize(listQuery.trim());
   const visiblePlaylists = useMemo(() => {
-    if (!listQ) return playlists;
-    return playlists.filter((p) => normalize(p.name).includes(listQ) || p.id === viewId);
-  }, [playlists, listQ, viewId]);
+    if (!listQ) return railLists;
+    return railLists.filter((p) => normalize(p.name).includes(listQ) || p.id === viewId);
+  }, [railLists, listQ, viewId]);
 
   const visibleSongs = useMemo(() => {
     if (viewId === ALL) return q ? songs.filter(matchesQuery) : songs;
@@ -310,11 +332,12 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
   // tamamı değil.
   const orderable = viewId !== ALL && !filtering;
 
-  // Modal açılırken hedef liste: seçili liste, yoksa ilk aktif, o da yoksa ilk liste
+  // Modal açılırken hedef liste: seçili liste, yoksa kuyruktaki ilki, o da yoksa
+  // mekanın ilk listesi
   const defaultTarget = useCallback(() => {
     if (viewId !== ALL) return viewId;
-    return activeLists[0]?.id ?? playlists[0]?.id ?? "";
-  }, [viewId, activeLists, playlists]);
+    return queueLists[0]?.id ?? playlists[0]?.id ?? "";
+  }, [viewId, queueLists, playlists]);
 
   const toggleInList = async (venueSongId: string, current: boolean) => {
     const res = await fetch("/api/admin/playlist", {
@@ -379,54 +402,99 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     return { ok: true as const };
   };
 
-  const toggleActive = async (playlist: Playlist) => {
-    const next = !playlist.is_active;
-    setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, is_active: next } : p)));
+  // Listeyi çalma kuyruğuna alır ya da kuyruktan çıkarır. Kuyruğa eklemek çalanı
+  // değiştirmez — liste sıranın sonuna girer, sırası gelince çalar.
+  const setQueued = async (playlist: Playlist, next: boolean) => {
+    if ((playlist.queue_position !== null) === next) return;
+    const optimistic = next ? (queueLists.at(-1)?.queue_position ?? 0) + 1 : null;
+    setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, queue_position: optimistic } : p)));
+
     const res = await fetch("/api/admin/playlists", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ playlist_id: playlist.id, is_active: next }),
+      body: JSON.stringify({ playlist_id: playlist.id, queued: next }),
     });
     if (!res.ok) {
-      setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, is_active: !next } : p)));
+      setPlaylists((prev) =>
+        prev.map((p) => (p.id === playlist.id ? { ...p, queue_position: playlist.queue_position } : p))
+      );
+      return;
+    }
+    await refresh();
+  };
+
+  // Play: imleç bu listeye atlar, liste baştan başlar. Kuyruktaki sırası değişmez;
+  // sahnedeki şarkı kesilmez, müşteri istekleri etkilenmez.
+  const playNow = async (playlist: Playlist) => {
+    const res = await fetch("/api/admin/playlists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playlist_id: playlist.id, play: true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false as const, error: (data.error as string) ?? "Çalınamadı" };
+    await refresh();
+    return { ok: true as const };
+  };
+
+  // Tek seferlik çalma: liste bir turunu bitirince kuyruktan düşer.
+  const setPlayOnce = async (playlist: Playlist, next: boolean) => {
+    if (playlist.play_once === next) return;
+    setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, play_once: next } : p)));
+    const res = await fetch("/api/admin/playlists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playlist_id: playlist.id, play_once: next }),
+    });
+    if (!res.ok) {
+      setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, play_once: !next } : p)));
     }
   };
 
-  // Listeyi verilen sıraya taşır. Sıra sunucuda dizinin kendisi olarak yazılır;
-  // çalan listenin imleci korunur, yani sıra değiştirmek turu başa sarmaz.
-  // Komşu takası değil çıkar-yerleştir: uçlara taşımada aradakiler bir kayar.
+  // Listeyi raydaki grubu içinde taşır: kuyruktakiler kuyruk sırasını (yani çalma
+  // sırasını), sıradışılar yalnızca görünüm sırasını değiştirir. Sıra sunucuda
+  // dizinin kendisi olarak yazılır; rotasyon imleci korunur, yani sıra değiştirmek
+  // çalan listeyi başa sarmaz. Komşu takası değil çıkar-yerleştir.
   const moveListTo = async (playlist: Playlist, to: number) => {
     if (reordering) return;
-    const ordered = [...playlists].sort((a, b) => a.sort_order - b.sort_order);
-    const from = ordered.findIndex((p) => p.id === playlist.id);
+    const queued = playlist.queue_position !== null;
+    const group = railLists.filter((p) => (p.queue_position !== null) === queued);
+    const from = group.findIndex((p) => p.id === playlist.id);
     if (from < 0) return;
-    const target = Math.min(ordered.length - 1, Math.max(0, to));
+    const target = Math.min(group.length - 1, Math.max(0, to));
     if (target === from) return;
 
-    const next = [...ordered];
+    const next = [...group];
     next.splice(from, 1);
-    next.splice(target, 0, ordered[from]);
-    const withOrder = next.map((p, i) => ({ ...p, sort_order: i }));
-    setPlaylists(withOrder);
+    next.splice(target, 0, group[from]);
+
+    const previous = playlists;
+    const moved = new Map(
+      next.map((p, i) => [p.id, queued ? { queue_position: i + 1 } : { sort_order: i }])
+    );
+    setPlaylists((prev) => prev.map((p) => ({ ...p, ...(moved.get(p.id) ?? {}) })));
     setReordering(true);
 
     try {
       const res = await fetch("/api/admin/playlists", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ order: withOrder.map((p) => p.id) }),
+        body: JSON.stringify(
+          queued ? { queue_order: next.map((p) => p.id) } : { order: next.map((p) => p.id) }
+        ),
       });
-      if (!res.ok) setPlaylists(ordered);
+      if (!res.ok) setPlaylists(previous);
     } catch {
-      setPlaylists(ordered);
+      setPlaylists(previous);
     } finally {
       setReordering(false);
     }
   };
 
   const moveList = (playlist: Playlist, delta: -1 | 1) => {
-    const ordered = [...playlists].sort((a, b) => a.sort_order - b.sort_order);
-    const from = ordered.findIndex((p) => p.id === playlist.id);
+    const queued = playlist.queue_position !== null;
+    const group = railLists.filter((p) => (p.queue_position !== null) === queued);
+    const from = group.findIndex((p) => p.id === playlist.id);
     if (from < 0) return Promise.resolve();
     return moveListTo(playlist, from + delta);
   };
@@ -600,7 +668,8 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     memberships,
     visiblePlaylists,
     visibleSongs,
-    activeLists,
+    railLists,
+    queueLists,
     currentList,
     selectedList,
     selectedSource,
@@ -634,7 +703,9 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     removeSong,
     removeSongFrom,
     addSongToPlaylist,
-    toggleActive,
+    setQueued,
+    playNow,
+    setPlayOnce,
     setShuffle,
     toggleAutoSync,
     syncNow,

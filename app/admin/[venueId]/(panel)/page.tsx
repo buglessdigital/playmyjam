@@ -157,7 +157,12 @@ function AdminDashboardContent({ params }: Props) {
         </div>
       </div>
 
-      <PlayerBar playback={playback} venueId={venueId} />
+      <PlayerBar
+        playback={playback}
+        venueId={venueId}
+        // Otomatik çalma nereden geliyor: kuyruktaki liste ya da tüm katalog (0037)
+        source={lib.currentList?.name ?? null}
+      />
 
       <HomeModals kind={modal} onClose={() => setModal(null)} lib={lib} playback={playback} />
     </div>

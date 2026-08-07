@@ -4,7 +4,16 @@ import Image from "next/image";
 import { formatTime, type Playback } from "./usePlayback";
 
 /** Ana ekranın alt barı: şu an çalan, oynat/duraklat/geç ve ses seviyesi. */
-export default function PlayerBar({ playback, venueId }: { playback: Playback; venueId: string }) {
+export default function PlayerBar({
+  playback,
+  venueId,
+  /** Kuyruk hangi listeden doluyor; null ise sıra boş, tüm katalogdan çalınıyor. */
+  source,
+}: {
+  playback: Playback;
+  venueId: string;
+  source?: string | null;
+}) {
   const {
     nowPlaying,
     progress,
@@ -58,7 +67,13 @@ export default function PlayerBar({ playback, venueId }: { playback: Playback; v
                     </span>
                   )}
                 </div>
-                <p className="text-[#9ca3af] text-xs truncate">{song.artist}</p>
+                <p className="text-[#9ca3af] text-xs truncate">
+                  {song.artist}
+                  <span className="text-[#4b5563]">
+                    {" · "}
+                    {source ? `Sırada: ${source}` : "Sıra boş — tüm katalogdan"}
+                  </span>
+                </p>
               </>
             ) : (
               <p className="text-[#6b7280] text-xs">

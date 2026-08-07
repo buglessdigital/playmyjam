@@ -198,7 +198,11 @@ export default function SongRowMenu({
                     className={`${itemClass} pl-9`}
                     style={{ color: "#9ca3af" }}
                   >
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: p.is_active ? "#22c55e" : "rgba(255,255,255,0.25)" }} />
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ background: p.queue_position !== null ? "#22c55e" : "rgba(255,255,255,0.25)" }}
+                      title={p.queue_position !== null ? "Çalma sırasında" : "Sırada değil"}
+                    />
                     <span className="truncate">{p.name}</span>
                     {busy === `add-${p.id}` && <span className="ml-auto text-[11px]">...</span>}
                   </button>

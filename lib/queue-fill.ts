@@ -10,31 +10,9 @@ const COOLDOWN_MS = 30 * 60 * 1000;
 export const ADMIN_ADDED_BY = "admin";
 const AUTO_ADDED_BY = "auto";
 
-// Aktif playlist'lerin şarkı kimlikleri. Hiç aktif playlist yoksa null döner:
-// çağıran taraf bunu "havuz = tüm katalog" diye okur, böylece admin tüm listeleri
-// pasife çekse bile müzik susmaz.
-async function getActivePlaylistSongIds(venueId: string): Promise<Set<string> | null> {
-  const { data: activePlaylists } = await supabaseAdmin
-    .from("playlists")
-    .select("id")
-    .eq("venue_id", venueId)
-    .eq("is_active", true);
-
-  const ids = (activePlaylists ?? []).map((p) => p.id);
-  if (ids.length === 0) return null;
-
-  const { data: members } = await supabaseAdmin
-    .from("playlist_songs")
-    .select("song_id")
-    .eq("venue_id", venueId)
-    .in("playlist_id", ids);
-
-  return new Set((members ?? []).map((m) => m.song_id));
-}
-
-// Sıralı modda (0032) rotasyonun tuttuğu iki şey: hangi listedeyiz ve bu turda
-// o listenin hangi şarkıları tüketildi. Kuyruk 10 şarkılık bir pencere olduğu
-// için "liste bitti" kuyruğa bakarak anlaşılamaz; ilerleme ayrı yaşar.
+// Rotasyonun tuttuğu iki şey: hangi listedeyiz ve bu turda o listenin hangi
+// şarkıları tüketildi (0032). Kuyruk 10 şarkılık bir pencere olduğu için
+// "liste bitti" kuyruğa bakarak anlaşılamaz; ilerleme ayrı yaşar.
 type RotationPick = { songId: string; playlistId: string };
 type ConsumedRow = { playlist_id: string; song_id: string; cycle: number };
 
@@ -110,14 +88,14 @@ export async function resetAutoQueue(venueId: string): Promise<void> {
   await fillQueueToTen(venueId);
 }
 
-// Sıralı mod seçici. Aktif listeleri sort_order sırasıyla tüketir: baştaki listede
-// bu turda çalınmamış şarkı kaldığı sürece oradan seçer, tükenince sıradakine
-// geçer, sonuncu da bitince başa döner ve tur numarasını artırır.
+// Playlist kuyruğundan seçici (0037). Kuyruk = queue_position dolu listeler.
+// İmlecin gösterdiği listede bu turda çalınmamış şarkı kaldığı sürece oradan
+// seçer, tükenince kuyruktaki sıradakine geçer, sonuncu da bitince başa döner ve
+// tur numarasını artırır — döngü hiç durmaz.
 //
-// Dönüş null ise "aktif playlist yok" demektir — çağıran taraf karışık moddaki
-// gibi tüm kataloga düşer, yani müzik hiçbir koşulda susmaz. Boş dizi ise aktif
-// listelerde şu an çalınabilir şarkı kalmamıştır; orada da katalog yedeği devreye
-// girer.
+// Dönüş null ise "kuyrukta liste yok" demektir; boş/eksik dizi ise kuyruktakilerde
+// şu an çalınabilir şarkı kalmamıştır (hepsi zaten kuyrukta ya da 30 dk kilidinde).
+// Her iki durumda da çağıran taraf katalog yedeğine düşer, yani müzik susmaz.
 async function pickFromRotation(
   venueId: string,
   needed: number,
@@ -125,12 +103,12 @@ async function pickFromRotation(
 ): Promise<RotationPick[] | null> {
   const { data: allLists } = await supabaseAdmin
     .from("playlists")
-    .select("id, is_active, sort_order, shuffle, created_at")
+    .select("id, queue_position, play_once, shuffle, created_at")
     .eq("venue_id", venueId)
-    .order("sort_order", { ascending: true })
+    .order("queue_position", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
 
-  const active = (allLists ?? []).filter((p) => p.is_active);
+  const active = (allLists ?? []).filter((p) => p.queue_position !== null);
   if (active.length === 0) return null;
 
   const { data: state } = await supabaseAdmin
@@ -145,15 +123,9 @@ async function pickFromRotation(
 
   if (state?.playlist_id) {
     const found = active.findIndex((p) => p.id === state.playlist_id);
-    if (found >= 0) {
-      idx = found;
-    } else {
-      // İmleçteki liste pasife alınmış ya da silinmiş: sıradaki aktif listeye
-      // geçilir (sırada kimse yoksa başa dönülür), tur bozulmaz.
-      const previous = (allLists ?? []).find((p) => p.id === state.playlist_id);
-      const after = previous ? active.findIndex((p) => p.sort_order >= previous.sort_order) : -1;
-      idx = after >= 0 ? after : 0;
-    }
+    // İmleçteki liste kuyruktan çıkarılmış ya da silinmişse kuyruğun başından
+    // devam edilir; tur (cycle) ve diğer listelerin ilerlemesi bozulmaz.
+    idx = found >= 0 ? found : 0;
   }
 
   const activeIds = active.map((p) => p.id);
@@ -191,17 +163,41 @@ async function pickFromRotation(
   const picks: RotationPick[] = [];
   const consumed: ConsumedRow[] = [];
   const taken = new Set<string>();
+  // Bir turunu bitiren "tek seferlik" listeler: bu çağrının sonunda kuyruktan
+  // düşerler, o ana kadar da atlanırlar.
+  const finishedOnce = new Set<string>();
+
+  // Bu listede bu turda henüz çalınmamış şarkı var mı — tur artırma kararı buna bakar
+  const hasRemaining = (playlistId: string) => {
+    const seen = consumedByList.get(playlistId);
+    return (songsByList.get(playlistId) ?? []).some((id) => !seen?.has(id));
+  };
 
   // Emniyet tavanı: tüm listeler boşsa döngü iki tam turdan fazla dönmesin
   const maxSteps = active.length * 2 + 1;
 
   for (let step = 0; step < maxSteps && picks.length < needed; step++) {
     const playlist = active[idx];
+    if (finishedOnce.has(playlist.id)) {
+      idx += 1;
+      if (idx >= active.length) idx = 0;
+      continue;
+    }
+
     const memberIds = songsByList.get(playlist.id) ?? [];
     const alreadyConsumed = consumedByList.get(playlist.id) ?? new Set<string>();
     consumedByList.set(playlist.id, alreadyConsumed);
 
     const remaining = memberIds.filter((id) => !alreadyConsumed.has(id));
+
+    // Turunu tamamlamış tek seferlik liste: kuyruktan düşer, sıradakine geçilir.
+    // Kuyruğu boş liste de burada elenir, yoksa hiç çalmadan sonsuza dek kalırdı.
+    if (remaining.length === 0 && playlist.play_once) {
+      finishedOnce.add(playlist.id);
+      idx += 1;
+      if (idx >= active.length) idx = 0;
+      continue;
+    }
 
     // Kalıcı olarak çalınamaz olanlar (katalogdan düşmüş, gizlenmiş ya da embed'e
     // kapalı) turu kilitlemesin diye tüketilmiş sayılır.
@@ -236,11 +232,17 @@ async function pickFromRotation(
     idx += 1;
     if (idx >= active.length) {
       idx = 0;
-      cycle += 1;
-      // Yeni tur: tüketim sıfırlanır. taken KORUNUR — o yalnızca bu dolumda aynı
-      // şarkının iki kez kuyruğa yazılmasını engelliyor; tur değişimi bunu
-      // serbest bırakırsa aynı satır iki kez eklenir.
-      consumedByList.clear();
+      // Kuyruk başa döndü. Tur ancak kuyruktaki TÜM listeler gerçekten tükendiyse
+      // artar: şarkıları yalnızca şu an çalınamaz olduğu için (kuyrukta bekliyor
+      // ya da 30 dk kilidinde) atlanan listenin ilerlemesi silinmemeli.
+      const exhausted = active.every((p) => finishedOnce.has(p.id) || !hasRemaining(p.id));
+      if (exhausted) {
+        cycle += 1;
+        // Yeni tur: tüketim sıfırlanır. taken KORUNUR — o yalnızca bu dolumda aynı
+        // şarkının iki kez kuyruğa yazılmasını engelliyor; tur değişimi bunu
+        // serbest bırakırsa aynı satır iki kez eklenir.
+        consumedByList.clear();
+      }
     }
   }
 
@@ -262,10 +264,39 @@ async function pickFromRotation(
     );
   }
 
+  // Turunu bitiren tek seferlik listeler kuyruktan düşer. Liste silinmez, yalnızca
+  // sıradan çıkar — mekan isterse tekrar sıraya alır.
+  if (finishedOnce.size > 0) {
+    await supabaseAdmin
+      .from("playlists")
+      .update({ queue_position: null })
+      .eq("venue_id", venueId)
+      .in("id", [...finishedOnce]);
+
+    // İlerlemesi de silinir: liste sonradan tekrar sıraya alınırsa "zaten bitmiş"
+    // sayılıp anında düşmesin, baştan çalsın.
+    await supabaseAdmin
+      .from("playlist_rotation_consumed")
+      .delete()
+      .eq("venue_id", venueId)
+      .in("playlist_id", [...finishedOnce]);
+  }
+
+  // İmleç: kuyrukta kalan ilk listeye oturur. Kuyruk tamamen boşaldıysa null —
+  // bir sonraki dolum katalog yedeğine düşer.
+  let cursor: string | null = null;
+  for (let i = 0; i < active.length; i++) {
+    const candidate = active[(idx + i) % active.length];
+    if (!finishedOnce.has(candidate.id)) {
+      cursor = candidate.id;
+      break;
+    }
+  }
+
   await supabaseAdmin.from("playlist_rotation").upsert(
     {
       venue_id: venueId,
-      playlist_id: active[idx].id,
+      playlist_id: cursor,
       cycle,
       updated_at: new Date().toISOString(),
     },
@@ -355,8 +386,8 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
   // bir sonraki dolumda played satırı üzerinden yakalanır)
   if (playingNow?.user_id && playingNow.song_id) cooldownIds.add(playingNow.song_id);
 
-  // Otomatik çalma havuzu = AKTİF playlist'lerdeki şarkılar (0026).
-  // Çalınamaz işaretlenen (embed kapalı) ve müşteriye kapatılmış şarkılar girmez.
+  // Çalınabilir katalog: çalınamaz işaretlenen (embed kapalı) ve müşteriye
+  // kapatılmış şarkılar girmez.
   const { data: venueSongs } = await supabaseAdmin
     .from("venue_songs")
     .select("song_id, songs!inner(embeddable)")
@@ -364,42 +395,100 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
     .eq("in_venue_list", true)
     .eq("songs.embeddable", true);
 
-  // Otomatik çalma daima rotasyondan geçer (0032): aktif listeler sort_order
-  // sırasıyla tüketilir. Seçici null dönerse (hiç aktif liste yok) ya da hiçbir
-  // şey bulamazsa aşağıdaki katalog yedeğine düşülür — müzik susmaz.
+  // Otomatik çalma önce playlist kuyruğundan geçer (0037): sıraya alınmış listeler
+  // queue_position sırasıyla tüketilir, sonuncu bitince başa dönülür.
   const catalogEligible = new Set((venueSongs ?? []).map((vs) => vs.song_id));
-  const rotationPicks = await pickFromRotation(venueId, needed, {
-    catalogEligible,
-    excludeIds,
-    cooldownIds,
-  });
+  const rotationPicks =
+    (await pickFromRotation(venueId, needed, { catalogEligible, excludeIds, cooldownIds })) ?? [];
 
-  if (rotationPicks && rotationPicks.length > 0) {
-    await insertAutoRows(venueId, rotationPicks);
-    return;
+  const picks: { songId: string; playlistId: string | null }[] = [...rotationPicks];
+
+  // Kuyrukta liste yoksa — ya da kuyruktakilerden şu an yeterince şarkı
+  // çıkmadıysa (hepsi kuyrukta bekliyor / 30 dk kilidinde) — kalan boşluk tüm
+  // katalogdan karışık doldurulur. Bunlar source_playlist_id'siz girer ve
+  // "tüketilmiş" sayılmaz: kilit açılınca liste kaldığı yerden devam eder.
+  if (picks.length < needed) {
+    const alreadyPicked = new Set(picks.map((p) => p.songId));
+    const eligible = (venueSongs ?? [])
+      .map((vs) => vs.song_id)
+      .filter((id) => !excludeIds.has(id) && !alreadyPicked.has(id));
+
+    // Cooldown'daki şarkılar elenir; ama katalog küçük olup hepsi elenirse müzik
+    // susmasın diye cooldown yok sayılır (kuyruğa/sahneye çıkma engeli hep geçerli)
+    const fresh = eligible.filter((id) => !cooldownIds.has(id));
+    const candidates = fresh.length > 0 ? fresh : eligible;
+
+    shuffleInPlace(candidates);
+    for (const songId of candidates.slice(0, needed - picks.length)) {
+      picks.push({ songId, playlistId: null });
+    }
   }
 
-  const activePool = await getActivePlaylistSongIds(venueId);
+  await insertAutoRows(venueId, picks);
+}
 
-  const eligible = (venueSongs ?? []).map((vs) => vs.song_id).filter((id) => !excludeIds.has(id));
-  const fromActive = activePool === null ? eligible : eligible.filter((id) => activePool.has(id));
+// Paneldeki play tuşu: imleç bu listeye atlar ve liste baştan başlar. Kuyruktaki
+// sırası DEĞİŞMEZ — kendisinden sonrakiler yine arkasından gelir, önceden sırada
+// olanlar da kuyruk başa dönünce çalar.
+//
+// Liste kuyrukta değilse önce kuyruğa alınır: play "sıraya ekle + şimdi çal".
+export async function playPlaylistNow(venueId: string, playlistId: string): Promise<void> {
+  const { data: playlist } = await supabaseAdmin
+    .from("playlists")
+    .select("id, queue_position")
+    .eq("id", playlistId)
+    .eq("venue_id", venueId)
+    .maybeSingle();
 
-  // Aktif listeler boşsa (ör. tüm şarkıları gizlenmiş) müzik susmasın diye
-  // tüm kataloga düşülür — cooldown fallback'iyle aynı mantık
-  const available = fromActive.length > 0 ? fromActive : eligible;
+  if (!playlist) return;
 
-  // Cooldown'daki şarkılar elenir; ama liste küçük olup hepsi elenirse müzik
-  // susmasın diye cooldown yok sayılır (kuyruğa/sahneye çıkma engeli hep geçerli)
-  const fresh = available.filter((id) => !cooldownIds.has(id));
-  const candidates = fresh.length > 0 ? fresh : available;
+  if (playlist.queue_position === null) {
+    await supabaseAdmin
+      .from("playlists")
+      .update({ queue_position: await nextQueuePosition(venueId) })
+      .eq("id", playlistId)
+      .eq("venue_id", venueId);
+  }
 
-  if (candidates.length === 0) return;
+  const { data: state } = await supabaseAdmin
+    .from("playlist_rotation")
+    .select("cycle")
+    .eq("venue_id", venueId)
+    .maybeSingle();
 
-  // Fisher-Yates shuffle, then pick `needed`
-  shuffleInPlace(candidates);
-  const picks = candidates.slice(0, needed);
+  const cycle = state?.cycle ?? 1;
 
-  await insertAutoRows(venueId, picks.map((songId) => ({ songId, playlistId: null })));
+  // Liste baştan çalsın: bu turda tüketilmiş sayılan şarkıları serbest bırak.
+  await supabaseAdmin
+    .from("playlist_rotation_consumed")
+    .delete()
+    .eq("venue_id", venueId)
+    .eq("cycle", cycle)
+    .eq("playlist_id", playlistId);
+
+  await supabaseAdmin.from("playlist_rotation").upsert(
+    { venue_id: venueId, playlist_id: playlistId, cycle, updated_at: new Date().toISOString() },
+    { onConflict: "venue_id" }
+  );
+
+  // Kuyrukta bekleyen otomatik şarkılar yeni listeden yeniden seçilir. Sahnede
+  // çalan şarkıya, müşteri isteklerine ve adminin elle eklediklerine dokunulmaz —
+  // yani hiçbir şarkı yarıda kesilmez, sıradaki şarkıdan itibaren bu liste çalar.
+  await resetAutoQueue(venueId);
+}
+
+// Kuyruğun sonundaki yer. Kuyruk boşsa 1'den başlar.
+export async function nextQueuePosition(venueId: string): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from("playlists")
+    .select("queue_position")
+    .eq("venue_id", venueId)
+    .not("queue_position", "is", null)
+    .order("queue_position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return (data?.queue_position ?? 0) + 1;
 }
 
 // Seçilen şarkıları kuyruğun otomatik bölümüne yazar. Konum, mevcut en yüksek

@@ -24,7 +24,7 @@ export default function PlaylistRowMenu({
   orderable: boolean;
   onRename: () => void;
 }) {
-  const { playlists, moveListTo, toggleActive, deleteList, reordering, setSelectedId } = lib;
+  const { railLists, moveListTo, setQueued, playNow, deleteList, reordering, setSelectedId } = lib;
 
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -64,8 +64,11 @@ export default function PlaylistRowMenu({
   };
 
   // Sıra hesapları listenin tamamı üzerinden yapılır: menüdeki "en üste/en alta"
-  // aramayla süzülmüş görünüme değil, gerçek çalma sırasına göre çalışır.
-  const ordered = [...playlists].sort((a, b) => a.sort_order - b.sort_order);
+  // aramayla süzülmüş görünüme değil, gerçek sıraya göre çalışır. Taşıma listenin
+  // kendi grubu içinde olur: kuyruktakiler çalma sırasını, sıradışılar yalnızca
+  // raydaki görünüm sırasını değiştirir.
+  const queued = playlist.queue_position !== null;
+  const ordered = railLists.filter((p) => (p.queue_position !== null) === queued);
   const index = ordered.findIndex((p) => p.id === playlist.id);
   const first = index <= 0;
   const last = index === ordered.length - 1;
@@ -111,11 +114,43 @@ export default function PlaylistRowMenu({
             <div className="px-3 py-2 border-b border-white/10">
               <p className="text-white text-xs font-semibold truncate">{playlist.name}</p>
               <p className="text-[#6b7280] text-[11px]">
-                Çalma sırası: {index + 1}/{ordered.length}
+                {queued ? `Çalma sırası: ${index + 1}/${ordered.length}` : "Sırada değil"}
               </p>
             </div>
 
             <div className="max-h-[60vh] overflow-y-auto py-1">
+              <button
+                onClick={() => {
+                  void playNow(playlist);
+                  setOpen(false);
+                }}
+                className={itemClass}
+                style={{ color: "#22c55e" }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5L8 5.5z" /></svg>
+                Şimdi çal
+              </button>
+
+              <button
+                onClick={() => {
+                  void setQueued(playlist, !queued);
+                  setOpen(false);
+                }}
+                className={itemClass}
+                style={{ color: queued ? "#9ca3af" : "#e5e7eb" }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                  {queued ? (
+                    <path d="M4 6h11M4 12h11M4 18h7M17 9l6 6M23 9l-6 6" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                  ) : (
+                    <path d="M4 6h11M4 12h11M4 18h7M20 10v8m-4-4h8" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                  )}
+                </svg>
+                {queued ? "Sıradan çıkar" : "Sıraya ekle"}
+              </button>
+
+              <div className="my-1 h-px bg-white/10" />
+
               {orderable ? (
                 <>
                   <button onClick={() => move(index - 1)} disabled={first || reordering} className={itemClass} style={{ color: "#e5e7eb" }}>
@@ -142,21 +177,6 @@ export default function PlaylistRowMenu({
               )}
 
               <div className="my-1 h-px bg-white/10" />
-
-              <button
-                onClick={() => {
-                  void toggleActive(playlist);
-                  setOpen(false);
-                }}
-                className={itemClass}
-                style={{ color: playlist.is_active ? "#9ca3af" : "#22c55e" }}
-              >
-                <span
-                  className="w-1.5 h-1.5 rounded-full shrink-0 ml-[6px] mr-[6px]"
-                  style={{ background: playlist.is_active ? "rgba(255,255,255,0.25)" : "#22c55e" }}
-                />
-                {playlist.is_active ? "Pasife al" : "Aktif et"}
-              </button>
 
               <button
                 onClick={() => {

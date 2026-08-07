@@ -34,7 +34,7 @@ export default function LibraryPane({
     selectedSource,
     coversByList,
     catalogCovers,
-    activeLists,
+    queueLists,
     currentList,
     consumed,
     countFor,
@@ -50,7 +50,9 @@ export default function LibraryPane({
     orderError,
     savingOrder,
     moveSong,
-    toggleActive,
+    setQueued,
+    playNow,
+    setPlayOnce,
     setShuffle,
     toggleAutoSync,
     syncNow,
@@ -62,16 +64,29 @@ export default function LibraryPane({
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [playNote, setPlayNote] = useState("");
 
   const totalMs = visibleSongs.reduce((n, s) => n + (s.duration_ms || 0), 0);
 
+  const queued = selectedList ? selectedList.queue_position !== null : false;
+  const isPlaying = !!selectedList && currentList?.id === selectedList.id;
+  // Kuyruk döngüsel: çalan listeden sonra sıradakiler, sonuncu bitince başa
+  // dönülür. Bu yüzden "sırada kaçıncı" çalan listeden itibaren sayılır.
+  const turnsAway = (() => {
+    if (!selectedList || !queued || isPlaying) return 0;
+    const from = queueLists.findIndex((p) => p.id === currentList?.id);
+    const mine = queueLists.findIndex((p) => p.id === selectedList.id);
+    if (from < 0 || mine < 0) return mine + 1;
+    return ((mine - from) + queueLists.length) % queueLists.length;
+  })();
+
   const statusLine = !selectedList
-    ? "Mekanın tüm şarkıları — müşteriler hangi liste aktif olursa olsun bu havuzun tamamından seçebilir"
-    : !selectedList.is_active
-      ? "Pasif — şarkıları müşteri yine de seçebilir, otomatik çalmaz"
-      : currentList?.id === selectedList.id
+    ? "Mekanın tüm şarkıları — müşteriler hangi liste sırada olursa olsun bu havuzun tamamından seçebilir"
+    : !queued
+      ? "Sırada değil — şarkıları müşteri yine de seçebilir, otomatik çalmaz"
+      : isPlaying
         ? `Şu an çalıyor — bu turda ${consumed[selectedList.id] ?? 0}/${countFor(selectedList.id)} şarkı çalındı`
-        : `Sırada ${activeLists.findIndex((a) => a.id === selectedList.id) + 1}. — kendinden öncekiler bitince başlar`;
+        : `Sırada — kendinden önceki ${turnsAway === 1 ? "liste" : `${turnsAway} liste`} bitince başlar`;
 
   return (
     <div className="flex flex-col min-h-0 h-full">
@@ -139,20 +154,76 @@ export default function LibraryPane({
           <div className="flex items-center gap-2 flex-wrap">
             {selectedList && (
               <>
+                {/* Play: sırayı beklemeden bu liste çalmaya başlar. Sahnedeki
+                    şarkı kesilmez, müşteri istekleri etkilenmez. */}
                 <button
-                  onClick={() => toggleActive(selectedList)}
-                  className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
-                  style={{
-                    background: selectedList.is_active ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.08)",
-                    color: selectedList.is_active ? "#22c55e" : "#9ca3af",
+                  onClick={async () => {
+                    setPlayNote("");
+                    const res = await playNow(selectedList);
+                    if (!res.ok) setPlayNote(res.error);
                   }}
+                  disabled={isPlaying || countFor(selectedList.id) === 0}
+                  className="w-10 h-10 flex items-center justify-center rounded-full shrink-0 transition-transform hover:scale-105 disabled:hover:scale-100 disabled:opacity-45"
+                  style={{ background: "#22c55e" }}
                   title={
-                    selectedList.is_active
-                      ? "Sıra boşken bu listedeki şarkılar çalar"
-                      : "Pasif — müşteri yine seçebilir, otomatik çalmaz"
+                    isPlaying
+                      ? "Bu liste zaten çalıyor"
+                      : "Şimdi bu listeyi çal — sıradaki şarkıdan itibaren bu listeden gelir"
                   }
                 >
-                  {selectedList.is_active ? "Aktif" : "Pasif"}
+                  {isPlaying ? (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="#0b1220">
+                      <rect x="6" y="5" width="4" height="14" rx="1" />
+                      <rect x="14" y="5" width="4" height="14" rx="1" />
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="#0b1220">
+                      <path d="M8 5.5v13l11-6.5L8 5.5z" />
+                    </svg>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setQueued(selectedList, !queued)}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
+                  style={{
+                    background: queued ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.08)",
+                    color: queued ? "#22c55e" : "#9ca3af",
+                  }}
+                  title={
+                    queued
+                      ? "Çalma sırasında — sırası gelince kendiliğinden çalar. Çıkarmak için tıklayın"
+                      : "Sırada değil — müşteri yine seçebilir, otomatik çalmaz. Sıraya almak için tıklayın"
+                  }
+                >
+                  {queued ? "Sırada" : "Sıraya Ekle"}
+                </button>
+
+                {/* Tek seferlik: liste bir turunu bitirince kuyruktan düşer.
+                    Kapalıyken (varsayılan) kuyruk sonsuza dek döner. */}
+                <button
+                  onClick={() => setPlayOnce(selectedList, !selectedList.play_once)}
+                  aria-pressed={selectedList.play_once}
+                  className="relative w-8 h-8 flex items-center justify-center rounded-lg transition-all"
+                  style={{ background: selectedList.play_once ? "rgba(233,30,140,0.18)" : "rgba(255,255,255,0.08)" }}
+                  title={
+                    selectedList.play_once
+                      ? "Tek seferlik — liste bir kez baştan sona çalınca sıradan düşer"
+                      : "Tekrar açık — liste bitince sıra döner, bu liste tekrar çalar"
+                  }
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M17 2l4 4-4 4M3 11V9a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"
+                      stroke={selectedList.play_once ? "#f9a8d4" : "#9ca3af"}
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    {selectedList.play_once && (
+                      <path d="M11 9.5h1.5V15" stroke="#f9a8d4" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+                    )}
+                  </svg>
                 </button>
                 {/* Liste İÇİNDEKİ şarkıların sırası: kapalıyken aşağıdaki sıra,
                     açıkken rastgele. Tek düğme — açıkken renklenir, altındaki
@@ -276,8 +347,17 @@ export default function LibraryPane({
             </div>
           </div>
 
-          {(syncNote || orderError) && (
+          {(syncNote || orderError || playNote) && (
             <div className="mt-2 flex flex-col gap-1.5">
+              {playNote && (
+                <button
+                  onClick={() => setPlayNote("")}
+                  className="text-xs rounded-xl px-3 py-2 text-left"
+                  style={{ background: "rgba(239,68,68,0.1)", color: "#f87171" }}
+                >
+                  {playNote}
+                </button>
+              )}
               {syncNote && (
                 <button
                   onClick={() => setSyncNote("")}

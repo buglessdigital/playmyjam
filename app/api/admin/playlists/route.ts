@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
-import { resetAutoQueue } from "@/lib/queue-fill";
+import { nextQueuePosition, playPlaylistNow, resetAutoQueue } from "@/lib/queue-fill";
 
 const MAX_NAME = 40;
 
@@ -13,7 +13,8 @@ function parseName(value: unknown): string | null {
   return name;
 }
 
-// Yeni playlist. Pasif başlar — admin hazır olunca aktife alır.
+// Yeni playlist. Sıra dışında başlar — admin hazır olunca kuyruğa alır ya da
+// play tuşuyla doğrudan çaldırır (queue_position null = sırada değil).
 export async function POST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
       is_active: false,
       sort_order: (last?.sort_order ?? -1) + 1,
     })
-    .select("id, name, is_active, sort_order, shuffle")
+    .select("id, name, sort_order, shuffle, queue_position, play_once")
     .single();
 
   if (error || !data) {
@@ -51,8 +52,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ playlist: data });
 }
 
-// Yeniden adlandırma, aktiflik, liste içi karıştırma; playlist_id olmadan da
-// listelerin çalma sırası. Aktiflik değişirse otomatik kuyruk tazelenir.
+// Yeniden adlandırma, kuyruğa alma/çıkarma, play, liste içi karıştırma; playlist_id
+// olmadan da listelerin sırası. Kuyruk değişirse otomatik kuyruk tazelenir.
 export async function PATCH(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
@@ -61,8 +62,45 @@ export async function PATCH(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
 
-  // Listelerin çalma sırası: gelen dizi baştan sona sort_order olur. Rotasyon
-  // imleci bilerek korunur — sıra değiştirmek çalan listeyi başa sarmaz.
+  // Playlist kuyruğunun sırası (0037): gelen dizi baştan sona queue_position olur.
+  // Rotasyon imleci bilerek korunur — sıra değiştirmek çalan listeyi başa sarmaz,
+  // yalnızca kimin ne zaman geleceğini değiştirir.
+  if (body?.queue_order !== undefined) {
+    const order = Array.isArray(body.queue_order)
+      ? body.queue_order.filter((id: unknown): id is string => typeof id === "string")
+      : null;
+    if (!order || order.length === 0) {
+      return NextResponse.json({ error: "Sıra listesi gerekli" }, { status: 400 });
+    }
+
+    const { data: owned } = await supabaseAdmin
+      .from("playlists")
+      .select("id")
+      .eq("venue_id", session.venue_id)
+      .in("id", order);
+
+    if ((owned ?? []).length !== order.length) {
+      return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
+    }
+
+    const results = await Promise.all(
+      order.map((id: string, i: number) =>
+        supabaseAdmin
+          .from("playlists")
+          .update({ queue_position: i + 1 })
+          .eq("id", id)
+          .eq("venue_id", session.venue_id)
+      )
+    );
+
+    const failed = results.find((r) => r.error);
+    if (failed?.error) {
+      return NextResponse.json({ error: failed.error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // Sırada olmayan listelerin raydaki görünüm sırası (çalmayı etkilemez)
   if (body?.order !== undefined) {
     const order = Array.isArray(body.order) ? body.order.filter((id: unknown) => typeof id === "string") : null;
     if (!order || order.length === 0) {
@@ -112,7 +150,7 @@ export async function PATCH(req: NextRequest) {
     const [{ data: playlist }, { data: members, error: membersErr }] = await Promise.all([
       supabaseAdmin
         .from("playlists")
-        .select("id, is_active, shuffle")
+        .select("id, queue_position, shuffle")
         .eq("id", listId)
         .eq("venue_id", session.venue_id)
         .maybeSingle(),
@@ -173,7 +211,7 @@ export async function PATCH(req: NextRequest) {
     // listede sıranın çalmaya etkisi yok, kuyruğu boşuna tazelemeyiz.
     // Yanıttan SONRA çalışır: panel sıra değişikliğini beklemeden görür, kuyruk
     // birkaç yüz ms sonra kendi kendine düzelir.
-    if (changed.length > 0 && playlist.is_active && !playlist.shuffle) {
+    if (changed.length > 0 && playlist.queue_position !== null && !playlist.shuffle) {
       after(resetAutoQueue(session.venue_id).catch(() => {}));
     }
     return NextResponse.json({ ok: true });
@@ -181,11 +219,71 @@ export async function PATCH(req: NextRequest) {
 
   const playlistId = typeof body?.playlist_id === "string" ? body.playlist_id : "";
   const hasName = body?.name !== undefined;
-  const hasActive = typeof body?.is_active === "boolean";
+  const hasQueued = typeof body?.queued === "boolean";
+  const hasPlayOnce = typeof body?.play_once === "boolean";
+  const isPlay = body?.play === true;
   const hasAutoSync = typeof body?.auto_sync === "boolean";
   const hasShuffle = typeof body?.shuffle === "boolean";
-  if (!playlistId || (!hasName && !hasActive && !hasAutoSync && !hasShuffle)) {
+  if (!playlistId || (!hasName && !hasQueued && !hasPlayOnce && !isPlay && !hasAutoSync && !hasShuffle)) {
     return NextResponse.json({ error: "Eksik alan" }, { status: 400 });
+  }
+
+  // Play: imleç bu listeye atlar, liste baştan başlar, bekleyen otomatik şarkılar
+  // bu listeden yeniden seçilir. Sahnedeki şarkı ve müşteri istekleri korunur.
+  if (isPlay) {
+    const { data: playlist } = await supabaseAdmin
+      .from("playlists")
+      .select("id")
+      .eq("id", playlistId)
+      .eq("venue_id", session.venue_id)
+      .maybeSingle();
+
+    if (!playlist) {
+      return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
+    }
+
+    const { count } = await supabaseAdmin
+      .from("playlist_songs")
+      .select("song_id", { count: "exact", head: true })
+      .eq("venue_id", session.venue_id)
+      .eq("playlist_id", playlistId);
+
+    if (!count) {
+      return NextResponse.json({ error: "Bu listede şarkı yok" }, { status: 400 });
+    }
+
+    await playPlaylistNow(session.venue_id, playlistId);
+    return NextResponse.json({ ok: true });
+  }
+
+  // Kuyruğa alma / kuyruktan çıkarma. Sıraya eklemek çalanı değiştirmez: liste
+  // kuyruğun sonuna girer ve sırası gelince çalar.
+  if (hasQueued) {
+    const position = body.queued ? await nextQueuePosition(session.venue_id) : null;
+
+    const { data, error } = await supabaseAdmin
+      .from("playlists")
+      .update({ queue_position: position })
+      .eq("id", playlistId)
+      .eq("venue_id", session.venue_id)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (!data) {
+      return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
+    }
+
+    // Kuyruktan çıkarmada bekleyen otomatik şarkılar tazelenir: o listenin
+    // sıradaki şarkıları düşer, kuyruk kalan listelerden (ya da katalogdan) dolar.
+    // Kuyruğa eklemede çalan hiçbir şey değişmez — TEK istisna kuyruğun boş
+    // olduğu hal: o ana kadar katalogdan rastgele çalınıyordu, artık liste var.
+    if (!body.queued || position === 1) {
+      await resetAutoQueue(session.venue_id).catch(() => {});
+    }
+    return NextResponse.json({ ok: true });
   }
 
   // Otomatik senkron anahtarı playlist_sources'ta durur — yalnızca YouTube'dan
@@ -213,12 +311,12 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (!hasName && !hasActive && !hasShuffle) {
+    if (!hasName && !hasPlayOnce && !hasShuffle) {
       return NextResponse.json({ ok: true });
     }
   }
 
-  const patch: { name?: string; is_active?: boolean; shuffle?: boolean } = {};
+  const patch: { name?: string; play_once?: boolean; shuffle?: boolean } = {};
   if (hasName) {
     const name = parseName(body.name);
     if (!name) {
@@ -226,7 +324,7 @@ export async function PATCH(req: NextRequest) {
     }
     patch.name = name;
   }
-  if (hasActive) patch.is_active = body.is_active;
+  if (hasPlayOnce) patch.play_once = body.play_once;
   if (hasShuffle) patch.shuffle = body.shuffle;
 
   const { data, error } = await supabaseAdmin
@@ -244,9 +342,10 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
   }
 
-  // Aktiflik ya da liste içi sıra değişti: bekleyen otomatik şarkılar yeni
-  // düzene göre yeniden seçilsin (tüketim de geri alınır, bkz. resetAutoQueue).
-  if (hasActive || hasShuffle) {
+  // Liste içi sıra düzeni değişti: bekleyen otomatik şarkılar yeni düzene göre
+  // yeniden seçilsin (tüketim de geri alınır, bkz. resetAutoQueue). play_once
+  // yalnızca liste bitince devreye girer, kuyruğu şimdi tazelemeye gerek yok.
+  if (hasShuffle) {
     await resetAutoQueue(session.venue_id).catch(() => {});
   }
   return NextResponse.json({ ok: true });
@@ -268,7 +367,7 @@ export async function DELETE(req: NextRequest) {
 
   const { data: playlist } = await supabaseAdmin
     .from("playlists")
-    .select("id, is_active")
+    .select("id, queue_position")
     .eq("id", playlistId)
     .eq("venue_id", session.venue_id)
     .maybeSingle();
@@ -288,7 +387,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   revalidateTag(`venue-songs-${session.venue_id}`, "max");
-  if (playlist.is_active) {
+  if (playlist.queue_position !== null) {
     await resetAutoQueue(session.venue_id).catch(() => {});
   }
   return NextResponse.json({ ok: true });

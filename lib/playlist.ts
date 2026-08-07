@@ -7,19 +7,21 @@ export type PlaylistRow = {
   id: string;
   venue_id: string;
   name: string;
-  is_active: boolean;
+  // Çalma kuyruğundaki yer; null = sırada değil (0037)
+  queue_position: number | null;
   sort_order: number;
 };
 
 // Hedef playlist belirtilmediğinde (ör. şarkı isteği kabul edilince) kullanılır:
-// aktif olan ilk liste, yoksa en baştaki liste, o da yoksa yeni bir tane açılır.
-// Mekanın hiç playlist'i olmaması yalnızca 0026 sonrası açılan mekanlarda olabilir.
+// çalma kuyruğundaki ilk liste, yoksa en baştaki liste, o da yoksa yeni bir tane
+// açılır. Mekanın hiç playlist'i olmaması yalnızca 0026 sonrası açılan mekanlarda
+// olabilir; o liste doğrudan kuyruğa girer, yoksa hiç çalmaz.
 export async function getDefaultPlaylistId(venueId: string): Promise<string | null> {
   const { data } = await supabaseAdmin
     .from("playlists")
-    .select("id, is_active")
+    .select("id, queue_position")
     .eq("venue_id", venueId)
-    .order("is_active", { ascending: false })
+    .order("queue_position", { ascending: true, nullsFirst: false })
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true })
     .limit(1)
@@ -29,7 +31,7 @@ export async function getDefaultPlaylistId(venueId: string): Promise<string | nu
 
   const { data: created } = await supabaseAdmin
     .from("playlists")
-    .insert({ venue_id: venueId, name: "Playlist 1", is_active: true, sort_order: 0 })
+    .insert({ venue_id: venueId, name: "Playlist 1", is_active: true, sort_order: 0, queue_position: 1 })
     .select("id")
     .single();
 

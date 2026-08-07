@@ -27,8 +27,9 @@ export default function PlaylistRail({
   const {
     playlists,
     visiblePlaylists,
-    activeLists,
+    queueLists,
     currentList,
+    playNow,
     consumed,
     songs,
     viewId,
@@ -100,20 +101,48 @@ export default function PlaylistRail({
           const total = countFor(p.id);
           const matches = filtering ? matchCountFor(p.id) : total;
           const source = sourceByList[p.id];
-          // Çalma sırası yalnızca aktif listeler üzerinden numaralanır;
-          // pasif listelerin sırada yeri yoktur.
-          const turn = p.is_active ? activeLists.findIndex((a) => a.id === p.id) + 1 : 0;
+          // Numara yalnızca çalma kuyruğundaki listelerde; sıradışı listelerin
+          // sırada yeri yoktur.
+          const turn = p.queue_position !== null ? queueLists.findIndex((a) => a.id === p.id) + 1 : 0;
           const isCurrent = currentList?.id === p.id;
           const done = consumed[p.id] ?? 0;
 
           return (
             <div
               key={p.id}
-              className="rounded-2xl shrink-0 transition-all flex items-stretch"
+              className="group rounded-2xl shrink-0 transition-all flex items-stretch"
               style={railStyle(viewId === p.id, filtering && matches === 0)}
             >
               <button onClick={() => setSelectedId(p.id)} className="text-left px-3.5 py-3 flex-1 min-w-0 flex items-center gap-3">
-                <ListCover covers={coversByList[p.id] ?? []} size={40} />
+                {/* Kapağın üstünde beliren play: sırayı beklemeden bu listeyi çalar */}
+                <span className="relative shrink-0">
+                  <ListCover covers={coversByList[p.id] ?? []} size={40} />
+                  {!isCurrent && total > 0 && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void playNow(p);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" && e.key !== " ") return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void playNow(p);
+                      }}
+                      title={`"${p.name}" listesini şimdi çal`}
+                      className="absolute inset-0 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                      style={{ background: "rgba(0,0,0,0.55)" }}
+                    >
+                      <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "#22c55e" }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="#0b1220">
+                          <path d="M8 5.5v13l11-6.5L8 5.5z" />
+                        </svg>
+                      </span>
+                    </span>
+                  )}
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     {turn > 0 ? (
@@ -125,12 +154,18 @@ export default function PlaylistRail({
                         }}
                         title={isCurrent ? "Şu an bu liste çalıyor" : `Çalma sırası: ${turn}`}
                       >
-                        {turn}
+                        {isCurrent ? (
+                          <svg width="8" height="8" viewBox="0 0 24 24" fill="#0b1220">
+                            <path d="M8 5.5v13l11-6.5L8 5.5z" />
+                          </svg>
+                        ) : (
+                          turn
+                        )}
                       </span>
                     ) : (
                       <span
                         className="w-1.5 h-1.5 rounded-full shrink-0"
-                        style={{ background: p.is_active ? "#22c55e" : "rgba(255,255,255,0.2)" }}
+                        style={{ background: "rgba(255,255,255,0.2)" }}
                       />
                     )}
                     <p className="text-sm font-semibold truncate" style={{ color: viewId === p.id ? "#f9a8d4" : "#e5e7eb" }}>
@@ -153,7 +188,9 @@ export default function PlaylistRail({
                       ? ` · ${matches} eşleşme`
                       : isCurrent
                         ? ` · Çalıyor ${done}/${total}`
-                        : ` · ${p.is_active ? "Aktif" : "Pasif"}`}
+                        : p.queue_position !== null
+                          ? ` · Sırada${p.play_once ? " · tek seferlik" : ""}`
+                          : " · Sırada değil"}
                   </p>
                 </div>
               </button>
@@ -179,9 +216,9 @@ export default function PlaylistRail({
           + Yeni Liste
         </button>
 
-        {playlists.length > 0 && !activeLists.length && (
+        {playlists.length > 0 && queueLists.length === 0 && (
           <p className="text-[11px] px-1 leading-relaxed" style={{ color: "#f59e0b" }}>
-            Aktif playlist yok — sıra boşken tüm katalogdan rastgele çalınır.
+            Çalma sırası boş — tüm katalogdan karışık çalınıyor. Bir listenin ▶ tuşuna basın.
           </p>
         )}
       </div>

@@ -76,9 +76,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Hedef liste: verilen liste, "yeni liste" isteniyorsa YouTube başlığıyla açılan
-  // liste (pasif başlar), hiçbiri yoksa mekanın varsayılan listesi
+  // liste (çalma sırasına girmeden başlar), hiçbiri yoksa mekanın varsayılan listesi
   let target = targetId;
-  let createdPlaylist: { id: string; name: string; is_active: boolean; sort_order: number } | null = null;
+  let createdPlaylist: { id: string; name: string; queue_position: number | null; sort_order: number } | null = null;
 
   if (!target && body?.new_playlist) {
     const requested = typeof body?.new_playlist_name === "string" ? body.new_playlist_name.trim() : "";
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
         is_active: false,
         sort_order: (last?.sort_order ?? -1) + 1,
       })
-      .select("id, name, is_active, sort_order")
+      .select("id, name, queue_position, sort_order")
       .single();
 
     if (createErr || !created) {

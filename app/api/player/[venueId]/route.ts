@@ -174,23 +174,35 @@ export async function POST(
         return reply({ ok: true });
       }
 
+      const now = new Date().toISOString();
+      const claimPatch =
+        claimId && claimSupported ? { player_claim: claimId, player_claim_at: now } : {};
+
       let update = supabaseAdmin
         .from("now_playing")
         .update({
           progress_ms: Math.max(progressMs, 0),
           is_playing: isPlaying,
-          last_heartbeat_at: new Date().toISOString(),
+          last_heartbeat_at: now,
           // Sahiplik canlı tutulur; player kapanınca 45 sn sonra serbest kalır
-          ...(claimId && claimSupported
-            ? { player_claim: claimId, player_claim_at: new Date().toISOString() }
-            : {}),
+          ...claimPatch,
           ...(isPlaying ? { started_at: new Date(Date.now() - progressMs).toISOString() } : {}),
         })
         .eq("venue_id", venueId);
       // Skip ile yarışan bayat heartbeat'e karşı koruma: player'ın raporladığı
-      // video satırdakiyle eşleşmiyorsa (şarkı az önce değişti) yazma
+      // video satırdakiyle eşleşmiyorsa (şarkı az önce değişti) çalma durumunu yazma
       if (videoId) update = update.eq("video_id", videoId);
-      await update;
+      const { data: written } = await update.select("venue_id");
+
+      // ...ama sağlık sinyali her hâlükârda tazelenmeli: video eşleşmediği için
+      // yazma düşerse player açık olduğu hâlde heartbeat donuyor ve panel 45 sn
+      // sonra "çevrimdışı" diyordu. Çalma durumuna dokunmadan yalnızca zamanı yaz.
+      if (videoId && (!written || written.length === 0)) {
+        await supabaseAdmin
+          .from("now_playing")
+          .update({ last_heartbeat_at: now, ...claimPatch })
+          .eq("venue_id", venueId);
+      }
       return reply({ ok: true });
     }
 

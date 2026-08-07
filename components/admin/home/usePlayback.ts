@@ -142,9 +142,24 @@ export function usePlayback(venueDbId: string) {
     fetchNowPlaying();
     reloadQueue();
 
+    // Realtime kanalı sessizce düşerse (uyuyan sekme, wifi kesintisi, Supabase
+    // yeniden bağlanması) panel son heartbeat'i öğrenemez ve player açıkken bile
+    // 45 sn sonra "çevrimdışı" der. Bu yüzden düzenli yoklama + sekme/ağ geri
+    // gelince tazeleme: Realtime yalnız hızlandırıcı, tek kaynak değil.
+    const poll = setInterval(fetchNowPlaying, 15_000);
+    const onWake = () => {
+      if (document.visibilityState === "visible") fetchNowPlaying();
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("online", onWake);
+
+    // Kanal adları benzersiz: aynı topic'e ikinci abonelik (sekme geri gelince
+    // yeniden mount) eskisini düşürüp panelin akışını kesiyordu
+    const suffix = Math.random().toString(36).slice(2);
+
     channels.push(
       supabase
-        .channel(`admin-np:${venueDbId}`)
+        .channel(`admin-np:${venueDbId}:${suffix}`)
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` },
@@ -152,7 +167,7 @@ export function usePlayback(venueDbId: string) {
         )
         .subscribe(),
       supabase
-        .channel(`admin-queue:${venueDbId}`)
+        .channel(`admin-queue:${venueDbId}:${suffix}`)
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` },
@@ -163,6 +178,9 @@ export function usePlayback(venueDbId: string) {
 
     return () => {
       cancelled = true;
+      clearInterval(poll);
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("online", onWake);
       channels.forEach((c) => supabase.removeChannel(c));
     };
   }, [venueDbId, supabase, fetchQueue]);

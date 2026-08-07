@@ -13,10 +13,15 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
-        // Playlistler ayrı bir ekrandı; artık /playlist tek ekranda hem listeleri
-        // hem şarkıları yönetiyor. Eski yer imleri kırılmasın.
+        // Playlist yönetimi ana ekrana taşındı (sol ray + orta pano). Eski
+        // yer imleri ve ?list=... bağlantıları kırılmasın — sorgu korunur.
+        source: "/admin/:venueId/playlist",
+        destination: "/admin/:venueId",
+        permanent: false,
+      },
+      {
         source: "/admin/:venueId/playlists",
-        destination: "/admin/:venueId/playlist",
+        destination: "/admin/:venueId",
         permanent: false,
       },
     ];

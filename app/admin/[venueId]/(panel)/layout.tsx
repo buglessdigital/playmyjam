@@ -12,15 +12,17 @@ export default function AdminPanelLayout({
   params: Promise<{ venueId: string }>;
 }) {
   return (
-    <div className="flex flex-col md:flex-row min-h-screen" style={{ background: "#0f0a18" }}>
+    // Ana ekran kendi içinde kaydığı için sayfanın tamamı ekran boyunda sabit;
+    // kaydırma alt panolara bırakılır (alt bar hep görünür kalsın diye).
+    <div className="flex flex-col md:flex-row h-dvh overflow-hidden" style={{ background: "#0f0a18" }}>
       <Suspense fallback={null}>
         <AdminSidebarResolved params={params} />
       </Suspense>
-      <main className="flex-1 min-w-0 overflow-auto pb-6">
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <Suspense fallback={null}>
           <GoogleLinkBannerResolved params={params} />
         </Suspense>
-        {children}
+        <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
       </main>
     </div>
   );

@@ -2,12 +2,16 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { isMovable, type Playback } from "./usePlayback";
+import { formatTime, isMovable, type Playback } from "./usePlayback";
 
-/** Ana ekranın sağ sütunu: sıradaki şarkılar. */
+/** Ana ekranın sağ sütunu: şu an çalan + sıradaki şarkılar. */
 export default function QueuePane({ playback, onAddSong }: { playback: Playback; onAddSong: () => void }) {
-  const { queue, queueError, reordering, movableCount, moveWithinAuto, nudge, removeFromQueue } = playback;
+  const {
+    queue, queueError, reordering, movableCount, moveWithinAuto, nudge, removeFromQueue,
+    nowPlaying, progress, progressPct, duration, isPlaying, playerOffline,
+  } = playback;
   const [dragId, setDragId] = useState<string | null>(null);
+  const current = nowPlaying?.songs ?? null;
 
   return (
     <div className="flex flex-col min-h-0 h-full">
@@ -45,6 +49,47 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
           <p className="text-[11px] rounded-lg px-2.5 py-2 mt-2" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171" }}>
             {queueError}
           </p>
+        )}
+      </div>
+
+      <div className="shrink-0 px-4 pt-3 pb-3 border-b border-white/10">
+        <p className="text-[10px] font-bold tracking-[0.14em] text-[#6b7280]">ŞU AN ÇALIYOR</p>
+        {current ? (
+          <>
+            <div className="flex items-center gap-3 mt-2">
+              {current.album_cover_url ? (
+                <Image src={current.album_cover_url} alt="" width={48} height={48} className="w-12 h-12 rounded-lg object-cover shrink-0" />
+              ) : (
+                <div className="w-12 h-12 rounded-lg bg-white/10 shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-semibold truncate">{current.title}</p>
+                <p className="text-[#6b7280] text-[11px] truncate">{current.artist}</p>
+              </div>
+              {!playerOffline && isPlaying && (
+                <span className="flex items-end gap-[2px] h-4 shrink-0" title="Çalıyor">
+                  <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "60%", background: "#e91e8c" }} />
+                  <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "100%", background: "#e91e8c", animationDelay: "150ms" }} />
+                  <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "40%", background: "#e91e8c", animationDelay: "300ms" }} />
+                </span>
+              )}
+            </div>
+            {playerOffline ? (
+              <p className="mt-2 text-[11px]" style={{ color: "#fbbf24" }}>Player kapalı — süreler gizlendi</p>
+            ) : (
+              <>
+                <div className="mt-2.5 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+                  <div className="h-full rounded-full" style={{ width: `${progressPct}%`, background: "#e91e8c" }} />
+                </div>
+                <div className="flex items-center justify-between mt-1 text-[10px] text-[#6b7280] tabular-nums">
+                  <span>{formatTime(progress)}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          <p className="mt-2 text-[#6b7280] text-xs">Şu an bir şarkı çalmıyor</p>
         )}
       </div>
 

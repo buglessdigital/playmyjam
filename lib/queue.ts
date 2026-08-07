@@ -135,6 +135,59 @@ export async function playNextFromQueue(
   return { started: true, video_id: song.youtube_video_id, song_id: nextItem.song_id };
 }
 
+// Panelin "geri" düğmesi: en son çalınmış şarkıya döner. Çalmakta olan satır
+// kuyruğa geri konur (kendi priority/position değerleriyle, yani bıraktığı yere),
+// böylece önceki şarkı bitince kaldığı yerden devam edilir.
+export async function playPreviousFromQueue(venueId: string): Promise<NextResult> {
+  const { data: prevItem } = await supabaseAdmin
+    .from("queue")
+    .select("id, song_id, songs(youtube_video_id, embeddable)")
+    .eq("venue_id", venueId)
+    .eq("status", "played")
+    .order("played_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  type SongInfo = { youtube_video_id: string; embeddable: boolean };
+  const songRel = prevItem?.songs as unknown as SongInfo | SongInfo[] | null;
+  const song = Array.isArray(songRel) ? songRel[0] : songRel;
+
+  // Geçmiş yoksa (ya da kayıt çalınamaz durumdaysa) "geri" en azından çalan
+  // şarkıyı başa sarsın — düğme sessizce hiçbir şey yapmasın istemiyoruz.
+  if (!prevItem || !song?.youtube_video_id || song.embeddable === false) {
+    await supabaseAdmin
+      .from("now_playing")
+      .update({ progress_ms: 0, started_at: new Date().toISOString(), is_playing: true })
+      .eq("venue_id", venueId);
+    return { started: false, queueEmpty: false };
+  }
+
+  await supabaseAdmin
+    .from("queue")
+    .update({ status: "queued" })
+    .eq("venue_id", venueId)
+    .eq("status", "playing");
+
+  await Promise.all([
+    supabaseAdmin
+      .from("now_playing")
+      .update({
+        song_id: prevItem.song_id,
+        video_id: song.youtube_video_id,
+        is_playing: true,
+        progress_ms: 0,
+        started_at: new Date().toISOString(),
+      })
+      .eq("venue_id", venueId),
+    supabaseAdmin
+      .from("queue")
+      .update({ status: "playing", started_at: new Date().toISOString(), played_at: null })
+      .eq("id", prevItem.id),
+  ]);
+
+  return { started: true, video_id: song.youtube_video_id, song_id: prevItem.song_id };
+}
+
 // Player onError (embed kapalı/bölge engelli/kaldırılmış) bildirdiğinde çağrılır:
 // şarkı bir daha kuyruğa girmesin diye işaretlenir, kuyruk sıradakine ilerler.
 export async function markUnplayableAndSkip(

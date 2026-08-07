@@ -41,6 +41,8 @@ const QUEUE_SELECT =
 
 // Player 15 sn'de bir heartbeat yollar — bunun ~3 katı sessizlik "çevrimdışı" sayılır
 const OFFLINE_AFTER_MS = 45_000;
+// İlerleme çubuğu tick aralığı
+const TICK_MS = 250;
 
 // Müşterinin jetonla aldığı sıra taşınamaz; taşınabilen tek blok otomatik/elle
 // eklenen şarkılardır (user_id null). Sunucu tarafı da aynı kuralı uygular.
@@ -165,7 +167,8 @@ export function usePlayback(venueDbId: string) {
     };
   }, [venueDbId, supabase, fetchQueue]);
 
-  // Progress + heartbeat tazeliği için saniyelik tick
+  // Progress + heartbeat tazeliği için tick. 250 ms: çubuk player'a takılmadan
+  // ilerlesin, saniye yazısı gecikmeli görünmesin.
   useEffect(() => {
     if (!nowPlaying) return;
     const interval = setInterval(() => {
@@ -180,10 +183,10 @@ export function usePlayback(venueDbId: string) {
         if (nowPlaying.started_at) {
           setProgress(Math.min(Math.max(Date.now() - Date.parse(nowPlaying.started_at), 0), dur));
         } else {
-          setProgress((p) => Math.min(p + 1000, dur));
+          setProgress((p) => Math.min(p + TICK_MS, dur));
         }
       }
-    }, 1000);
+    }, TICK_MS);
     return () => clearInterval(interval);
   }, [nowPlaying]);
 
@@ -194,8 +197,23 @@ export function usePlayback(venueDbId: string) {
     []
   );
 
-  const playerAction = async (action: "play" | "pause" | "next") => {
+  const playerAction = async (action: "play" | "pause" | "next" | "previous") => {
     if (!venueDbId) return;
+    // Düğme anında tepki versin: sunucu + Realtime turunu beklemeden durum
+    // ekranda değişir, gelen gerçek satır zaten üzerine yazar.
+    if (action === "play" || action === "pause") {
+      const playing = action === "play";
+      setNowPlaying((prev) =>
+        prev
+          ? {
+              ...prev,
+              is_playing: playing,
+              // Çalmaya devam çapası şimdiden kaydırılır ki çubuk geri sıçramasın
+              started_at: playing ? new Date(Date.now() - progress).toISOString() : prev.started_at,
+            }
+          : prev
+      );
+    }
     setPlayerLoading(action);
     try {
       await fetch(`/api/player/${venueDbId}`, {

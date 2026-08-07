@@ -9,6 +9,7 @@ type YTPlayer = {
   playVideo: () => void;
   pauseVideo: () => void;
   getCurrentTime: () => number;
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
   getPlayerState: () => number;
   setVolume: (volume: number) => void;
   getVolume?: () => number;
@@ -42,7 +43,11 @@ declare global {
   }
 }
 
-const HEARTBEAT_MS = 15_000;
+// Panelin ilerleme çubuğu bu sinyalin taşıdığı çapaya (started_at) yaslanır:
+// aralık uzadıkça panel player'dan sapar, o yüzden 5 sn.
+const HEARTBEAT_MS = 5_000;
+// Durum denetimleri (dürtme/uzlaştırma) daha seyrek — okuma maliyeti taşırlar
+const RECONCILE_MS = 15_000;
 const IDLE_RETRY_MS = 15_000;
 // Yükleme sonrası bu süre içinde gelen "duraklat" yankıları yok sayılır — skip
 // anında yarışan bayat heartbeat'ler yeni şarkıyı durduramasın
@@ -55,6 +60,7 @@ type NowPlayingRow = {
   video_id: string | null;
   song_id: string | null;
   is_playing: boolean;
+  progress_ms?: number | null;
   volume?: number | null;
 };
 
@@ -534,7 +540,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       nudgePlayback();
       enforceVolume();
     }, PLAY_NUDGE_MS);
-    const reconcileInterval = setInterval(reconcile, HEARTBEAT_MS);
+    const reconcileInterval = setInterval(reconcile, RECONCILE_MS);
     const onVisibility = () => {
       if (document.visibilityState === "visible") reconcile();
     };
@@ -563,6 +569,26 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           // güncellemede gelse bile (aşağıdaki dallar return ediyor) kaçmasın.
           // Heartbeat yankılarında değer değişmediği için setVolume çağrılmaz.
           if (np.volume !== volumeRef.current) applyVolume(np.volume);
+          // Panelden "baştan başlat": aynı video, ilerleme sıfırlanmış. Şarkının
+          // ilk saniyelerinde gelen heartbeat yankısı da sıfır taşır; o yüzden
+          // yalnızca gerçekten ilerlemiş bir videoda başa sarılır.
+          if (
+            np.video_id &&
+            np.video_id === currentVideoRef.current &&
+            (np.progress_ms ?? -1) === 0
+          ) {
+            let elapsed = 0;
+            try {
+              elapsed = (playerRef.current?.getCurrentTime() ?? 0) * 1000;
+            } catch {}
+            if (elapsed > 2_000) {
+              try {
+                playerRef.current?.seekTo(0, true);
+                if (np.is_playing) playerRef.current?.playVideo();
+              } catch {}
+              return;
+            }
+          }
           if (np.video_id && np.video_id !== currentVideoRef.current) {
             loadVideo(np.video_id);
             return;

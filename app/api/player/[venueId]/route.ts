@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { renewAdminCookie, venueAccess } from "@/lib/admin-session";
-import { playNextFromQueue, markUnplayableAndSkip } from "@/lib/queue";
+import { playNextFromQueue, playPreviousFromQueue, markUnplayableAndSkip } from "@/lib/queue";
 
 // Sahiplik bu süre boyunca heartbeat gelmezse serbest kalır (heartbeat 15 sn'de bir).
 // Panelin "oynatıcı çevrimdışı" eşiğiyle aynı: 45 sn.
@@ -91,6 +91,17 @@ export async function POST(
         return reply({ started: false, claim_lost: true }, { status: 409 });
       }
       const result = await playNextFromQueue(venueId);
+      if (result.error) return reply(result, { status: 500 });
+      return reply(result);
+    }
+
+    // Panelin "geri" düğmesi: bir önceki şarkıya döner. Geçmiş yoksa
+    // playPreviousFromQueue çalan şarkıyı başa sarar.
+    case "previous": {
+      if (!(await isOwner(venueId, claimId))) {
+        return reply({ started: false, claim_lost: true }, { status: 409 });
+      }
+      const result = await playPreviousFromQueue(venueId);
       if (result.error) return reply(result, { status: 500 });
       return reply(result);
     }

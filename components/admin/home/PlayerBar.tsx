@@ -91,6 +91,14 @@ export default function PlayerBar({
             {/* Player kapalıyken komutlar kapalı: ses üretecek bir cihaz yokken
                 oynat/geç yalnızca kuyruğu tüketir, mekanda hiçbir şey duyulmaz. */}
             <button
+              onClick={() => playerAction("previous")}
+              disabled={playerLoading !== null || playerOffline || !song}
+              className="absolute right-full mr-3 w-10 h-10 flex items-center justify-center rounded-full transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={playerOffline ? "Player kapalı — önce Player sayfasını açın" : "Önceki şarkı"}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M18 6l-8.5 6L18 18V6zm-2.5 6L10 8.5v7L15.5 12zM8 6H6v12h2z" /></svg>
+            </button>
+            <button
               onClick={() => playerAction(isPlaying ? "pause" : "play")}
               disabled={playerLoading !== null || playerOffline}
               className="w-12 h-12 flex items-center justify-center rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed"
@@ -124,7 +132,7 @@ export default function PlayerBar({
               <span className="text-[#6b7280] text-[10px] tabular-nums shrink-0">{formatTime(progress)}</span>
               <div className="h-1 flex-1 bg-white/10 rounded-full overflow-hidden">
                 <div
-                  className="h-full rounded-full transition-all duration-1000"
+                  className="h-full rounded-full"
                   style={{ width: `${progressPct}%`, background: "linear-gradient(90deg, #e91e8c, #8b5cf6)" }}
                 />
               </div>

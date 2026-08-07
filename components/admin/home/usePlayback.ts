@@ -122,8 +122,11 @@ export function usePlayback(venueDbId: string) {
         setVolume(raw.volume);
         if (raw.volume > 0) lastAudibleVolumeRef.current = raw.volume;
       }
-      // İlerlemeyi started_at çapasından hesapla — progress_ms yazıldığı andan itibaren bayat
-      if (raw.is_playing && raw.started_at) {
+      // İlerlemeyi started_at çapasından hesapla — progress_ms yazıldığı andan itibaren bayat.
+      // Player kapalıysa çapa geçersiz (kimse çalmıyor): son yazılan değerde donar.
+      const beat = raw.last_heartbeat_at ? Date.parse(raw.last_heartbeat_at) : NaN;
+      const online = Number.isFinite(beat) && Date.now() - beat <= OFFLINE_AFTER_MS;
+      if (online && raw.is_playing && raw.started_at) {
         setProgress(Math.max(Date.now() - Date.parse(raw.started_at), 0));
       } else {
         setProgress(raw.progress_ms ?? 0);
@@ -166,7 +169,12 @@ export function usePlayback(venueDbId: string) {
   useEffect(() => {
     if (!nowPlaying) return;
     const interval = setInterval(() => {
-      setNow(Date.now());
+      const tick = Date.now();
+      setNow(tick);
+      // Player kapalıyken ilerlemeyi ilerletme: veri donmuş durumda ve saatten
+      // hesaplanan çubuk "çalıyor" yalanı söyler (bkz. lib/player-status.ts).
+      const beat = nowPlaying.last_heartbeat_at ? Date.parse(nowPlaying.last_heartbeat_at) : NaN;
+      if (!Number.isFinite(beat) || tick - beat > OFFLINE_AFTER_MS) return;
       if (nowPlaying.is_playing) {
         const dur = nowPlaying.songs?.duration_ms ?? 0;
         if (nowPlaying.started_at) {

@@ -73,12 +73,14 @@ export default function PlayerBar({ playback, venueId }: { playback: Playback; v
             düğmesi kalır, ilerleme çizgisi de onun altına hizalanır. */}
         <div className="shrink-0 w-full lg:w-[420px] flex flex-col items-center gap-1.5">
           <div className="relative flex items-center justify-center">
+            {/* Player kapalıyken komutlar kapalı: ses üretecek bir cihaz yokken
+                oynat/geç yalnızca kuyruğu tüketir, mekanda hiçbir şey duyulmaz. */}
             <button
               onClick={() => playerAction(isPlaying ? "pause" : "play")}
-              disabled={playerLoading !== null}
-              className="w-12 h-12 flex items-center justify-center rounded-full transition-all disabled:opacity-40"
+              disabled={playerLoading !== null || playerOffline}
+              className="w-12 h-12 flex items-center justify-center rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ background: "#e91e8c" }}
-              title={isPlaying ? "Duraklat" : "Oynat"}
+              title={playerOffline ? "Player kapalı — önce Player sayfasını açın" : isPlaying ? "Duraklat" : "Oynat"}
             >
               {isPlaying ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
@@ -88,15 +90,21 @@ export default function PlayerBar({ playback, venueId }: { playback: Playback; v
             </button>
             <button
               onClick={() => playerAction("next")}
-              disabled={playerLoading !== null}
-              className="absolute left-full ml-3 w-10 h-10 flex items-center justify-center rounded-full transition-all hover:bg-white/10 disabled:opacity-40"
-              title="Sonraki şarkı"
+              disabled={playerLoading !== null || playerOffline}
+              className="absolute left-full ml-3 w-10 h-10 flex items-center justify-center rounded-full transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={playerOffline ? "Player kapalı — önce Player sayfasını açın" : "Sonraki şarkı"}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6 18l8.5-6L6 6v12zm2.5-6 5.5 3.5v-7L8.5 12zM16 6h2v12h-2z" /></svg>
             </button>
           </div>
 
-          {song && (
+          {song && playerOffline && (
+            <p className="text-[#6b7280] text-[10px] text-center">
+              Süreler player açılınca ilerler — şu an duruyor
+            </p>
+          )}
+
+          {song && !playerOffline && (
             <div className="flex items-center gap-2 w-full">
               <span className="text-[#6b7280] text-[10px] tabular-nums shrink-0">{formatTime(progress)}</span>
               <div className="h-1 flex-1 bg-white/10 rounded-full overflow-hidden">

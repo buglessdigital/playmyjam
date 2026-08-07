@@ -11,7 +11,9 @@ type YTPlayer = {
   getCurrentTime: () => number;
   getPlayerState: () => number;
   setVolume: (volume: number) => void;
+  getVolume?: () => number;
   isMuted?: () => boolean;
+  mute?: () => void;
   unMute?: () => void;
   destroy: () => void;
 };
@@ -178,18 +180,70 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // Panelden gelen ses seviyesi. Player hazır olmadan komut gelirse burada
   // bekler, onReady bunu uygular.
   const volumeRef = useRef<number | null>(null);
-  const applyVolume = useCallback((value: number | null | undefined) => {
-    if (typeof value !== "number" || !Number.isFinite(value)) return;
-    const volume = Math.min(100, Math.max(0, Math.round(value)));
-    volumeRef.current = volume;
+  // Cihaz ses komutunu yok sayıyor mu? (mobilde YT.setVolume etkisizdir)
+  const [volumeIgnored, setVolumeIgnored] = useState(false);
+  const volumeDriftRef = useRef(0);
+
+  // İstenen seviyeyi player'a bas. Tek seferlik DEĞİL: YouTube yeni video
+  // yüklenince kendi hatırladığı seviyeye dönebiliyor, bu yüzden aşağıdaki
+  // bekçi bunu gerektikçe tekrar çağırır.
+  const pushVolume = useCallback(() => {
+    const volume = volumeRef.current;
     const player = playerRef.current;
-    if (!readyRef.current || typeof player?.setVolume !== "function") return;
+    if (volume === null || !readyRef.current || typeof player?.setVolume !== "function") return;
     try {
       player.setVolume(volume);
-      // setVolume, sessize alınmış player'ın sesini geri açmaz — elle aç
-      if (volume > 0 && player.isMuted?.()) player.unMute?.();
+      // setVolume(0) bazı cihazlarda yok sayılıyor; sessize alma ayrıca mute ile
+      // pekiştirilir. Tersi de geçerli: mute açık kalırsa >0 seviye duyulmaz.
+      if (volume === 0) player.mute?.();
+      else if (player.isMuted?.()) player.unMute?.();
     } catch {}
   }, []);
+
+  const applyVolume = useCallback(
+    (value: number | null | undefined) => {
+      if (typeof value !== "number" || !Number.isFinite(value)) return;
+      volumeRef.current = Math.min(100, Math.max(0, Math.round(value)));
+      volumeDriftRef.current = 0;
+      setVolumeIgnored(false);
+      pushVolume();
+    },
+    [pushVolume]
+  );
+
+  // Bekçi: player'ın gerçek sesini okuyup istenenden saptıysa geri yazar.
+  // "Ses kısılıyor ama kendiliğinden geri açılıyor" şikâyetinin kaynağı buydu —
+  // video değişiminde YouTube kendi seviyesine dönüyor, kimse geri yazmıyordu.
+  const enforceVolume = useCallback(() => {
+    const volume = volumeRef.current;
+    const player = playerRef.current;
+    if (volume === null || !readyRef.current || !player) return;
+    let actual: number | null = null;
+    let muted = false;
+    try {
+      actual = typeof player.getVolume === "function" ? Math.round(player.getVolume()) : null;
+      muted = player.isMuted?.() ?? false;
+    } catch {
+      return;
+    }
+    // Sapma OLMASA BİLE her turda yeniden yazılır. getVolume() bazı cihazlarda
+    // yalan söylüyor: JS'e en son verilen değeri döndürürken hoparlörden çıkan
+    // ses YouTube'un kendi hatırladığı seviyeye dönmüş oluyor ("bar 5'te kalıyor
+    // ama ses yükseliyor"). Okumaya güvenip beklemek yerine körlemesine basıyoruz;
+    // setVolume idempotent, aynı değeri tekrar yazmanın maliyeti yok.
+    pushVolume();
+
+    const drifted = (actual !== null && actual !== volume) || (volume === 0 ? !muted : muted);
+    if (!drifted) {
+      volumeDriftRef.current = 0;
+      setVolumeIgnored(false);
+      return;
+    }
+    // Üst üste sapma: cihaz komutu kabul etmiyor demektir (mobil tarayıcılarda
+    // ses donanımdan yönetilir). Ekranda söyleyelim ki mekan boşuna uğraşmasın.
+    volumeDriftRef.current += 1;
+    if (volumeDriftRef.current >= 3) setVolumeIgnored(true);
+  }, [pushVolume]);
 
   const setBlock = useCallback((next: Blocked | null) => {
     if (blockedRef.current === next) return;
@@ -274,9 +328,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   const scheduleNudges = useCallback(
     (delays: number[]) => {
       nudgeTimersRef.current.forEach(clearTimeout);
-      nudgeTimersRef.current = delays.map((ms) => setTimeout(ensurePlaying, ms));
+      // Ses de aynı turda doğrulanır: yeni video YouTube'un kendi seviyesiyle
+      // açılırsa mekanın ayarı birkaç saniye içinde geri basılır
+      nudgeTimersRef.current = delays.map((ms) =>
+        setTimeout(() => {
+          ensurePlaying();
+          enforceVolume();
+        }, ms)
+      );
     },
-    [ensurePlaying]
+    [ensurePlaying, enforceVolume]
   );
 
   const loadVideo = useCallback(
@@ -389,7 +450,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         onReady: async () => {
           readyRef.current = true;
           // Player hazır olmadan gelen ses komutu biriktiyse şimdi uygula
-          if (volumeRef.current !== null) applyVolume(volumeRef.current);
+          pushVolume();
           // Hazır olmadan gelen komut biriktiyse önce onu çal
           const pending = pendingVideoRef.current;
           if (pending) {
@@ -413,7 +474,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           } else if (e.data === YT.PlayerState.PLAYING) {
             desiredPlayingRef.current = true;
             // Yeni video/aygıt değişiminde player varsayılan sese dönebilir
-            if (volumeRef.current !== null) applyVolume(volumeRef.current);
+            pushVolume();
             onTrackChange?.({ videoId: currentVideoRef.current, isPlaying: true });
             sendHeartbeat();
           } else if (e.data === YT.PlayerState.PAUSED) {
@@ -436,7 +497,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     });
 
     setStarted(true);
-  }, [api, advance, loadVideo, sendHeartbeat, onTrackChange, supabase, venueDbId, applyVolume]);
+  }, [api, advance, loadVideo, sendHeartbeat, onTrackChange, supabase, venueDbId, applyVolume, pushVolume]);
 
   // Sahiplik başka cihaza geçtiyse bu sekme derhal susar — çift ses olmasın
   useEffect(() => {
@@ -469,7 +530,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // arka planda engellenen autoplay görünürlükte ilk denemede tutar
   useEffect(() => {
     if (!started || blocked) return;
-    const nudgeInterval = setInterval(nudgePlayback, PLAY_NUDGE_MS);
+    const nudgeInterval = setInterval(() => {
+      nudgePlayback();
+      enforceVolume();
+    }, PLAY_NUDGE_MS);
     const reconcileInterval = setInterval(reconcile, HEARTBEAT_MS);
     const onVisibility = () => {
       if (document.visibilityState === "visible") reconcile();
@@ -480,7 +544,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       clearInterval(reconcileInterval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [started, blocked, nudgePlayback, reconcile]);
+  }, [started, blocked, nudgePlayback, reconcile, enforceVolume]);
 
   // Dış komutları dinle: admin panelden next/pause, müşteri isteğiyle başlayan çalma
   useEffect(() => {
@@ -575,6 +639,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       <div className="aspect-video w-full overflow-hidden rounded-2xl bg-black [&_iframe]:h-full [&_iframe]:w-full">
         <div ref={containerRef} className="h-full w-full" />
       </div>
+
+      {/* Cihaz ses komutunu kabul etmiyorsa (mobil tarayıcılarda ses donanımdan
+          yönetilir) mekan bunu ekranda görsün — panelde boşuna uğraşmasın */}
+      {volumeIgnored && (
+        <p className="mt-2 text-center text-xs text-[#fbbf24]">
+          Bu cihaz uzaktan ses ayarını kabul etmiyor — sesi cihazın kendi düğmelerinden
+          ayarlayın. Uzaktan kontrol için player&apos;ı bilgisayarda açın.
+        </p>
+      )}
 
       {/* Oturum düştü — eskiden bu durumda "kuyruk boş" yazıyor, mekan nedenini anlayamıyordu */}
       {blocked === "auth" ? (

@@ -427,36 +427,81 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
   await insertAutoRows(venueId, picks);
 }
 
-// Paneldeki play tuşu: imleç bu listeye atlar ve liste baştan başlar. Kuyruktaki
-// sırası DEĞİŞMEZ — kendisinden sonrakiler yine arkasından gelir, önceden sırada
-// olanlar da kuyruk başa dönünce çalar.
+// Paneldeki play tuşu: imleç bu listeye atlar ve liste baştan başlar.
 //
+// O ana kadar çalmakta olan liste KUYRUKTAN DÜŞER: sırası gelmiş, çalmış ve elle
+// kesilmiştir — kuyrukta kalsaydı yeni liste bitince tekrar en başa gelirdi.
+// Böylece "A çalıyor, B sırada" iken C'ye basılınca C çalar ve arkasından B gelir.
+// Düşen liste silinmez, yalnızca sıradan çıkar; mekan isterse tekrar sıraya alır.
+//
+// Kuyrukta kalanların sırası korunur, yalnızca 1..n olarak sıkıştırılır.
 // Liste kuyrukta değilse önce kuyruğa alınır: play "sıraya ekle + şimdi çal".
 export async function playPlaylistNow(venueId: string, playlistId: string): Promise<void> {
-  const { data: playlist } = await supabaseAdmin
-    .from("playlists")
-    .select("id, queue_position")
-    .eq("id", playlistId)
-    .eq("venue_id", venueId)
-    .maybeSingle();
+  const [{ data: playlist }, { data: state }, { data: queued }] = await Promise.all([
+    supabaseAdmin
+      .from("playlists")
+      .select("id, queue_position")
+      .eq("id", playlistId)
+      .eq("venue_id", venueId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("playlist_rotation")
+      .select("playlist_id, cycle")
+      .eq("venue_id", venueId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("playlists")
+      .select("id, queue_position")
+      .eq("venue_id", venueId)
+      .not("queue_position", "is", null)
+      .order("queue_position", { ascending: true })
+      .order("created_at", { ascending: true }),
+  ]);
 
   if (!playlist) return;
 
-  if (playlist.queue_position === null) {
-    await supabaseAdmin
-      .from("playlists")
-      .update({ queue_position: await nextQueuePosition(venueId) })
-      .eq("id", playlistId)
-      .eq("venue_id", venueId);
+  const cycle = state?.cycle ?? 1;
+  const queue = queued ?? [];
+
+  // Şu an çalan liste: imleçteki liste kuyruktaysa o, değilse (imleç boş ya da
+  // liste kuyruktan çıkmış) dolum kuyruğun başından başlayacağı için ilk liste.
+  const playing = queue.find((p) => p.id === state?.playlist_id) ?? queue[0] ?? null;
+  const dropId = playing && playing.id !== playlistId ? playing.id : null;
+
+  // Kalan kuyruk + hedef: hedef zaten kuyruktaysa yerinde kalır, değilse sona girer
+  const remaining = queue.filter((p) => p.id !== dropId);
+  if (!remaining.some((p) => p.id === playlistId)) {
+    remaining.push({ id: playlistId, queue_position: Number.MAX_SAFE_INTEGER });
   }
 
-  const { data: state } = await supabaseAdmin
-    .from("playlist_rotation")
-    .select("cycle")
-    .eq("venue_id", venueId)
-    .maybeSingle();
-
-  const cycle = state?.cycle ?? 1;
+  await Promise.all([
+    ...remaining
+      .map((p, i) => ({ id: p.id, position: i + 1, current: p.queue_position }))
+      .filter((p) => p.current !== p.position)
+      .map((p) =>
+        supabaseAdmin
+          .from("playlists")
+          .update({ queue_position: p.position })
+          .eq("id", p.id)
+          .eq("venue_id", venueId)
+      ),
+    ...(dropId
+      ? [
+          supabaseAdmin
+            .from("playlists")
+            .update({ queue_position: null })
+            .eq("id", dropId)
+            .eq("venue_id", venueId),
+          // İlerlemesi de silinir: sonradan tekrar sıraya alınırsa kaldığı yerden
+          // değil baştan çalsın (play_once'ta olduğu gibi).
+          supabaseAdmin
+            .from("playlist_rotation_consumed")
+            .delete()
+            .eq("venue_id", venueId)
+            .eq("playlist_id", dropId),
+        ]
+      : []),
+  ]);
 
   // Liste baştan çalsın: bu turda tüketilmiş sayılan şarkıları serbest bırak.
   await supabaseAdmin

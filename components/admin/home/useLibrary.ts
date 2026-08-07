@@ -423,8 +423,9 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     await refresh();
   };
 
-  // Play: imleç bu listeye atlar, liste baştan başlar. Kuyruktaki sırası değişmez;
-  // sahnedeki şarkı kesilmez, müşteri istekleri etkilenmez.
+  // Play: imleç bu listeye atlar, liste baştan başlar. O ana kadar çalan liste
+  // kuyruktan düşer — yani bu liste bitince sıradaki liste gelir, çalması kesilen
+  // liste başa dönmez. Sahnedeki şarkı kesilmez, müşteri istekleri etkilenmez.
   const playNow = async (playlist: Playlist) => {
     const res = await fetch("/api/admin/playlists", {
       method: "PATCH",

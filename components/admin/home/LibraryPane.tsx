@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import FitTitle from "./FitTitle";
 import ListCover from "./ListCover";
 import SongRowMenu from "./SongRowMenu";
 import { ALL, formatDur, type Library } from "./useLibrary";
@@ -97,13 +98,9 @@ export default function LibraryPane({
               <p className="text-white/70 text-xs font-semibold uppercase tracking-wide">
                 {selectedList ? "Mekan çalma listesi" : "Mekan katalogu"}
               </p>
-              {/* Kapak kadar iri: liste adı ekranın odağı. Punto satır içi veriliyor —
-                  sütun genişliğine göre ölçeklensin, uzun adlarda taşmasın. */}
-              <h1
-                className="text-white font-extrabold mt-2.5 mb-3.5 leading-[1.02] break-words"
-                style={{ fontSize: "clamp(40px, 5.5vw, 92px)" }}
-              >
-                {selectedList ? selectedList.name : "Tüm Şarkılar"}
+              {/* Liste adı tek satır: uzadıkça sığana kadar küçülür, düzen oynamaz */}
+              <h1 className="text-white font-extrabold mt-2.5 mb-3.5">
+                <FitTitle text={selectedList ? selectedList.name : "Tüm Şarkılar"} />
               </h1>
               <p className="text-[#e5e7eb] text-sm font-semibold">
                 {visibleSongs.length} şarkı

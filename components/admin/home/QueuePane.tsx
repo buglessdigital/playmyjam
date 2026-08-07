@@ -4,16 +4,10 @@ import Image from "next/image";
 import { useState } from "react";
 import { isMovable, type Playback } from "./usePlayback";
 
-// Sağ sütunda sıradaki bu kadar şarkı gösterilir; gerisi "+N şarkı daha" olarak özetlenir
-const VISIBLE_COUNT = 10;
-
 /** Ana ekranın sağ sütunu: sıradaki şarkılar. */
 export default function QueuePane({ playback, onAddSong }: { playback: Playback; onAddSong: () => void }) {
   const { queue, queueError, reordering, movableCount, moveWithinAuto, nudge, removeFromQueue } = playback;
   const [dragId, setDragId] = useState<string | null>(null);
-
-  const shown = queue.slice(0, VISIBLE_COUNT);
-  const rest = queue.length - shown.length;
 
   return (
     <div className="flex flex-col min-h-0 h-full">
@@ -60,7 +54,7 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
             Kuyruk boş — sıra boşaldıkça aktif listelerden otomatik doldurulur
           </div>
         ) : (
-          shown.map((item, i) => {
+          queue.map((item, i) => {
             const movable = isMovable(item);
             const movableIndex = movable ? queue.filter(isMovable).findIndex((q) => q.id === item.id) : -1;
             const isAdminAdded = movable && item.added_by === "admin";
@@ -161,11 +155,6 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
           })
         )}
 
-        {rest > 0 && (
-          <p className="px-4 py-3 text-[#6b7280] text-xs border-t border-white/10">
-            +{rest} şarkı daha sırada
-          </p>
-        )}
       </div>
 
       {movableCount > 0 && (

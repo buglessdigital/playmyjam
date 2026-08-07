@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, use, useEffect, useMemo, useState } from "react";
+import { Suspense, use, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import HomeModals, { type ModalKind } from "@/components/admin/home/HomeModals";
 import LibraryPane from "@/components/admin/home/LibraryPane";
+import PaneResizer from "@/components/admin/home/PaneResizer";
 import PlayerBar from "@/components/admin/home/PlayerBar";
 import PlaylistRail from "@/components/admin/home/PlaylistRail";
 import QueuePane from "@/components/admin/home/QueuePane";
@@ -22,6 +23,37 @@ const PANES: { id: Pane; label: string }[] = [
   { id: "songs", label: "Şarkılar" },
   { id: "queue", label: "Sırada" },
 ];
+
+// Playlist rayının genişliği kenarındaki çizgiden sürüklenerek ayarlanır ve
+// cihazda saklanır — uzun liste adları olan mekan her açılışta yeniden
+// genişletmek zorunda kalmasın. localStorage dış kaynak olduğu için state
+// yerine abonelikle okunur: sunucu render'ı hep varsayılan, hidrasyon uyuşur.
+const RAIL_KEY = "pmj-admin-rail-width";
+const RAIL_MIN = 200;
+const RAIL_MAX = 520;
+const RAIL_DEFAULT = 280;
+
+const railListeners = new Set<() => void>();
+
+const subscribeRail = (cb: () => void) => {
+  railListeners.add(cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    railListeners.delete(cb);
+    window.removeEventListener("storage", cb);
+  };
+};
+
+const readRailWidth = () => {
+  const stored = Number(localStorage.getItem(RAIL_KEY));
+  if (!Number.isFinite(stored) || stored <= 0) return RAIL_DEFAULT;
+  return Math.min(RAIL_MAX, Math.max(RAIL_MIN, Math.round(stored)));
+};
+
+const writeRailWidth = (value: number) => {
+  localStorage.setItem(RAIL_KEY, String(value));
+  railListeners.forEach((cb) => cb());
+};
 
 export default function AdminDashboard({ params }: Props) {
   return (
@@ -45,6 +77,9 @@ function AdminDashboardContent({ params }: Props) {
   const [modal, setModal] = useState<ModalKind>(null);
   // Dar ekranda üç sütun sığmaz: aynı anda tek pano gösterilir
   const [pane, setPane] = useState<Pane>("songs");
+  const railWidth = useSyncExternalStore(subscribeRail, readRailWidth, () => RAIL_DEFAULT);
+  const setRailWidth = useCallback((w: number) => writeRailWidth(w), []);
+  const resetRailWidth = useCallback(() => writeRailWidth(RAIL_DEFAULT), []);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -82,10 +117,21 @@ function AdminDashboardContent({ params }: Props) {
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 lg:grid lg:grid-cols-[280px_minmax(0,1fr)_340px]">
+      <div
+        className="flex-1 min-h-0 lg:grid"
+        style={{ gridTemplateColumns: `${railWidth}px minmax(0,1fr) 340px` }}
+      >
         <div
-          className={`${pane === "lists" ? "flex" : "hidden"} lg:flex flex-col min-h-0 h-full lg:border-r border-white/10`}
+          className={`${pane === "lists" ? "flex" : "hidden"} lg:flex relative flex-col min-h-0 h-full min-w-0 lg:border-r border-white/10`}
         >
+          <PaneResizer
+            width={railWidth}
+            min={RAIL_MIN}
+            max={RAIL_MAX}
+            onChange={setRailWidth}
+            onReset={resetRailWidth}
+            label="Liste panosu genişliği"
+          />
           <PlaylistRail lib={lib} onNewList={() => setModal("newList")} onPick={() => setPane("songs")} />
         </div>
 

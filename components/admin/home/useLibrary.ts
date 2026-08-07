@@ -392,17 +392,20 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     }
   };
 
-  // Listeyi bir yukarı/aşağı taşır. Sıra sunucuda dizinin kendisi olarak yazılır;
+  // Listeyi verilen sıraya taşır. Sıra sunucuda dizinin kendisi olarak yazılır;
   // çalan listenin imleci korunur, yani sıra değiştirmek turu başa sarmaz.
-  const moveList = async (playlist: Playlist, delta: -1 | 1) => {
+  // Komşu takası değil çıkar-yerleştir: uçlara taşımada aradakiler bir kayar.
+  const moveListTo = async (playlist: Playlist, to: number) => {
     if (reordering) return;
     const ordered = [...playlists].sort((a, b) => a.sort_order - b.sort_order);
     const from = ordered.findIndex((p) => p.id === playlist.id);
-    const to = from + delta;
-    if (from < 0 || to < 0 || to >= ordered.length) return;
+    if (from < 0) return;
+    const target = Math.min(ordered.length - 1, Math.max(0, to));
+    if (target === from) return;
 
     const next = [...ordered];
-    [next[from], next[to]] = [next[to], next[from]];
+    next.splice(from, 1);
+    next.splice(target, 0, ordered[from]);
     const withOrder = next.map((p, i) => ({ ...p, sort_order: i }));
     setPlaylists(withOrder);
     setReordering(true);
@@ -419,6 +422,13 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     } finally {
       setReordering(false);
     }
+  };
+
+  const moveList = (playlist: Playlist, delta: -1 | 1) => {
+    const ordered = [...playlists].sort((a, b) => a.sort_order - b.sort_order);
+    const from = ordered.findIndex((p) => p.id === playlist.id);
+    if (from < 0) return Promise.resolve();
+    return moveListTo(playlist, from + delta);
   };
 
   // Bekleyen sıra yazımı: art arda taşımalar tek isteğe toplanır. Sunucu diziyi
@@ -616,6 +626,7 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     reordering,
     moveSong,
     moveList,
+    moveListTo,
     // eylemler
     setSelectedId,
     defaultTarget,

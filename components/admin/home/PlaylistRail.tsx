@@ -1,6 +1,7 @@
 "use client";
 
 import ListCover from "./ListCover";
+import PlaylistRowMenu from "./PlaylistRowMenu";
 import { ALL, type Library } from "./useLibrary";
 
 const railStyle = (selected: boolean, dim: boolean) => ({
@@ -14,11 +15,14 @@ export default function PlaylistRail({
   lib,
   onNewList,
   onPick,
+  onRename,
 }: {
   lib: Library;
   onNewList: () => void;
   // Dar ekranda liste seçilince şarkı panosuna geçilir
   onPick?: () => void;
+  // Satır menüsündeki "yeniden adlandır" bu kipi açar
+  onRename: () => void;
 }) {
   const {
     playlists,
@@ -38,8 +42,6 @@ export default function PlaylistRail({
     coversByList,
     catalogCovers,
     sourceByList,
-    moveList,
-    reordering,
   } = lib;
 
   const listFiltered = listQuery.trim().length > 0;
@@ -94,7 +96,7 @@ export default function PlaylistRail({
           </div>
         </button>
 
-        {visiblePlaylists.map((p, railIndex) => {
+        {visiblePlaylists.map((p) => {
           const total = countFor(p.id);
           const matches = filtering ? matchCountFor(p.id) : total;
           const source = sourceByList[p.id];
@@ -156,29 +158,11 @@ export default function PlaylistRail({
                 </div>
               </button>
 
-              {/* Listelerin çalma sırası buradan değiştirilir */}
-              {!listFiltered && (
-                <div className="flex flex-col justify-center gap-1 pr-2 py-2 shrink-0">
-                  <button
-                    onClick={() => moveList(p, -1)}
-                    disabled={reordering || railIndex === 0}
-                    className="w-5 h-5 flex items-center justify-center rounded disabled:opacity-25"
-                    style={{ background: "rgba(255,255,255,0.06)" }}
-                    title="Yukarı taşı"
-                  >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 15l6-6 6 6" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  </button>
-                  <button
-                    onClick={() => moveList(p, 1)}
-                    disabled={reordering || railIndex === visiblePlaylists.length - 1}
-                    className="w-5 h-5 flex items-center justify-center rounded disabled:opacity-25"
-                    style={{ background: "rgba(255,255,255,0.06)" }}
-                    title="Aşağı taşı"
-                  >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  </button>
-                </div>
-              )}
+              {/* Çalma sırası, aktiflik, ad ve silme buradan — şarkı satırındaki
+                  "⋮" menüsüyle aynı yerleşim. */}
+              <div className="flex items-center pr-2 shrink-0">
+                <PlaylistRowMenu playlist={p} lib={lib} orderable={!listFiltered} onRename={onRename} />
+              </div>
             </div>
           );
         })}

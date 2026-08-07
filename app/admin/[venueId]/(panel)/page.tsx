@@ -132,7 +132,12 @@ function AdminDashboardContent({ params }: Props) {
             onReset={resetRailWidth}
             label="Liste panosu genişliği"
           />
-          <PlaylistRail lib={lib} onNewList={() => setModal("newList")} onPick={() => setPane("songs")} />
+          <PlaylistRail
+            lib={lib}
+            onNewList={() => setModal("newList")}
+            onPick={() => setPane("songs")}
+            onRename={() => setModal("rename")}
+          />
         </div>
 
         <div className={`${pane === "songs" ? "flex" : "hidden"} lg:flex flex-col min-h-0 h-full min-w-0`}>

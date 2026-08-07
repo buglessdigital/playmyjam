@@ -154,31 +154,36 @@ export default function LibraryPane({
                 >
                   {selectedList.is_active ? "Aktif" : "Pasif"}
                 </button>
-                {/* Liste İÇİNDEKİ şarkıların sırası: eklenme sırası mı, rastgele mi */}
-                <div className="flex rounded-lg p-0.5 shrink-0" style={{ background: "rgba(255,255,255,0.05)" }}>
-                  <button
-                    onClick={() => setShuffle(selectedList, false)}
-                    className="text-xs px-3 py-1 rounded-md font-semibold transition-all"
-                    style={{
-                      background: selectedList.shuffle ? "transparent" : "rgba(233,30,140,0.2)",
-                      color: selectedList.shuffle ? "#9ca3af" : "#f9a8d4",
-                    }}
-                    title="Listedeki şarkılar aşağıdaki sırayla çalar"
-                  >
-                    Sıralı
-                  </button>
-                  <button
-                    onClick={() => setShuffle(selectedList, true)}
-                    className="text-xs px-3 py-1 rounded-md font-semibold transition-all"
-                    style={{
-                      background: selectedList.shuffle ? "rgba(233,30,140,0.2)" : "transparent",
-                      color: selectedList.shuffle ? "#f9a8d4" : "#9ca3af",
-                    }}
-                    title="Listedeki şarkılar rastgele sırayla çalar"
-                  >
-                    Karışık
-                  </button>
-                </div>
+                {/* Liste İÇİNDEKİ şarkıların sırası: kapalıyken aşağıdaki sıra,
+                    açıkken rastgele. Tek düğme — açıkken renklenir, altındaki
+                    nokta uzaktan bakınca da durumu belli eder. */}
+                <button
+                  onClick={() => setShuffle(selectedList, !selectedList.shuffle)}
+                  aria-pressed={selectedList.shuffle}
+                  className="relative w-8 h-8 flex items-center justify-center rounded-lg transition-all"
+                  style={{ background: selectedList.shuffle ? "rgba(233,30,140,0.18)" : "rgba(255,255,255,0.08)" }}
+                  title={
+                    selectedList.shuffle
+                      ? "Karışık açık — şarkılar rastgele sırayla çalar"
+                      : "Karışık kapalı — şarkılar aşağıdaki sırayla çalar"
+                  }
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M16 3l4 4-4 4M16 13l4 4-4 4M20 7h-4.2a4 4 0 00-3.3 1.8l-4 6A4 4 0 015.2 17H3M3 7h2.2a4 4 0 013.3 1.8l.7 1M20 17h-4.2a4 4 0 01-3.3-1.8l-.7-1"
+                      stroke={selectedList.shuffle ? "#f9a8d4" : "#9ca3af"}
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  {selectedList.shuffle && (
+                    <span
+                      className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
+                      style={{ background: "#e91e8c" }}
+                    />
+                  )}
+                </button>
                 {selectedSource && (
                   <>
                     <button

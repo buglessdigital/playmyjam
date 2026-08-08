@@ -426,6 +426,12 @@ function SearchModal({
       </div>
 
       <div className="overflow-y-auto flex-1">
+        {/* YouTube API denetim şartı: API'den gelen sonuçların yanında atıf görünmeli. */}
+        {results.length > 0 && (
+          <p className="text-[#6b7280] text-[11px] pb-2 border-b border-white/5">
+            YouTube Sonuçları · Search results provided by YouTube
+          </p>
+        )}
         {error && <p className="text-center text-red-400 text-sm py-6">{error}</p>}
         {!error && results.length === 0 && !searching && (
           <p className="text-center text-[#6b7280] text-sm py-6">

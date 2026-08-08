@@ -100,8 +100,11 @@ export default function PlayerBar({
             </button>
             <button
               onClick={() => playerAction(isPlaying ? "pause" : "play")}
-              disabled={playerLoading !== null || playerOffline}
-              className="w-12 h-12 flex items-center justify-center rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              // Oynat/duraklat komutu player'a anında (broadcast) gider; sunucu
+              // yanıtı beklerken düğmeyi kilitlemek gereksiz gecikme hissi veriyordu.
+              // Kilit yalnızca kuyruğu tüketen atlama düğmelerinde.
+              disabled={playerOffline}
+              className="w-12 h-12 flex items-center justify-center rounded-full transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ background: "#e91e8c" }}
               title={playerOffline ? "Player kapalı — önce Player sayfasını açın" : isPlaying ? "Duraklat" : "Oynat"}
             >

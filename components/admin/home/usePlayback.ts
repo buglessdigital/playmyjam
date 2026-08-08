@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  CMD_EVENT,
+  STATE_EVENT,
+  playerBusChannel,
+  type PlayerCommand,
+  type PlayerStateBeat,
+} from "@/lib/player-bus";
 
 export type QueueItem = {
   id: string;
@@ -21,6 +28,7 @@ export type QueueItem = {
 };
 
 export type NowPlaying = {
+  video_id?: string | null;
   is_playing: boolean;
   progress_ms: number;
   started_at: string | null;
@@ -29,10 +37,10 @@ export type NowPlaying = {
   songs: { title: string; artist: string; album_cover_url: string; duration_ms: number } | null;
 };
 
-const NP_COLUMNS = "is_playing, progress_ms, started_at, last_heartbeat_at, volume";
+const NP_COLUMNS = "video_id, is_playing, progress_ms, started_at, last_heartbeat_at, volume";
 // 0036 uygulanmadan deploy edilirse volume kolonu yoktur; select'in tamamı
 // düşüp panel boş kalmasın diye kolonsuz sürüme dönülür
-const NP_COLUMNS_LEGACY = "is_playing, progress_ms, started_at, last_heartbeat_at";
+const NP_COLUMNS_LEGACY = "video_id, is_playing, progress_ms, started_at, last_heartbeat_at";
 const NP_SONGS = "songs(title, artist, album_cover_url, duration_ms)";
 let volumeColumnMissing = false;
 
@@ -74,6 +82,21 @@ export function usePlayback(venueDbId: string) {
   const lastAudibleVolumeRef = useRef(100);
   const volumeTouchedAtRef = useRef(0);
   const volumeSendRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Düğmeye basıldığı an: bu pencere içinde sunucudan gelen ESKİ durum
+  // (henüz yazılmamış satır ya da yoldaki bayat heartbeat) ekrandaki iyimser
+  // durumu ezmesin — düğme basılır basılmaz geri sıçrıyordu.
+  const localActionAtRef = useRef(0);
+  // Player'ın broadcast ettiği canlı durum: DB turunu beklemeden uygulanır
+  const busRef = useRef<ReturnType<typeof playerBusChannel> | null>(null);
+  const nowPlayingRef = useRef<NowPlaying | null>(null);
+  const queueRef = useRef<QueueItem[]>([]);
+  useEffect(() => {
+    nowPlayingRef.current = nowPlaying;
+  }, [nowPlaying]);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
 
   const fetchQueue = useCallback(
     async (dbId: string) => {
@@ -117,7 +140,16 @@ export function usePlayback(venueDbId: string) {
         songs: NowPlaying["songs"] | NowPlaying["songs"][];
       };
       const songs = Array.isArray(raw.songs) ? raw.songs[0] ?? null : raw.songs;
-      setNowPlaying({ ...raw, songs });
+      // Az önce düğmeye basıldıysa çalma durumunu sunucudan geri alma: satır
+      // henüz yazılmamış ya da yoldaki heartbeat bayat olabilir. Şarkı/kapak
+      // bilgisi yine tazelenir, yalnızca oynat/duraklat ekseni korunur.
+      const fresh = Date.now() - localActionAtRef.current < 2_500;
+      setNowPlaying((prev) =>
+        fresh && prev
+          ? { ...raw, songs, is_playing: prev.is_playing, started_at: prev.started_at }
+          : { ...raw, songs }
+      );
+      if (fresh) return;
       // Kaydırıcıyı sunucudan tazele — ama kullanıcı az önce oynadıysa dokunma,
       // yoksa henüz yazılmamış değer parmağın altından geri sıçrar
       if (typeof raw.volume === "number" && Date.now() - volumeTouchedAtRef.current > 2_000) {
@@ -176,8 +208,48 @@ export function usePlayback(venueDbId: string) {
         .subscribe()
     );
 
+    // Düşük gecikmeli hat: player kendi durumunu (ilerleme/çalıyor mu/hangi video)
+    // doğrudan buraya yollar. DB → WAL → Realtime turu beklenmediği için alt bar
+    // player'la aynı anda tepki verir. Kalıcı değil; yukarıdaki DB yolu duruyor.
+    const bus = playerBusChannel(supabase, venueDbId);
+    bus
+      .on("broadcast", { event: STATE_EVENT }, ({ payload }: { payload: PlayerStateBeat }) => {
+        const beat = payload;
+        if (cancelled || !beat || typeof beat.progress_ms !== "number") return;
+        // Broadcast'in kendisi "player ayakta" kanıtıdır: heartbeat tazeliğini
+        // de burada güncelleriz, "çevrimdışı" uyarısı boşuna çıkmasın.
+        const seenAt = new Date().toISOString();
+        const current = nowPlayingRef.current;
+        // Şarkı değişmiş: satırın tamamı (başlık/kapak/süre) lazım, hemen tazele
+        if (current?.video_id != null && beat.video_id !== current.video_id) {
+          setNowPlaying({ ...current, last_heartbeat_at: seenAt });
+          fetchNowPlaying();
+          return;
+        }
+        setProgress(beat.progress_ms);
+        setNowPlaying((prev) =>
+          prev
+            ? {
+                ...prev,
+                is_playing: beat.is_playing,
+                progress_ms: beat.progress_ms,
+                started_at: beat.is_playing
+                  ? new Date(Date.now() - beat.progress_ms).toISOString()
+                  : prev.started_at,
+                last_heartbeat_at: seenAt,
+              }
+            : prev
+        );
+        // Player'ın raporladığı durum artık iyimser tahminin yerini alır
+        localActionAtRef.current = 0;
+      })
+      .subscribe();
+    busRef.current = bus;
+
     return () => {
       cancelled = true;
+      busRef.current = null;
+      supabase.removeChannel(bus);
       clearInterval(poll);
       document.removeEventListener("visibilitychange", onWake);
       window.removeEventListener("online", onWake);
@@ -215,11 +287,22 @@ export function usePlayback(venueDbId: string) {
     []
   );
 
+  // Komutu player'a doğrudan yolla (HTTP + DB turunu beklemeden). Teslim garantisi
+  // yoktur; her komut ayrıca /api/player'a da gider.
+  const sendCommand = (command: PlayerCommand) => {
+    try {
+      busRef.current?.send({ type: "broadcast", event: CMD_EVENT, payload: command });
+    } catch {}
+  };
+
   const playerAction = async (action: "play" | "pause" | "next" | "previous") => {
     if (!venueDbId) return;
-    // Düğme anında tepki versin: sunucu + Realtime turunu beklemeden durum
-    // ekranda değişir, gelen gerçek satır zaten üzerine yazar.
+    localActionAtRef.current = Date.now();
+
+    // Düğme anında tepki versin: sunucu + Realtime turunu beklemeden hem player'a
+    // komut gider hem de durum ekranda değişir. Gelen gerçek satır üzerine yazar.
     if (action === "play" || action === "pause") {
+      sendCommand({ type: action });
       const playing = action === "play";
       setNowPlaying((prev) =>
         prev
@@ -231,14 +314,47 @@ export function usePlayback(venueDbId: string) {
             }
           : prev
       );
+    } else {
+      // Atlamada hangi videonun çalacağını sunucu söyler; player'a "hazırlan"
+      // deyip yanıtı bekliyoruz. Panel bu arada sıradaki şarkıyı iyimser gösterir.
+      sendCommand({ type: "seeking" });
+      setProgress(0);
+      if (action === "next") {
+        const upcoming = queueRef.current[0];
+        if (upcoming?.songs) {
+          setNowPlaying((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  video_id: upcoming.songs.youtube_video_id,
+                  songs: upcoming.songs,
+                  is_playing: true,
+                  progress_ms: 0,
+                  started_at: new Date().toISOString(),
+                }
+              : prev
+          );
+          // Kuyruktan da düşür — gerçek satır Realtime ile birazdan doğrular
+          setQueue((prev) => prev.slice(1));
+        }
+      }
     }
+
     setPlayerLoading(action);
     try {
-      await fetch(`/api/player/${venueDbId}`, {
+      const res = await fetch(`/api/player/${venueDbId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
+      // Yanıttaki video kimliğini player'a anında ilet: aksi halde player aynı
+      // bilgiyi DB → Realtime turundan öğrenecek ve şarkı ~1 sn geç başlayacaktı
+      if ((action === "next" || action === "previous") && res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.started && typeof data.video_id === "string") {
+          sendCommand({ type: "load", video_id: data.video_id });
+        }
+      }
     } finally {
       setPlayerLoading(null);
     }
@@ -252,6 +368,8 @@ export function usePlayback(venueDbId: string) {
     setVolume(value);
     volumeTouchedAtRef.current = Date.now();
     if (value > 0) lastAudibleVolumeRef.current = value;
+    // Ses de anında uygulansın: yazma 250 ms sonra, kulaktaki değişim şimdi
+    sendCommand({ type: "volume", volume: value });
     if (volumeSendRef.current) clearTimeout(volumeSendRef.current);
     volumeSendRef.current = setTimeout(async () => {
       try {

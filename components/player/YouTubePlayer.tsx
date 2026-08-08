@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  CMD_EVENT,
+  STATE_EVENT,
+  playerBusChannel,
+  type PlayerCommand,
+  type PlayerStateBeat,
+} from "@/lib/player-bus";
 
 // YouTube IFrame API'nin kullandığımız alt kümesi (resmi @types paketi olmadan)
 type YTPlayer = {
@@ -219,6 +226,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // İlk istekte üretilir: sunucuda çalışmaz, render'ı da etkilemez
   const claimIdRef = useRef<string | null>(null);
   const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Panelle arasındaki düşük gecikmeli hat (bkz. lib/player-bus.ts)
+  const busRef = useRef<ReturnType<typeof playerBusChannel> | null>(null);
   const claimId = useCallback(() => {
     claimIdRef.current ??= playerInstanceId(venueDbId);
     return claimIdRef.current;
@@ -375,10 +384,46 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     pushVolume();
   }, [standbyPlayer, pushVolume]);
 
+  // Panelin alt barına anlık durum: DB → Realtime turunu beklemeden gider, böylece
+  // ilerleme çubuğu ve oynat/duraklat simgesi player'la aynı anda değişir.
+  const broadcastState = useCallback((override?: Partial<PlayerStateBeat>) => {
+    const channel = busRef.current;
+    if (!channel) return;
+    const player = activePlayer();
+    let progress = 0;
+    let duration: number | null = null;
+    let playing = false;
+    if (player && currentVideoRef.current) {
+      try {
+        progress = Math.floor(player.getCurrentTime() * 1000);
+        const secs = player.getDuration();
+        duration = Number.isFinite(secs) && secs > 0 ? Math.floor(secs * 1000) : null;
+        const state = player.getPlayerState();
+        playing =
+          state === window.YT?.PlayerState.PLAYING || state === window.YT?.PlayerState.BUFFERING;
+      } catch {}
+    }
+    const beat: PlayerStateBeat = {
+      video_id: currentVideoRef.current,
+      is_playing: playing,
+      progress_ms: Math.max(progress, 0),
+      duration_ms: duration,
+      at: Date.now(),
+      // Yeni video yüklenirken getCurrentTime bir süre ESKİ şarkıyı raporlar;
+      // çağıran taraf doğru değeri biliyorsa üstüne yazar
+      ...override,
+    };
+    try {
+      channel.send({ type: "broadcast", event: STATE_EVENT, payload: beat });
+    } catch {}
+  }, [activePlayer]);
+
   // İlerleme + sağlık sinyali — admin paneli bununla "oynatıcı çevrimdışı" uyarısı verir
   const sendHeartbeat = useCallback(() => {
     const player = activePlayer();
     if (!player) return;
+    // Aynı bilgi panele hızlı hattan da gider: DB yolu kalıcılık için, bu tazelik için
+    broadcastState();
     // Kuyruk boşken de sinyal gider: müşteri tarafı "oynatıcı açık mı" sorusunu
     // heartbeat tazeliğinden okuyor; sessiz kalırsak boş mekanda şarkı eklenemez.
     // presence:true çalma durumunu yazmaz, yalnızca sağlık sinyalini tazeler.
@@ -406,7 +451,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       is_playing: playing,
       video_id: currentVideoRef.current,
     });
-  }, [api, activePlayer]);
+  }, [api, activePlayer, broadcastState]);
 
   // Niyet "çal" iken player'ın gerçekten çaldığını doğrula; başlamadıysa dürt.
   // Arka plan sekmesinde tarayıcının sessizce engellediği başlatmaları toparlar.
@@ -461,8 +506,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         pendingVideoRef.current = videoId;
       }
       onTrackChange?.({ videoId, isPlaying: true });
+      // Panel yeni şarkıyı DB turunu beklemeden görsün; süre henüz bilinmiyor
+      broadcastState({ video_id: videoId, is_playing: true, progress_ms: 0, duration_ms: null });
     },
-    [onTrackChange, scheduleNudges, endCrossfade, activePlayer, activeReady]
+    [onTrackChange, scheduleNudges, endCrossfade, activePlayer, activeReady, broadcastState]
   );
 
   // Şarkı bitti / hata verdi → kuyruğu ilerlet, dönen videoyu yükle
@@ -484,12 +531,13 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           preloadedForRef.current = null;
           setIdle(true);
           onTrackChange?.({ videoId: null, isPlaying: false });
+          broadcastState({ video_id: null, is_playing: false, progress_ms: 0 });
         }
       } finally {
         advancingRef.current = false;
       }
     },
-    [api, loadVideo, onTrackChange, endCrossfade]
+    [api, loadVideo, onTrackChange, endCrossfade, broadcastState]
   );
 
   // Sıradaki videoyu boştaki deck'e tampona al. Kuyruk TÜKETİLMEZ (peek): geçiş
@@ -575,6 +623,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     setVisibleDeck(to);
     setIdle(false);
     onTrackChange?.({ videoId, isPlaying: true });
+    broadcastState({ video_id: videoId, is_playing: true, progress_ms: 0, duration_ms: null });
 
     // Eşit güç (sin/cos) rampa: iki şarkının toplam gücü sabit kalır. Doğrusal
     // rampada geçişin ortasında duyulur bir ses çukuru oluşuyor.
@@ -595,7 +644,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         sendHeartbeat();
       }
     }, FADE_STEP_MS);
-  }, [api, endCrossfade, ensurePlaying, sendHeartbeat, onTrackChange]);
+  }, [api, endCrossfade, ensurePlaying, sendHeartbeat, onTrackChange, broadcastState]);
 
   // Kalan süre bekçisi: önyükleme ve geçiş başlangıcı buradan tetiklenir
   const crossfadeTick = useCallback(() => {
@@ -860,6 +909,75 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     const interval = setInterval(crossfadeTick, CROSSFADE_TICK_MS);
     return () => clearInterval(interval);
   }, [started, blocked, crossfadeTick]);
+
+  // HIZLI HAT: panelin oynat/duraklat/atla/ses komutları doğrudan buraya düşer.
+  // Aşağıdaki now_playing aboneliği yerini almaz — o kalıcı ve garanti yol, bu
+  // ise gecikmesizi. Aynı komut iki yoldan da gelir; ikincisi zaten no-op olur.
+  useEffect(() => {
+    if (!started || blocked === "claim") return;
+
+    const channel = playerBusChannel(supabase, venueDbId);
+    channel
+      .on("broadcast", { event: CMD_EVENT }, ({ payload }: { payload: PlayerCommand }) => {
+        if (blockedRef.current === "claim") return;
+        const cmd = payload;
+        if (!cmd?.type) return;
+        switch (cmd.type) {
+          case "play": {
+            desiredPlayingRef.current = true;
+            try {
+              activePlayer()?.playVideo();
+            } catch {}
+            // Arka plan sekmesinde engellenirse bekçi toparlasın
+            scheduleNudges([PLAY_NUDGE_MS]);
+            break;
+          }
+          case "pause": {
+            // Panelin açık komutu: DB yolundaki "yankı mı, komut mu" belirsizliği
+            // burada yok — doğrudan uygulanır
+            desiredPlayingRef.current = false;
+            endCrossfade();
+            try {
+              activePlayer()?.pauseVideo();
+            } catch {}
+            broadcastState({ is_playing: false });
+            break;
+          }
+          case "seeking": {
+            // Atlama isteği sunucuya gitti: sürmekte olan geçişi kes ki gelen
+            // şarkı yarım rampanın üstüne binmesin
+            endCrossfade();
+            break;
+          }
+          case "load": {
+            if (cmd.video_id && cmd.video_id !== currentVideoRef.current) loadVideo(cmd.video_id);
+            break;
+          }
+          case "volume": {
+            applyVolume(cmd.volume);
+            break;
+          }
+        }
+      })
+      .subscribe();
+    busRef.current = channel;
+
+    return () => {
+      busRef.current = null;
+      supabase.removeChannel(channel);
+    };
+  }, [
+    started,
+    blocked,
+    supabase,
+    venueDbId,
+    activePlayer,
+    scheduleNudges,
+    endCrossfade,
+    loadVideo,
+    applyVolume,
+    broadcastState,
+  ]);
 
   // Dış komutları dinle: admin panelden next/pause, müşteri isteğiyle başlayan çalma
   useEffect(() => {

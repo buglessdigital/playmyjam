@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { renewAdminCookie, venueAccess } from "@/lib/admin-session";
-import { playNextFromQueue, playPreviousFromQueue, markUnplayableAndSkip } from "@/lib/queue";
+import {
+  playNextFromQueue,
+  playPreviousFromQueue,
+  markUnplayableAndSkip,
+  peekNextFromQueue,
+} from "@/lib/queue";
 
 // Sahiplik bu süre boyunca heartbeat gelmezse serbest kalır (heartbeat 15 sn'de bir).
 // Panelin "oynatıcı çevrimdışı" eşiğiyle aynı: 45 sn.
@@ -123,6 +128,12 @@ export async function POST(
       return reply(result);
     }
 
+    // Crossfade önyüklemesi: sıradaki videoyu kuyruğu tüketmeden sorar. Salt
+    // okuma olduğu için sahiplik aranmaz — yanlış cihazın öğrenmesi zararsız.
+    case "peek": {
+      return reply(await peekNextFromQueue(venueId));
+    }
+
     // Panelin "geri" düğmesi: bir önceki şarkıya döner. Geçmiş yoksa
     // playPreviousFromQueue çalan şarkıyı başa sarar.
     case "previous": {
@@ -160,6 +171,25 @@ export async function POST(
         return reply({ error: "Ses seviyesi kaydedilemedi" }, { status: 500 });
       }
       return reply({ ok: true, volume });
+    }
+
+    // Panelden crossfade süresi (0-12000 ms; 0 = kapalı). Ses seviyesiyle aynı
+    // yol: now_playing'e yazılır, player Realtime ile duyar.
+    case "crossfade": {
+      const raw = typeof body?.crossfade_ms === "number" ? body.crossfade_ms : NaN;
+      if (!Number.isFinite(raw)) return reply({ error: "crossfade_ms gerekli" }, { status: 400 });
+      const crossfadeMs = Math.min(12_000, Math.max(0, Math.round(raw)));
+      const { error } = await supabaseAdmin
+        .from("now_playing")
+        .update({ crossfade_ms: crossfadeMs })
+        .eq("venue_id", venueId);
+      // 0039 uygulanmadan deploy edilirse kolon yoktur — sessizce yutmuyoruz ki
+      // panel anlaşılır bir uyarı gösterebilsin
+      if (error) {
+        console.error("[player] crossfade süresi yazılamadı:", error.message);
+        return reply({ error: "Geçiş süresi kaydedilemedi" }, { status: 500 });
+      }
+      return reply({ ok: true, crossfade_ms: crossfadeMs });
     }
 
     // Player'ın onError'u: video embed'e kapalı/kaldırılmış/bölge engelli —

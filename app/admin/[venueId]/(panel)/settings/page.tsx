@@ -6,7 +6,13 @@ import VenueLogoUploader from "@/components/admin/VenueLogoUploader";
 
 const ACCENT = "#e91e8c";
 
-type Settings = { name: string; request_cost: number; priority_cost: number; logo_url: string };
+type Settings = {
+  name: string;
+  request_cost: number;
+  priority_cost: number;
+  logo_url: string;
+  crossfade_ms: number;
+};
 
 function CostField({
   label,
@@ -37,6 +43,36 @@ function CostField({
         }}
       />
       <p className="text-[#6b7280] text-xs mt-1.5">{hint}</p>
+    </div>
+  );
+}
+
+// Şarkı geçişi (crossfade): çalan şarkının son N saniyesinde sıradaki başlar,
+// sesler çaprazlanır. 0 = kapalı, sert geçiş.
+function CrossfadeField({ value, onChange }: { value: number; onChange: (ms: number) => void }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <label className="text-[#9ca3af] text-xs">Geçiş süresi</label>
+        <span className="text-white text-xs font-semibold tabular-nums">
+          {value === 0 ? "Kapalı" : `${(value / 1000).toFixed(1).replace(".0", "")} sn`}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={12000}
+        step={500}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label="Geçiş süresi"
+        className="volume-slider w-full cursor-pointer"
+        style={{ "--pct": `${(value / 12000) * 100}%` } as React.CSSProperties}
+      />
+      <div className="flex justify-between text-[#6b7280] text-[10px]">
+        <span>Kapalı</span>
+        <span>12 sn</span>
+      </div>
     </div>
   );
 }
@@ -261,6 +297,7 @@ export default function AdminSettingsPage() {
   const [requestCost, setRequestCost] = useState("1");
   const [priorityCost, setPriorityCost] = useState("2");
   const [logoUrl, setLogoUrl] = useState("");
+  const [crossfadeMs, setCrossfadeMs] = useState(4000);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -274,6 +311,7 @@ export default function AdminSettingsPage() {
         setRequestCost(String(s.request_cost));
         setPriorityCost(String(s.priority_cost));
         setLogoUrl(s.logo_url ?? "");
+        setCrossfadeMs(s.crossfade_ms ?? 4000);
       })
       .catch(() => setError("Ayarlar yüklenemedi"))
       .finally(() => setLoading(false));
@@ -300,6 +338,7 @@ export default function AdminSettingsPage() {
           requestCost: Number(requestCost),
           priorityCost: Number(priorityCost),
           logoUrl: logoUrl.trim(),
+          crossfadeMs,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -384,6 +423,27 @@ export default function AdminSettingsPage() {
           <p className="text-[#6b7280] text-xs">
             Varsayılan: normal 1 jeton, öncelikli 2 jeton. Değişiklik yalnızca bundan sonraki
             isteklere uygulanır.
+          </p>
+        </div>
+
+        <div
+          className="rounded-2xl border border-white/10 p-5 flex flex-col gap-4"
+          style={{ background: "rgba(255,255,255,0.03)" }}
+        >
+          <div>
+            <p className="text-white text-sm font-semibold">Şarkı Geçişi (Crossfade)</p>
+            <p className="text-[#6b7280] text-xs mt-1">
+              Çalan şarkının son saniyelerinde sıradaki şarkı başlar; çıkanın sesi yavaşça iner,
+              girenin sesi yükselir. Şarkılar arasında sessizlik kalmaz.
+            </p>
+          </div>
+
+          <CrossfadeField value={crossfadeMs} onChange={setCrossfadeMs} />
+
+          <p className="text-[#6b7280] text-xs">
+            Panelden &quot;sonraki&quot;ye basıldığında geçiş yapılmaz, şarkı anında değişir. Çok kısa
+            şarkılarda geçiş otomatik atlanır. Player&apos;ı tablet/telefonda açtıysanız bu özellik
+            çalışmaz — o cihazlarda tarayıcı ses seviyesini uygulamaya bırakmaz.
           </p>
         </div>
 

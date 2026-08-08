@@ -135,6 +135,42 @@ export async function playNextFromQueue(
   return { started: true, video_id: song.youtube_video_id, song_id: nextItem.song_id };
 }
 
+// Crossfade için sıradaki şarkıyı KUYRUĞU TÜKETMEDEN okur: player, çalan şarkının
+// son saniyelerine gelmeden videoyu ikinci deck'e yükleyip tamponlayabilsin.
+// Hiçbir yan etkisi yoktur (status değişmez, dolum tetiklenmez) — geçiş fiilen
+// başladığında normal playNextFromQueue çağrılır ve gerçeği o yazar.
+//
+// Bu yüzden dönen kimlik "tahmindir": arada öncelikli bir istek gelirse geçiş
+// anında başka bir video döner. Player bu durumu (önyüklenen ≠ dönen) tanıyıp
+// videoyu geçiş anında yükler; ses akışı bozulmaz, yalnızca tamponlama avantajı
+// kaybolur.
+export async function peekNextFromQueue(venueId: string): Promise<{ video_id: string | null }> {
+  const { data } = await supabaseAdmin
+    .from("queue")
+    .select("songs(youtube_video_id, embeddable)")
+    .eq("venue_id", venueId)
+    .eq("status", "queued")
+    // playNextFromQueue ile BİREBİR aynı sıralama (0034) — farklı olursa yanlış
+    // şarkı önyüklenir
+    .order("priority", { ascending: false })
+    .order("position", { ascending: true })
+    .order("added_at", { ascending: true })
+    .order("id", { ascending: true })
+    // Baştaki birkaç satır çalınamaz olabilir (embed kapalı); playNext bunları
+    // atlayacağı için biz de atlayıp ilk çalınabilir olanı döneriz
+    .limit(5);
+
+  type SongInfo = { youtube_video_id: string | null; embeddable: boolean | null };
+  for (const row of data ?? []) {
+    const songRel = row.songs as unknown as SongInfo | SongInfo[] | null;
+    const song = Array.isArray(songRel) ? songRel[0] : songRel;
+    if (song?.youtube_video_id && song.embeddable !== false) {
+      return { video_id: song.youtube_video_id };
+    }
+  }
+  return { video_id: null };
+}
+
 // Panelin "geri" düğmesi: en son çalınmış şarkıya döner. Çalmakta olan satır
 // kuyruğa geri konur (kendi priority/position değerleriyle, yani bıraktığı yere),
 // böylece önceki şarkı bitince kaldığı yerden devam edilir.

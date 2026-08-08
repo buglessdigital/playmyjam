@@ -7,6 +7,18 @@ import { getVerifiedAdminSession } from "@/lib/admin-session";
 // Jeton fiyatı globaldir — burada değişen sadece kaç jeton harcandığı.
 const MAX_COST = 50;
 const MAX_LOGO_URL = 500;
+// Crossfade: şarkı geçişlerinde çapraz solma süresi (0 = kapalı). now_playing'de
+// durur, çünkü player zaten o satırı Realtime ile dinliyor (bkz. 0039).
+const MAX_CROSSFADE_MS = 12_000;
+const DEFAULT_CROSSFADE_MS = 4_000;
+
+function parseCrossfade(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined;
+  const ms = Number(value);
+  if (!Number.isFinite(ms) || ms < 0 || ms > MAX_CROSSFADE_MS) return null;
+  // 500 ms'e yuvarla: kaydırıcı yarım saniyelik adımlarla çalışıyor
+  return Math.round(ms / 500) * 500;
+}
 
 // Logo mekan listelerinde <img> ile gösteriliyor; sadece http(s) adreslerine izin ver.
 function parseLogoUrl(value: unknown): string | null | undefined {
@@ -40,11 +52,21 @@ export async function GET(req: NextRequest) {
   if (error || !data) {
     return NextResponse.json({ error: "Mekan bulunamadı" }, { status: 404 });
   }
+
+  // 0039 uygulanmadıysa kolon yoktur — ayarlar sayfası bu yüzden komple düşmesin,
+  // varsayılanla devam eder (yazma denemesi anlaşılır bir hata döndürür)
+  const { data: np } = await supabaseAdmin
+    .from("now_playing")
+    .select("crossfade_ms")
+    .eq("venue_id", session.venue_id)
+    .maybeSingle();
+
   return NextResponse.json({
     name: data.name,
     request_cost: data.request_cost ?? 1,
     priority_cost: data.priority_cost ?? 2,
     logo_url: data.logo_url ?? "",
+    crossfade_ms: (np as { crossfade_ms?: number } | null)?.crossfade_ms ?? DEFAULT_CROSSFADE_MS,
   });
 }
 
@@ -72,6 +94,14 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
+  const crossfadeMs = parseCrossfade(body?.crossfadeMs);
+  if (crossfadeMs === null) {
+    return NextResponse.json(
+      { error: `Geçiş süresi 0 ile ${MAX_CROSSFADE_MS / 1000} saniye arasında olmalı` },
+      { status: 400 }
+    );
+  }
+
   const update: Record<string, string | number> = {
     request_cost: requestCost,
     priority_cost: priorityCost,
@@ -87,9 +117,30 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Geçiş süresi ayrı tabloda: player onu Realtime ile duyup anında uygular
+  if (crossfadeMs !== undefined) {
+    const { error: crossfadeError } = await supabaseAdmin
+      .from("now_playing")
+      .update({ crossfade_ms: crossfadeMs })
+      .eq("venue_id", session.venue_id);
+    if (crossfadeError) {
+      console.error("[settings] crossfade süresi yazılamadı:", crossfadeError.message);
+      return NextResponse.json(
+        { error: "Geçiş süresi kaydedilemedi — diğer ayarlar kaydedildi" },
+        { status: 500 }
+      );
+    }
+  }
+
   // Müşteri sayfaları ücreti önbellekli mekan satırından okuyor (lib/venue-cache)
   revalidateTag(`venue-${session.venue_slug}`, "max");
   // Logo /mekanlar listesinden geliyor — o liste de tazelensin
   if (logoUrl !== undefined) revalidateTag("venues-list", "max");
-  return NextResponse.json({ ok: true, request_cost: requestCost, priority_cost: priorityCost, logo_url: logoUrl });
+  return NextResponse.json({
+    ok: true,
+    request_cost: requestCost,
+    priority_cost: priorityCost,
+    logo_url: logoUrl,
+    crossfade_ms: crossfadeMs,
+  });
 }

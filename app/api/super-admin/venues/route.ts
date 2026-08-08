@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import bcrypt from "bcryptjs";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSuperSession } from "@/lib/session";
+import { likePattern } from "@/lib/admin-username";
 
 const SLUG_RE = /^[a-z0-9-]{2,40}$/;
 
@@ -53,6 +54,16 @@ export async function POST(req: NextRequest) {
   }
   if (admin_password.length < 8) {
     return NextResponse.json({ error: "Şifre en az 8 karakter olmalı" }, { status: 400 });
+  }
+
+  // Giriş harf duyarsız eşleştiği için "Neon" ile "neon" aynı hesap demek;
+  // ikisi birden var olursa hangisinin açıldığı belirsiz kalır
+  const usernamePattern = likePattern(admin_username);
+  const { data: takenUsername } = usernamePattern
+    ? await supabaseAdmin.from("venue_admins").select("id").ilike("username", usernamePattern).limit(1).maybeSingle()
+    : { data: null };
+  if (takenUsername) {
+    return NextResponse.json({ error: "Bu kullanıcı adı kullanılıyor" }, { status: 409 });
   }
 
   const { data: venue, error: venueError } = await supabaseAdmin

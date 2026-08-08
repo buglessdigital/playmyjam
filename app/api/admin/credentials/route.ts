@@ -9,6 +9,7 @@ import {
   signSession,
 } from "@/lib/session";
 import { clientIp, consumeRateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { likePattern } from "@/lib/admin-username";
 
 // Mekan admini kendi giriş bilgilerini buradan değiştirir. Super-admin paneli
 // aynı işi yapabiliyor (app/api/super-admin/venues/[venueId]) — fark: burada
@@ -102,11 +103,12 @@ export async function PATCH(req: NextRequest) {
   const update: Record<string, string> = {};
 
   if (newUsername && newUsername !== admin.username) {
-    const { data: taken } = await supabaseAdmin
-      .from("venue_admins")
-      .select("id")
-      .eq("username", newUsername)
-      .maybeSingle();
+    // Giriş artık harf duyarsız eşleştiği için "Berkay" ile "berkay" aynı
+    // hesaba işaret eder; ikisi birden var olamamalı
+    const pattern = likePattern(newUsername);
+    const { data: taken } = pattern
+      ? await supabaseAdmin.from("venue_admins").select("id").ilike("username", pattern).limit(1).maybeSingle()
+      : { data: null };
     if (taken && taken.id !== admin.id) {
       return NextResponse.json({ error: "Bu kullanıcı adı kullanılıyor" }, { status: 409 });
     }

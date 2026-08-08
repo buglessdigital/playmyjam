@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import bcrypt from "bcryptjs";
 import { getSuperSession } from "@/lib/session";
 import { revokeAdminSessions } from "@/lib/admin-session";
+import { likePattern } from "@/lib/admin-username";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ venueId: string }> }) {
   if (!getSuperSession(req)) {
@@ -60,6 +61,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ve
   if (typeof adminUsername === "string" && adminUsername.trim()) {
     if (adminUsername.trim().length < 3 || adminUsername.trim().length > 40) {
       return NextResponse.json({ error: "Kullanıcı adı 3-40 karakter olmalı" }, { status: 400 });
+    }
+    // Giriş harf duyarsız eşleşiyor: aynı adın farklı yazımı başka mekana ait olamaz
+    const pattern = likePattern(adminUsername);
+    const { data: taken } = pattern
+      ? await supabaseAdmin
+          .from("venue_admins")
+          .select("id, venue_id")
+          .ilike("username", pattern)
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+    if (taken && taken.venue_id !== venue.id) {
+      return NextResponse.json({ error: "Bu kullanıcı adı kullanılıyor" }, { status: 409 });
     }
     await supabaseAdmin.from("venue_admins").update({ username: adminUsername.trim() }).eq("venue_id", venue.id);
   }

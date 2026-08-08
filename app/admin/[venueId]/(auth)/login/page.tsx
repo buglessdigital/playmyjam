@@ -33,7 +33,7 @@ function AdminLoginForm({ params }: Props) {
 
   const handleForgot = async () => {
     if (!username.trim()) {
-      setError("Kullanıcı adınızı girin");
+      setError("Kullanıcı adınızı veya Google adresinizi girin");
       return;
     }
     setLoading(true);
@@ -68,7 +68,7 @@ function AdminLoginForm({ params }: Props) {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: username.trim(), password }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -104,8 +104,8 @@ function AdminLoginForm({ params }: Props) {
 
           {mode === "forgot" && (
             <p className="text-[#9ca3af] text-xs leading-relaxed">
-              Kullanıcı adınızı girin; panele bağladığınız Google adresine tek kullanımlık bir
-              sıfırlama bağlantısı gönderelim.
+              Kullanıcı adınızı ya da panele bağladığınız Google adresini girin; o adrese tek
+              kullanımlık bir sıfırlama bağlantısı gönderelim.
             </p>
           )}
 

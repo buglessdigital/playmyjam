@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ADMIN_SESSION_COOKIE, ADMIN_SESSION_MAX_AGE, cookieOptions, signSession } from "@/lib/session";
 import { clientIp, consumeRateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { likePattern, pickExact } from "@/lib/admin-username";
 
 // Kullanıcı adının var olup olmadığı dışarıya sızmasın: hem mesaj tek tip, hem de
 // kullanıcı bulunamadığında sahte bir hash'e karşı bcrypt çalıştırılır — aksi halde
@@ -37,11 +38,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: admin } = await supabaseAdmin
-    .from("venue_admins")
-    .select("id, username, password_hash, venue_id, venues(id, slug, name, tagline, logo_url)")
-    .eq("username", username)
-    .single();
+  // Büyük/küçük harf farkı giriş engellemesin — kullanıcı adı elle yazılıyor
+  const pattern = likePattern(username);
+  const { data: rows } = pattern
+    ? await supabaseAdmin
+        .from("venue_admins")
+        .select("id, username, password_hash, venue_id, venues(id, slug, name, tagline, logo_url)")
+        .ilike("username", pattern)
+        .limit(2)
+    : { data: null };
+  const admin = pickExact(rows, username);
 
   const valid = await bcrypt.compare(password, admin?.password_hash ?? DUMMY_HASH);
   if (!admin || !valid) {

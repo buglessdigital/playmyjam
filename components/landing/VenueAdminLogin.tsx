@@ -32,6 +32,9 @@ export default function VenueAdminLogin({ venues }: { venues: VenueListItem[] })
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Şifre sıfırlama, panel giriş ekranındaki gibi ikinci bir mod olarak duruyor
+  const [mode, setMode] = useState<"login" | "forgot">("login");
+  const [resetSent, setResetSent] = useState("");
 
   const results = useMemo(() => {
     const q = normalize(query.trim());
@@ -40,6 +43,38 @@ export default function VenueAdminLogin({ venues }: { venues: VenueListItem[] })
   }, [query, venues]);
 
   const step2 = !!selected || manual;
+
+  const switchMode = (next: "login" | "forgot") => {
+    setMode(next);
+    setError("");
+    setResetSent("");
+  };
+
+  const handleForgot = async () => {
+    if (!username.trim()) {
+      setError(t.venueAdminLogin.errUsernameMissing);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/password-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), venueId: selected?.slug ?? "" }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error ?? t.venueAdminLogin.errResetFailed);
+        return;
+      }
+      setResetSent(data?.message ?? t.venueAdminLogin.resetSent);
+    } catch {
+      setError(t.venueAdminLogin.errConnection);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
@@ -52,7 +87,7 @@ export default function VenueAdminLogin({ venues }: { venues: VenueListItem[] })
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: username.trim(), password }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -85,6 +120,8 @@ export default function VenueAdminLogin({ venues }: { venues: VenueListItem[] })
     setManual(false);
     setError("");
     setPassword("");
+    setMode("login");
+    setResetSent("");
   };
 
   return (
@@ -164,7 +201,11 @@ export default function VenueAdminLogin({ venues }: { venues: VenueListItem[] })
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-bold text-white">
-                  {selected ? selected.name : t.venueAdminLogin.step2TitleGeneric}
+                  {mode === "forgot"
+                    ? t.venueAdminLogin.forgotTitle
+                    : selected
+                      ? selected.name
+                      : t.venueAdminLogin.step2TitleGeneric}
                 </p>
                 <p className="mt-1 truncate text-[11px] text-[#6b7280]">
                   {selected ? `/admin/${selected.slug}` : t.venueAdminLogin.step2DescGeneric}
@@ -186,6 +227,16 @@ export default function VenueAdminLogin({ venues }: { venues: VenueListItem[] })
                 </div>
               )}
 
+              {mode === "forgot" && (
+                <p className="text-xs leading-relaxed text-[#9ca3af]">{t.venueAdminLogin.forgotDesc}</p>
+              )}
+
+              {resetSent && (
+                <div className="rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-2.5 text-sm text-[#22c55e]">
+                  {resetSent}
+                </div>
+              )}
+
               <div>
                 <label htmlFor="pmj-admin-username" className="mb-1.5 block text-xs text-[#9ca3af]">
                   {t.venueAdminLogin.username}
@@ -195,6 +246,7 @@ export default function VenueAdminLogin({ venues }: { venues: VenueListItem[] })
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && mode === "forgot" && handleForgot()}
                   autoComplete="username"
                   placeholder="neon_admin"
                   className="w-full rounded-xl px-3.5 py-2.5 text-sm text-white outline-none"
@@ -202,6 +254,7 @@ export default function VenueAdminLogin({ venues }: { venues: VenueListItem[] })
                 />
               </div>
 
+              {mode === "login" && (
               <div>
                 <label htmlFor="pmj-admin-password" className="mb-1.5 block text-xs text-[#9ca3af]">
                   {t.venueAdminLogin.password}
@@ -252,15 +305,30 @@ export default function VenueAdminLogin({ venues }: { venues: VenueListItem[] })
                   </button>
                 </div>
               </div>
+              )}
 
               <button
                 type="button"
-                onClick={handleLogin}
+                onClick={mode === "login" ? handleLogin : handleForgot}
                 disabled={loading}
                 className="w-full rounded-xl py-3 text-sm font-bold text-white transition-transform active:scale-[0.98] disabled:opacity-50"
                 style={{ background: PINK_GRADIENT, boxShadow: "0 8px 22px -8px rgba(233,30,140,0.55)" }}
               >
-                {loading ? t.venueAdminLogin.signingIn : t.venueAdminLogin.signIn}
+                {loading
+                  ? mode === "login"
+                    ? t.venueAdminLogin.signingIn
+                    : t.venueAdminLogin.forgotSending
+                  : mode === "login"
+                    ? t.venueAdminLogin.signIn
+                    : t.venueAdminLogin.forgotSubmit}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => switchMode(mode === "login" ? "forgot" : "login")}
+                className="text-center text-xs text-[#9ca3af] underline underline-offset-4 transition-colors hover:text-white"
+              >
+                {mode === "login" ? t.venueAdminLogin.forgotLink : t.venueAdminLogin.backToLogin}
               </button>
             </div>
           </>

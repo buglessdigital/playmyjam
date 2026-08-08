@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { clientIp, consumeRateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { passwordResetEmail, sendMail } from "@/lib/mail";
 import { RESET_TOKEN_TTL_MINUTES, hashResetToken } from "@/lib/admin-reset";
+import { likePattern, pickExact } from "@/lib/admin-username";
 
 // "Şifremi unuttum": kullanıcı adına bağlı Google adresine tek kullanımlık
 // bağlantı yollar.
@@ -40,15 +41,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: admin } = await supabaseAdmin
-    .from("venue_admins")
-    .select("id, google_email, venue_id, venues(slug, name)")
-    .eq("username", username)
-    .maybeSingle();
+  // Kullanıcı adı elle yazılıyor: harf farkı ya da adın tam hatırlanmaması
+  // sessizce "mail gitmedi"ye dönüşmesin diye arama hem büyük/küçük harf
+  // duyarsız, hem de bağlı Google adresi kimlik olarak kabul ediliyor.
+  const pattern = likePattern(username);
+  const columns = "id, username, google_email, venue_id, venues(slug, name)";
+  const { data: rows } = pattern
+    ? await supabaseAdmin
+        .from("venue_admins")
+        .select(columns)
+        .or(`username.ilike.${pattern},google_email.ilike.${pattern}`)
+        .limit(2)
+    : { data: null };
+  const admin = pickExact(rows, username);
 
   const venue = Array.isArray(admin?.venues) ? admin?.venues[0] : admin?.venues;
 
   if (!admin?.google_email || !venue) {
+    // Dışarıya hep aynı yanıt gidiyor; "mail neden gelmedi" sorusunun cevabı
+    // yalnızca burada görünür
+    console.warn(
+      `[admin-reset] gönderilmedi (${!admin ? "hesap yok" : !venue ? "mekan yok" : "Google bağlı değil"})`
+    );
     return NextResponse.json({ ok: true, message: GENERIC_OK });
   }
 

@@ -15,6 +15,7 @@ function parseName(value: unknown): string | null {
 
 // Yeni playlist. Sıra dışında başlar — admin hazır olunca kuyruğa alır ya da
 // play tuşuyla doğrudan çaldırır (queue_position null = sırada değil).
+// customer_visible kolonu varsayılan true: yeni liste müşteriye AÇIK doğar (0040).
 export async function POST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
       is_active: false,
       sort_order: (last?.sort_order ?? -1) + 1,
     })
-    .select("id, name, sort_order, shuffle, queue_position, play_once")
+    .select("id, name, sort_order, shuffle, queue_position, play_once, customer_visible")
     .single();
 
   if (error || !data) {
@@ -224,7 +225,13 @@ export async function PATCH(req: NextRequest) {
   const isPlay = body?.play === true;
   const hasAutoSync = typeof body?.auto_sync === "boolean";
   const hasShuffle = typeof body?.shuffle === "boolean";
-  if (!playlistId || (!hasName && !hasQueued && !hasPlayOnce && !isPlay && !hasAutoSync && !hasShuffle)) {
+  // Müşteriye aktiflik (0040): yalnızca müşterinin görüp çaldırabileceğini
+  // belirler, otomatik çalmayı hiç etkilemez.
+  const hasCustomerVisible = typeof body?.customer_visible === "boolean";
+  if (
+    !playlistId ||
+    (!hasName && !hasQueued && !hasPlayOnce && !isPlay && !hasAutoSync && !hasShuffle && !hasCustomerVisible)
+  ) {
     return NextResponse.json({ error: "Eksik alan" }, { status: 400 });
   }
 
@@ -311,12 +318,12 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (!hasName && !hasPlayOnce && !hasShuffle) {
+    if (!hasName && !hasPlayOnce && !hasShuffle && !hasCustomerVisible) {
       return NextResponse.json({ ok: true });
     }
   }
 
-  const patch: { name?: string; play_once?: boolean; shuffle?: boolean } = {};
+  const patch: { name?: string; play_once?: boolean; shuffle?: boolean; customer_visible?: boolean } = {};
   if (hasName) {
     const name = parseName(body.name);
     if (!name) {
@@ -326,6 +333,7 @@ export async function PATCH(req: NextRequest) {
   }
   if (hasPlayOnce) patch.play_once = body.play_once;
   if (hasShuffle) patch.shuffle = body.shuffle;
+  if (hasCustomerVisible) patch.customer_visible = body.customer_visible;
 
   const { data, error } = await supabaseAdmin
     .from("playlists")
@@ -340,6 +348,15 @@ export async function PATCH(req: NextRequest) {
   }
   if (!data) {
     return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
+  }
+
+  // Müşteri katalogu değişti: DB tarafındaki trigger venue_songs.playlist_visible'ı
+  // yeniden hesapladı (0040), ama /venue/[id]/browse kabuğu cache'li — tag'i
+  // düşürmezsek müşteri değişikliği ancak dakikalar sonra görür. Açık paneller
+  // zaten venue_songs realtime'ıyla anında tazelenir. Kuyruk TAZELENMEZ: pasif
+  // liste otomatik çalmaya devam eder.
+  if (hasCustomerVisible) {
+    revalidateTag(`venue-songs-${session.venue_id}`, "max");
   }
 
   // Liste içi sıra düzeni değişti: bekleyen otomatik şarkılar yeni düzene göre

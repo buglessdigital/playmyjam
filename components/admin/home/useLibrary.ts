@@ -26,6 +26,9 @@ export type Playlist = {
   sort_order: number;
   // Liste İÇİNDEKİ sıra yerine rastgele çalar (0032)
   shuffle: boolean;
+  // Müşteri panelinde görünür/seçilebilir mi (0040). Otomatik çalmayı etkilemez:
+  // pasif liste de sırası gelince çalar.
+  customer_visible: boolean;
 };
 
 // Rotasyon imleci: hangi listedeyiz ve kaçıncı turdayız (0032)
@@ -105,7 +108,7 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
           .order("added_at", { ascending: false }),
         supabase
           .from("playlists")
-          .select("id, name, queue_position, play_once, sort_order, shuffle")
+          .select("id, name, queue_position, play_once, sort_order, shuffle, customer_visible")
           .eq("venue_id", venueDbIdArg)
           .order("sort_order", { ascending: true }),
         supabase
@@ -452,6 +455,22 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     }
   };
 
+  // Müşteriye aktiflik (0040): pasif listedeki şarkılar müşteri panelinde hiç
+  // görünmez ve jetonla sıraya eklenemez. Otomatik çalmaya dokunmaz — liste
+  // kuyruktaysa sırası gelince yine çalar, o yüzden kuyruk tazelenmez.
+  const setCustomerVisible = async (playlist: Playlist, next: boolean) => {
+    if (playlist.customer_visible === next) return;
+    setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, customer_visible: next } : p)));
+    const res = await fetch("/api/admin/playlists", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playlist_id: playlist.id, customer_visible: next }),
+    });
+    if (!res.ok) {
+      setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, customer_visible: !next } : p)));
+    }
+  };
+
   // Listeyi raydaki grubu içinde taşır: kuyruktakiler kuyruk sırasını (yani çalma
   // sırasını), sıradışılar yalnızca görünüm sırasını değiştirir. Sıra sunucuda
   // dizinin kendisi olarak yazılır; rotasyon imleci korunur, yani sıra değiştirmek
@@ -708,6 +727,7 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     playNow,
     setPlayOnce,
     setShuffle,
+    setCustomerVisible,
     toggleAutoSync,
     syncNow,
     syncingId,

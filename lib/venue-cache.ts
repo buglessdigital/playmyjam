@@ -48,6 +48,8 @@ export type VenueCatalogSong = {
 type VenueSongRow = {
   play_count: number;
   in_venue_list: boolean;
+  // 0040: şarkı en az bir "müşteriye aktif" playlist'te mi (materyalize)
+  playlist_visible: boolean;
   songs: { id: string; youtube_video_id: string; title: string; artist: string; album_cover_url: string; duration_ms: number } | null;
 };
 
@@ -60,12 +62,18 @@ export async function getVenueSongCatalog(venueDbId: string): Promise<VenueCatal
 
   const { data } = await supabaseAdmin
     .from("venue_songs")
-    .select("play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
+    .select("play_count, in_venue_list, playlist_visible, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
     .eq("venue_id", venueDbId);
 
   const rows = (data ?? []) as unknown as VenueSongRow[];
+  // Müşteri açısından "seçilebilir mi": adminin tek tek gizlemesi (in_venue_list)
+  // ve listenin müşteriye aktifliği (playlist_visible) birlikte karar verir (0040).
   return rows
     .filter((vs) => vs.songs)
-    .map((vs) => ({ ...vs.songs!, play_count: vs.play_count, in_venue_list: vs.in_venue_list }));
+    .map((vs) => ({
+      ...vs.songs!,
+      play_count: vs.play_count,
+      in_venue_list: vs.in_venue_list && vs.playlist_visible,
+    }));
 }
 

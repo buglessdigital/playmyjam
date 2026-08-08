@@ -54,6 +54,7 @@ export default function LibraryPane({
     playNow,
     setPlayOnce,
     setShuffle,
+    setCustomerVisible,
     toggleAutoSync,
     syncNow,
     syncingId,
@@ -197,6 +198,26 @@ export default function LibraryPane({
                   }
                 >
                   {queued ? "Sırada" : "Sıraya Ekle"}
+                </button>
+
+                {/* Müşteri aktifliği (0040): kapalıyken listenin şarkıları müşteri
+                    panelinde hiç görünmez. Otomatik çalmayı etkilemez — pasif
+                    liste sırası gelince yine çalar. */}
+                <button
+                  onClick={() => setCustomerVisible(selectedList, !selectedList.customer_visible)}
+                  aria-pressed={selectedList.customer_visible}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
+                  style={{
+                    background: selectedList.customer_visible ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.08)",
+                    color: selectedList.customer_visible ? "#93c5fd" : "#9ca3af",
+                  }}
+                  title={
+                    selectedList.customer_visible
+                      ? "Müşteriye açık — bu listedeki şarkılar müşteri panelinde görünür ve jetonla istenebilir. Kapatmak için tıklayın"
+                      : "Müşteriye kapalı — bu listedeki şarkılar müşteride görünmez. Otomatik çalmaya devam eder. Açmak için tıklayın"
+                  }
+                >
+                  {selectedList.customer_visible ? "Müşteriye açık" : "Müşteriye kapalı"}
                 </button>
 
                 {/* Tek seferlik: liste bir turunu bitirince kuyruktan düşer.

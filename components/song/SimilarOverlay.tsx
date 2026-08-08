@@ -36,6 +36,8 @@ interface Props {
 type VenueSongRow = {
   play_count: number;
   in_venue_list: boolean;
+  // 0040: müşteriye aktif bir playlist'te mi
+  playlist_visible: boolean;
   songs: Omit<VenueSong, "play_count" | "in_venue_list"> | null;
 };
 
@@ -66,7 +68,7 @@ export default function SimilarOverlay({
       const [{ data: vSongs }, { data: played }] = await Promise.all([
         supabase
           .from("venue_songs")
-          .select("play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
+          .select("play_count, in_venue_list, playlist_visible, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
           .eq("venue_id", venueDbId),
         // request_song'daki cooldown kuralıyla birebir: yalnızca müşteri istekleri
         // sayılır ve sayaç şarkının çalmaya başladığı andan işler (0025). played_at
@@ -86,7 +88,11 @@ export default function SimilarOverlay({
       setCatalog(
         rows
           .filter((vs) => vs.songs)
-          .map((vs) => ({ ...vs.songs!, play_count: vs.play_count, in_venue_list: vs.in_venue_list }))
+          .map((vs) => ({
+            ...vs.songs!,
+            play_count: vs.play_count,
+            in_venue_list: vs.in_venue_list && vs.playlist_visible,
+          }))
       );
 
       const playedRows = (played ?? []) as { song_id: string; played_at: string | null; started_at: string | null }[];

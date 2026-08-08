@@ -92,21 +92,28 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     type VenueSongRow = {
       play_count: number;
       in_venue_list: boolean;
+      playlist_visible: boolean;
       songs: Omit<VenueSong, "play_count" | "in_venue_list"> | null;
     };
 
     const fetchVenueSongs = async () => {
       const { data: vSongs } = await supabase
         .from("venue_songs")
-        .select("play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
+        .select("play_count, in_venue_list, playlist_visible, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
         .eq("venue_id", venueDbId);
 
       if (vSongs) {
         const rows = vSongs as unknown as VenueSongRow[];
+        // Müşteriye pasif listedeki şarkı seçilemez (0040) — liste pasife alınınca
+        // venue_songs satırları değiştiği için bu tazeleme realtime ile tetiklenir
         setVenueSongs(
           rows
             .filter((vs) => vs.songs)
-            .map((vs) => ({ ...vs.songs!, play_count: vs.play_count, in_venue_list: vs.in_venue_list }))
+            .map((vs) => ({
+              ...vs.songs!,
+              play_count: vs.play_count,
+              in_venue_list: vs.in_venue_list && vs.playlist_visible,
+            }))
         );
       }
     };

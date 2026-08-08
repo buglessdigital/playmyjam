@@ -71,6 +71,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Bu şarkı şu an çalıyor" }, { status: 429 });
       case "already_queued":
         return NextResponse.json({ error: "Bu şarkı zaten sırada" }, { status: 429 });
+      // Şarkının bulunduğu listeler müşteriye kapatılmış ya da şarkı gizlenmiş
+      // olabilir (0040) — arayüz bunu zaten gizler, bu dal doğrudan API'ye
+      // atılan istekleri karşılar
+      case "not_available":
+        return NextResponse.json({ error: "Bu şarkı şu an mekanın listesinde değil" }, { status: 409 });
       case "insufficient_tokens":
         return NextResponse.json({ error: "Yetersiz jeton" }, { status: 402 });
       default:

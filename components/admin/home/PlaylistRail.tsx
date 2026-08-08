@@ -191,6 +191,8 @@ export default function PlaylistRail({
                         : p.queue_position !== null
                           ? ` · Sırada${p.play_once ? " · tek seferlik" : ""}`
                           : " · Sırada değil"}
+                    {/* Müşteriye kapalı liste otomatik çalar ama müşteride görünmez (0040) */}
+                    {!p.customer_visible && " · müşteriye kapalı"}
                   </p>
                 </div>
               </button>

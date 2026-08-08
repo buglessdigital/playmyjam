@@ -178,12 +178,6 @@ function PlayerPageContent({ params }: Props) {
               CANLI
             </span>
           )}
-          <a
-            href={`/admin/${venueId}`}
-            className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-[#9ca3af] transition-colors hover:border-white/20 hover:text-white"
-          >
-            Panele Dön
-          </a>
         </div>
       </header>
 

@@ -14,46 +14,73 @@ import {
 // ile karşılaştırarak iptal edilebilir hale getiriyoruz — şifre değişince sürüm
 // artar, eski çerezler anında geçersiz olur (bkz. 0021 migration).
 //
-// Her istekte veritabanına gitmemek için sürüm örnek belleğinde kısa süre
+// Aynı satırdan Google bağlama zorunluluğu da okunuyor (bkz. 0038): yeni açılan
+// mekanlarda kurtarma hesabı bağlanana kadar oturum "beklemede" sayılır.
+//
+// Her istekte veritabanına gitmemek için durum örnek belleğinde kısa süre
 // tutulur: iptalin her yere yayılması en fazla bu süre kadar gecikir.
 const CACHE_TTL_MS = 30_000;
-const versionCache = new Map<string, { version: number; expiresAt: number }>();
 
-const DELETED = -1;
+type AdminState = { version: number; googleLinkPending: boolean };
+const stateCache = new Map<string, { state: AdminState; expiresAt: number }>();
 
-async function currentVersion(adminId: string): Promise<number | null> {
-  const cached = versionCache.get(adminId);
-  if (cached && cached.expiresAt > Date.now()) return cached.version;
+// "deleted": admin kaydı yok. "unknown": satır okunamadı (ör. migration henüz
+// uygulanmamış) — bu durumda çalışan oturumlar düşürülmez.
+type StateResult = AdminState | "deleted" | "unknown";
+
+async function currentState(adminId: string): Promise<StateResult> {
+  const cached = stateCache.get(adminId);
+  if (cached && cached.expiresAt > Date.now()) return cached.state;
 
   const { data, error } = await supabaseAdmin
     .from("venue_admins")
-    .select("session_version")
+    .select("session_version, google_sub, google_link_required")
     .eq("id", adminId)
     .maybeSingle();
 
   if (error) {
-    // Sürüm okunamadıysa (ör. migration henüz uygulanmamış) çalışan oturumları
-    // düşürme; imza doğrulaması zaten geçerli.
-    console.error("[admin-session] sürüm okunamadı:", error.message);
-    return null;
+    console.error("[admin-session] admin durumu okunamadı:", error.message);
+    return "unknown";
   }
-  if (!data) return DELETED; // admin kaydı silinmiş
+  if (!data) return "deleted";
 
-  const version = Number(data.session_version ?? 1);
-  versionCache.set(adminId, { version, expiresAt: Date.now() + CACHE_TTL_MS });
-  return version;
+  const state: AdminState = {
+    version: Number(data.session_version ?? 1),
+    // Bağlı hesabı olan admin, bayrak temizlenmemiş olsa bile beklemede değil
+    googleLinkPending: data.google_link_required === true && !data.google_sub,
+  };
+  stateCache.set(adminId, { state, expiresAt: Date.now() + CACHE_TTL_MS });
+  return state;
 }
 
-export async function getVerifiedAdminSession(req: NextRequest): Promise<AdminSession | null> {
+export async function getVerifiedAdminSession(
+  req: NextRequest,
+  // Yalnızca bağlama akışının kendisi (Google callback'i, proxy'nin bağlama
+  // sayfasına yönlendirmesi) beklemedeki oturumu görebilmeli
+  options?: { allowPendingGoogleLink?: boolean }
+): Promise<AdminSession | null> {
   const session = getAdminSession(req);
   if (!session) return null;
 
-  const version = await currentVersion(session.admin_id);
-  if (version === null) return session;
-  if (version === DELETED) return null;
+  const state = await currentState(session.admin_id);
+  if (state === "unknown") return session;
+  if (state === "deleted") return null;
 
   // sv taşımayan eski çerezler 1 sayılır: bu özellik devreye girerken kimse düşmesin
-  return (session.sv ?? 1) === version ? session : null;
+  if ((session.sv ?? 1) !== state.version) return null;
+  if (state.googleLinkPending && !options?.allowPendingGoogleLink) return null;
+  return session;
+}
+
+// Google kurtarma hesabı bağlanana kadar panel kilitli mi?
+export async function adminGoogleLinkPending(adminId: string): Promise<boolean> {
+  const state = await currentState(adminId);
+  return state !== "unknown" && state !== "deleted" && state.googleLinkPending;
+}
+
+// Hesap bağlandığı anda kilidin kalkması için önbelleği düşür
+export function forgetAdminState(adminId: string): void {
+  stateCache.delete(adminId);
 }
 
 // Super-admin VEYA bu venue'nun (iptal edilmemiş) admini erişebilir.
@@ -98,6 +125,6 @@ export async function revokeAdminSessions(venueDbId: string): Promise<void> {
       .from("venue_admins")
       .update({ session_version: Number(admin.session_version ?? 1) + 1 })
       .eq("id", admin.id);
-    versionCache.delete(admin.id);
+    stateCache.delete(admin.id);
   }
 }

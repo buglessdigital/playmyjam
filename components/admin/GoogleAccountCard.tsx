@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 // "şifremi unuttum" bağlantısı yalnızca buraya gider — bağlı hesap yoksa
 // sıfırlama da yapılamaz.
 
-const GOOGLE_ERRORS: Record<string, string> = {
+export const GOOGLE_ERRORS: Record<string, string> = {
   denied: "Google izni verilmedi, hesap bağlanmadı.",
   missing_code: "Google'dan dönüş tamamlanmadı, tekrar deneyin.",
   oauth_failed: "Google doğrulaması tamamlanamadı, tekrar deneyin.",
@@ -23,7 +23,7 @@ export interface AdminAccount {
   googleLinkedAt: string | null;
 }
 
-function GoogleIcon() {
+export function GoogleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
       <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.05 6.05 29.3 4 24 4 12.95 4 4 12.95 4 24s8.95 20 20 20 20-8.95 20-20c0-1.3-.14-2.65-.4-3.9z" />

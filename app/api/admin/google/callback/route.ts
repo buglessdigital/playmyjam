@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getVerifiedAdminSession } from "@/lib/admin-session";
+import {
+  adminGoogleLinkPending,
+  forgetAdminState,
+  getVerifiedAdminSession,
+} from "@/lib/admin-session";
 
 // Mekan admini panelden "Google ile bağla" dediğinde Google buraya döner.
 //
@@ -13,8 +17,17 @@ import { getVerifiedAdminSession } from "@/lib/admin-session";
 // Google'dan dönüş üst düzey bir GET gezinmesi olduğu için SameSite=Lax olan
 // admin çerezi bu istekte de gelir; kimin bağladığını oradan biliyoruz.
 
-function settingsUrl(origin: string, slug: string, param: string, value: string): URL {
-  const url = new URL(`/admin/${slug}/settings`, origin);
+// Bağlama iki yerden başlayabiliyor: ayarlar sayfasındaki kart (isteğe bağlı) ve
+// yeni mekanların önüne çıkan zorunlu bağlama ekranı. Hata mesajı hangisinden
+// gelindiyse oraya dönmeli — zorunlu akışta ayarlar sayfası zaten kilitli.
+function resultUrl(
+  origin: string,
+  slug: string,
+  pending: boolean,
+  param: string,
+  value: string
+): URL {
+  const url = new URL(pending ? `/admin/${slug}/link-google` : `/admin/${slug}/settings`, origin);
   url.searchParams.set(param, value);
   return url;
 }
@@ -22,7 +35,7 @@ function settingsUrl(origin: string, slug: string, param: string, value: string)
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = req.nextUrl;
 
-  const session = await getVerifiedAdminSession(req);
+  const session = await getVerifiedAdminSession(req, { allowPendingGoogleLink: true });
   if (!session) {
     // Bağlama sırasında admin oturumu düşmüş; hangi mekan olduğunu artık
     // bilmiyoruz (mekan kimliği yalnızca o çerezde), ana sayfaya al
@@ -30,16 +43,24 @@ export async function GET(req: NextRequest) {
   }
 
   const slug = session.venue_slug;
+  // Zorunlu akışta mıyız? Satır birazdan güncelleneceği için ŞİMDİ okunmalı
+  const pending = await adminGoogleLinkPending(session.admin_id);
+  const fail = (value: string) =>
+    NextResponse.redirect(resultUrl(origin, slug, pending, "google_error", value));
+
   const code = searchParams.get("code");
   if (!code) {
     const reason = searchParams.get("error_description") || searchParams.get("error");
-    return NextResponse.redirect(
-      settingsUrl(origin, slug, "google_error", reason ? "denied" : "missing_code")
-    );
+    return fail(reason ? "denied" : "missing_code");
   }
 
-  // Tek-response deseni: Supabase'in yazdığı çerezler dönen yanıta işlensin
-  const response = NextResponse.redirect(settingsUrl(origin, slug, "google", "linked"));
+  // Tek-response deseni: Supabase'in yazdığı çerezler dönen yanıta işlensin.
+  // Zorunlu akış bitince panelin ana ekranı açılır.
+  const response = NextResponse.redirect(
+    pending
+      ? new URL(`/admin/${slug}`, origin)
+      : resultUrl(origin, slug, false, "google", "linked")
+  );
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -60,7 +81,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error || !data.session) {
-    return NextResponse.redirect(settingsUrl(origin, slug, "google_error", "oauth_failed"));
+    return fail("oauth_failed");
   }
 
   const user = data.session.user;
@@ -73,7 +94,7 @@ export async function GET(req: NextRequest) {
   await supabase.auth.signOut({ scope: "local" });
 
   if (!email || !sub) {
-    return NextResponse.redirect(settingsUrl(origin, slug, "google_error", "no_email"));
+    return fail("no_email");
   }
 
   // Aynı Google hesabı başka bir mekanın adminine bağlıysa devral etme:
@@ -85,7 +106,7 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
 
   if (existing && existing.id !== session.admin_id) {
-    return NextResponse.redirect(settingsUrl(origin, slug, "google_error", "in_use"));
+    return fail("in_use");
   }
 
   const { error: updateError } = await supabaseAdmin
@@ -94,13 +115,17 @@ export async function GET(req: NextRequest) {
       google_email: email,
       google_sub: sub,
       google_linked_at: new Date().toISOString(),
+      google_link_required: false,
     })
     .eq("id", session.admin_id);
 
   if (updateError) {
     console.error("[admin-google] hesap bağlanamadı:", updateError.message);
-    return NextResponse.redirect(settingsUrl(origin, slug, "google_error", "save_failed"));
+    return fail("save_failed");
   }
+
+  // Kilit bir sonraki istekte değil, hemen kalksın
+  forgetAdminState(session.admin_id);
 
   return response;
 }

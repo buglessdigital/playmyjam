@@ -7,7 +7,7 @@ import {
   getSuperSession,
   renewedAdminToken,
 } from "@/lib/session";
-import { getVerifiedAdminSession } from "@/lib/admin-session";
+import { adminGoogleLinkPending, getVerifiedAdminSession } from "@/lib/admin-session";
 import {
   clearVenueMemberCookie,
   setVenueAuthCookie,
@@ -78,10 +78,22 @@ export async function proxy(req: NextRequest) {
       return NextResponse.next();
     }
 
-    // Session imzalı, iptal edilmemiş ve bu venue'ya ait olmalı
-    const session = await getVerifiedAdminSession(req);
+    // Session imzalı, iptal edilmemiş ve bu venue'ya ait olmalı.
+    // Beklemedeki oturum da burada görülmeli: sahibini login'e değil, bağlama
+    // ekranına göndereceğiz.
+    const session = await getVerifiedAdminSession(req, { allowPendingGoogleLink: true });
     if (!session || session.venue_slug !== venueId) {
       return NextResponse.redirect(new URL(`/admin/${venueId}/login`, req.url));
+    }
+
+    // Yeni mekanlarda kurtarma hesabı bağlanmadan panelin hiçbir yeri (player
+    // dahil) açılmaz; bağlandıktan sonra da bağlama ekranı geri gelmez.
+    const linkPending = await adminGoogleLinkPending(session.admin_id);
+    if (linkPending && subPath !== "/link-google") {
+      return NextResponse.redirect(new URL(`/admin/${venueId}/link-google`, req.url));
+    }
+    if (!linkPending && subPath === "/link-google") {
+      return NextResponse.redirect(new URL(`/admin/${venueId}`, req.url));
     }
 
     // Kayan süre: panel kullanıldıkça oturum uzar. Mekan ekranındaki player

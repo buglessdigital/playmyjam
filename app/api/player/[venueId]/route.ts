@@ -75,7 +75,11 @@ export async function POST(
       if (!row) return reply({ ok: true, claimed: true }); // kilit yok (0027 öncesi)
 
       const mine = row.player_claim === claimId;
-      if (!mine && !claimIsStale(row) && body?.force !== true) {
+      const free = mine || claimIsStale(row);
+      // probe: yalnızca sorar, kilidi almaz. "Başka cihazda açık" uyarısını gösteren
+      // ekran bununla yoklar; diğer cihaz kapanınca uyarı kendiliğinden kalkar.
+      if (body?.probe === true) return reply({ ok: true, taken: !free });
+      if (!free && body?.force !== true) {
         return reply({ ok: false, taken: true });
       }
 
@@ -84,6 +88,30 @@ export async function POST(
         .update({ player_claim: claimId, player_claim_at: new Date().toISOString() })
         .eq("venue_id", venueId);
       return reply({ ok: true, claimed: true });
+    }
+
+    // Sekme/pencere kapanırken player bunu yollar (sendBeacon). Sahiplik anında
+    // serbest kalsın ki aynı cihazda player yeniden açıldığında 45 sn'lik bayatlama
+    // beklenmesin — kullanıcı "başka cihazda açık" uyarısını boşuna görüyordu.
+    case "release": {
+      if (!claimId) return reply({ error: "claim_id gerekli" }, { status: 400 });
+      const row = await readClaim(venueId);
+      if (!row) return reply({ ok: true });
+      // Yalnızca kendi kilidimizi bırakırız: bu arada devralan cihaz etkilenmesin
+      if (row.player_claim !== claimId) return reply({ ok: true });
+      // Sağlık sinyali de anında düşürülür: ses üreten cihaz gitti. Aksi halde
+      // panel ve müşteri ekranı 45 sn boyunca "CANLI" deyip ilerleme çubuğunu
+      // yürütmeye devam ediyordu — kapalı player'da yanıltıcı.
+      await supabaseAdmin
+        .from("now_playing")
+        .update({
+          player_claim: null,
+          player_claim_at: null,
+          last_heartbeat_at: null,
+          is_playing: false,
+        })
+        .eq("venue_id", venueId);
+      return reply({ ok: true, released: true });
     }
 
     case "next": {

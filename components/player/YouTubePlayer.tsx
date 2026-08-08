@@ -178,6 +178,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   const blockedRef = useRef<Blocked | null>(null);
   // İlk istekte üretilir: sunucuda çalışmaz, render'ı da etkilemez
   const claimIdRef = useRef<string | null>(null);
+  const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const claimId = useCallback(() => {
     claimIdRef.current ??= playerInstanceId(venueDbId);
     return claimIdRef.current;
@@ -647,6 +648,53 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     setBlock(null);
     reconcile();
   }, [api, setBlock, reconcile]);
+
+  // Sekme/pencere kapanırken sahipliği bırak. Aksi halde kilit 45 sn bayatlayana
+  // kadar duruyor ve player hemen yeniden açıldığında kendi eski kilidimiz yüzünden
+  // "başka bir cihazda açık" uyarısı çıkıyordu (sessionStorage kimliği sekmeye özel).
+  useEffect(() => {
+    if (!started) return;
+    const url = `/api/player/${venueDbId}`;
+    const release = () => {
+      const body = JSON.stringify({ action: "release", claim_id: claimId() });
+      try {
+        // sendBeacon kapanış sırasında da teslim edilir; aynı origin olduğu için cookie gider
+        if (navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }))) return;
+      } catch {}
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      }).catch(() => {});
+    };
+    // pagehide: kapanış + mobil arka plan (beforeunload iOS'ta çalışmaz).
+    // bfcache'ten geri dönülürse heartbeat sahipliği yeniden yazar.
+    window.addEventListener("pagehide", release);
+    if (releaseTimerRef.current) {
+      clearTimeout(releaseTimerRef.current);
+      releaseTimerRef.current = null;
+    }
+    return () => {
+      window.removeEventListener("pagehide", release);
+      // Kısa gecikme: StrictMode geliştirmede effect'i mount→cleanup→mount
+      // çalıştırır; hemen bırakırsak daha yeni başlamış player'ın kilidini
+      // kendimiz düşürürüz. Gerçek kapanışı zaten pagehide yakalıyor.
+      releaseTimerRef.current = setTimeout(release, 300);
+    };
+  }, [started, venueDbId, claimId]);
+
+  // "Başka cihazda açık" ekranı asılı kalmasın: diğer sekme kapandığında ya da
+  // kilit bayatladığında kendiliğinden normal "Başlat" ekranına dönsün.
+  useEffect(() => {
+    if (!claimTaken) return;
+    const probe = async () => {
+      const result = await api({ action: "claim", probe: true });
+      if (result && result.taken !== true) setClaimTaken(false);
+    };
+    const interval = setInterval(probe, 5_000);
+    return () => clearInterval(interval);
+  }, [claimTaken, api]);
 
   useEffect(() => {
     return () => {

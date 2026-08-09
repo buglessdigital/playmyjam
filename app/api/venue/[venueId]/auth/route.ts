@@ -30,7 +30,13 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const res = NextResponse.json({ ok: true });
+  // Kayıt metadata'sındaki onayları profile taşır ve eksik olup olmadığını
+  // söyler (0043). RPC'nin kendisi patlarsa (migration uygulanmamış olabilir)
+  // giriş engellenmez — asıl onay noktası kayıt ekranındaki kutular, buradaki
+  // yönlendirme yalnızca emniyet ağı.
+  const { data: consentMissing, error: consentError } = await supabase.rpc("claim_signup_consents");
+
+  const res = NextResponse.json({ ok: true, needsConsent: !consentError && consentMissing === true });
   setVenueAuthCookie(res, venueId, user.id);
   return res;
 }

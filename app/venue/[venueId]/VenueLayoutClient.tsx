@@ -24,8 +24,10 @@ export default function VenueLayoutClient({ children, params }: Props) {
 function VenueLayoutContent({ children, params }: Props) {
   const pathname = usePathname();
   const { venueId } = use(params);
-  // Giriş ekranında alt gezinme ve bildirim izleyici yok
-  const isLoginPage = pathname === `/venue/${venueId}/login`;
+  // Giriş ve onay ekranlarında alt gezinme ve bildirim izleyici yok:
+  // kullanıcı akıştan kaçmadan tamamlasın
+  const isLoginPage =
+    pathname === `/venue/${venueId}/login` || pathname === `/venue/${venueId}/onay`;
   const isQueuePage = pathname === `/venue/${venueId}/queue`;
 
   return (

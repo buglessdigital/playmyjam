@@ -27,6 +27,12 @@ export default function LegalFooter({ hidePayment = false }: { hidePayment?: boo
         <Link href="/terms" className="hover:text-[#9ca3af]">
           {t.footer.terms}
         </Link>
+        <Link href="/kvkk" className="hover:text-[#9ca3af]">
+          {t.footer.kvkk}
+        </Link>
+        <Link href="/ticari-ileti" className="hover:text-[#9ca3af]">
+          {t.footer.commercialMessages}
+        </Link>
         <Link href="/mesafeli-satis-sozlesmesi" className="hover:text-[#9ca3af]">
           {t.footer.distanceSales}
         </Link>

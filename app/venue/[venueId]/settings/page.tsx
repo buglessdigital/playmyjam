@@ -77,6 +77,27 @@ export default function SettingsPage() {
       setPushBusy(false);
     }
   };
+  // Ticari elektronik ileti izni: kayıt ekranında isteğe bağlı verilir, burada
+  // her an geri alınabilir (6563 s. Kanun m.8/5).
+  const [marketing, setMarketing] = useState(false);
+  const [marketingBusy, setMarketingBusy] = useState(false);
+  const [marketingError, setMarketingError] = useState("");
+
+  const toggleMarketing = async () => {
+    if (marketingBusy) return;
+    const next = !marketing;
+    setMarketingBusy(true);
+    setMarketingError("");
+    setMarketing(next); // iyimser: anahtar anında tepki versin
+    const supabase = createClient();
+    const { error } = await supabase.rpc("set_marketing_consent", { p_value: next });
+    if (error) {
+      setMarketing(!next);
+      setMarketingError(t.settings.errMarketing);
+    }
+    setMarketingBusy(false);
+  };
+
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -114,8 +135,13 @@ export default function SettingsPage() {
       if (!user) return;
       setEmail(user.email ?? "");
       setHasPassword((user.app_metadata?.providers ?? []).includes("email"));
-      const { data: profile } = await supabase.from("profiles").select("username").eq("id", user.id).single();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username, marketing_consent")
+        .eq("id", user.id)
+        .single();
       setName(profile?.username ?? user.email?.split("@")[0] ?? "");
+      setMarketing(profile?.marketing_consent === true);
     };
     load();
   }, []);
@@ -319,6 +345,21 @@ export default function SettingsPage() {
             {t.settings.unsupported}
           </p>
         )}
+      </div>
+
+      {/* İzinler */}
+      <div className="px-5 mb-4">
+        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">{t.settings.consentSection}</h2>
+        <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
+          <div className="flex items-center justify-between px-4 py-4" style={{ opacity: marketingBusy ? 0.6 : 1 }}>
+            <div className="flex-1 pr-4">
+              <p className="text-white text-sm font-medium">{t.settings.marketingTitle}</p>
+              <p className="text-[#6b7280] text-xs mt-0.5">{t.settings.marketingDesc}</p>
+            </div>
+            <Toggle value={marketing} onChange={toggleMarketing} />
+          </div>
+        </div>
+        {marketingError && <p className="text-amber-400/80 text-xs mt-2 px-1">{marketingError}</p>}
       </div>
 
       {/* Dil */}

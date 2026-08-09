@@ -70,6 +70,15 @@ export async function GET(req: NextRequest) {
   }
 
   if (venueId && data.session) {
+    // Kayıt sırasında verilen onaylar metadata'dan profile taşınır; trigger
+    // çalışmadıysa buradaki çağrı yakalar, hâlâ eksikse onay ekranına uğranır.
+    const { data: consentMissing, error: consentError } = await supabase.rpc("claim_signup_consents");
+    if (!consentError && consentMissing === true) {
+      response = NextResponse.redirect(
+        new URL(`/venue/${venueId}/onay?next=${encodeURIComponent(nextPath)}`, origin),
+        { headers: response.headers }
+      );
+    }
     setVenueAuthCookie(response, venueId, user.id);
   }
   return response;

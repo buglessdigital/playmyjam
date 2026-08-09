@@ -29,7 +29,9 @@
     "contactPage": "Contact page →",
     "rights": "© 2026 PlayMyJam · All rights reserved · All payments are secured with SSL",
     "youtubeTerms": "YouTube Terms of Service",
-    "venueLogin": "Venue Login"
+    "venueLogin": "Venue Login",
+    "kvkk": "Data Protection Notice",
+    "commercialMessages": "Commercial Message Consent"
   },
   "common": {
     "loading": "Loading…",
@@ -451,7 +453,18 @@
     "signUp": "Register →",
     "switchToSignUp": "Register",
     "switchToSignIn": "Log In",
-    "justLooking": "I'm just looking for now"
+    "justLooking": "I'm just looking for now",
+    "consentKvkk": "I have read and understood the {link}.",
+    "consentKvkkLink": "Personal Data Protection Notice",
+    "consentTerms": "I accept the {link}.",
+    "consentTermsLink": "Terms of Use",
+    "consentMarketing": "I would like to receive campaign and announcement emails under the {link}.",
+    "consentMarketingLink": "commercial electronic message consent",
+    "consentRequired": "Required",
+    "consentOptional": "Optional",
+    "errConsentRequired": "Please tick the required consent boxes to continue.",
+    "consentPrivacyLink": "Privacy Policy",
+    "consentAnd": "and"
   },
   "lyrics": {
     "closeAria": "Close lyrics",
@@ -539,7 +552,11 @@
     "errEmailTaken": "This email address is registered to another account.",
     "errEmailUpdate": "Couldn't update the email. Please try again.",
     "errDelete": "Couldn't delete the account. Please try again.",
-    "googleNoPassword": "You sign in with Google; set a password to also sign in with email"
+    "googleNoPassword": "You sign in with Google; set a password to also sign in with email",
+    "consentSection": "PERMISSIONS",
+    "marketingTitle": "Campaign emails",
+    "marketingDesc": "Campaigns, discounts and new venue announcements. You can turn this off at any time.",
+    "errMarketing": "Your preference couldn't be saved. Please try again."
   },
   "venueForm": {
     "sendError": "Couldn't submit the application, please try again.",
@@ -607,5 +624,12 @@
     "applyHintPrefix": "If your venue does not use PlayMyJam yet",
     "applyHintLink": "fill in the application form",
     "homeCta": "I already have a venue, open the panel"
+  },
+  "consent": {
+    "title": "We need your consent",
+    "sub": "To keep using your account you need to give the consents below. You only need to do this once.",
+    "submit": "Accept and continue",
+    "saving": "Saving...",
+    "error": "Your consents couldn't be saved. Please try again."
   }
 }

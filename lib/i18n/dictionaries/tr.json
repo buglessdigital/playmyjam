@@ -29,7 +29,9 @@
     "contactPage": "İletişim sayfası →",
     "rights": "© 2026 PlayMyJam · Tüm hakları saklıdır · Tüm ödemeler SSL ile güvence altındadır",
     "youtubeTerms": "YouTube Hizmet Şartları",
-    "venueLogin": "Mekan Girişi"
+    "venueLogin": "Mekan Girişi",
+    "kvkk": "KVKK Aydınlatma Metni",
+    "commercialMessages": "Ticari İleti İzni"
   },
   "common": {
     "loading": "Yükleniyor…",
@@ -451,7 +453,18 @@
     "signUp": "Kayıt Ol →",
     "switchToSignUp": "Kayıt Ol",
     "switchToSignIn": "Giriş Yap",
-    "justLooking": "Şimdilik sadece bakmak istiyorum"
+    "justLooking": "Şimdilik sadece bakmak istiyorum",
+    "consentKvkk": "{link} okudum ve anladım.",
+    "consentKvkkLink": "KVKK Aydınlatma Metni'ni",
+    "consentTerms": "{link} kabul ediyorum.",
+    "consentTermsLink": "Kullanım Şartları'nı",
+    "consentMarketing": "{link} kapsamında kampanya ve duyurulardan e-posta ile haberdar olmak istiyorum.",
+    "consentMarketingLink": "ticari elektronik ileti izni",
+    "consentRequired": "Zorunlu",
+    "consentOptional": "İsteğe bağlı",
+    "errConsentRequired": "Devam etmek için zorunlu onay kutularını işaretlemelisin.",
+    "consentPrivacyLink": "Gizlilik Politikası'nı",
+    "consentAnd": "ve"
   },
   "lyrics": {
     "closeAria": "Sözleri kapat",
@@ -539,7 +552,11 @@
     "errEmailTaken": "Bu e-posta adresi başka bir hesapta kayıtlı.",
     "errEmailUpdate": "E-posta güncellenemedi. Lütfen tekrar dene.",
     "errDelete": "Hesap silinemedi. Lütfen tekrar dene.",
-    "googleNoPassword": "Google ile giriyorsun; şifre belirlersen e-postayla da girebilirsin"
+    "googleNoPassword": "Google ile giriyorsun; şifre belirlersen e-postayla da girebilirsin",
+    "consentSection": "İZİNLER",
+    "marketingTitle": "Kampanya e-postaları",
+    "marketingDesc": "Kampanya, indirim ve yeni mekan duyuruları. Dilediğin an kapatabilirsin.",
+    "errMarketing": "Tercih kaydedilemedi. Lütfen tekrar dene."
   },
   "venueForm": {
     "sendError": "Başvuru gönderilemedi, lütfen tekrar deneyin.",
@@ -607,5 +624,12 @@
     "applyHintPrefix": "Mekanın henüz PlayMyJam kullanmıyorsa",
     "applyHintLink": "başvuru formunu doldur",
     "homeCta": "Zaten mekanım var, panele gir"
+  },
+  "consent": {
+    "title": "Onayın gerekiyor",
+    "sub": "Hesabını kullanmaya devam edebilmek için aşağıdaki onayları vermen gerekiyor. Bunu bir kez yapman yeterli.",
+    "submit": "Onayla ve devam et",
+    "saving": "Kaydediliyor...",
+    "error": "Onaylar kaydedilemedi. Lütfen tekrar dene."
   }
 }

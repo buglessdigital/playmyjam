@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { safeNextPath } from "@/lib/venue-gate";
 import { currentDict, fmt, useT } from "@/lib/i18n";
+import ConsentChecks, { EMPTY_CONSENTS, consentsSatisfied } from "@/components/ui/ConsentChecks";
 
 function authErrorMessage(code: string): string {
   const d = currentDict().login;
@@ -47,7 +48,10 @@ function AuthPageContent({ params }: Props) {
   const [resetLoading, setResetLoading] = useState(false);
   const [existingUser, setExistingUser] = useState<{ name: string } | null>(null);
   const [continueLoading, setContinueLoading] = useState(false);
+  const [consents, setConsents] = useState(EMPTY_CONSENTS);
   const t = useT();
+  // Kayıt akışında zorunlu onaylar verilmeden hiçbir yol açılmaz
+  const consentBlocked = !isLogin && !consentsSatisfied(consents);
 
   // Hesap gerektiren bir eylem buraya yönlendirdiyse giriş sonrası oraya dönülür
   const nextPath = safeNextPath(searchParams.get("next"), venueId);
@@ -92,17 +96,23 @@ function AuthPageContent({ params }: Props) {
   // edildiğinde sayfa hesabı yokmuş gibi davranıyordu. Tam gezinme cache'i
   // baypas eder; kabuk zaten prefetch'li olduğu için maliyeti düşük.
   const enterVenue = async (): Promise<"ok" | "unauthorized" | "network"> => {
+    let needsConsent = false;
     try {
       const res = await fetch(`/api/venue/${venueId}/auth`, { method: "POST" });
       if (!res.ok) {
         setError(t.login.errSessionCheck);
         return "unauthorized";
       }
+      // Onayı eksik hesap (Google ile açılmış ya da bu ekrandan geçmemiş)
+      // önce onay ekranına uğrar
+      needsConsent = ((await res.json()) as { needsConsent?: boolean }).needsConsent === true;
     } catch {
       setError(t.login.errConnection);
       return "network";
     }
-    window.location.replace(nextPath);
+    window.location.replace(
+      needsConsent ? `/venue/${venueId}/onay?next=${encodeURIComponent(nextPath)}` : nextPath
+    );
     return "ok";
   };
 
@@ -178,6 +188,10 @@ function AuthPageContent({ params }: Props) {
   };
 
   const handleSubmit = async () => {
+    if (consentBlocked) {
+      setError(t.login.errConsentRequired);
+      return;
+    }
     setLoading(true);
     setError("");
     setInfo("");
@@ -208,10 +222,19 @@ function AuthPageContent({ params }: Props) {
         return;
       }
     } else {
+      // Onaylar kayıt metadata'sına yazılır: e-posta onayı beklenirken oturum
+      // açılmadığı için profile ancak buradan taşınabiliyor (0043).
       const { data: signUpData, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: emailRedirectTo() },
+        options: {
+          emailRedirectTo: emailRedirectTo(),
+          data: {
+            kvkk_consent: true,
+            terms_consent: true,
+            marketing_consent: consents.marketing,
+          },
+        },
       });
       if (error) {
         const msg = error.message.toLowerCase();
@@ -229,6 +252,17 @@ function AuthPageContent({ params }: Props) {
         setLoading(false);
         return;
       }
+      // Zaten kayıtlı adres: Supabase kullanıcı sızıntısını önlemek için hata
+      // yerine sahte bir kullanıcı döner (identities boş) ve HİÇBİR e-posta
+      // göndermez. Yakalamazsak ekran "onay maili gönderildi" der, mail hiç
+      // gelmez ve kullanıcı sıkışır.
+      if (signUpData.user && (signUpData.user.identities?.length ?? 0) === 0) {
+        setError(t.login.errAlreadyRegistered);
+        setLoading(false);
+        setIsLogin(true);
+        return;
+      }
+
       // Email confirmation enabled: session is null until user confirms
       if (!signUpData.session) {
         setError("");
@@ -243,12 +277,22 @@ function AuthPageContent({ params }: Props) {
   };
 
   const handleGoogle = async () => {
+    if (consentBlocked) {
+      setError(t.login.errConsentRequired);
+      return;
+    }
     setGoogleLoading(true);
     setError("");
     setInfo("");
     setShowResend(false);
     const supabase = createClient();
     document.cookie = `pending_oauth_venue=${venueId}; path=/; max-age=600; samesite=lax`;
+    // Google akışında onaylar user_metadata'ya yazılamıyor (metadata Google'dan
+    // geliyor); kutulardaki seçim çerezle taşınır, /auth/callback damgalar.
+    if (!isLogin) {
+      document.cookie = `pending_consent=1; path=/; max-age=600; samesite=lax`;
+      document.cookie = `pending_consent_marketing=${consents.marketing ? 1 : 0}; path=/; max-age=600; samesite=lax`;
+    }
     // Google dönüşünde sorgu parametresi PKCE tarafından ezilebiliyor — hedef yol çerezle de taşınır
     document.cookie = `pending_oauth_next=${encodeURIComponent(nextPath)}; path=/; max-age=600; samesite=lax`;
     const { error } = await supabase.auth.signInWithOAuth({
@@ -333,10 +377,17 @@ function AuthPageContent({ params }: Props) {
           </>
         )}
 
+        {/* Kayıt onayları: Google dahil tüm kayıt yollarının önünde durur */}
+        {!isLogin && (
+          <div className="mb-4">
+            <ConsentChecks value={consents} onChange={setConsents} />
+          </div>
+        )}
+
         {/* Google butonu */}
         <button
           onClick={handleGoogle}
-          disabled={googleLoading || loading}
+          disabled={googleLoading || loading || consentBlocked}
           className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl font-semibold text-white text-base border border-white/10 bg-white/5 hover:bg-white/10 transition-all active:scale-95 disabled:opacity-50 mb-4"
         >
           {googleLoading ? (
@@ -424,7 +475,7 @@ function AuthPageContent({ params }: Props) {
 
           <button
             onClick={handleSubmit}
-            disabled={loading || !email || !password}
+            disabled={loading || !email || !password || consentBlocked}
             className="block w-full text-center py-3.5 rounded-2xl font-bold text-white text-base mt-2 transition-all active:scale-95 disabled:opacity-50"
             style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
           >

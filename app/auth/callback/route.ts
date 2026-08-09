@@ -52,6 +52,24 @@ export async function GET(req: NextRequest) {
     return response;
   }
 
+  // Kayıt ekranındaki onay kutuları Google'a giderken çerezle taşındı (0043);
+  // oturum açıldığına göre şimdi damgalanabilir.
+  if (req.cookies.get("pending_consent")?.value === "1") {
+    await supabase.rpc("record_consents", {
+      p_marketing: req.cookies.get("pending_consent_marketing")?.value === "1",
+    });
+  }
+
+  // Onayı olmayan hesap (ör. giriş modunda Google ile ilk kez gelen kullanıcı)
+  // mekana girmeden önce onay ekranından geçer.
+  const { data: consentMissing, error: consentError } = await supabase.rpc("claim_signup_consents");
+  if (!consentError && consentMissing === true) {
+    response = NextResponse.redirect(
+      new URL(`/venue/${venueId}/onay?next=${encodeURIComponent(nextPath)}`, origin),
+      { headers: response.headers }
+    );
+  }
+
   setVenueAuthCookie(response, venueId, data.session.user.id);
   clearPendingOauthCookies(response);
   return response;
@@ -61,4 +79,6 @@ export async function GET(req: NextRequest) {
 function clearPendingOauthCookies(res: NextResponse) {
   res.cookies.delete({ name: "pending_oauth_venue", path: "/" });
   res.cookies.delete({ name: "pending_oauth_next", path: "/" });
+  res.cookies.delete({ name: "pending_consent", path: "/" });
+  res.cookies.delete({ name: "pending_consent_marketing", path: "/" });
 }

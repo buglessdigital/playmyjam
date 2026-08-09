@@ -25,11 +25,14 @@ type YTPlayer = {
   isMuted?: () => boolean;
   mute?: () => void;
   unMute?: () => void;
+  setPlaybackQuality?: (quality: string) => void;
+  getPlaybackQuality?: () => string;
   destroy: () => void;
 };
 
 type YTStateChangeEvent = { data: number };
 type YTErrorEvent = { data: number };
+type YTQualityChangeEvent = { data: string };
 
 declare global {
   interface Window {
@@ -43,6 +46,7 @@ declare global {
             onReady?: () => void;
             onStateChange?: (e: YTStateChangeEvent) => void;
             onError?: (e: YTErrorEvent) => void;
+            onPlaybackQualityChange?: (e: YTQualityChangeEvent) => void;
           };
         }
       ) => YTPlayer;
@@ -74,6 +78,28 @@ const PLAY_NUDGE_MS = 3_000;
 const EXPLICIT_PAUSE_WINDOW_MS = 6_000;
 // Dış kaynaklı duraklatma yakalanınca hızlı toparlama denemeleri
 const RESUME_RETRY_DELAYS_MS = [400, 1_500, 4_000];
+
+// --- Video kalitesi ---
+// Mekanda önemli olan SES; video kimsenin bakmadığı bir yük. YouTube kaliteyi
+// iframe'in FİZİKSEL piksel boyutuna göre seçer: tam genişlikte bir iframe'e
+// 720p/1080p (~2-5 Mbit/sn) gönderir ve bant genişliğinin %95'i piksellere gider.
+// Yavaş/dalgalı hatta bu, şarkı ortasında tamponlamaya yani sessizliğe dönüşür.
+// Bu yüzden iframe 256x144 kurulur (YouTube'a "tiny" verdirir, ~0,2 Mbit/sn) ve
+// ekrana CSS transform ile büyütülerek yansıtılır — YouTube dış ölçeklemeyi
+// görmez, video görünür kalır (YouTube kuralı), ses tam kalitede akar.
+// Düşük bit hızının asıl kazancı veri tasarrufu değil: tampon saniyeler içinde
+// dolduğu için hattın onlarca saniyelik çökmesi bile sese yansımaz.
+const VIDEO_W = 256;
+const VIDEO_H = 144;
+// Boyut hilesi yetmezse diye ek sigorta. Not: YouTube 2019'dan beri bu çağrıyı
+// bağlayıcı değil ÖNERİ sayıyor — tek başına güvenilmez, boyutla birlikte iş görür.
+const FORCE_QUALITY = "tiny";
+
+function forceLowQuality(player: YTPlayer | null | undefined) {
+  try {
+    player?.setPlaybackQuality?.(FORCE_QUALITY);
+  } catch {}
+}
 
 // --- Crossfade ---
 // Kalan süre kontrolü: 250 ms, panelin ilerleme çubuğuyla aynı çözünürlük
@@ -219,6 +245,23 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   const deckReadyRef = useRef<Record<DeckKey, boolean>>({ a: false, b: false });
   const activeDeckRef = useRef<DeckKey>("a");
   const [visibleDeck, setVisibleDeck] = useState<DeckKey>("a");
+
+  // Deck'ler 256x144 kurulur; sahnenin genişliğine göre ölçeklenerek büyütülür.
+  // Sahne 16:9 (aspect-video) olduğu için tek bir çarpan iki ekseni de doldurur.
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageScale, setStageScale] = useState(1);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const measure = () => {
+      const width = stage.clientWidth;
+      if (width > 0) setStageScale(width / VIDEO_W);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
 
   const activePlayer = useCallback(() => decksRef.current[activeDeckRef.current], []);
   const activeReady = useCallback(() => deckReadyRef.current[activeDeckRef.current], []);
@@ -561,6 +604,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       if (activeReady() && typeof player?.loadVideoById === "function") {
         pendingVideoRef.current = null;
         player.loadVideoById(videoId);
+        forceLowQuality(player);
         scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
       } else {
         // Player henüz hazır değil — onReady bu videoyu yükleyecek
@@ -699,6 +743,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       player.setVolume(0);
       player.mute?.();
       player.cueVideoById(videoId);
+      forceLowQuality(player);
       preloadedVideoRef.current = videoId;
     } catch {}
   }, [api]);
@@ -746,7 +791,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       incoming.unMute?.();
       // Tampon tuttuysa doğrudan çal; kuyruk değiştiyse (öncelikli istek) yükle
       if (preloadedVideoRef.current === videoId) incoming.playVideo();
-      else incoming.loadVideoById(videoId);
+      else {
+        incoming.loadVideoById(videoId);
+        forceLowQuality(incoming);
+      }
     } catch {}
 
     // Aktiflik ANINDA devredilir: heartbeat, ses bekçisi, realtime karşılaştırması
@@ -965,10 +1013,17 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       deckReadyRef.current[key] = false;
 
       return new window.YT!.Player(el, {
-        playerVars: { playsinline: 1, rel: 0, autoplay: 0 },
+        // controls: 0 — YouTube'un kendi kontrolleri iframe'in İÇİNDE ve iframe'in
+        // 256 px'lik boyutuna göre çiziliyor; sahneyi doldurmak için ~8 kat
+        // büyüttüğümüzde düğmeler de o kadar büyüyordu ve dışarıdan ters
+        // ölçeklenemiyorlar. Mekan zaten paneldeki kendi kontrollerini kullanıyor.
+        // Videoya tıklayarak duraklatma çalışmaya devam eder — isExplicitPause()
+        // bunu iframe odağından anlar, kontrollere bağlı değildir.
+        playerVars: { playsinline: 1, rel: 0, autoplay: 0, controls: 0 },
         events: {
           onReady: async () => {
             deckReadyRef.current[key] = true;
+            forceLowQuality(decksRef.current[key]);
             if (key !== activeDeckRef.current) {
               // Boştaki deck sessiz bekler: tamponlanan video kazara çalarsa
               // mekanda duyulmasın
@@ -1033,6 +1088,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             } else if (e.data === YT.PlayerState.CUED) {
               decksRef.current[key]?.playVideo();
             }
+          },
+          // Video değişiminde YouTube kaliteyi kendi kararıyla yükseltebilir —
+          // her seferinde en düşüğe geri çek
+          onPlaybackQualityChange: (e) => {
+            if (e.data === FORCE_QUALITY) return;
+            forceLowQuality(decksRef.current[key]);
           },
           onError: () => {
             // 100/101/150: video kaldırılmış ya da embed'e kapalı — işaretle ve atla
@@ -1473,14 +1534,24 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     transition: `opacity ${fading ? fadeMs : 200}ms linear`,
     // Görünmeyen deck tıklamaları yutmasın (YouTube kendi kontrollerini gösterir)
     pointerEvents: visibleDeck === key ? "auto" : "none",
+    // Deck 256x144 kurulur (bkz. VIDEO_W) ve sahneyi dolduracak kadar büyütülür.
+    // transform iframe'in KENDİ görüntü alanını değiştirmez: YouTube içeride hâlâ
+    // 256x144 görür ve en düşük kaliteyi gönderir.
+    width: VIDEO_W,
+    height: VIDEO_H,
+    transform: `translate(-50%, -50%) scale(${stageScale})`,
+    transformOrigin: "center center",
   });
 
   return (
     <div className="relative w-full">
       {/* YouTube kuralı: video görünür kalmalı, üzerine hiçbir şey bindirilemez */}
-      <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black [&_iframe]:h-full [&_iframe]:w-full">
-        <div ref={deckAHostRef} className="absolute inset-0" style={deckStyle("a")} />
-        <div ref={deckBHostRef} className="absolute inset-0" style={deckStyle("b")} />
+      <div
+        ref={stageRef}
+        className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black [&_iframe]:h-full [&_iframe]:w-full"
+      >
+        <div ref={deckAHostRef} className="absolute left-1/2 top-1/2" style={deckStyle("a")} />
+        <div ref={deckBHostRef} className="absolute left-1/2 top-1/2" style={deckStyle("b")} />
       </div>
 
       {/* Cihaz ses komutunu kabul etmiyorsa (mobil tarayıcılarda ses donanımdan

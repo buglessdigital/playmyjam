@@ -20,10 +20,15 @@ type WalletTx = {
   created_at: number;
 };
 
-// Paket adedi: seçili paket kendi katları halinde artar (1'lik paket 1+40₺,
-// 3'lük paket 3 jeton+100₺ adımlarla). Toplam jeton bu tavanı aşamaz.
+// Paket adedi: seçili paket kendi katları halinde artar (1'lik paket 1 jeton+birim
+// fiyat, 3'lük paket 3 jeton+paket fiyatı adımlarla). Toplam jeton bu tavanı aşamaz.
 const MAX_TOKENS = 1000;
 const TX_PREVIEW = 3;
+
+// Tek jeton her zaman satılabilir: super admin hiç paket tanımlamamış olsa da
+// müşteri birim fiyattan istediği adette alabilsin diye sanal bir seçenek üretilir.
+// Bu id sunucuya gönderilmez; checkout paketsiz istekte birim fiyatı DB'den okur.
+const SINGLE_ID = "single";
 
 const PINK = "#e91e8c";
 const CARD = "#170e25";
@@ -112,10 +117,18 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const { lang, t } = useI18n();
-  const [packages] = useState<TokenPackage[]>(initialPackages);
+  // Tek jeton satırı listenin başında; super admin 1'lik paket tanımlamışsa
+  // tekrar etmesin diye sanal satır atlanır.
+  const packages = useMemo<TokenPackage[]>(() => {
+    if (initialPackages.some((p) => p.tokens === 1)) return initialPackages;
+    return [
+      { id: SINGLE_ID, label: "1", tokens: 1, price: unitPrice, popular: false },
+      ...initialPackages,
+    ];
+  }, [initialPackages, unitPrice]);
   const [balanceLoaded, setBalanceLoaded] = useState(false);
   const [balance, setBalance] = useState(0);
-  const [selected, setSelected] = useState<string>(initialSelectedId);
+  const [selected, setSelected] = useState<string>(initialSelectedId || SINGLE_ID);
   // Seçili paketin kaç kez alınacağı; paket değişince 1'e döner
   const [multiplier, setMultiplier] = useState(1);
 
@@ -206,7 +219,9 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
       const res = await fetch(`/api/venue/${venueId}/tokens/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ package_id: pkg.id, quantity: multiplier }),
+        body: JSON.stringify(
+          pkg.id === SINGLE_ID ? { quantity: multiplier } : { package_id: pkg.id, quantity: multiplier }
+        ),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {

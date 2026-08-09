@@ -39,12 +39,10 @@ export async function POST(
   }
 
   // Fiyat/tutar asla client'tan alınmaz: paket id'si + adet gelir, birim fiyatlar
-  // DB satırından okunur (toplam = paket fiyatı × adet).
+  // DB satırından okunur (toplam = paket fiyatı × adet). package_id yoksa tekli
+  // jeton satışıdır: birim fiyat app_settings'ten okunur.
   const body = await req.json().catch(() => null);
   const packageId = typeof body?.package_id === "string" ? body.package_id : "";
-  if (!packageId) {
-    return NextResponse.json({ error: "Paket seçilmeli" }, { status: 400 });
-  }
   const quantity = body?.quantity === undefined ? 1 : Number(body.quantity);
   if (!Number.isInteger(quantity) || quantity < 1) {
     return NextResponse.json({ error: "Adet pozitif tam sayı olmalı" }, { status: 400 });
@@ -72,21 +70,40 @@ export async function POST(
   }
 
   // Para hesabı cache'ten değil doğrudan DB satırından
-  const { data: pkg } = await supabaseAdmin
-    .from("global_token_packages")
-    .select("id, tokens, price")
-    .eq("id", packageId)
-    .single();
-  if (!pkg) {
-    return NextResponse.json({ error: "Paket bulunamadı" }, { status: 404 });
+  let amount: number;
+  let total: number;
+  let resolvedPackageId: string;
+
+  if (packageId) {
+    const { data: pkg } = await supabaseAdmin
+      .from("global_token_packages")
+      .select("id, tokens, price")
+      .eq("id", packageId)
+      .single();
+    if (!pkg) {
+      return NextResponse.json({ error: "Paket bulunamadı" }, { status: 404 });
+    }
+    amount = pkg.tokens * quantity;
+    total = Number(pkg.price) * quantity;
+    resolvedPackageId = pkg.id;
+  } else {
+    const { data: setting } = await supabaseAdmin
+      .from("app_settings")
+      .select("value")
+      .eq("key", "token_unit_price")
+      .maybeSingle();
+    const unitPrice = Number(setting?.value);
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+      return NextResponse.json({ error: "Jeton fiyatı bulunamadı" }, { status: 500 });
+    }
+    amount = quantity;
+    total = unitPrice * quantity;
+    resolvedPackageId = "single-token";
   }
 
-  const amount = pkg.tokens * quantity;
   if (amount > MAX_TOKENS) {
     return NextResponse.json({ error: `Tek seferde en fazla ${MAX_TOKENS} jeton alınabilir` }, { status: 400 });
   }
-  const total = Number(pkg.price) * quantity;
-  const resolvedPackageId = pkg.id;
 
   // Sipariş: jeton yalnızca iyzico callback'i doğrulandığında eklenir (bkz. 0017 migration)
   const { data: order, error: orderError } = await supabaseAdmin
@@ -142,7 +159,7 @@ export async function POST(
       },
       basketItems: [
         {
-          id: resolvedPackageId ?? "custom-tokens",
+          id: resolvedPackageId,
           name: `${amount} Jeton`,
           category1: "Dijital Jeton",
           itemType: "VIRTUAL",

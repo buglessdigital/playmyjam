@@ -149,7 +149,17 @@
     "queue": "Queue",
     "liveQueueAria": "{venue} live queue",
     "ctaPrefix": "Want to see your venue here?",
-    "ctaLink": "Contact us"
+    "ctaLink": "Contact us",
+    "searchLabel": "Search venues",
+    "searchPlaceholder": "Type a venue name — e.g. cafe, bar, stage",
+    "searchClear": "Clear",
+    "searchResultCount": "{count} matches out of {total} venues",
+    "venueCount": "{count} venues listed",
+    "noMatchTitle": "No venue matches “{query}”",
+    "noMatchDesc": "Check the spelling, or clear the search to browse every venue. The one you're looking for may not be on PlayMyJam yet.",
+    "soonBadge": "Coming soon",
+    "soonTitle": "Many more venues very soon",
+    "soonDesc": "New venues are joining PlayMyJam one after another. Keep an eye on the list — your hangout will be here soon too."
   },
   "panelNav": {
     "queue": "QUEUE",

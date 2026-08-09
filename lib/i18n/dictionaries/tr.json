@@ -149,7 +149,17 @@
     "queue": "Sıra",
     "liveQueueAria": "{venue} canlı sıra",
     "ctaPrefix": "Mekanını burada görmek ister misin?",
-    "ctaLink": "Bize ulaş"
+    "ctaLink": "Bize ulaş",
+    "searchLabel": "Mekan ara",
+    "searchPlaceholder": "Mekan adı yaz — örn. kafe, bar, sahne",
+    "searchClear": "Temizle",
+    "searchResultCount": "{total} mekan içinde {count} eşleşme",
+    "venueCount": "{count} mekan listeleniyor",
+    "noMatchTitle": "“{query}” ile eşleşen mekan yok",
+    "noMatchDesc": "Yazımı kontrol et ya da aramayı temizleyip tüm mekanlara göz at. Aradığın mekan henüz PlayMyJam'de olmayabilir.",
+    "soonBadge": "Yakında",
+    "soonTitle": "Çok yakında çok daha fazla mekan",
+    "soonDesc": "Yeni mekanlar sırayla PlayMyJam'e katılıyor. Listeyi takipte kal — takıldığın mekan da yakında burada olacak."
   },
   "panelNav": {
     "queue": "KUYRUK",

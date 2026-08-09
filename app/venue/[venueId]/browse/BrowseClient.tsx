@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { useNowPlayingClock, waitMs } from "@/lib/wait-time";
 import LangToggle from "@/components/ui/LangToggle";
@@ -97,13 +98,18 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     };
 
     const fetchVenueSongs = async () => {
-      const { data: vSongs } = await supabase
-        .from("venue_songs")
-        .select("play_count, in_venue_list, playlist_visible, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
-        .eq("venue_id", venueDbId);
+      // Sayfalı: 1000'i aşan kataloglarda müşteri şarkıların tamamını göremiyordu
+      const { data: vSongs } = await fetchAllRows<VenueSongRow>((from, to) =>
+        supabase
+          .from("venue_songs")
+          .select("play_count, in_venue_list, playlist_visible, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
+          .eq("venue_id", venueDbId)
+          .order("song_id", { ascending: true })
+          .range(from, to)
+      );
 
-      if (vSongs) {
-        const rows = vSongs as unknown as VenueSongRow[];
+      {
+        const rows = vSongs;
         // Müşteriye pasif listedeki şarkı seçilemez (0040) — liste pasife alınınca
         // venue_songs satırları değiştiği için bu tazeleme realtime ile tetiklenir
         setVenueSongs(

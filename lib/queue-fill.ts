@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 const QUEUE_TARGET = 10;
 export const AUTO_POSITION_BASE = 9000;
@@ -130,20 +131,30 @@ async function pickFromRotation(
 
   const activeIds = active.map((p) => p.id);
 
+  // Sayfalı: aktif listelerin toplam şarkısı 1000'i aşan mekanlarda tek sayfa
+  // havuzu kırpar ve listelerin sonundaki şarkılar hiç çalmazdı.
   const [{ data: members }, { data: consumedRows }] = await Promise.all([
-    supabaseAdmin
-      .from("playlist_songs")
-      .select("playlist_id, song_id, position, added_at")
-      .eq("venue_id", venueId)
-      .in("playlist_id", activeIds)
-      .order("position", { ascending: true })
-      .order("added_at", { ascending: true }),
-    supabaseAdmin
-      .from("playlist_rotation_consumed")
-      .select("playlist_id, song_id")
-      .eq("venue_id", venueId)
-      .eq("cycle", cycle)
-      .in("playlist_id", activeIds),
+    fetchAllRows<{ playlist_id: string; song_id: string }>((from, to) =>
+      supabaseAdmin
+        .from("playlist_songs")
+        .select("playlist_id, song_id, position, added_at")
+        .eq("venue_id", venueId)
+        .in("playlist_id", activeIds)
+        .order("position", { ascending: true })
+        .order("added_at", { ascending: true })
+        .order("song_id", { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllRows<{ playlist_id: string; song_id: string }>((from, to) =>
+      supabaseAdmin
+        .from("playlist_rotation_consumed")
+        .select("playlist_id, song_id")
+        .eq("venue_id", venueId)
+        .eq("cycle", cycle)
+        .in("playlist_id", activeIds)
+        .order("song_id", { ascending: true })
+        .range(from, to)
+    ),
   ]);
 
   const songsByList = new Map<string, string[]>();
@@ -388,12 +399,16 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
 
   // Çalınabilir katalog: çalınamaz işaretlenen (embed kapalı) ve müşteriye
   // kapatılmış şarkılar girmez.
-  const { data: venueSongs } = await supabaseAdmin
-    .from("venue_songs")
-    .select("song_id, songs!inner(embeddable)")
-    .eq("venue_id", venueId)
-    .eq("in_venue_list", true)
-    .eq("songs.embeddable", true);
+  const { data: venueSongs } = await fetchAllRows<{ song_id: string }>((from, to) =>
+    supabaseAdmin
+      .from("venue_songs")
+      .select("song_id, songs!inner(embeddable)")
+      .eq("venue_id", venueId)
+      .eq("in_venue_list", true)
+      .eq("songs.embeddable", true)
+      .order("song_id", { ascending: true })
+      .range(from, to)
+  );
 
   // Otomatik çalma önce playlist kuyruğundan geçer (0037): sıraya alınmış listeler
   // queue_position sırasıyla tüketilir, sonuncu bitince başa dönülür.

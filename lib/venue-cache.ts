@@ -1,5 +1,6 @@
 import { cacheLife, cacheTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 type VenueRow = { id: string; name: string; request_cost: number; priority_cost: number };
 
@@ -60,12 +61,17 @@ export async function getVenueSongCatalog(venueDbId: string): Promise<VenueCatal
   cacheLife("minutes");
   cacheTag(`venue-songs-${venueDbId}`);
 
-  const { data } = await supabaseAdmin
-    .from("venue_songs")
-    .select("play_count, in_venue_list, playlist_visible, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
-    .eq("venue_id", venueDbId);
+  // Sayfalı: 1000'den fazla şarkısı olan mekanlarda katalogun kuyruğu kesiliyordu
+  const { data } = await fetchAllRows<VenueSongRow>((from, to) =>
+    supabaseAdmin
+      .from("venue_songs")
+      .select("play_count, in_venue_list, playlist_visible, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
+      .eq("venue_id", venueDbId)
+      .order("song_id", { ascending: true })
+      .range(from, to)
+  );
 
-  const rows = (data ?? []) as unknown as VenueSongRow[];
+  const rows = data;
   // Müşteri açısından "seçilebilir mi": adminin tek tek gizlemesi (in_venue_list)
   // ve listenin müşteriye aktifliği (playlist_visible) birlikte karar verir (0040).
   return rows

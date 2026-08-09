@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import SongActionButton from "@/components/browse/SongActionButton";
 import {
   COOLDOWN_MS,
@@ -66,10 +67,15 @@ export default function SimilarOverlay({
 
     const load = async () => {
       const [{ data: vSongs }, { data: played }] = await Promise.all([
-        supabase
-          .from("venue_songs")
-          .select("play_count, in_venue_list, playlist_visible, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
-          .eq("venue_id", venueDbId),
+        // Sayfalı: 1000'i aşan kataloglarda benzer şarkı havuzu kırpılıyordu
+        fetchAllRows<VenueSongRow>((from, to) =>
+          supabase
+            .from("venue_songs")
+            .select("play_count, in_venue_list, playlist_visible, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
+            .eq("venue_id", venueDbId)
+            .order("song_id", { ascending: true })
+            .range(from, to)
+        ),
         // request_song'daki cooldown kuralıyla birebir: yalnızca müşteri istekleri
         // sayılır ve sayaç şarkının çalmaya başladığı andan işler (0025). played_at
         // hep started_at'ten sonra olduğu için filtre üst küme, çapa aşağıda süzülür.
@@ -84,7 +90,7 @@ export default function SimilarOverlay({
       ]);
       if (cancelled) return;
 
-      const rows = (vSongs ?? []) as unknown as VenueSongRow[];
+      const rows = vSongs;
       setCatalog(
         rows
           .filter((vs) => vs.songs)

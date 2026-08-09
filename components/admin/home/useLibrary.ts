@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 export type Song = {
   venueSongId: string;
@@ -100,22 +101,32 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
         songs: Omit<Song, "venueSongId" | "play_count" | "in_venue_list"> | null;
       };
 
+      // Katalog ve üyelikler sayfalı çekilir: PostgREST tek yanıtta 1000 satırda
+      // kesiyor ve çok listeli mekanlarda içe aktarılan playlist eksik görünüyordu.
       const [catalog, lists, members, sources, rotationRow] = await Promise.all([
-        supabase
-          .from("venue_songs")
-          .select("id, play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
-          .eq("venue_id", venueDbIdArg)
-          .order("added_at", { ascending: false }),
+        fetchAllRows<VenueSongRow>((from, to) =>
+          supabase
+            .from("venue_songs")
+            .select("id, play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
+            .eq("venue_id", venueDbIdArg)
+            .order("added_at", { ascending: false })
+            .order("id", { ascending: true })
+            .range(from, to)
+        ),
         supabase
           .from("playlists")
           .select("id, name, queue_position, play_once, sort_order, shuffle, customer_visible")
           .eq("venue_id", venueDbIdArg)
           .order("sort_order", { ascending: true }),
-        supabase
-          .from("playlist_songs")
-          .select("playlist_id, song_id, position")
-          .eq("venue_id", venueDbIdArg)
-          .order("position", { ascending: true }),
+        fetchAllRows<{ playlist_id: string; song_id: string; position: number }>((from, to) =>
+          supabase
+            .from("playlist_songs")
+            .select("playlist_id, song_id, position")
+            .eq("venue_id", venueDbIdArg)
+            .order("position", { ascending: true })
+            .order("song_id", { ascending: true })
+            .range(from, to)
+        ),
         supabase
           .from("playlist_sources")
           .select("playlist_id, youtube_playlist_id, auto_sync, last_synced_at, last_added, last_error")
@@ -131,20 +142,24 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
       setRotation(rot);
 
       // Bu turda hangi listeden kaç şarkı çalındı — ilerleme göstergesi
-      const { data: consumedRows } = await supabase
-        .from("playlist_rotation_consumed")
-        .select("playlist_id")
-        .eq("venue_id", venueDbIdArg)
-        .eq("cycle", rot?.cycle ?? 1);
+      const { data: consumedRows } = await fetchAllRows<{ playlist_id: string }>((from, to) =>
+        supabase
+          .from("playlist_rotation_consumed")
+          .select("playlist_id, song_id")
+          .eq("venue_id", venueDbIdArg)
+          .eq("cycle", rot?.cycle ?? 1)
+          .order("song_id", { ascending: true })
+          .range(from, to)
+      );
 
       const counts: Record<string, number> = {};
-      for (const row of (consumedRows ?? []) as { playlist_id: string }[]) {
+      for (const row of consumedRows) {
         counts[row.playlist_id] = (counts[row.playlist_id] ?? 0) + 1;
       }
       setConsumed(counts);
 
-      if (catalog.data) {
-        const rows = catalog.data as unknown as VenueSongRow[];
+      {
+        const rows = catalog.data;
         setSongs(
           rows
             .filter((vs) => vs.songs)
@@ -155,10 +170,10 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
       if (sources.data) {
         setSourceByList(Object.fromEntries((sources.data as PlaylistSource[]).map((s) => [s.playlist_id, s])));
       }
-      if (members.data) {
+      {
         const map: Record<string, string[]> = {};
         const order: Record<string, Record<string, number>> = {};
-        for (const m of members.data as { playlist_id: string; song_id: string; position: number }[]) {
+        for (const m of members.data) {
           (map[m.song_id] ??= []).push(m.playlist_id);
           (order[m.playlist_id] ??= {})[m.song_id] = m.position;
         }

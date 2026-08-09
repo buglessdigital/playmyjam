@@ -670,6 +670,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   const preloadNext = useCallback(async () => {
     const anchor = currentVideoRef.current;
     if (!anchor) return;
+    // Geçiş sırasında boştaki deck çıkan şarkıyı çalıyor — üstüne cue atma
+    if (fadingRef.current || advancingRef.current) return;
     // Bu şarkı için tampon zaten hazır
     if (preloadedVideoRef.current && preloadedForRef.current === anchor) return;
     // Başarısız denemeden sonra hemen tekrar deneme
@@ -685,6 +687,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     if (!videoId || videoId === currentVideoRef.current || currentVideoRef.current !== anchor) {
       return;
     }
+    // Kuyruk değişti diye tazeledik ama sıradaki aynı çıktı: tamponu bozma
+    if (videoId === preloadedVideoRef.current) return;
 
     const deck = otherDeck(activeDeckRef.current);
     const player = decksRef.current[deck];
@@ -855,29 +859,39 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // panelden gelen next/play komutları kaçar — now_playing ile mutabakat kur
   // Çevrimdışıyken kendi kararımızla çaldığımız şarkıyı sunucuyla eşitle.
   // Kuyruk o sırada ilerlemediği için now_playing hâlâ ÖNCEKİ şarkıyı gösterir;
-  // düz mutabakat bizi geri sardırırdı. Bunun yerine kuyruğu bir ileri alırız:
-  // beklenen durumda sunucu tam da çalmakta olduğumuz şarkıyı döndürür ve
-  // müzikte tek bir kesinti bile olmaz.
+  // düz mutabakat bizi geri sardırırdı. "Bir ileri sar" da olmaz: kesinti
+  // sırasında müşteri öncelikli şarkı eklediyse sunucu onu döndürür ve çalan
+  // şarkıyı ortasından kesmek gerekirdi. Bunun yerine sunucuya gerçeği
+  // söylüyoruz — kuyruk bize hizalanıyor, ses hiç kesilmiyor.
   const syncOfflineFallback = useCallback(async () => {
-    if (!currentVideoRef.current) {
+    const videoId = currentVideoRef.current;
+    if (!videoId) {
       offlineFallbackRef.current = false;
       return;
     }
+    let progress = 0;
+    try {
+      progress = Math.floor((activePlayer()?.getCurrentTime() ?? 0) * 1000);
+    } catch {}
     advancingRef.current = true;
     let result: PlayerApiResult | null = null;
     try {
-      result = await api({ action: "next" });
+      result = await api({ action: "sync", video_id: videoId, progress_ms: progress });
     } finally {
       advancingRef.current = false;
     }
     // Hâlâ ulaşılamıyor: çalmaya devam, sonraki turda yeniden denenir
     if (!result) return;
     offlineFallbackRef.current = false;
-    // Araya öncelikli bir istek girmişse sunucu başka bir şarkı döndürür
-    if (result.started && result.video_id && result.video_id !== currentVideoRef.current) {
-      loadVideo(result.video_id);
+    // Şarkı katalogda bulunamadı (olmaması gereken durum): now_playing bize
+    // hizalanamadı, kuyruğu ileri sarıp tutarlı duruma dön
+    if (result.ok === false) {
+      advance({ action: "next" });
+      return;
     }
-  }, [api, loadVideo]);
+    // Panel ve müşteri ekranı doğru şarkıyı beklemeden görsün
+    sendHeartbeat();
+  }, [api, activePlayer, sendHeartbeat, advance]);
 
   const reconcile = useCallback(async () => {
     if (advancingRef.current || fadingRef.current) return;
@@ -1103,11 +1117,20 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // (ör. başka sekmede) ilk başarılı istek engeli kaldırır ve çalma sürer.
   useEffect(() => {
     if (!started || blocked === "claim") return;
+    // Çevrimdışı yedekteysek her turda önce eşitlemeyi deneriz: bağlantı
+    // döndüğü anda (en geç 5 sn) panel ve müşteri ekranı doğru şarkıyı görür
+    const beat = () => {
+      if (offlineFallbackRef.current) {
+        syncOfflineFallback();
+        return;
+      }
+      sendHeartbeat();
+    };
     // İlk sinyal beklemeden gitsin: müşteri tarafı player açılır açılmaz "açık" görsün
-    sendHeartbeat();
-    const interval = setInterval(sendHeartbeat, HEARTBEAT_MS);
+    beat();
+    const interval = setInterval(beat, HEARTBEAT_MS);
     return () => clearInterval(interval);
-  }, [started, blocked, sendHeartbeat]);
+  }, [started, blocked, sendHeartbeat, syncOfflineFallback]);
 
   // Bekçi: idle'da takılı kalma (kuyruk-boş yarışı, ağ hatası vb.) — periyodik
   // olarak sıradakini iste; sunucu tarafı dolum yaptığı için çalma kendi toparlanır
@@ -1224,6 +1247,29 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     applyVolume,
     broadcastState,
   ]);
+
+  // Kuyruk değişince tamponu geçersiz kıl. Müşteri öncelikli şarkı eklediğinde
+  // sıradaki artık başka bir şarkıdır; eskisini tamponda tutmak kesintisiz
+  // geçiş avantajını boşa harcardı. Burada yalnızca işaretleriz — asıl peek'i
+  // playbackTick yapar ve preloadNext'teki 10 sn'lik kapı, otomatik dolumun
+  // tek seferde 10 satır eklediği durumda bile istek seline izin vermez.
+  useEffect(() => {
+    if (!started || blocked) return;
+    const channel = supabase
+      .channel(`player-queue:${venueDbId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` },
+        () => {
+          if (fadingRef.current || advancingRef.current) return;
+          preloadedForRef.current = null;
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [started, blocked, supabase, venueDbId]);
 
   // Dış komutları dinle: admin panelden next/pause, müşteri isteğiyle başlayan çalma
   useEffect(() => {

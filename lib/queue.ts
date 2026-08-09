@@ -171,6 +171,90 @@ export async function peekNextFromQueue(venueId: string): Promise<{ video_id: st
   return { video_id: null };
 }
 
+// Player, ağ kesintisi sırasında sunucuya ulaşamayınca önden tamponladığı
+// sıradaki şarkıya kendi kararıyla geçebiliyor (müzik susmasın diye). Bağlantı
+// dönünce durumu GERÇEĞE hizalayan yol burasıdır: eski satır kapatılır, fiilen
+// çalan şarkının satırı 'playing' olur ve now_playing ona çekilir.
+//
+// Neden playNextFromQueue değil: kesinti sırasında müşteri öncelikli bir şarkı
+// eklemiş olabilir. "Bir ileri sar" deseydik sunucu o şarkıyı döndürür, player
+// da çalmakta olan şarkıyı ORTASINDAN kesip ona atlardı. Burada kesme yok:
+// çalan şarkı bitene kadar çalar, müşterinin öncelikli şarkısı sıradaki olur.
+export async function syncPlayingVideo(
+  venueId: string,
+  videoId: string,
+  progressMs = 0
+): Promise<{ ok: boolean; matched: boolean }> {
+  const { data: song } = await supabaseAdmin
+    .from("songs")
+    .select("id")
+    .eq("youtube_video_id", videoId)
+    .maybeSingle();
+  if (!song) return { ok: false, matched: false };
+
+  const progress = Math.max(progressMs, 0);
+  const startedAt = new Date(Date.now() - progress).toISOString();
+
+  const npPatch = {
+    song_id: song.id,
+    video_id: videoId,
+    is_playing: true,
+    progress_ms: progress,
+    started_at: startedAt,
+  };
+
+  const { data: playingRows } = await supabaseAdmin
+    .from("queue")
+    .select("id, song_id")
+    .eq("venue_id", venueId)
+    .eq("status", "playing")
+    .limit(2);
+  const playing = playingRows ?? [];
+
+  // Zaten bu şarkı sahnedeyse kuyruğa dokunma; yalnızca now_playing tazelenir
+  if (playing.some((row) => row.song_id === song.id)) {
+    await supabaseAdmin.from("now_playing").update(npPatch).eq("venue_id", venueId);
+    return { ok: true, matched: true };
+  }
+
+  // Fiilen çalan şarkının kuyruktaki satırı (playNextFromQueue ile aynı sıralama)
+  const { data: row } = await supabaseAdmin
+    .from("queue")
+    .select("id")
+    .eq("venue_id", venueId)
+    .eq("song_id", song.id)
+    .eq("status", "queued")
+    .order("priority", { ascending: false })
+    .order("position", { ascending: true })
+    .order("added_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (playing.length > 0) {
+    await supabaseAdmin
+      .from("queue")
+      .update({ status: "played", played_at: new Date().toISOString() })
+      .in(
+        "id",
+        playing.map((r) => r.id)
+      );
+  }
+
+  if (row) {
+    // started_at 30 dk'lık tekrar kilidinin çapası: şarkı fiilen ne zaman
+    // başladıysa o an yazılır (kesinti sırasında başlamıştı)
+    await supabaseAdmin
+      .from("queue")
+      .update({ status: "playing", started_at: startedAt })
+      .eq("id", row.id);
+  }
+
+  await supabaseAdmin.from("now_playing").update(npPatch).eq("venue_id", venueId);
+  fillQueueToTen(venueId).catch(() => {});
+  return { ok: true, matched: !!row };
+}
+
 // Panelin "geri" düğmesi: en son çalınmış şarkıya döner. Çalmakta olan satır
 // kuyruğa geri konur (kendi priority/position değerleriyle, yani bıraktığı yere),
 // böylece önceki şarkı bitince kaldığı yerden devam edilir.

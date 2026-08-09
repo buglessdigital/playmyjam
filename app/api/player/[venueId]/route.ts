@@ -6,6 +6,7 @@ import {
   playPreviousFromQueue,
   markUnplayableAndSkip,
   peekNextFromQueue,
+  syncPlayingVideo,
 } from "@/lib/queue";
 
 // Sahiplik bu süre boyunca heartbeat gelmezse serbest kalır (heartbeat 15 sn'de bir).
@@ -132,6 +133,20 @@ export async function POST(
     // okuma olduğu için sahiplik aranmaz — yanlış cihazın öğrenmesi zararsız.
     case "peek": {
       return reply(await peekNextFromQueue(venueId));
+    }
+
+    // Ağ kesintisi boyunca player kendi tamponundaki şarkıya geçmiş olabilir.
+    // Bağlantı dönünce "şu an fiilen X çalıyor" der; kuyruk buna hizalanır.
+    // next'ten farkı: çalan şarkı kesilmez, kesinti sırasında gelen öncelikli
+    // müşteri isteği atlanmaz — sıradaki olarak çalar.
+    case "sync": {
+      const videoId = typeof body?.video_id === "string" ? body.video_id : "";
+      if (!videoId) return reply({ error: "video_id gerekli" }, { status: 400 });
+      if (!(await isOwner(venueId, claimId))) {
+        return reply({ ok: false, claim_lost: true }, { status: 409 });
+      }
+      const progressMs = typeof body?.progress_ms === "number" ? Math.floor(body.progress_ms) : 0;
+      return reply(await syncPlayingVideo(venueId, videoId, progressMs));
     }
 
     // Panelin "geri" düğmesi: bir önceki şarkıya döner. Geçmiş yoksa

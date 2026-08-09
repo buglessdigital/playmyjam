@@ -57,13 +57,23 @@ declare global {
 const HEARTBEAT_MS = 5_000;
 // Durum denetimleri (dürtme/uzlaştırma) daha seyrek — okuma maliyeti taşırlar
 const RECONCILE_MS = 15_000;
-const IDLE_RETRY_MS = 15_000;
+// Kuyruk boş kaldığında sıradakini yeniden isteme aralığı. Sessizlik ne kadar
+// kısa sürerse o kadar iyi; sunucu tarafı zaten otomatik dolum yapıyor.
+const IDLE_RETRY_MS = 8_000;
 // Yükleme sonrası bu süre içinde gelen "duraklat" yankıları yok sayılır — skip
 // anında yarışan bayat heartbeat'ler yeni şarkıyı durduramasın
 const PAUSE_ECHO_GRACE_MS = 8_000;
 // loadVideoById sonrası oynatmanın gerçekten başladığı bu aralıklarla doğrulanır
 const PLAY_WATCHDOG_DELAYS_MS = [2_500, 6_000];
 const PLAY_NUDGE_MS = 3_000;
+// Dış kaynaklı duraklatma (YouTube'un atalet duraklatması, reklam/ara geçiş, ağ
+// kopması, medya tuşu, işletim sisteminin sesi başka uygulamaya vermesi) ile
+// GERÇEK duraklatma niyetini ayırt eden pencere. Yalnızca panel komutu, video
+// üzerindeki YouTube kontrolüne tıklama ve kuyruğun boşalması müziği durdurabilir;
+// bunların dışındaki her duraklatma bekçi tarafından geri açılır.
+const EXPLICIT_PAUSE_WINDOW_MS = 6_000;
+// Dış kaynaklı duraklatma yakalanınca hızlı toparlama denemeleri
+const RESUME_RETRY_DELAYS_MS = [400, 1_500, 4_000];
 
 // --- Crossfade ---
 // Kalan süre kontrolü: 250 ms, panelin ilerleme çubuğuyla aynı çözünürlük
@@ -213,6 +223,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   const desiredPlayingRef = useRef(false);
   // Son loadVideo zamanı — pause yankısı grace penceresinin çapası
   const lastLoadAtRef = useRef(0);
+  // Son AÇIK duraklatma niyeti (panel komutu / DB'den gelen duraklat) zamanı
+  const explicitPauseAtRef = useRef(0);
+  // Pencere odağının video iframe'ine geçtiği an: kullanıcının YouTube'un kendi
+  // duraklat düğmesine tıkladığını buradan anlarız (iframe içi tıklama üst
+  // sayfada olay üretmez, ama odak devrini blur olarak görürüz)
+  const blurToIframeAtRef = useRef(0);
   const nudgeTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pendingVideoRef = useRef<string | null>(null);
 
@@ -399,8 +415,13 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         const secs = player.getDuration();
         duration = Number.isFinite(secs) && secs > 0 ? Math.floor(secs * 1000) : null;
         const state = player.getPlayerState();
+        // Niyet "çal" iken anlık durum duraklamış olabilir (dış kaynaklı
+        // duraklatma, tamponlama, autoplay engeli): bunlar birkaç saniye içinde
+        // bekçi tarafından geri açılır, panele "durdu" diye bildirilmez.
         playing =
-          state === window.YT?.PlayerState.PLAYING || state === window.YT?.PlayerState.BUFFERING;
+          desiredPlayingRef.current ||
+          state === window.YT?.PlayerState.PLAYING ||
+          state === window.YT?.PlayerState.BUFFERING;
       } catch {}
     }
     const beat: PlayerStateBeat = {
@@ -437,9 +458,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       progress = Math.floor(player.getCurrentTime() * 1000);
       const state = player.getPlayerState();
       // BUFFERING da "çalıyor" sayılır — geçiş anındaki tamponlama sunucuya
-      // "durdu" diye yazılıp yankıyla yeni şarkıyı durdurmasın
+      // "durdu" diye yazılıp yankıyla yeni şarkıyı durdurmasın.
+      // Aynı gerekçeyle niyet "çal" iken dış kaynaklı duraklatma da DB'ye
+      // yazılmaz: eskiden bu yazım Realtime yankısıyla geri dönüp çalmayı
+      // kalıcı olarak durduruyordu. is_playing=false ancak GERÇEK duraklatmada
+      // (panel komutu / videoya tıklama / kuyruk boş) yazılır.
       playing =
-        state === window.YT?.PlayerState.PLAYING || state === window.YT?.PlayerState.BUFFERING;
+        desiredPlayingRef.current ||
+        state === window.YT?.PlayerState.PLAYING ||
+        state === window.YT?.PlayerState.BUFFERING;
     } catch {
       return;
     }
@@ -453,6 +480,24 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     });
   }, [api, activePlayer, broadcastState]);
 
+  // Odak şu an video iframe'inde mi? Kendi düğmelerimize tıklamak odağı iframe'e
+  // taşımaz; programatik playVideo da taşımaz. Odak oradaysa kullanıcı fiilen
+  // videonun üstüne tıklamış demektir.
+  const iframeFocused = useCallback(() => {
+    const el = typeof document !== "undefined" ? document.activeElement : null;
+    if (!el || el.tagName !== "IFRAME") return false;
+    return !!(deckAHostRef.current?.contains(el) || deckBHostRef.current?.contains(el));
+  }, []);
+
+  // Bu duraklatma gerçekten "durdur" niyeti mi? Yalnızca panel komutu ve videoya
+  // yapılan tıklama sayılır; geri kalan her şey dış kaynaklıdır ve toparlanır.
+  const isExplicitPause = useCallback(() => {
+    const now = Date.now();
+    if (now - explicitPauseAtRef.current < EXPLICIT_PAUSE_WINDOW_MS) return true;
+    if (now - blurToIframeAtRef.current < EXPLICIT_PAUSE_WINDOW_MS) return true;
+    return iframeFocused();
+  }, [iframeFocused]);
+
   // Niyet "çal" iken player'ın gerçekten çaldığını doğrula; başlamadıysa dürt.
   // Arka plan sekmesinde tarayıcının sessizce engellediği başlatmaları toparlar.
   const ensurePlaying = useCallback(() => {
@@ -461,6 +506,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     if (!player || !YT || !desiredPlayingRef.current || !currentVideoRef.current) return;
     try {
       const state = player.getPlayerState();
+      // Biten videoyu yeniden başlatma: sıradakine geçiş advance()'in işi
+      if (state === YT.PlayerState.ENDED) return;
       if (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.BUFFERING) {
         player.playVideo();
       }
@@ -518,7 +565,13 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       if (advancingRef.current) return;
       advancingRef.current = true;
       try {
-        const result = await api(payload);
+        let result = await api(payload);
+        // Ağ/sunucu hatası "kuyruk boş" DEĞİLDİR: tek denemede idle'a düşmek
+        // geçici bir kesintiyi sessizliğe çeviriyordu — kısa aralıkla tekrar dene
+        for (let i = 0; !result && !blockedRef.current && i < 2; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 1_200));
+          result = await api(payload);
+        }
         if (result?.started && result.video_id) {
           loadVideo(result.video_id);
         } else if (!blockedRef.current) {
@@ -688,14 +741,23 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
 
   // Bekçi: çalması gereken video CUED/UNSTARTED'da takıldıysa (arka plan
   // sekmesinde autoplay engeli) oynatmayı tekrar dene — tek seferlik playVideo
-  // denemesi engellenince şarkı sonsuza dek bekliyordu
+  // denemesi engellenince şarkı sonsuza dek bekliyordu.
+  // PAUSED de buraya dahildir: niyet "çal" iken duraklamış bir video ancak dış
+  // bir sebeple durmuştur (gerçek duraklatmada niyet zaten sönmüş olur), yani
+  // 3 sn içinde kendiliğinden geri açılır.
   const nudgePlayback = useCallback(() => {
     const player = activePlayer();
     const YT = window.YT;
     if (!player || !YT || !currentVideoRef.current || !desiredPlayingRef.current) return;
+    // Geçiş sırasında iki deck kasten farklı durumlarda — rampaya karışma
+    if (fadingRef.current) return;
     try {
       const state = player.getPlayerState();
-      if (state === YT.PlayerState.CUED || state === -1 /* UNSTARTED */) {
+      if (
+        state === YT.PlayerState.CUED ||
+        state === -1 /* UNSTARTED */ ||
+        state === YT.PlayerState.PAUSED
+      ) {
         player.playVideo();
       }
     } catch {
@@ -719,8 +781,40 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     if (np.video_id && np.is_playing) {
       desiredPlayingRef.current = true;
       nudgePlayback();
+      return;
     }
-  }, [supabase, venueDbId, loadVideo, nudgePlayback, applyVolume, applyCrossfade]);
+    // Sunucuda "duraklatıldı" yazıyorsa bu ancak açık bir komuttan gelir (player
+    // artık dış kaynaklı duraklatmayı DB'ye yazmıyor). Realtime kaçırmış olsa
+    // bile panelin duraklat komutu burada uygulanır.
+    if (
+      np.video_id &&
+      !np.is_playing &&
+      desiredPlayingRef.current &&
+      Date.now() - lastLoadAtRef.current > PAUSE_ECHO_GRACE_MS
+    ) {
+      explicitPauseAtRef.current = Date.now();
+      desiredPlayingRef.current = false;
+      try {
+        activePlayer()?.pauseVideo();
+      } catch {}
+    }
+  }, [supabase, venueDbId, loadVideo, nudgePlayback, applyVolume, applyCrossfade, activePlayer]);
+
+  // Arka plandan / bfcache'ten dönüşte kaldığı yerden sürdür: sağlık sinyali ve
+  // sahiplik tazelenir, açıkça duraklatılmadıysa çalma devam eder.
+  const restorePlayback = useCallback(() => {
+    if (blockedRef.current === "claim") return;
+    if (desiredPlayingRef.current) ensurePlaying();
+    sendHeartbeat();
+    reconcile();
+  }, [ensurePlaying, sendHeartbeat, reconcile]);
+
+  // Aşağıdaki sahiplik effect'inin bağımlılıkları sabit kalmalı (temizliği release
+  // planlıyor), bu yüzden güncel sürüm ref üzerinden okunur
+  const restoreRef = useRef(restorePlayback);
+  useEffect(() => {
+    restoreRef.current = restorePlayback;
+  }, [restorePlayback]);
 
   // Bir deck kur. İki deck de aynı olay kancalarını paylaşır; olayların çoğu
   // yalnızca AKTİF deck için anlamlıdır (boştaki deck'in ENDED'i kuyruğu
@@ -779,11 +873,24 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               onTrackChange?.({ videoId: currentVideoRef.current, isPlaying: true });
               sendHeartbeat();
             } else if (e.data === YT.PlayerState.PAUSED) {
-              // PAUSED, gerçekten başlamış bir videonun durdurulmasıdır (kullanıcı/panel
-              // niyeti); engellenen autoplay CUED/UNSTARTED'da kalır, buraya düşmez
-              desiredPlayingRef.current = false;
-              onTrackChange?.({ videoId: currentVideoRef.current, isPlaying: false });
-              sendHeartbeat();
+              // Duraklatmanın kaynağı belirleyicidir. Panel komutu ya da videoya
+              // yapılan tıklama ise niyet söner ve müzik durur. Aksi halde bu
+              // duraklatma DIŞ KAYNAKLIDIR (YouTube'un atalet duraklatması,
+              // reklam/ara geçiş, ağ kopması, medya tuşu, ses odağının başka
+              // uygulamaya geçmesi) — niyete dokunulmaz ve çalma geri açılır.
+              // Eskiden burada niyet körlemesine söndürülüyordu ve hiçbir bekçi
+              // devreye giremediği için müzik elle play'e basılana dek susuyordu.
+              if (isExplicitPause()) {
+                desiredPlayingRef.current = false;
+                endCrossfade();
+                onTrackChange?.({ videoId: currentVideoRef.current, isPlaying: false });
+                sendHeartbeat();
+              } else {
+                try {
+                  decksRef.current[key]?.playVideo();
+                } catch {}
+                scheduleNudges(RESUME_RETRY_DELAYS_MS);
+              }
             } else if (e.data === YT.PlayerState.CUED) {
               decksRef.current[key]?.playVideo();
             }
@@ -815,6 +922,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       applyCrossfade,
       pushVolume,
       endCrossfade,
+      isExplicitPause,
+      scheduleNudges,
     ]
   );
 
@@ -886,22 +995,33 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // Takılan oynatmayı periyodik dürt; sekme öne gelir gelmez de tam mutabakat —
   // arka planda engellenen autoplay görünürlükte ilk denemede tutar
   useEffect(() => {
-    if (!started || blocked) return;
+    // Yalnızca sahiplik kaybında susarız (çift ses olmasın). Oturum düşmesi gibi
+    // geçici engellerde bekçi çalışmaya devam eder: çalan şarkı kesilmesin.
+    if (!started || blocked === "claim") return;
     const nudgeInterval = setInterval(() => {
       nudgePlayback();
       enforceVolume();
     }, PLAY_NUDGE_MS);
     const reconcileInterval = setInterval(reconcile, RECONCILE_MS);
+    // Sekme öne gelince yalnızca mutabakat değil, çalmayı sürdürme de yapılır:
+    // arka planda engellenen/durdurulan oynatma ilk anda toparlanır
     const onVisibility = () => {
-      if (document.visibilityState === "visible") reconcile();
+      if (document.visibilityState === "visible") restoreRef.current();
+    };
+    // Odak video iframe'ine geçtiyse kullanıcı videonun üstüne tıklamış demektir;
+    // hemen ardından gelen duraklatma GERÇEK duraklatmadır, geri açılmaz
+    const onBlur = () => {
+      if (iframeFocused()) blurToIframeAtRef.current = Date.now();
     };
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", onBlur);
     return () => {
       clearInterval(nudgeInterval);
       clearInterval(reconcileInterval);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", onBlur);
     };
-  }, [started, blocked, nudgePlayback, reconcile, enforceVolume]);
+  }, [started, blocked, nudgePlayback, reconcile, enforceVolume, iframeFocused]);
 
   // Crossfade bekçisi: kalan süreyi izler, önyükler ve geçişi başlatır
   useEffect(() => {
@@ -935,6 +1055,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           case "pause": {
             // Panelin açık komutu: DB yolundaki "yankı mı, komut mu" belirsizliği
             // burada yok — doğrudan uygulanır
+            explicitPauseAtRef.current = Date.now();
             desiredPlayingRef.current = false;
             endCrossfade();
             try {
@@ -1058,6 +1179,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
                 neverStarted = s === window.YT?.PlayerState.CUED || s === -1;
               } catch {}
               if (!neverStarted && Date.now() - lastLoadAtRef.current > PAUSE_ECHO_GRACE_MS) {
+                explicitPauseAtRef.current = Date.now();
                 desiredPlayingRef.current = false;
                 // Duraklatma geçişi de keser: iki şarkı yarım rampada donmasın
                 endCrossfade();
@@ -1116,15 +1238,27 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         keepalive: true,
       }).catch(() => {});
     };
-    // pagehide: kapanış + mobil arka plan (beforeunload iOS'ta çalışmaz).
-    // bfcache'ten geri dönülürse heartbeat sahipliği yeniden yazar.
-    window.addEventListener("pagehide", release);
+    // pagehide hem gerçek kapanışta hem de sayfa bfcache'e alınırken tetiklenir.
+    // persisted=true ise sekme KAPANMADI — mobilde ekran kilidi / uygulama
+    // değiştirme gibi geçici bir arka plana alınmadır. Orada sahipliği bırakıp
+    // "duraklatıldı" yazmak müziği kalıcı olarak durduruyordu; artık dokunmuyoruz
+    // ve dönüşte kaldığı yerden devam ediyor.
+    const onPageHide = (e: PageTransitionEvent) => {
+      if (e.persisted) return;
+      release();
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) restoreRef.current();
+    };
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
     if (releaseTimerRef.current) {
       clearTimeout(releaseTimerRef.current);
       releaseTimerRef.current = null;
     }
     return () => {
-      window.removeEventListener("pagehide", release);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
       // Kısa gecikme: StrictMode geliştirmede effect'i mount→cleanup→mount
       // çalıştırır; hemen bırakırsak daha yeni başlamış player'ın kilidini
       // kendimiz düşürürüz. Gerçek kapanışı zaten pagehide yakalıyor.

@@ -24,7 +24,7 @@ export default function PlaylistRowMenu({
   orderable: boolean;
   onRename: () => void;
 }) {
-  const { railLists, moveListTo, setQueued, playNow, setCustomerVisible, deleteList, reordering, setSelectedId } = lib;
+  const { railLists, moveListTo, setQueued, playNow, deleteList, reordering, setSelectedId } = lib;
 
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -149,37 +149,8 @@ export default function PlaylistRowMenu({
                 {queued ? "Sıradan çıkar" : "Sıraya ekle"}
               </button>
 
-              {/* Müşteri aktifliği (0040): kapalı listenin şarkıları müşteride
-                  görünmez ama otomatik çalmaya devam eder. */}
-              <button
-                onClick={() => {
-                  void setCustomerVisible(playlist, !playlist.customer_visible);
-                  setOpen(false);
-                }}
-                className={itemClass}
-                style={{ color: playlist.customer_visible ? "#9ca3af" : "#93c5fd" }}
-                title={
-                  playlist.customer_visible
-                    ? "Müşteri bu listeden şarkı seçebiliyor — kapatmak için tıklayın"
-                    : "Müşteri bu listeyi görmüyor — açmak için tıklayın"
-                }
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                  {playlist.customer_visible ? (
-                    <>
-                      <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-                      <circle cx="12" cy="12" r="2.6" stroke="currentColor" strokeWidth="1.8" />
-                      <path d="M3 3l18 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                    </>
-                  ) : (
-                    <>
-                      <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-                      <circle cx="12" cy="12" r="2.6" stroke="currentColor" strokeWidth="1.8" />
-                    </>
-                  )}
-                </svg>
-                {playlist.customer_visible ? "Müşteriye kapat" : "Müşteriye aç"}
-              </button>
+              {/* Müşteri aktifliği (0040) menüde değil, satırın sağındaki göz
+                  düğmesinde — bkz. PlaylistRail. */}
 
               <div className="my-1 h-px bg-white/10" />
 

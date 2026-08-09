@@ -55,7 +55,6 @@ export default function LibraryPane({
     setPlayOnce,
     setShuffle,
     setCustomerVisible,
-    toggleAutoSync,
     syncNow,
     syncingId,
     syncNote,
@@ -128,12 +127,14 @@ export default function LibraryPane({
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className="shrink-0">
                     <path d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45" stroke="#FF0000" strokeWidth="2" strokeLinecap="round" />
                   </svg>
+                  {/* auto_sync artık elle kapatılmıyor; false ise liste
+                      üst üste hata verdiği için donduruldu demektir. */}
                   <span style={{ color: selectedSource.last_error ? "#f87171" : selectedSource.auto_sync ? "#22c55e" : "#6b7280" }}>
                     {selectedSource.last_error
                       ? `Senkron hatası: ${selectedSource.last_error}`
                       : selectedSource.auto_sync
                         ? "Her gün otomatik güncelleniyor"
-                        : "Otomatik güncelleme kapalı"}
+                        : "Senkron durduruldu — YouTube listesine ulaşılamıyor"}
                   </span>
                   {selectedSource.last_synced_at && !selectedSource.last_error && (
                     <span className="text-[#4b5563]">
@@ -276,35 +277,21 @@ export default function LibraryPane({
                     />
                   )}
                 </button>
+                {/* Senkron her YouTube listesinde daima açık — açma/kapama
+                    düğmesi yok. Kalan tek düğme "şimdi güncelle": mekan
+                    günlük cron'u beklemeden elle tetiklemek isteyebilir. */}
                 {selectedSource && (
-                  <>
-                    <button
-                      onClick={() => toggleAutoSync(selectedList)}
-                      className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
-                      style={{
-                        background: selectedSource.auto_sync ? "rgba(255,0,0,0.12)" : "rgba(255,255,255,0.08)",
-                        color: selectedSource.auto_sync ? "#fca5a5" : "#9ca3af",
-                      }}
-                      title={
-                        selectedSource.auto_sync
-                          ? "YouTube listesine eklenen yeni şarkılar her gün buraya da eklenir"
-                          : "Otomatik güncelleme kapalı — liste olduğu gibi kalır"
-                      }
-                    >
-                      {selectedSource.auto_sync ? "Senkron açık" : "Senkron kapalı"}
-                    </button>
-                    <button
-                      onClick={() => syncNow(selectedList)}
-                      disabled={syncingId !== null}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg disabled:opacity-40"
-                      style={{ background: "rgba(255,255,255,0.08)" }}
-                      title="YouTube'dan şimdi güncelle"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={syncingId === selectedList.id ? "animate-spin" : ""}>
-                        <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </button>
-                  </>
+                  <button
+                    onClick={() => syncNow(selectedList)}
+                    disabled={syncingId !== null}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.08)" }}
+                    title="YouTube'dan şimdi güncelle"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={syncingId === selectedList.id ? "animate-spin" : ""}>
+                      <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
                 )}
                 <button
                   onClick={onRename}

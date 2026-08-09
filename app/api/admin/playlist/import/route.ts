@@ -59,7 +59,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const autoSync = body?.auto_sync === true;
+  // Senkron her içe aktarımda açılır — mekanın kapatma seçeneği yok. Kotaya
+  // etkisi ihmal edilebilir (bkz. lib/playlist-sync.ts kademeli bütçe),
+  // buna karşılık liste hep YouTube'daki haliyle güncel kalır.
+  const autoSync = true;
 
   const rows = tracks.map((t) => ({
     youtube_video_id: t.youtube_video_id,
@@ -134,8 +137,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  // Kaynağı hatırla: otomatik senkron kapalı olsa bile URL saklanır, mekan
-  // anahtarı sonradan açtığında yeniden yapıştırmak gerekmez.
+  // Kaynağı hatırla: URL saklanır, günlük senkron buradan yürür.
   // snapshot ham kimlik listesidir (embed'e kapalı videolar dahil) — "bu şarkıyı
   // zaten gördük" ölçütü budur, mekanın elle sildiği şarkı geri gelmesin diye
   // playlist_songs'tan ayrı durur.

@@ -43,6 +43,7 @@ export default function PlaylistRail({
     coversByList,
     catalogCovers,
     sourceByList,
+    setCustomerVisible,
   } = lib;
 
   const listFiltered = listQuery.trim().length > 0;
@@ -171,11 +172,20 @@ export default function PlaylistRail({
                     <p className="text-sm font-semibold truncate" style={{ color: viewId === p.id ? "#f9a8d4" : "#e5e7eb" }}>
                       {p.name}
                     </p>
-                    {source && (
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className="shrink-0 ml-auto">
+                    {/* Senkron artık her listede açık — durum rozeti yalnızca
+                        bozukken görünür, sağlıklı hal sessizdir. */}
+                    {source?.last_error && (
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        className="shrink-0 ml-auto"
+                        aria-label="Senkron hatası"
+                      >
                         <path
                           d="M3 6h13M3 12h13M3 18h9M19 9v8m0 0a2.5 2.5 0 1 1-3-2.45"
-                          stroke={source.last_error ? "#f87171" : source.auto_sync ? "#FF0000" : "#4b5563"}
+                          stroke="#f87171"
                           strokeWidth="2"
                           strokeLinecap="round"
                         />
@@ -191,15 +201,41 @@ export default function PlaylistRail({
                         : p.queue_position !== null
                           ? ` · Sırada${p.play_once ? " · tek seferlik" : ""}`
                           : " · Sırada değil"}
-                    {/* Müşteriye kapalı liste otomatik çalar ama müşteride görünmez (0040) */}
-                    {!p.customer_visible && " · müşteriye kapalı"}
+                    {/* Müşteri aktifliği artık satırın sağındaki göz düğmesinde;
+                        metinde tekrarlamıyoruz. */}
                   </p>
                 </div>
               </button>
 
               {/* Çalma sırası, aktiflik, ad ve silme buradan — şarkı satırındaki
                   "⋮" menüsüyle aynı yerleşim. */}
-              <div className="flex items-center pr-2 shrink-0">
+              <div className="flex items-center gap-0.5 pr-2 shrink-0">
+                {/* Müşteri aktifliği (0040) menüden çıkıp raya taşındı: mekanın
+                    en sık çevirdiği anahtar, tek dokunuşla ve uzaktan okunur.
+                    Kapalı liste otomatik çalmaya devam eder, sadece müşteride
+                    görünmez. */}
+                <button
+                  onClick={() => setCustomerVisible(p, !p.customer_visible)}
+                  aria-pressed={p.customer_visible}
+                  className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors"
+                  style={{
+                    background: p.customer_visible ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.05)",
+                    color: p.customer_visible ? "#22c55e" : "#6b7280",
+                  }}
+                  title={
+                    p.customer_visible
+                      ? "Müşteriye açık — bu listeden şarkı seçebiliyorlar. Kapatmak için tıklayın"
+                      : "Müşteriye kapalı — liste otomatik çalar ama müşteride görünmez. Açmak için tıklayın"
+                  }
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                    <circle cx="12" cy="12" r="2.6" stroke="currentColor" strokeWidth="1.8" />
+                    {!p.customer_visible && (
+                      <path d="M3 3l18 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    )}
+                  </svg>
+                </button>
                 <PlaylistRowMenu playlist={p} lib={lib} orderable={!listFiltered} onRename={onRename} />
               </div>
             </div>

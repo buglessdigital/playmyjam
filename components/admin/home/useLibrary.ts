@@ -589,24 +589,6 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     await refresh();
   };
 
-  // Günlük senkron anahtarı. Yalnızca YouTube'dan içe aktarılmış listelerde var —
-  // playlist_sources satırı yoksa API 400 döner, o yüzden buton da gösterilmez.
-  const toggleAutoSync = async (playlist: Playlist) => {
-    const source = sourceByList[playlist.id];
-    if (!source) return;
-    const next = !source.auto_sync;
-    setSourceByList((prev) => ({ ...prev, [playlist.id]: { ...source, auto_sync: next } }));
-
-    const res = await fetch("/api/admin/playlists", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ playlist_id: playlist.id, auto_sync: next }),
-    });
-    if (!res.ok) {
-      setSourceByList((prev) => ({ ...prev, [playlist.id]: { ...source, auto_sync: !next } }));
-    }
-  };
-
   const syncNow = async (playlist: Playlist) => {
     if (syncingId) return;
     setSyncingId(playlist.id);
@@ -728,7 +710,6 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     setPlayOnce,
     setShuffle,
     setCustomerVisible,
-    toggleAutoSync,
     syncNow,
     syncingId,
     syncNote,

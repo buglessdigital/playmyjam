@@ -223,14 +223,13 @@ export async function PATCH(req: NextRequest) {
   const hasQueued = typeof body?.queued === "boolean";
   const hasPlayOnce = typeof body?.play_once === "boolean";
   const isPlay = body?.play === true;
-  const hasAutoSync = typeof body?.auto_sync === "boolean";
   const hasShuffle = typeof body?.shuffle === "boolean";
   // Müşteriye aktiflik (0040): yalnızca müşterinin görüp çaldırabileceğini
   // belirler, otomatik çalmayı hiç etkilemez.
   const hasCustomerVisible = typeof body?.customer_visible === "boolean";
   if (
     !playlistId ||
-    (!hasName && !hasQueued && !hasPlayOnce && !isPlay && !hasAutoSync && !hasShuffle && !hasCustomerVisible)
+    (!hasName && !hasQueued && !hasPlayOnce && !isPlay && !hasShuffle && !hasCustomerVisible)
   ) {
     return NextResponse.json({ error: "Eksik alan" }, { status: 400 });
   }
@@ -291,36 +290,6 @@ export async function PATCH(req: NextRequest) {
       await resetAutoQueue(session.venue_id).catch(() => {});
     }
     return NextResponse.json({ ok: true });
-  }
-
-  // Otomatik senkron anahtarı playlist_sources'ta durur — yalnızca YouTube'dan
-  // içe aktarılmış listelerde satır vardır, elle kurulan listede açılamaz.
-  if (hasAutoSync) {
-    const { data: source, error: sourceErr } = await supabaseAdmin
-      .from("playlist_sources")
-      .update({
-        auto_sync: body.auto_sync,
-        // Yeniden açılırken hata sayacı sıfırlanır: liste tekrar herkese açık
-        // yapılmış olabilir, 10 hatada kapanmış senkron böyle canlanır.
-        ...(body.auto_sync ? { fail_count: 0, last_error: null, next_check_at: new Date().toISOString() } : {}),
-      })
-      .eq("playlist_id", playlistId)
-      .eq("venue_id", session.venue_id)
-      .select("playlist_id")
-      .maybeSingle();
-
-    if (sourceErr) {
-      return NextResponse.json({ error: sourceErr.message }, { status: 500 });
-    }
-    if (!source) {
-      return NextResponse.json(
-        { error: "Bu liste YouTube'dan içe aktarılmadı — otomatik güncelleme açılamaz" },
-        { status: 400 }
-      );
-    }
-    if (!hasName && !hasPlayOnce && !hasShuffle && !hasCustomerVisible) {
-      return NextResponse.json({ ok: true });
-    }
   }
 
   const patch: { name?: string; play_once?: boolean; shuffle?: boolean; customer_visible?: boolean } = {};

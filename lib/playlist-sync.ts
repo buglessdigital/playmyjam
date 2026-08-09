@@ -18,6 +18,9 @@ import {
 //
 // Aynı YouTube listesini birden çok mekan kullanıyorsa liste bir kez okunur,
 // sonuç tüm mekanlara dağıtılır — maliyet mekan sayısıyla çarpılmaz.
+//
+// Senkron tüm mekanlarda daima açıktır; auto_sync yalnızca ölü kaynağı
+// dondurmak için kullanılır (bkz. markFailed).
 
 const UNIT_BUDGET = 1000;
 const MAX_SOURCES_PER_RUN = 500;
@@ -51,7 +54,9 @@ function nextCheckAt(unchangedStreak: number): string {
 }
 
 // Liste silinmiş/gizlenmişse veya API hata verdiyse geri çekil — ama vazgeçme,
-// mekan yayını geri açabilir. 10 başarısızlıktan sonra otomatik senkron kapanır.
+// mekan yayını geri açabilir. 10 başarısızlıktan sonra auto_sync kapanır: bu
+// artık bir kullanıcı ayarı değil, ölü kaynak freni (panelde açma/kapama yok).
+// Kaynak düzelirse "şimdi güncelle" ilk başarılı turda auto_sync'i geri açar.
 function backoffAt(failCount: number): string {
   const days = Math.min(2 ** Math.max(failCount - 1, 0), 7);
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
@@ -237,6 +242,7 @@ export async function syncPlaylistSources(
             next_check_at: nextCheckAt(row.unchanged_streak + 1),
             fail_count: 0,
             last_error: null,
+            auto_sync: true,
           })
           .eq("playlist_id", row.playlist_id);
       }
@@ -286,6 +292,7 @@ export async function syncPlaylistSources(
             next_check_at: nextCheckAt(streak),
             fail_count: 0,
             last_error: null,
+            auto_sync: true,
           })
           .eq("playlist_id", row.playlist_id);
       }

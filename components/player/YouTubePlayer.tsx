@@ -81,6 +81,14 @@ const CROSSFADE_TICK_MS = 250;
 // Geçiş başlamadan bu kadar önce sıradaki video ikinci deck'e yüklenir
 // (tamponlama + reklamsız başlangıç için pay)
 const PRELOAD_LEAD_SEC = 12;
+// Ama asıl önyükleme çalan şarkının BAŞINDA yapılır: sıradaki video boştaki
+// deck'te bütün şarkı boyunca hazır bekler, geçiş anında ağ dalgalansa bile
+// yükleme beklemesi olmaz. İlk saniyeler çalan şarkının kendi tamponuna
+// bırakılır — sıradakini yüklemek bant genişliğini onunla paylaşmasın.
+const PRELOAD_AFTER_SEC = 5;
+// Önyükleme başarısız olduysa (ağ koptu, sunucuya ulaşılamadı) bu aralıkla
+// yeniden denenir — her turda denemek isteği boşuna yağdırırdı
+const PRELOAD_RETRY_MS = 10_000;
 // Ses rampasının adım aralığı: 60 ms'de bir setVolume — kulakta sürekli duyulur,
 // iframe'e de aşırı çağrı gitmez
 const FADE_STEP_MS = 60;
@@ -269,7 +277,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // Önyüklenen sıradaki video ve bunun hangi şarkı için yapıldığı
   const preloadedVideoRef = useRef<string | null>(null);
   const preloadedForRef = useRef<string | null>(null);
+  const preloadRetryAtRef = useRef(0);
   const canCrossfadeRef = useRef(false);
+  // Sunucuya ulaşılamadığı için önden bildiğimiz şarkıyı kendi kararımızla
+  // çalıyoruz: now_playing satırı bu sırada bayattır, bağlantı dönünce
+  // eşitlenir (bkz. syncOfflineFallback)
+  const offlineFallbackRef = useRef(false);
 
   // İstenen seviyeyi AKTİF deck'e bas. Tek seferlik DEĞİL: YouTube yeni video
   // yüklenince kendi hatırladığı seviyeye dönebiliyor, bu yüzden aşağıdaki
@@ -538,6 +551,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       endCrossfade();
       preloadedVideoRef.current = null;
       preloadedForRef.current = null;
+      preloadRetryAtRef.current = 0;
 
       currentVideoRef.current = videoId;
       desiredPlayingRef.current = true;
@@ -559,6 +573,47 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     [onTrackChange, scheduleNudges, endCrossfade, activePlayer, activeReady, broadcastState]
   );
 
+  // Sıradaki şarkı zaten boştaki deck'te tamponlanmışsa onu çal: video baştan
+  // yüklenmez, ağ o an dalgalansa bile ses kesintisiz devam eder. Tampon yoksa
+  // false döner, çağıran normal yüklemeye düşer.
+  const playPreloaded = useCallback(
+    (videoId: string): boolean => {
+      if (preloadedVideoRef.current !== videoId) return false;
+      // Geçiş sürüyorsa deck'lerle oynama: loadVideo yolu rampayı düzgün keser
+      if (fadingRef.current) return false;
+      const from = activeDeckRef.current;
+      const to = otherDeck(from);
+      const incoming = decksRef.current[to];
+      if (!incoming || !deckReadyRef.current[to]) return false;
+      try {
+        incoming.unMute?.();
+        incoming.setVolume(volumeRef.current ?? 100);
+        incoming.playVideo();
+      } catch {
+        return false;
+      }
+      try {
+        decksRef.current[from]?.pauseVideo();
+      } catch {}
+
+      activeDeckRef.current = to;
+      currentVideoRef.current = videoId;
+      desiredPlayingRef.current = true;
+      lastLoadAtRef.current = Date.now();
+      preloadedVideoRef.current = null;
+      preloadedForRef.current = null;
+      preloadRetryAtRef.current = 0;
+      setVisibleDeck(to);
+      setIdle(false);
+      pendingVideoRef.current = null;
+      onTrackChange?.({ videoId, isPlaying: true });
+      broadcastState({ video_id: videoId, is_playing: true, progress_ms: 0, duration_ms: null });
+      scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
+      return true;
+    },
+    [onTrackChange, broadcastState, scheduleNudges]
+  );
+
   // Şarkı bitti / hata verdi → kuyruğu ilerlet, dönen videoyu yükle
   const advance = useCallback(
     async (payload: Record<string, unknown>) => {
@@ -567,13 +622,27 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       try {
         let result = await api(payload);
         // Ağ/sunucu hatası "kuyruk boş" DEĞİLDİR: tek denemede idle'a düşmek
-        // geçici bir kesintiyi sessizliğe çeviriyordu — kısa aralıkla tekrar dene
-        for (let i = 0; !result && !blockedRef.current && i < 2; i++) {
+        // geçici bir kesintiyi sessizliğe çeviriyordu — kısa aralıkla tekrar dene.
+        // Tamponda sıradaki şarkı hazır bekliyorsa beklemeye hiç girmeyiz;
+        // müzik anında devam eder, kuyruk sonradan eşitlenir.
+        for (
+          let i = 0;
+          !result && !blockedRef.current && !preloadedVideoRef.current && i < 2;
+          i++
+        ) {
           await new Promise((resolve) => setTimeout(resolve, 1_200));
           result = await api(payload);
         }
         if (result?.started && result.video_id) {
-          loadVideo(result.video_id);
+          // Tamponda duruyorsa oradan çal, yoksa normal yükle
+          if (!playPreloaded(result.video_id)) loadVideo(result.video_id);
+        } else if (!result && !blockedRef.current && preloadedVideoRef.current) {
+          // Sunucuya ulaşılamıyor AMA sıradaki şarkıyı önceden öğrenip tampona
+          // almıştık: müzik susmasın, onu çal. Kuyruk sunucuda ilerlemedi;
+          // bağlantı dönünce reconcile eşitler (bkz. syncOfflineFallback).
+          const fallback = preloadedVideoRef.current;
+          if (!playPreloaded(fallback)) loadVideo(fallback);
+          offlineFallbackRef.current = true;
         } else if (!blockedRef.current) {
           // Yalnızca gerçekten sıradaki yoksa idle'a düş. Oturum düşmesi ya da
           // sahiplik kaybı "kuyruk boş" değildir; kendi ekranını gösterir.
@@ -582,6 +651,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           desiredPlayingRef.current = false;
           preloadedVideoRef.current = null;
           preloadedForRef.current = null;
+          preloadRetryAtRef.current = 0;
+          offlineFallbackRef.current = false;
           setIdle(true);
           onTrackChange?.({ videoId: null, isPlaying: false });
           broadcastState({ video_id: null, is_playing: false, progress_ms: 0 });
@@ -590,7 +661,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         advancingRef.current = false;
       }
     },
-    [api, loadVideo, onTrackChange, endCrossfade, broadcastState]
+    [api, loadVideo, onTrackChange, endCrossfade, broadcastState, playPreloaded]
   );
 
   // Sıradaki videoyu boştaki deck'e tampona al. Kuyruk TÜKETİLMEZ (peek): geçiş
@@ -598,13 +669,22 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // video farklı olur; o durumda tampon boşa gider, ses akışı bozulmaz.
   const preloadNext = useCallback(async () => {
     const anchor = currentVideoRef.current;
-    if (!anchor || preloadedForRef.current === anchor) return;
+    if (!anchor) return;
+    // Bu şarkı için tampon zaten hazır
+    if (preloadedVideoRef.current && preloadedForRef.current === anchor) return;
+    // Başarısız denemeden sonra hemen tekrar deneme
+    if (Date.now() < preloadRetryAtRef.current) return;
+    preloadRetryAtRef.current = Date.now() + PRELOAD_RETRY_MS;
     preloadedForRef.current = anchor;
 
     const result = await api({ action: "peek" });
     const videoId = result?.video_id;
-    // Şarkı bu arada değiştiyse tampon geçersiz
-    if (!videoId || currentVideoRef.current !== anchor) return;
+    // Şarkı bu arada değiştiyse tampon geçersiz. Çevrimdışı yedekle çalarken
+    // kuyruk sunucuda ilerlemediği için peek ÇALAN şarkıyı döndürebilir —
+    // onu tampona alırsak şarkı kendini tekrar ederdi.
+    if (!videoId || videoId === currentVideoRef.current || currentVideoRef.current !== anchor) {
+      return;
+    }
 
     const deck = otherDeck(activeDeckRef.current);
     const player = decksRef.current[deck];
@@ -699,13 +779,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     }, FADE_STEP_MS);
   }, [api, endCrossfade, ensurePlaying, sendHeartbeat, onTrackChange, broadcastState]);
 
-  // Kalan süre bekçisi: önyükleme ve geçiş başlangıcı buradan tetiklenir
-  const crossfadeTick = useCallback(() => {
-    const ms = crossfadeMsRef.current;
+  // Çalma bekçisi: sıradakini erkenden tampona alır, geçiş vaktini kollar
+  const playbackTick = useCallback(() => {
     if (
-      ms <= 0 ||
-      !canCrossfadeRef.current ||
-      volumeIgnoredRef.current ||
       fadingRef.current ||
       advancingRef.current ||
       blockedRef.current ||
@@ -720,12 +796,21 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     let duration = 0;
     let position = 0;
     try {
+      // Yalnızca gerçekten çalarken: takılmış/tamponlayan bir şarkı varken
+      // sıradakini indirmek bant genişliğini onunla paylaşır
       if (player.getPlayerState() !== window.YT?.PlayerState.PLAYING) return;
       duration = player.getDuration();
       position = player.getCurrentTime();
     } catch {
       return;
     }
+
+    // Önyükleme crossfade'den BAĞIMSIZDIR: geçiş kapalı olsa da sıradaki şarkı
+    // boştaki deck'te hazır bekler — şarkı değişimi ağa bağımlı olmaktan çıkar
+    if (position >= PRELOAD_AFTER_SEC) preloadNext();
+
+    const ms = crossfadeMsRef.current;
+    if (ms <= 0 || !canCrossfadeRef.current || volumeIgnoredRef.current) return;
     // Süre bilinmiyorsa (canlı yayın, henüz meta gelmemiş) geçiş yapılamaz
     if (!Number.isFinite(duration) || duration <= 0) return;
 
@@ -733,6 +818,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     if (duration < MIN_SONG_FOR_FADE(fadeSec)) return;
 
     const remaining = duration - position;
+    // Emniyet: erken önyükleme bir sebeple atlandıysa geçiş öncesi son şans
     if (remaining <= fadeSec + PRELOAD_LEAD_SEC) preloadNext();
     // Alt sınır: sekme kısılmışken bekçi geç uyanırsa şarkının son kırıntısında
     // geçiş başlatmanın anlamı yok, ENDED zaten devralır
@@ -767,8 +853,38 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
 
   // Emniyet ağı: Realtime kanalı arka plan sekmesinde sessizce kopabilir ve
   // panelden gelen next/play komutları kaçar — now_playing ile mutabakat kur
+  // Çevrimdışıyken kendi kararımızla çaldığımız şarkıyı sunucuyla eşitle.
+  // Kuyruk o sırada ilerlemediği için now_playing hâlâ ÖNCEKİ şarkıyı gösterir;
+  // düz mutabakat bizi geri sardırırdı. Bunun yerine kuyruğu bir ileri alırız:
+  // beklenen durumda sunucu tam da çalmakta olduğumuz şarkıyı döndürür ve
+  // müzikte tek bir kesinti bile olmaz.
+  const syncOfflineFallback = useCallback(async () => {
+    if (!currentVideoRef.current) {
+      offlineFallbackRef.current = false;
+      return;
+    }
+    advancingRef.current = true;
+    let result: PlayerApiResult | null = null;
+    try {
+      result = await api({ action: "next" });
+    } finally {
+      advancingRef.current = false;
+    }
+    // Hâlâ ulaşılamıyor: çalmaya devam, sonraki turda yeniden denenir
+    if (!result) return;
+    offlineFallbackRef.current = false;
+    // Araya öncelikli bir istek girmişse sunucu başka bir şarkı döndürür
+    if (result.started && result.video_id && result.video_id !== currentVideoRef.current) {
+      loadVideo(result.video_id);
+    }
+  }, [api, loadVideo]);
+
   const reconcile = useCallback(async () => {
     if (advancingRef.current || fadingRef.current) return;
+    if (offlineFallbackRef.current) {
+      await syncOfflineFallback();
+      return;
+    }
     const np = await readNowPlaying(supabase, venueDbId);
     if (!np || advancingRef.current || fadingRef.current) return;
     // Realtime kopmuşken değişen ses seviyesi/geçiş süresi de burada yakalanır
@@ -798,7 +914,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         activePlayer()?.pauseVideo();
       } catch {}
     }
-  }, [supabase, venueDbId, loadVideo, nudgePlayback, applyVolume, applyCrossfade, activePlayer]);
+  }, [
+    supabase,
+    venueDbId,
+    loadVideo,
+    nudgePlayback,
+    applyVolume,
+    applyCrossfade,
+    activePlayer,
+    syncOfflineFallback,
+  ]);
 
   // Arka plandan / bfcache'ten dönüşte kaldığı yerden sürdür: sağlık sinyali ve
   // sahiplik tazelenir, açıkça duraklatılmadıysa çalma devam eder.
@@ -1023,12 +1148,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     };
   }, [started, blocked, nudgePlayback, reconcile, enforceVolume, iframeFocused]);
 
-  // Crossfade bekçisi: kalan süreyi izler, önyükler ve geçişi başlatır
+  // Çalma bekçisi: sıradakini önyükler, geçiş vaktini kollar
   useEffect(() => {
     if (!started || blocked) return;
-    const interval = setInterval(crossfadeTick, CROSSFADE_TICK_MS);
+    const interval = setInterval(playbackTick, CROSSFADE_TICK_MS);
     return () => clearInterval(interval);
-  }, [started, blocked, crossfadeTick]);
+  }, [started, blocked, playbackTick]);
 
   // HIZLI HAT: panelin oynat/duraklat/atla/ses komutları doğrudan buraya düşer.
   // Aşağıdaki now_playing aboneliği yerini almaz — o kalıcı ve garanti yol, bu
@@ -1112,6 +1237,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         (payload: { new: NowPlayingRow }) => {
           // Sahiplik kaybedildiyse dinlemeye devam etme — sesi açan taraf sahip
           if (blockedRef.current === "claim") return;
+          // Çevrimdışı yedekle çalıyoruz: satırdaki şarkı bayat, bu güncelleme
+          // bizi bir önceki şarkıya geri sardırmasın. Eşitlemeyi reconcile yapar.
+          if (offlineFallbackRef.current) return;
           const np = payload.new;
           // Ses seviyesi her daldan önce uygulanır: şarkı değişimiyle aynı
           // güncellemede gelse bile (aşağıdaki dallar return ediyor) kaçmasın.

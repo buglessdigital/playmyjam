@@ -50,13 +50,18 @@ export async function resetAutoQueue(venueId: string): Promise<void> {
 export async function clearAutoQueue(venueId: string): Promise<void> {
   // Sıralı modda bu satırlar "tüketildi" diye işaretlenmişti; hiç çalmadan
   // düştükleri için tüketim de geri alınır, yoksa şarkılar bu turu ıskalar.
-  const { data: pending } = await supabaseAdmin
-    .from("queue")
-    .select("id, song_id, source_playlist_id")
-    .eq("venue_id", venueId)
-    .eq("status", "queued")
-    .is("user_id", null)
-    .eq("added_by", AUTO_ADDED_BY);
+  // Tüketim geri alınırken tur numarası da lazım; satırlardan bağımsız olduğu
+  // için aynı anda okunur (art arda iki tur beklemek yerine tek tur).
+  const [{ data: pending }, { data: state }] = await Promise.all([
+    supabaseAdmin
+      .from("queue")
+      .select("id, song_id, source_playlist_id")
+      .eq("venue_id", venueId)
+      .eq("status", "queued")
+      .is("user_id", null)
+      .eq("added_by", AUTO_ADDED_BY),
+    supabaseAdmin.from("playlist_rotation").select("cycle").eq("venue_id", venueId).maybeSingle(),
+  ]);
 
   await supabaseAdmin
     .from("queue")
@@ -68,12 +73,6 @@ export async function clearAutoQueue(venueId: string): Promise<void> {
 
   const sourced = (pending ?? []).filter((r) => r.source_playlist_id);
   if (sourced.length > 0) {
-    const { data: state } = await supabaseAdmin
-      .from("playlist_rotation")
-      .select("cycle")
-      .eq("venue_id", venueId)
-      .maybeSingle();
-
     const cycle = state?.cycle ?? 1;
     const byList = new Map<string, string[]>();
     for (const row of sourced) {
@@ -109,21 +108,23 @@ async function pickFromRotation(
   needed: number,
   ctx: EligibilityContext
 ): Promise<RotationPick[] | null> {
-  const { data: allLists } = await supabaseAdmin
-    .from("playlists")
-    .select("id, queue_position, play_once, shuffle, created_at")
-    .eq("venue_id", venueId)
-    .order("queue_position", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true });
+  // Listeler ve imleç birbirine bağlı değil — birlikte okunur
+  const [{ data: allLists }, { data: state }] = await Promise.all([
+    supabaseAdmin
+      .from("playlists")
+      .select("id, queue_position, play_once, shuffle, created_at")
+      .eq("venue_id", venueId)
+      .order("queue_position", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true }),
+    supabaseAdmin
+      .from("playlist_rotation")
+      .select("playlist_id, cycle")
+      .eq("venue_id", venueId)
+      .maybeSingle(),
+  ]);
 
   const active = (allLists ?? []).filter((p) => p.queue_position !== null);
   if (active.length === 0) return null;
-
-  const { data: state } = await supabaseAdmin
-    .from("playlist_rotation")
-    .select("playlist_id, cycle")
-    .eq("venue_id", venueId)
-    .maybeSingle();
 
   let cycle = state?.cycle ?? 1;
   const startCycle = cycle;
@@ -325,30 +326,66 @@ async function pickFromRotation(
 }
 
 export async function fillQueueToTen(venueId: string): Promise<void> {
-  // Current queued count (playing is separate status, not counted)
-  const { count: totalQueued } = await supabaseAdmin
-    .from("queue")
-    .select("id", { count: "exact", head: true })
-    .eq("venue_id", venueId)
-    .eq("status", "queued");
+  // Dolumun okumaları birbirine bağlı değil — hepsi tek turda gider. Ardışık
+  // yapıldığında beş tur ediyordu ve "play'e bastım, sıra geç güncellendi"
+  // şikayetinin büyük kısmı buradan geliyordu.
+  //
+  // 30 dk kuralı "eklenemez" değil "çalmaz": müşteri isteğiyle son 30 dk içinde
+  // çalmaya başlamış şarkılar otomatik doldurmaya da girmez. auto-fill'in kendi
+  // çaldıkları bu kurala girmez (user_id null) — onlar hemen tekrar seçilebilir.
+  // played_at hep started_at'ten sonra olduğu için played_at filtresi üst küme;
+  // asıl çapa (başlangıç anı) aşağıda süzülür.
+  const cutoff = Date.now() - COOLDOWN_MS;
+  const [{ data: queuedRows }, { data: playingNow }, { data: recentUserPlays }, { data: venueSongs }] =
+    await Promise.all([
+      // Sayım da bu satırlardan çıkar: ayrı bir count sorgusu atılmaz
+      supabaseAdmin
+        .from("queue")
+        .select("id, song_id, user_id, added_by, position")
+        .eq("venue_id", venueId)
+        .eq("status", "queued"),
+      supabaseAdmin
+        .from("queue")
+        .select("song_id, user_id")
+        .eq("venue_id", venueId)
+        .eq("status", "playing")
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("queue")
+        .select("song_id, started_at, played_at")
+        .eq("venue_id", venueId)
+        .eq("status", "played")
+        .not("user_id", "is", null)
+        .gte("played_at", new Date(cutoff).toISOString()),
+      // Çalınabilir katalog: çalınamaz işaretlenen (embed kapalı) ve müşteriye
+      // kapatılmış şarkılar girmez.
+      fetchAllRows<{ song_id: string }>((from, to) =>
+        supabaseAdmin
+          .from("venue_songs")
+          .select("song_id, songs!inner(embeddable)")
+          .eq("venue_id", venueId)
+          .eq("in_venue_list", true)
+          .eq("songs.embeddable", true)
+          .order("song_id", { ascending: true })
+          .range(from, to)
+      ),
+    ]);
 
-  const current = totalQueued ?? 0;
+  const queued = queuedRows ?? [];
+  const current = queued.length;
 
   // If over target, trim excess auto-fill songs (customer songs are never removed
-  // here; adminin elle eklediği satırlar da korunur — added_by filtresi)
+  // here; adminin elle eklediği satırlar da korunur — added_by filtresi).
+  // Budanacak satırlar elde olan listeden seçilir, ikinci bir sorgu gerekmez.
   if (current > QUEUE_TARGET) {
     const excess = current - QUEUE_TARGET;
-    const { data: autoFills } = await supabaseAdmin
-      .from("queue")
-      .select("id")
-      .eq("venue_id", venueId)
-      .eq("status", "queued")
-      .is("user_id", null)
-      .eq("added_by", AUTO_ADDED_BY)
-      .order("position", { ascending: false })
-      .limit(excess);
+    const autoFills = queued
+      .filter((r) => r.user_id === null && r.added_by === AUTO_ADDED_BY)
+      .sort((a, b) => (b.position ?? 0) - (a.position ?? 0))
+      .slice(0, excess);
 
-    if (autoFills?.length) {
+    if (autoFills.length > 0) {
       await supabaseAdmin
         .from("queue")
         .update({ status: "removed" })
@@ -360,40 +397,9 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
   const needed = QUEUE_TARGET - current;
   if (needed <= 0) return;
 
-  // Song IDs already in queue — don't add duplicates
-  const { data: currentQueue } = await supabaseAdmin
-    .from("queue")
-    .select("song_id")
-    .eq("venue_id", venueId)
-    .eq("status", "queued");
-
-  const inQueueIds = new Set((currentQueue ?? []).map((r) => r.song_id));
-
-  // Exclude the currently playing song
-  const { data: playingNow } = await supabaseAdmin
-    .from("queue")
-    .select("song_id, user_id")
-    .eq("venue_id", venueId)
-    .eq("status", "playing")
-    .limit(1)
-    .maybeSingle();
-
-  const excludeIds = new Set(inQueueIds);
+  // Song IDs already in queue — don't add duplicates. Exclude the playing song.
+  const excludeIds = new Set(queued.map((r) => r.song_id));
   if (playingNow?.song_id) excludeIds.add(playingNow.song_id);
-
-  // 30 dk kuralı "eklenemez" değil "çalmaz": müşteri isteğiyle son 30 dk içinde
-  // çalmaya başlamış şarkılar otomatik doldurmaya da girmez. auto-fill'in kendi
-  // çaldıkları bu kurala girmez (user_id null) — onlar hemen tekrar seçilebilir.
-  // played_at hep started_at'ten sonra olduğu için played_at filtresi üst küme;
-  // asıl çapa (başlangıç anı) burada süzülür.
-  const cutoff = Date.now() - COOLDOWN_MS;
-  const { data: recentUserPlays } = await supabaseAdmin
-    .from("queue")
-    .select("song_id, started_at, played_at")
-    .eq("venue_id", venueId)
-    .eq("status", "played")
-    .not("user_id", "is", null)
-    .gte("played_at", new Date(cutoff).toISOString());
 
   const cooldownIds = new Set(
     (recentUserPlays ?? [])
@@ -403,19 +409,6 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
   // Çalmakta olan müşteri şarkısı da kilitli (zaten excludeIds'de ama bittiğinde
   // bir sonraki dolumda played satırı üzerinden yakalanır)
   if (playingNow?.user_id && playingNow.song_id) cooldownIds.add(playingNow.song_id);
-
-  // Çalınabilir katalog: çalınamaz işaretlenen (embed kapalı) ve müşteriye
-  // kapatılmış şarkılar girmez.
-  const { data: venueSongs } = await fetchAllRows<{ song_id: string }>((from, to) =>
-    supabaseAdmin
-      .from("venue_songs")
-      .select("song_id, songs!inner(embeddable)")
-      .eq("venue_id", venueId)
-      .eq("in_venue_list", true)
-      .eq("songs.embeddable", true)
-      .order("song_id", { ascending: true })
-      .range(from, to)
-  );
 
   // Otomatik çalma önce playlist kuyruğundan geçer (0037): sıraya alınmış listeler
   // queue_position sırasıyla tüketilir, sonuncu bitince başa dönülür.
@@ -458,7 +451,15 @@ export async function fillQueueToTen(venueId: string): Promise<void> {
 //
 // Kuyrukta kalanların sırası korunur, yalnızca 1..n olarak sıkıştırılır.
 // Liste kuyrukta değilse önce kuyruğa alınır: play "sıraya ekle + şimdi çal".
-export async function playPlaylistNow(venueId: string, playlistId: string): Promise<void> {
+//
+// refillQueue=false: imleç taşınır ama bekleyen otomatik şarkılar yenilenmez.
+// Çağıran taraf dolumu yanıttan SONRA (after) çalıştırmak istediğinde kullanılır —
+// panel düğmesi 20+ DB turunu beklemesin diye.
+export async function playPlaylistNow(
+  venueId: string,
+  playlistId: string,
+  options?: { refillQueue?: boolean }
+): Promise<void> {
   const [{ data: playlist }, { data: state }, { data: queued }] = await Promise.all([
     supabaseAdmin
       .from("playlists")
@@ -523,24 +524,25 @@ export async function playPlaylistNow(venueId: string, playlistId: string): Prom
             .eq("playlist_id", dropId),
         ]
       : []),
+    // Liste baştan çalsın: bu turda tüketilmiş sayılan şarkıları serbest bırak.
+    // Yukarıdaki güncellemelerden bağımsız (hedef liste dropId olamaz), o yüzden
+    // ayrı bir tur beklemeden aynı partide gider.
+    supabaseAdmin
+      .from("playlist_rotation_consumed")
+      .delete()
+      .eq("venue_id", venueId)
+      .eq("cycle", cycle)
+      .eq("playlist_id", playlistId),
+    supabaseAdmin.from("playlist_rotation").upsert(
+      { venue_id: venueId, playlist_id: playlistId, cycle, updated_at: new Date().toISOString() },
+      { onConflict: "venue_id" }
+    ),
   ]);
-
-  // Liste baştan çalsın: bu turda tüketilmiş sayılan şarkıları serbest bırak.
-  await supabaseAdmin
-    .from("playlist_rotation_consumed")
-    .delete()
-    .eq("venue_id", venueId)
-    .eq("cycle", cycle)
-    .eq("playlist_id", playlistId);
-
-  await supabaseAdmin.from("playlist_rotation").upsert(
-    { venue_id: venueId, playlist_id: playlistId, cycle, updated_at: new Date().toISOString() },
-    { onConflict: "venue_id" }
-  );
 
   // Kuyrukta bekleyen otomatik şarkılar yeni listeden yeniden seçilir. Sahnede
   // çalan şarkıya, müşteri isteklerine ve adminin elle eklediklerine dokunulmaz —
   // yani hiçbir şarkı yarıda kesilmez, sıradaki şarkıdan itibaren bu liste çalar.
+  if (options?.refillQueue === false) return;
   await resetAutoQueue(venueId);
 }
 

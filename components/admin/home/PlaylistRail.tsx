@@ -28,6 +28,7 @@ export default function PlaylistRail({
     playlists,
     visiblePlaylists,
     queueLists,
+    turnByList,
     currentList,
     playNow,
     consumed,
@@ -103,8 +104,9 @@ export default function PlaylistRail({
           const matches = filtering ? matchCountFor(p.id) : total;
           const source = sourceByList[p.id];
           // Numara yalnızca çalma kuyruğundaki listelerde; sıradışı listelerin
-          // sırada yeri yoktur.
-          const turn = p.queue_position !== null ? queueLists.findIndex((a) => a.id === p.id) + 1 : 0;
+          // sırada yeri yoktur. Sayı ham kuyruk konumu değil "kaç tur sonra
+          // çalacak": çalan liste 0 (rozette play işareti), hemen sıradaki 1.
+          const turn = p.queue_position !== null ? turnByList[p.id] ?? 0 : -1;
           const isCurrent = currentList?.id === p.id;
           const done = consumed[p.id] ?? 0;
 
@@ -146,14 +148,20 @@ export default function PlaylistRail({
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    {turn > 0 ? (
+                    {turn >= 0 ? (
                       <span
                         className="w-4 h-4 rounded-md shrink-0 text-[10px] font-bold flex items-center justify-center"
                         style={{
                           background: isCurrent ? "#22c55e" : "rgba(34,197,94,0.15)",
                           color: isCurrent ? "#0b1220" : "#22c55e",
                         }}
-                        title={isCurrent ? "Şu an bu liste çalıyor" : `Çalma sırası: ${turn}`}
+                        title={
+                          isCurrent
+                            ? "Şu an bu liste çalıyor"
+                            : turn === 1
+                              ? "Sıradaki liste — çalan liste bitince başlar"
+                              : `${turn} liste sonra çalacak`
+                        }
                       >
                         {isCurrent ? (
                           <svg width="8" height="8" viewBox="0 0 24 24" fill="#0b1220">

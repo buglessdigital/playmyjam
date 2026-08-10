@@ -92,56 +92,27 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState("");
 
-  const fetchAll = useCallback(
+  // Aynı anda birden fazla tam yükleme başlamasın: biri uçarken gelen istek ona
+  // bağlanır, uçuş sırasında yeni olay geldiyse bitiminde bir kez daha koşar.
+  // Öncesinde tek yazma iki tam yükleme doğuruyordu (kendi tazelememiz + aynı
+  // yazmanın Realtime yankısı).
+  const inFlightRef = useRef<Promise<void> | null>(null);
+  const staleRef = useRef(false);
+
+  // Yalnızca "hangi liste çalıyor + bu turda kaç şarkı çalındı". İki hafif sorgu:
+  // imleci değiştiren düğmeler (play, sıraya al, karıştır) tüm katalogu yeniden
+  // çekmek yerine bunu çağırır.
+  const fetchRotation = useCallback(
     async (venueDbIdArg: string) => {
-      type VenueSongRow = {
-        id: string;
-        play_count: number;
-        in_venue_list: boolean;
-        songs: Omit<Song, "venueSongId" | "play_count" | "in_venue_list"> | null;
-      };
+      const { data: rotationRow } = await supabase
+        .from("playlist_rotation")
+        .select("playlist_id, cycle")
+        .eq("venue_id", venueDbIdArg)
+        .maybeSingle();
 
-      // Katalog ve üyelikler sayfalı çekilir: PostgREST tek yanıtta 1000 satırda
-      // kesiyor ve çok listeli mekanlarda içe aktarılan playlist eksik görünüyordu.
-      const [catalog, lists, members, sources, rotationRow] = await Promise.all([
-        fetchAllRows<VenueSongRow>((from, to) =>
-          supabase
-            .from("venue_songs")
-            .select("id, play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
-            .eq("venue_id", venueDbIdArg)
-            .order("added_at", { ascending: false })
-            .order("id", { ascending: true })
-            .range(from, to)
-        ),
-        supabase
-          .from("playlists")
-          .select("id, name, queue_position, play_once, sort_order, shuffle, customer_visible")
-          .eq("venue_id", venueDbIdArg)
-          .order("sort_order", { ascending: true }),
-        fetchAllRows<{ playlist_id: string; song_id: string; position: number }>((from, to) =>
-          supabase
-            .from("playlist_songs")
-            .select("playlist_id, song_id, position")
-            .eq("venue_id", venueDbIdArg)
-            .order("position", { ascending: true })
-            .order("song_id", { ascending: true })
-            .range(from, to)
-        ),
-        supabase
-          .from("playlist_sources")
-          .select("playlist_id, youtube_playlist_id, auto_sync, last_synced_at, last_added, last_error")
-          .eq("venue_id", venueDbIdArg),
-        supabase
-          .from("playlist_rotation")
-          .select("playlist_id, cycle")
-          .eq("venue_id", venueDbIdArg)
-          .maybeSingle(),
-      ]);
-
-      const rot = (rotationRow.data as Rotation | null) ?? null;
+      const rot = (rotationRow as Rotation | null) ?? null;
       setRotation(rot);
 
-      // Bu turda hangi listeden kaç şarkı çalındı — ilerleme göstergesi
       const { data: consumedRows } = await fetchAllRows<{ playlist_id: string }>((from, to) =>
         supabase
           .from("playlist_rotation_consumed")
@@ -157,37 +128,133 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
         counts[row.playlist_id] = (counts[row.playlist_id] ?? 0) + 1;
       }
       setConsumed(counts);
-
-      {
-        const rows = catalog.data;
-        setSongs(
-          rows
-            .filter((vs) => vs.songs)
-            .map((vs) => ({ ...vs.songs!, venueSongId: vs.id, play_count: vs.play_count, in_venue_list: vs.in_venue_list }))
-        );
-      }
-      if (lists.data) setPlaylists(lists.data as Playlist[]);
-      if (sources.data) {
-        setSourceByList(Object.fromEntries((sources.data as PlaylistSource[]).map((s) => [s.playlist_id, s])));
-      }
-      {
-        const map: Record<string, string[]> = {};
-        const order: Record<string, Record<string, number>> = {};
-        for (const m of members.data) {
-          (map[m.song_id] ??= []).push(m.playlist_id);
-          (order[m.playlist_id] ??= {})[m.song_id] = m.position;
-        }
-        setMemberships(map);
-        setPositions(order);
-      }
-      setLoading(false);
     },
     [supabase]
   );
 
+  // Katalog: sayfalı çekilir çünkü PostgREST tek yanıtta 1000 satırda kesiyor.
+  // En pahalı yükleme bu — 1200 şarkılık mekanda iki sayfa + büyük JSON.
+  const fetchCatalog = useCallback(
+    async (venueDbIdArg: string) => {
+      type VenueSongRow = {
+        id: string;
+        play_count: number;
+        in_venue_list: boolean;
+        songs: Omit<Song, "venueSongId" | "play_count" | "in_venue_list"> | null;
+      };
+
+      const { data } = await fetchAllRows<VenueSongRow>((from, to) =>
+        supabase
+          .from("venue_songs")
+          .select("id, play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
+          .eq("venue_id", venueDbIdArg)
+          .order("added_at", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
+
+      setSongs(
+        data
+          .filter((vs) => vs.songs)
+          .map((vs) => ({ ...vs.songs!, venueSongId: vs.id, play_count: vs.play_count, in_venue_list: vs.in_venue_list }))
+      );
+    },
+    [supabase]
+  );
+
+  // Listeler: tek sorgu, birkaç düzine satır. Play/sıraya al/ad değişikliği
+  // yalnızca bunu tazeler — katalogu değil.
+  const fetchPlaylists = useCallback(
+    async (venueDbIdArg: string) => {
+      const { data } = await supabase
+        .from("playlists")
+        .select("id, name, queue_position, play_once, sort_order, shuffle, customer_visible")
+        .eq("venue_id", venueDbIdArg)
+        .order("sort_order", { ascending: true });
+      if (data) setPlaylists(data as Playlist[]);
+    },
+    [supabase]
+  );
+
+  const fetchMembers = useCallback(
+    async (venueDbIdArg: string) => {
+      const { data } = await fetchAllRows<{ playlist_id: string; song_id: string; position: number }>(
+        (from, to) =>
+          supabase
+            .from("playlist_songs")
+            .select("playlist_id, song_id, position")
+            .eq("venue_id", venueDbIdArg)
+            .order("position", { ascending: true })
+            .order("song_id", { ascending: true })
+            .range(from, to)
+      );
+
+      const map: Record<string, string[]> = {};
+      const order: Record<string, Record<string, number>> = {};
+      for (const m of data) {
+        (map[m.song_id] ??= []).push(m.playlist_id);
+        (order[m.playlist_id] ??= {})[m.song_id] = m.position;
+      }
+      setMemberships(map);
+      setPositions(order);
+    },
+    [supabase]
+  );
+
+  const fetchSources = useCallback(
+    async (venueDbIdArg: string) => {
+      const { data } = await supabase
+        .from("playlist_sources")
+        .select("playlist_id, youtube_playlist_id, auto_sync, last_synced_at, last_added, last_error")
+        .eq("venue_id", venueDbIdArg);
+      if (data) {
+        setSourceByList(Object.fromEntries((data as PlaylistSource[]).map((s) => [s.playlist_id, s])));
+      }
+    },
+    [supabase]
+  );
+
+  const fetchAll = useCallback(
+    async (venueDbIdArg: string) => {
+      await Promise.all([
+        fetchCatalog(venueDbIdArg),
+        fetchPlaylists(venueDbIdArg),
+        fetchMembers(venueDbIdArg),
+        fetchSources(venueDbIdArg),
+        fetchRotation(venueDbIdArg),
+      ]);
+      setLoading(false);
+    },
+    [fetchCatalog, fetchPlaylists, fetchMembers, fetchSources, fetchRotation]
+  );
+
   const refresh = useCallback(async () => {
-    if (venueDbId) await fetchAll(venueDbId);
+    if (!venueDbId) return;
+    // Uçuşta bir yükleme varsa yenisini başlatma — onu bekle, sonucu zaten aynı.
+    if (inFlightRef.current) {
+      staleRef.current = true;
+      return inFlightRef.current;
+    }
+    const run = (async () => {
+      try {
+        await fetchAll(venueDbId);
+        // Yükleme sürerken yeni değişiklik geldiyse bir tur daha
+        while (staleRef.current) {
+          staleRef.current = false;
+          await fetchAll(venueDbId);
+        }
+      } finally {
+        inFlightRef.current = null;
+      }
+    })();
+    inFlightRef.current = run;
+    return run;
   }, [venueDbId, fetchAll]);
+
+  // İmleç/ilerleme tazelemesi: katalogu değil yalnızca rotasyonu okur
+  const refreshRotation = useCallback(() => {
+    if (venueDbId) void fetchRotation(venueDbId);
+  }, [venueDbId, fetchRotation]);
 
   useEffect(() => {
     if (!venueDbId) return;
@@ -195,35 +262,49 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // Hangi tabloların tazelenmesi gerektiği biriktirilir: bir liste değişikliği
+    // (play, sıraya al, ad) yalnızca playlists sorgusunu yeniler — 1200 şarkılık
+    // katalogu yeniden çekmez. Eskiden HER olay tam yükleme tetikliyordu, tıklama
+    // sonrası saniyelerce süren donmanın asıl sebebi buydu.
+    const dirty = new Set<"catalog" | "playlists" | "members" | "sources" | "rotation">();
+
     // Tek işlem çok satır değiştirebiliyor (içe aktarma, liste içi sıralama) —
     // her olayda değil, olay yağmuru dindikten sonra bir kez tazelenir.
-    const scheduleRefresh = () => {
+    const scheduleRefresh = (part: "catalog" | "playlists" | "members" | "sources" | "rotation") => () => {
+      dirty.add(part);
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
         if (cancelled) return;
         // Kaydedilmemiş ya da yolda olan sıra varsa tazeleme beklesin: sunucudan
         // gelen eski sıra kullanıcının ekranındaki taşımaları geri alırdı.
         if (pendingOrderRef.current || savingOrderRef.current) {
-          scheduleRefresh();
+          scheduleRefresh(part)();
           return;
         }
-        fetchAll(venueDbId);
+        const parts = [...dirty];
+        dirty.clear();
+        void Promise.all(
+          parts.map((p) => {
+            if (p === "catalog") return fetchCatalog(venueDbId);
+            if (p === "playlists") return fetchPlaylists(venueDbId);
+            if (p === "members") return fetchMembers(venueDbId);
+            if (p === "sources") return fetchSources(venueDbId);
+            return fetchRotation(venueDbId);
+          })
+        ).catch(() => {});
       }, 300);
     };
 
-    const load = async () => {
-      await fetchAll(venueDbId);
-    };
-    load();
+    void refresh();
 
     channel = supabase
       .channel(`venue_playlists:${venueDbId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "venue_songs", filter: `venue_id=eq.${venueDbId}` }, scheduleRefresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "playlists", filter: `venue_id=eq.${venueDbId}` }, scheduleRefresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "playlist_songs", filter: `venue_id=eq.${venueDbId}` }, scheduleRefresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "playlist_sources", filter: `venue_id=eq.${venueDbId}` }, scheduleRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "venue_songs", filter: `venue_id=eq.${venueDbId}` }, scheduleRefresh("catalog"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "playlists", filter: `venue_id=eq.${venueDbId}` }, scheduleRefresh("playlists"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "playlist_songs", filter: `venue_id=eq.${venueDbId}` }, scheduleRefresh("members"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "playlist_sources", filter: `venue_id=eq.${venueDbId}` }, scheduleRefresh("sources"))
       // Sıralı moddaki "şu an çalan liste — 12/40" göstergesi her dolumda tazelensin
-      .on("postgres_changes", { event: "*", schema: "public", table: "playlist_rotation", filter: `venue_id=eq.${venueDbId}` }, scheduleRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "playlist_rotation", filter: `venue_id=eq.${venueDbId}` }, scheduleRefresh("rotation"))
       .subscribe();
 
     return () => {
@@ -231,7 +312,7 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
       if (refreshTimer) clearTimeout(refreshTimer);
       if (channel) supabase.removeChannel(channel);
     };
-  }, [venueDbId, supabase, fetchAll]);
+  }, [venueDbId, supabase, refresh, fetchCatalog, fetchPlaylists, fetchMembers, fetchSources, fetchRotation]);
 
   // Son taşımanın ardından hemen sayfadan çıkılırsa bekleyen sıra kaybolmasın:
   // keepalive ile sayfa kapanırken de tamamlanacak bir istek yollanır.
@@ -276,10 +357,18 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
   const viewId = selectedList ? selectedId : ALL;
   const selectedSource = selectedList ? sourceByList[selectedList.id] : undefined;
 
-  const countFor = useCallback(
-    (playlistId: string) => songs.reduce((n, s) => n + ((memberships[s.id] ?? []).includes(playlistId) ? 1 : 0), 0),
-    [songs, memberships]
-  );
+  // Liste başına şarkı sayısı tek geçişte çıkarılır. Eskiden her liste satırı
+  // için tüm katalog taranıyordu: 40 liste × 3000 şarkı = her render'da 120 bin
+  // karşılaştırma, üstelik memoize edilmeden.
+  const countsByList = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const song of songs) {
+      for (const pid of memberships[song.id] ?? []) counts[pid] = (counts[pid] ?? 0) + 1;
+    }
+    return counts;
+  }, [songs, memberships]);
+
+  const countFor = useCallback((playlistId: string) => countsByList[playlistId] ?? 0, [countsByList]);
 
   // playlist_id -> kapak için ilk 4 şarkı görseli (liste içi sıraya göre)
   const coversByList = useMemo(() => {
@@ -311,22 +400,51 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     [q]
   );
 
-  // Aramada her listenin kaç eşleşmesi olduğunu yan rayda göstermek için
+  // Aramada her listenin kaç eşleşmesi olduğunu yan rayda göstermek için —
+  // arama yokken zaten toplam sayı, ikinci bir tarama yapılmaz
+  const matchCountsByList = useMemo(() => {
+    if (!q) return countsByList;
+    const counts: Record<string, number> = {};
+    for (const song of songs) {
+      if (!matchesQuery(song)) continue;
+      for (const pid of memberships[song.id] ?? []) counts[pid] = (counts[pid] ?? 0) + 1;
+    }
+    return counts;
+  }, [q, songs, memberships, matchesQuery, countsByList]);
+
   const matchCountFor = useCallback(
-    (playlistId: string) =>
-      songs.reduce((n, s) => n + ((memberships[s.id] ?? []).includes(playlistId) && matchesQuery(s) ? 1 : 0), 0),
-    [songs, memberships, matchesQuery]
+    (playlistId: string) => matchCountsByList[playlistId] ?? 0,
+    [matchCountsByList]
   );
 
   // Raydaki sıralama: önce çalma kuyruğu (çalacakları sırayla), sonra sırada
   // olmayan listeler. Böylece "ne zaman çalacak" sorusunun cevabı yukarıdan
   // aşağı okunur.
+  //
+  // Kuyruk döngüsel: sonuncu bitince başa dönülür. Bu yüzden ham queue_position
+  // sırası "sıradaki kim" sorusuna yanıt vermiyordu — çalan liste ortada kalıp
+  // altındakiler ondan önce çalmış gibi görünüyordu. Dizi imleçten itibaren
+  // döndürülür: en üstte çalan liste, altında çalacakları sırayla ötekiler.
+  const queueRail = useMemo(() => {
+    const at = currentList ? queueLists.findIndex((p) => p.id === currentList.id) : -1;
+    return at > 0 ? [...queueLists.slice(at), ...queueLists.slice(0, at)] : queueLists;
+  }, [queueLists, currentList]);
+
+  // Liste kaç tur sonra çalacak: çalan 0, sıradaki 1...
+  const turnByList = useMemo(() => {
+    const map: Record<string, number> = {};
+    queueRail.forEach((p, i) => {
+      map[p.id] = i;
+    });
+    return map;
+  }, [queueRail]);
+
   const railLists = useMemo(() => {
     const idle = playlists
       .filter((p) => p.queue_position === null)
       .sort((a, b) => a.sort_order - b.sort_order);
-    return [...queueLists, ...idle];
-  }, [playlists, queueLists]);
+    return [...queueRail, ...idle];
+  }, [playlists, queueRail]);
 
   // Raydaki listeler: ad araması süzer, seçili liste her zaman görünür kalır
   const listQ = normalize(listQuery.trim());
@@ -392,7 +510,31 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
       const data = await res.json().catch(() => ({}));
       return { ok: false as const, error: (data.error as string) ?? "Kaldırılamadı" };
     }
-    await refresh();
+
+    // Ekran sunucu turunu beklemeden düzelir: tüm katalogu yeniden çekmek yerine
+    // yalnızca bu şarkının üyelikleri düşülür. Gerçek satırlar Realtime ile
+    // birazdan zaten gelecek.
+    const remaining = playlistId ? (memberships[song.id] ?? []).filter((id) => id !== playlistId) : [];
+    setMemberships((prev) => {
+      const next = { ...prev };
+      if (remaining.length > 0) next[song.id] = remaining;
+      else delete next[song.id];
+      return next;
+    });
+    setPositions((prev) => {
+      const next = { ...prev };
+      for (const pid of playlistId ? [playlistId] : memberships[song.id] ?? []) {
+        if (!next[pid]) continue;
+        const rest = { ...next[pid] };
+        delete rest[song.id];
+        next[pid] = rest;
+      }
+      return next;
+    });
+    // Hiçbir listede kalmadıysa katalogdan da düşer (0026 trigger'ı)
+    if (remaining.length === 0) {
+      setSongs((prev) => prev.filter((s) => s.venueSongId !== song.venueSongId));
+    }
     return { ok: true as const };
   };
 
@@ -416,7 +558,15 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false as const, error: (data.error as string) ?? "Eklenemedi" };
-    await refresh();
+
+    // Şarkı zaten katalogda; değişen tek şey yeni üyelik. Listenin sonuna girer
+    // (sunucu da öyle yazıyor), tam yükleme gerekmez.
+    setMemberships((prev) => ({ ...prev, [song.id]: [...(prev[song.id] ?? []), playlistId] }));
+    setPositions((prev) => {
+      const list = prev[playlistId] ?? {};
+      const last = Object.values(list).reduce((max, pos) => Math.max(max, pos), 0);
+      return { ...prev, [playlistId]: { ...list, [song.id]: last + 1 } };
+    });
     return { ok: true as const };
   };
 
@@ -438,21 +588,56 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
       );
       return;
     }
-    await refresh();
+    // Kuyruk sırası ve imleç değişti — katalog değişmedi: yalnızca rotasyon okunur
+    refreshRotation();
   };
 
   // Play: imleç bu listeye atlar, liste baştan başlar. O ana kadar çalan liste
   // kuyruktan düşer — yani bu liste bitince sıradaki liste gelir, çalması kesilen
   // liste başa dönmez. Sahnedeki şarkı kesilmez, müşteri istekleri etkilenmez.
   const playNow = async (playlist: Playlist) => {
+    // Ekran sunucuyu beklemeden değişir: "Çalıyor" rozeti bu listeye geçer,
+    // ilerleme sıfırlanır, o ana kadar çalan liste kuyruktan düşer. Sunucudaki
+    // playPlaylistNow ile birebir aynı kural — yanıt gelince gerçek satırlar
+    // üzerine yazar, hata gelirse hepsi geri alınır.
+    const previousPlaylists = playlists;
+    const previousRotation = rotation;
+    const previousConsumed = consumed;
+
+    const playing = queueLists.find((p) => p.id === rotation?.playlist_id) ?? queueLists[0] ?? null;
+    const dropId = playing && playing.id !== playlist.id ? playing.id : null;
+    const remaining = queueLists.filter((p) => p.id !== dropId);
+    if (!remaining.some((p) => p.id === playlist.id)) remaining.push(playlist);
+    const positionById = new Map(remaining.map((p, i) => [p.id, i + 1]));
+
+    setPlaylists((prev) =>
+      prev.map((p) =>
+        p.id === dropId
+          ? { ...p, queue_position: null }
+          : positionById.has(p.id)
+            ? { ...p, queue_position: positionById.get(p.id)! }
+            : p
+      )
+    );
+    setRotation({ playlist_id: playlist.id, cycle: rotation?.cycle ?? 1 });
+    setConsumed((prev) => {
+      const next = { ...prev, [playlist.id]: 0 };
+      if (dropId) delete next[dropId];
+      return next;
+    });
+
     const res = await fetch("/api/admin/playlists", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ playlist_id: playlist.id, play: true }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false as const, error: (data.error as string) ?? "Çalınamadı" };
-    await refresh();
+    if (!res.ok) {
+      setPlaylists(previousPlaylists);
+      setRotation(previousRotation);
+      setConsumed(previousConsumed);
+      return { ok: false as const, error: (data.error as string) ?? "Çalınamadı" };
+    }
     return { ok: true as const };
   };
 
@@ -496,7 +681,12 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     const group = railLists.filter((p) => (p.queue_position !== null) === queued);
     const from = group.findIndex((p) => p.id === playlist.id);
     if (from < 0) return;
-    const target = Math.min(group.length - 1, Math.max(0, to));
+    // Çalan liste rayın tepesinde sabit: ne kendisi taşınır ne de üstüne geçilir.
+    // (Kuyruk döngüsel olduğu için "çalanın üstü" diye bir yer zaten yok — oraya
+    // taşımak hiçbir şeyi değiştirmezdi.)
+    const pinned = queued && group.length > 0;
+    if (pinned && from === 0) return;
+    const target = Math.min(group.length - 1, Math.max(pinned ? 1 : 0, to));
     if (target === from) return;
 
     const next = [...group];
@@ -601,7 +791,9 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
       setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, shuffle: !next } : p)));
       return;
     }
-    await refresh();
+    // Yalnızca bekleyen otomatik şarkılar yeniden seçildi (sunucuda, yanıttan
+    // sonra) — katalog aynı. İlerleme göstergesi için rotasyon yeter.
+    refreshRotation();
   };
 
   const syncNow = async (playlist: Playlist) => {
@@ -672,10 +864,31 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ playlist_id: playlist.id }),
     });
-    if (res.ok) {
-      setSelectedId(ALL);
-      await refresh();
+    if (!res.ok) return;
+
+    // Ekran anında düzelir: liste, üyelikleri ve yalnızca bu listede olan
+    // şarkılar (0026 trigger'ı katalogdan da düşürür) yerel olarak temizlenir.
+    setSelectedId(ALL);
+    setPlaylists((prev) => prev.filter((p) => p.id !== playlist.id));
+    setPositions((prev) => {
+      const next = { ...prev };
+      delete next[playlist.id];
+      return next;
+    });
+    setSourceByList((prev) => {
+      const next = { ...prev };
+      delete next[playlist.id];
+      return next;
+    });
+    const nextMemberships: Record<string, string[]> = {};
+    const orphaned = new Set<string>();
+    for (const [songId, lists] of Object.entries(memberships)) {
+      const remaining = lists.filter((id) => id !== playlist.id);
+      if (remaining.length > 0) nextMemberships[songId] = remaining;
+      else orphaned.add(songId);
     }
+    setMemberships(nextMemberships);
+    setSongs((prev) => prev.filter((s) => !orphaned.has(s.id)));
   };
 
   return {
@@ -687,6 +900,7 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     visibleSongs,
     railLists,
     queueLists,
+    turnByList,
     currentList,
     selectedList,
     selectedSource,
@@ -733,6 +947,7 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     renameList,
     deleteList,
     refresh,
+    refreshRotation,
   };
 }
 

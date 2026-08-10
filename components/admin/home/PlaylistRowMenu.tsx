@@ -70,7 +70,11 @@ export default function PlaylistRowMenu({
   const queued = playlist.queue_position !== null;
   const ordered = railLists.filter((p) => (p.queue_position !== null) === queued);
   const index = ordered.findIndex((p) => p.id === playlist.id);
-  const first = index <= 0;
+  // Kuyrukta ilk sıra çalan listenindir ve sabittir: ne o taşınır ne de üstüne
+  // bir liste geçebilir. Sıradışı listelerde böyle bir çıpa yok.
+  const pinned = queued && index === 0;
+  const top = queued ? 1 : 0;
+  const first = index <= top;
   const last = index === ordered.length - 1;
 
   const move = (to: number) => {
@@ -114,7 +118,11 @@ export default function PlaylistRowMenu({
             <div className="px-3 py-2 border-b border-white/10">
               <p className="text-white text-xs font-semibold truncate">{playlist.name}</p>
               <p className="text-[#6b7280] text-[11px]">
-                {queued ? `Çalma sırası: ${index + 1}/${ordered.length}` : "Sırada değil"}
+                {pinned
+                  ? "Şu an çalıyor"
+                  : queued
+                    ? `Çalma sırası: ${index}/${ordered.length - 1}`
+                    : "Sırada değil"}
               </p>
             </div>
 
@@ -154,7 +162,11 @@ export default function PlaylistRowMenu({
 
               <div className="my-1 h-px bg-white/10" />
 
-              {orderable ? (
+              {pinned ? (
+                <p className="px-3 py-2 text-[11px] text-[#6b7280]">
+                  Bu liste çalıyor — sırada hep en üstte durur.
+                </p>
+              ) : orderable ? (
                 <>
                   <button onClick={() => move(index - 1)} disabled={first || reordering} className={itemClass} style={{ color: "#e5e7eb" }}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M6 15l6-6 6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -164,7 +176,7 @@ export default function PlaylistRowMenu({
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                     Aşağı taşı
                   </button>
-                  <button onClick={() => move(0)} disabled={first || reordering} className={itemClass} style={{ color: "#e5e7eb" }}>
+                  <button onClick={() => move(top)} disabled={first || reordering} className={itemClass} style={{ color: "#e5e7eb" }}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 4h16M6 14l6-6 6 6M12 8v12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                     En üste taşı
                   </button>

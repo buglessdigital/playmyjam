@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import FitTitle from "./FitTitle";
 import ListCover from "./ListCover";
 import SongRowMenu from "./SongRowMenu";
@@ -13,6 +13,87 @@ function formatTotal(ms: number) {
   const minutes = Math.round(ms / 60000);
   const hours = Math.floor(minutes / 60);
   return hours > 0 ? `${hours} sa. ${minutes % 60} dk.` : `${minutes} dk.`;
+}
+
+// Binlerce şarkılık katalogda satırların tamamını DOM'a basmak paneli
+// yavaşlatıyordu: her durum değişikliği (bir düğmeye basmak dahil) tüm listeyi
+// yeniden çizdiriyor, her satırda kapak görseli ve menü bileşeni vardı. Artık
+// yalnızca ekrandaki pencere + tampon çiziliyor, üstte/altta boşluk bırakan iki
+// dolgu div'i kaydırma çubuğunu doğru tutuyor.
+//
+// Eşiğin altındaki listeler olduğu gibi çizilir — kısa listede pencereleme hem
+// gereksiz hem de sürükle-bırakta risk.
+const VIRTUAL_THRESHOLD = 60;
+const OVERSCAN = 10;
+const ROW_HEIGHT_FALLBACK = 61;
+
+function useRowWindow(count: number, enabled: boolean) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [range, setRange] = useState({
+    rowHeight: ROW_HEIGHT_FALLBACK,
+    start: 0,
+    end: VIRTUAL_THRESHOLD,
+  });
+
+  const measure = useCallback(() => {
+    const scroller = scrollRef.current;
+    const list = listRef.current;
+    if (!scroller || !list) return;
+
+    // Satır yüksekliği ekrandaki gerçek satırdan okunur: yazı tipi ya da dolgu
+    // değişirse sabit bir sayı listeyi kaydırır. Üstteki dolgu varken ilk çocuk
+    // satır değildir; o turda son ölçülen değer korunur.
+    const firstRow = list.firstElementChild as HTMLElement | null;
+    const measured =
+      firstRow?.dataset.row === "song" && firstRow.offsetHeight > 0 ? firstRow.offsetHeight : null;
+    const scrollTop = scroller.scrollTop;
+    const viewportHeight = scroller.clientHeight;
+    // Listenin kaydırma kabındaki başlangıcı: üstünde kapak ve araç çubuğu var.
+    // offsetTop kullanılmıyor — iki öğenin offsetParent'ı farklı olabilir;
+    // ekran koordinatları her düzende doğru sonucu verir.
+    const listTop =
+      list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scrollTop;
+
+    setRange((prev) => {
+      const rowHeight = measured ?? prev.rowHeight;
+      const start = Math.max(0, Math.floor((scrollTop - listTop) / rowHeight) - OVERSCAN);
+      const end = Math.min(count, start + Math.ceil(viewportHeight / rowHeight) + OVERSCAN * 2);
+      return prev.rowHeight === rowHeight && prev.start === start && prev.end === end
+        ? prev
+        : { rowHeight, start, end };
+    });
+  }, [count]);
+
+  useLayoutEffect(() => {
+    if (!enabled) return;
+    measure();
+  }, [enabled, measure]);
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!enabled || !scroller) return;
+    // passive: kaydırma sırasında tarayıcı beklemesin
+    scroller.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      scroller.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [enabled, measure]);
+
+  const start = enabled ? Math.min(range.start, Math.max(0, count - 1)) : 0;
+  const end = enabled ? Math.min(count, Math.max(range.end, start + 1)) : count;
+  const rowHeight = range.rowHeight;
+
+  return {
+    scrollRef,
+    listRef,
+    start,
+    end,
+    padTop: enabled ? start * rowHeight : 0,
+    padBottom: enabled ? Math.max(0, count - end) * rowHeight : 0,
+  };
 }
 
 /** Ana ekranın orta sütunu: seçili listenin (ya da tüm katalogun) şarkıları. */
@@ -34,7 +115,7 @@ export default function LibraryPane({
     selectedSource,
     coversByList,
     catalogCovers,
-    queueLists,
+    turnByList,
     currentList,
     consumed,
     countFor,
@@ -70,17 +151,18 @@ export default function LibraryPane({
 
   const totalMs = visibleSongs.reduce((n, s) => n + (s.duration_ms || 0), 0);
 
+  const virtual = visibleSongs.length > VIRTUAL_THRESHOLD;
+  const { scrollRef, listRef, start, end, padTop, padBottom } = useRowWindow(
+    visibleSongs.length,
+    virtual
+  );
+
   const queued = selectedList ? selectedList.queue_position !== null : false;
   const isPlaying = !!selectedList && currentList?.id === selectedList.id;
   // Kuyruk döngüsel: çalan listeden sonra sıradakiler, sonuncu bitince başa
-  // dönülür. Bu yüzden "sırada kaçıncı" çalan listeden itibaren sayılır.
-  const turnsAway = (() => {
-    if (!selectedList || !queued || isPlaying) return 0;
-    const from = queueLists.findIndex((p) => p.id === currentList?.id);
-    const mine = queueLists.findIndex((p) => p.id === selectedList.id);
-    if (from < 0 || mine < 0) return mine + 1;
-    return ((mine - from) + queueLists.length) % queueLists.length;
-  })();
+  // dönülür. "Sırada kaçıncı" çalan listeden itibaren sayılır — rayla aynı
+  // kaynaktan (turnByList) okunur ki iki yer birbirinden ayrışmasın.
+  const turnsAway = !selectedList || !queued || isPlaying ? 0 : turnByList[selectedList.id] ?? 0;
 
   const statusLine = !selectedList
     ? "Mekanın tüm şarkıları — müşteriler hangi liste sırada olursa olsun bu havuzun tamamından seçebilir"
@@ -93,7 +175,7 @@ export default function LibraryPane({
   return (
     <div className="flex flex-col min-h-0 h-full">
       {/* Tek kaydırma alanı: kapak yukarı kayar, araç çubuğu üstte yapışık kalır */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
         {/* Kapak + başlık */}
         <div
           className="px-5 pt-6 pb-5"
@@ -403,9 +485,14 @@ export default function LibraryPane({
             {filtering ? "Eşleşen şarkı yok" : selectedList ? "Bu listede henüz şarkı yok" : "Henüz şarkı yok"}
           </div>
         ) : (
-          visibleSongs.map((song, i) => (
+          <div ref={listRef}>
+            {padTop > 0 && <div style={{ height: padTop }} aria-hidden />}
+            {visibleSongs.slice(start, end).map((song, offset) => {
+              const i = start + offset;
+              return (
             <div
               key={song.venueSongId}
+              data-row="song"
               draggable={orderable}
               onDragStart={() => orderable && setDragIndex(i)}
               onDragOver={(e) => {
@@ -513,8 +600,9 @@ export default function LibraryPane({
                   setPlayingSongId(null);
                   if (!res.ok) setPlayNote(res.error);
                   // İmleç ve tur ilerlemesi değişti: raydaki "çalıyor" işareti ve
-                  // ilerleme sayacı tazelensin
-                  else if (viewId !== ALL) await lib.refresh();
+                  // ilerleme sayacı tazelensin. Katalog değişmediği için tam
+                  // yükleme değil, iki sorgusu olan rotasyon tazelemesi yeter.
+                  else if (viewId !== ALL) lib.refreshRotation();
                 }}
                 disabled={playback.currentIsCustomer || playingSongId !== null}
                 className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 transition-all disabled:opacity-30"
@@ -536,7 +624,10 @@ export default function LibraryPane({
                   ekle, listeden çıkar, mekandan kaldır */}
               <SongRowMenu song={song} lib={lib} playback={playback} />
             </div>
-          ))
+              );
+            })}
+            {padBottom > 0 && <div style={{ height: padBottom }} aria-hidden />}
+          </div>
         )}
       </div>
     </div>

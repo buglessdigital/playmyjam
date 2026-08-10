@@ -185,16 +185,19 @@ export async function PATCH(req: NextRequest) {
     }
 
     // Yalnızca yeri değişen satırlar yazılır: tek adımlık taşımada iki satır eder.
-    // Uzak bir noktaya sürüklemede aradaki tüm satırlar kayar, o yüzden yazma
-    // öbekler halinde gider — büyük listede yüzlerce eşzamanlı istek olmasın.
+    // Uzak bir noktaya sürüklemede aradaki tüm satırlar kayar — 500 şarkılık
+    // listede başa çekmek 500 satır demek. Öbekler ARDIŞIK yazılırsa bu 20 tur
+    // eder ve saniyeler sürer; öbekler paralel gider, yalnızca aynı anda uçan
+    // istek sayısı sınırlanır (veritabanı bağlantı havuzu boğulmasın).
     const changed = songOrder
       .map((songId, i) => ({ row: byId.get(songId)!, position: i + 1 }))
       .filter(({ row, position }) => row.position !== position)
       .map(({ row, position }) => ({ id: row.id, position }));
 
-    for (let i = 0; i < changed.length; i += 25) {
+    const WRITE_CONCURRENCY = 100;
+    for (let i = 0; i < changed.length; i += WRITE_CONCURRENCY) {
       const results = await Promise.all(
-        changed.slice(i, i + 25).map(({ id, position }) =>
+        changed.slice(i, i + WRITE_CONCURRENCY).map(({ id, position }) =>
           supabaseAdmin
             .from("playlist_songs")
             .update({ position })
@@ -237,28 +240,35 @@ export async function PATCH(req: NextRequest) {
   // Play: imleç bu listeye atlar, liste baştan başlar, bekleyen otomatik şarkılar
   // bu listeden yeniden seçilir. Sahnedeki şarkı ve müşteri istekleri korunur.
   if (isPlay) {
-    const { data: playlist } = await supabaseAdmin
-      .from("playlists")
-      .select("id")
-      .eq("id", playlistId)
-      .eq("venue_id", session.venue_id)
-      .maybeSingle();
+    // Sahiplik ve "listede şarkı var mı" birbirine bağlı değil — birlikte gider
+    const [{ data: playlist }, { count }] = await Promise.all([
+      supabaseAdmin
+        .from("playlists")
+        .select("id")
+        .eq("id", playlistId)
+        .eq("venue_id", session.venue_id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("playlist_songs")
+        .select("song_id", { count: "exact", head: true })
+        .eq("venue_id", session.venue_id)
+        .eq("playlist_id", playlistId),
+    ]);
 
     if (!playlist) {
       return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
     }
 
-    const { count } = await supabaseAdmin
-      .from("playlist_songs")
-      .select("song_id", { count: "exact", head: true })
-      .eq("venue_id", session.venue_id)
-      .eq("playlist_id", playlistId);
-
     if (!count) {
       return NextResponse.json({ error: "Bu listede şarkı yok" }, { status: 400 });
     }
 
-    await playPlaylistNow(session.venue_id, playlistId);
+    // İmleç taşıma yanıttan önce biter (panel "hangi liste çalıyor"u hemen doğru
+    // gösterir), bekleyen otomatik şarkıların yeniden seçilmesi yanıttan sonraya
+    // kalır: düğme 20+ DB turunu beklemez, kuyruk birkaç yüz ms sonra kendi
+    // kendine düzelir ve panele Realtime ile düşer.
+    await playPlaylistNow(session.venue_id, playlistId, { refillQueue: false });
+    after(resetAutoQueue(session.venue_id).catch(() => {}));
     return NextResponse.json({ ok: true });
   }
 
@@ -286,8 +296,9 @@ export async function PATCH(req: NextRequest) {
     // sıradaki şarkıları düşer, kuyruk kalan listelerden (ya da katalogdan) dolar.
     // Kuyruğa eklemede çalan hiçbir şey değişmez — TEK istisna kuyruğun boş
     // olduğu hal: o ana kadar katalogdan rastgele çalınıyordu, artık liste var.
+    // Yanıttan SONRA: düğme dolumu beklemez.
     if (!body.queued || position === 1) {
-      await resetAutoQueue(session.venue_id).catch(() => {});
+      after(resetAutoQueue(session.venue_id).catch(() => {}));
     }
     return NextResponse.json({ ok: true });
   }
@@ -332,7 +343,7 @@ export async function PATCH(req: NextRequest) {
   // yeniden seçilsin (tüketim de geri alınır, bkz. resetAutoQueue). play_once
   // yalnızca liste bitince devreye girer, kuyruğu şimdi tazelemeye gerek yok.
   if (hasShuffle) {
-    await resetAutoQueue(session.venue_id).catch(() => {});
+    after(resetAutoQueue(session.venue_id).catch(() => {}));
   }
   return NextResponse.json({ ok: true });
 }
@@ -374,7 +385,7 @@ export async function DELETE(req: NextRequest) {
 
   revalidateTag(`venue-songs-${session.venue_id}`, "max");
   if (playlist.queue_position !== null) {
-    await resetAutoQueue(session.venue_id).catch(() => {});
+    after(resetAutoQueue(session.venue_id).catch(() => {}));
   }
   return NextResponse.json({ ok: true });
 }

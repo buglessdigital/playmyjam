@@ -101,6 +101,12 @@ function RequestsPageContent({ params }: Props) {
 
   const resolve = async (id: string, status: "accepted" | "rejected") => {
     const req = pending.find((r) => r.id === id);
+    if (!req) return;
+
+    // Satır sunucu turunu beklemeden geçmişe taşınır: kabul edilen istek playlist'e
+    // de eklendiği için yanıt uzun sürebiliyor ve düğme donmuş görünüyordu.
+    setPending((prev) => prev.filter((r) => r.id !== id));
+    setHistory((prev) => [{ ...req, status, resolved_at: new Date().toISOString() }, ...prev]);
 
     // Kabul edilen istek sunucu tarafında playlist'e de eklenir — tek çağrı yeterli
     const res = await fetch("/api/admin/requests", {
@@ -108,11 +114,11 @@ function RequestsPageContent({ params }: Props) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ request_id: id, status }),
     });
-    if (!res.ok) return;
 
-    if (req) {
-      setPending((prev) => prev.filter((r) => r.id !== id));
-      setHistory((prev) => [{ ...req, status, resolved_at: new Date().toISOString() }, ...prev]);
+    // Sunucu yazamadıysa satır bekleyenlere geri döner
+    if (!res.ok) {
+      setHistory((prev) => prev.filter((r) => r.id !== id));
+      setPending((prev) => (prev.some((r) => r.id === id) ? prev : [req, ...prev]));
     }
   };
 

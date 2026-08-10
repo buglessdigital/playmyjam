@@ -9,8 +9,11 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
   const {
     queue, queueError, reordering, movableCount, moveWithinAuto, nudge, removeFromQueue,
     nowPlaying, progress, progressPct, duration, isPlaying, playerOffline,
+    playNow, currentIsCustomer,
   } = playback;
   const [dragId, setDragId] = useState<string | null>(null);
+  const [playError, setPlayError] = useState("");
+  const [playingId, setPlayingId] = useState<string | null>(null);
   const current = nowPlaying?.songs ?? null;
 
   return (
@@ -49,6 +52,15 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
           <p className="text-[11px] rounded-lg px-2.5 py-2 mt-2" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171" }}>
             {queueError}
           </p>
+        )}
+        {playError && (
+          <button
+            onClick={() => setPlayError("")}
+            className="w-full text-left text-[11px] rounded-lg px-2.5 py-2 mt-2"
+            style={{ background: "rgba(239,68,68,0.08)", color: "#f87171" }}
+          >
+            {playError}
+          </button>
         )}
       </div>
 
@@ -186,6 +198,30 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M8 11V7a4 4 0 018 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
                   </span>
                 )}
+
+                {/* Şimdi çal: bu satır sahneye çıkar, çalan şarkı yarıda kesilir.
+                    Sahnedeki şarkı müşteriye aitse düğme kapalı. */}
+                <button
+                  onClick={async () => {
+                    setPlayError("");
+                    setPlayingId(item.id);
+                    const res = await playNow({ queue_id: item.id }, item.songs);
+                    setPlayingId(null);
+                    if (!res.ok) setPlayError(res.error);
+                  }}
+                  disabled={currentIsCustomer || playingId !== null}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg shrink-0 transition-all disabled:opacity-30"
+                  style={{ background: "rgba(34,197,94,0.12)" }}
+                  title={
+                    currentIsCustomer
+                      ? "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez"
+                      : "Şimdi çal — çalan şarkı kesilir"
+                  }
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="#22c55e">
+                    <path d="M8 5.5v13l11-6.5L8 5.5z" />
+                  </svg>
+                </button>
 
                 <button
                   onClick={() => removeFromQueue(item.id)}

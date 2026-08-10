@@ -65,6 +65,8 @@ export default function LibraryPane({
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [playNote, setPlayNote] = useState("");
+  // Satırdaki "şimdi çal" isteği sürerken düğmeler kilitli
+  const [playingSongId, setPlayingSongId] = useState<string | null>(null);
 
   const totalMs = visibleSongs.reduce((n, s) => n + (s.duration_ms || 0), 0);
 
@@ -489,6 +491,46 @@ export default function LibraryPane({
                   Gizli
                 </span>
               )}
+
+              {/* Şimdi çal: bu şarkı sahneye çıkar, çalan şarkı yarıda kesilir.
+                  Bir liste görüntüleniyorsa rotasyon imleci de buraya taşınır —
+                  listenin devamı (bir sonraki şarkıdan itibaren) sıraya girer.
+                  Sahnedeki şarkı müşteriye aitse düğme kapalı. */}
+              <button
+                onClick={async () => {
+                  setPlayNote("");
+                  setPlayingSongId(song.id);
+                  const res = await playback.playNow(
+                    { song_id: song.id, playlist_id: viewId === ALL ? null : viewId },
+                    {
+                      youtube_video_id: song.youtube_video_id,
+                      title: song.title,
+                      artist: song.artist,
+                      album_cover_url: song.album_cover_url,
+                      duration_ms: song.duration_ms,
+                    }
+                  );
+                  setPlayingSongId(null);
+                  if (!res.ok) setPlayNote(res.error);
+                  // İmleç ve tur ilerlemesi değişti: raydaki "çalıyor" işareti ve
+                  // ilerleme sayacı tazelensin
+                  else if (viewId !== ALL) await lib.refresh();
+                }}
+                disabled={playback.currentIsCustomer || playingSongId !== null}
+                className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 transition-all disabled:opacity-30"
+                style={{ background: "rgba(34,197,94,0.12)" }}
+                title={
+                  playback.currentIsCustomer
+                    ? "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez"
+                    : viewId === ALL
+                      ? "Şimdi çal — çalan şarkı kesilir"
+                      : "Şimdi çal — çalan şarkı kesilir, liste buradan devam eder"
+                }
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#22c55e">
+                  <path d="M8 5.5v13l11-6.5L8 5.5z" />
+                </svg>
+              </button>
 
               {/* Tüm satır işlemleri tek menüde: sıraya al, gizle/göster, listeye
                   ekle, listeden çıkar, mekandan kaldır */}

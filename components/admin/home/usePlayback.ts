@@ -69,6 +69,9 @@ export function usePlayback(venueDbId: string) {
   const supabase = useMemo(() => createClient(), []);
 
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  // Sahnedeki satırın sahibi: müşteri şarkısıysa "şimdi çal" düğmeleri kapanır
+  // (jetonla alınan sıra yarıda kesilemez). Sunucu da aynı kuralı uygular.
+  const [playingRow, setPlayingRow] = useState<{ user_id: string | null; added_by: string } | null>(null);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [progress, setProgress] = useState(0);
   const [playerLoading, setPlayerLoading] = useState<string | null>(null);
@@ -100,18 +103,28 @@ export function usePlayback(venueDbId: string) {
 
   const fetchQueue = useCallback(
     async (dbId: string) => {
-      const { data } = await supabase
-        .from("queue")
-        .select(QUEUE_SELECT)
-        .eq("venue_id", dbId)
-        .eq("status", "queued")
-        // added_at + id: beraberlik kırıcı (0034). Öncelikli satırların hepsi
-        // position = 0 ile yazılıyor; bunlar olmadan sıra rastgele kayıyordu.
-        .order("priority", { ascending: false })
-        .order("position", { ascending: true })
-        .order("added_at", { ascending: true })
-        .order("id", { ascending: true });
+      const [{ data }, { data: current }] = await Promise.all([
+        supabase
+          .from("queue")
+          .select(QUEUE_SELECT)
+          .eq("venue_id", dbId)
+          .eq("status", "queued")
+          // added_at + id: beraberlik kırıcı (0034). Öncelikli satırların hepsi
+          // position = 0 ile yazılıyor; bunlar olmadan sıra rastgele kayıyordu.
+          .order("priority", { ascending: false })
+          .order("position", { ascending: true })
+          .order("added_at", { ascending: true })
+          .order("id", { ascending: true }),
+        supabase
+          .from("queue")
+          .select("user_id, added_by")
+          .eq("venue_id", dbId)
+          .eq("status", "playing")
+          .limit(1)
+          .maybeSingle(),
+      ]);
       if (data) setQueue(data as unknown as QueueItem[]);
+      setPlayingRow((current as { user_id: string | null; added_by: string } | null) ?? null);
     },
     [supabase]
   );
@@ -360,6 +373,64 @@ export function usePlayback(venueDbId: string) {
     }
   };
 
+  // Sahnedeki şarkıyı müşteri jetonuyla mı ekledi? Öyleyse kesilemez.
+  const currentIsCustomer = playingRow?.user_id != null;
+
+  // "Şimdi çal": seçilen şarkı sahneye çıkar, çalan şarkı yarıda kesilir.
+  // Sahnedeki şarkı müşterinin ise düğmeler zaten kapalı — sunucu da reddeder.
+  //
+  // song verilirse alt bar/kuyruk paneli sunucu turunu beklemeden yeni şarkıyı
+  // gösterir; gerçek satır Realtime ile birazdan üzerine yazar.
+  const playNow = async (
+    target: { queue_id?: string; song_id?: string; playlist_id?: string | null },
+    song?: QueueItem["songs"]
+  ) => {
+    if (!venueDbId) return { ok: false as const, error: "Mekan bulunamadı" };
+    if (currentIsCustomer) {
+      return { ok: false as const, error: "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez" };
+    }
+
+    localActionAtRef.current = Date.now();
+    sendCommand({ type: "seeking" });
+    setProgress(0);
+    if (song) {
+      setNowPlaying((prev) =>
+        prev
+          ? {
+              ...prev,
+              video_id: song.youtube_video_id,
+              songs: song,
+              is_playing: true,
+              progress_ms: 0,
+              started_at: new Date().toISOString(),
+            }
+          : prev
+      );
+      if (target.queue_id) setQueue((prev) => prev.filter((q) => q.id !== target.queue_id));
+    }
+
+    try {
+      const res = await fetch("/api/admin/play-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(target),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        localActionAtRef.current = 0;
+        await fetchQueue(venueDbId);
+        return { ok: false as const, error: (data.error as string) ?? "Çalınamadı" };
+      }
+      // Video kimliğini player'a anında ilet: DB → Realtime turu beklenmesin
+      if (typeof data.video_id === "string") sendCommand({ type: "load", video_id: data.video_id });
+      await fetchQueue(venueDbId);
+      return { ok: true as const };
+    } catch {
+      localActionAtRef.current = 0;
+      return { ok: false as const, error: "Bağlantı hatası" };
+    }
+  };
+
   // Kaydırıcı anında tepki verir, sunucuya yazma 250 ms sonra: sürüklerken
   // onlarca istek gitmesin. Player değişikliği Realtime ile duyar.
   const changeVolume = (next: number) => {
@@ -498,6 +569,8 @@ export function usePlayback(venueDbId: string) {
     moveWithinAuto,
     nudge,
     addToQueue,
+    playNow,
+    currentIsCustomer,
     movableCount: queue.filter(isMovable).length,
   };
 }

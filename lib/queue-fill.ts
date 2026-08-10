@@ -9,7 +9,7 @@ const COOLDOWN_MS = 30 * 60 * 1000;
 // otomatik dolumda "auto", adminin panelden elle eklediğinde "admin". İkincisi
 // budanabilir, üçüncüsü budanamaz — admin bilerek koymuştur.
 export const ADMIN_ADDED_BY = "admin";
-const AUTO_ADDED_BY = "auto";
+export const AUTO_ADDED_BY = "auto";
 
 // Rotasyonun tuttuğu iki şey: hangi listedeyiz ve bu turda o listenin hangi
 // şarkıları tüketildi (0032). Kuyruk 10 şarkılık bir pencere olduğu için
@@ -39,6 +39,15 @@ function shuffleInPlace<T>(list: T[]): T[] {
 // harcayarak eklediği şarkılara, adminin elle eklediklerine ve sahnede çalana
 // dokunulmaz.
 export async function resetAutoQueue(venueId: string): Promise<void> {
+  await clearAutoQueue(venueId);
+  await fillQueueToTen(venueId);
+}
+
+// resetAutoQueue'nun ilk yarısı: bekleyen otomatik satırları düşürür ama YENİDEN
+// DOLDURMAZ. Araya rotasyon imlecini taşıyan bir adım girecekse (bkz.
+// jumpPlaylistCursorTo) dolum ancak imleç yerine oturduktan sonra yapılmalı;
+// yoksa kuyruk eski imleçle dolar ve ikinci dolum boş geçer.
+export async function clearAutoQueue(venueId: string): Promise<void> {
   // Sıralı modda bu satırlar "tüketildi" diye işaretlenmişti; hiç çalmadan
   // düştükleri için tüketim de geri alınır, yoksa şarkılar bu turu ıskalar.
   const { data: pending } = await supabaseAdmin
@@ -85,8 +94,6 @@ export async function resetAutoQueue(venueId: string): Promise<void> {
       )
     );
   }
-
-  await fillQueueToTen(venueId);
 }
 
 // Playlist kuyruğundan seçici (0037). Kuyruk = queue_position dolu listeler.
@@ -535,6 +542,92 @@ export async function playPlaylistNow(venueId: string, playlistId: string): Prom
   // çalan şarkıya, müşteri isteklerine ve adminin elle eklediklerine dokunulmaz —
   // yani hiçbir şarkı yarıda kesilmez, sıradaki şarkıdan itibaren bu liste çalar.
   await resetAutoQueue(venueId);
+}
+
+// "Listenin 4. şarkısını şimdi çal" dendiğinde rotasyon imlecini o noktaya
+// taşır: liste çalan liste olur, ondan ÖNCEKİ şarkılar bu turda çalınmış sayılır,
+// SONRAKİLER (5, 6, 7...) sıraya girer. Şarkının kendisi de tüketilmiş işaretlenir
+// — sahneye çıkıyor, kuyruğa ikinci kez düşmemeli.
+//
+// Liste kuyrukta değilse önce kuyruğa alınır (play tuşundaki gibi): aksi halde
+// imleç okunmaz ve dolum başka listeden devam ederdi.
+//
+// Dolum YAPMAZ; çağıran taraf önce clearAutoQueue, sonra bu, en son fillQueueToTen
+// sırasını izlemeli.
+export async function jumpPlaylistCursorTo(
+  venueId: string,
+  playlistId: string,
+  songId: string
+): Promise<boolean> {
+  const [{ data: playlist }, { data: state }] = await Promise.all([
+    supabaseAdmin
+      .from("playlists")
+      .select("id, queue_position")
+      .eq("id", playlistId)
+      .eq("venue_id", venueId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("playlist_rotation")
+      .select("cycle")
+      .eq("venue_id", venueId)
+      .maybeSingle(),
+  ]);
+
+  if (!playlist) return false;
+
+  // pickFromRotation ile BİREBİR aynı sıralama — farklı olursa "4'ten sonrası"
+  // başka bir şarkı kümesi olur
+  const members = await fetchAllRows<{ song_id: string }>((from, to) =>
+    supabaseAdmin
+      .from("playlist_songs")
+      .select("song_id, position, added_at")
+      .eq("venue_id", venueId)
+      .eq("playlist_id", playlistId)
+      .order("position", { ascending: true })
+      .order("added_at", { ascending: true })
+      .order("song_id", { ascending: true })
+      .range(from, to)
+  );
+
+  const ids = (members.data ?? []).map((m) => m.song_id);
+  const index = ids.indexOf(songId);
+  if (index < 0) return false;
+
+  const cycle = state?.cycle ?? 1;
+
+  // Bu turdaki ilerleme baştan yazılır: seçilen şarkıya kadarı (kendisi dahil)
+  // çalınmış, sonrası çalınmamış sayılır.
+  await supabaseAdmin
+    .from("playlist_rotation_consumed")
+    .delete()
+    .eq("venue_id", venueId)
+    .eq("playlist_id", playlistId)
+    .eq("cycle", cycle);
+
+  await supabaseAdmin.from("playlist_rotation_consumed").upsert(
+    ids.slice(0, index + 1).map((id) => ({
+      venue_id: venueId,
+      playlist_id: playlistId,
+      song_id: id,
+      cycle,
+    })),
+    { onConflict: "venue_id,playlist_id,cycle,song_id", ignoreDuplicates: true }
+  );
+
+  if (playlist.queue_position === null) {
+    await supabaseAdmin
+      .from("playlists")
+      .update({ queue_position: await nextQueuePosition(venueId) })
+      .eq("id", playlistId)
+      .eq("venue_id", venueId);
+  }
+
+  await supabaseAdmin.from("playlist_rotation").upsert(
+    { venue_id: venueId, playlist_id: playlistId, cycle, updated_at: new Date().toISOString() },
+    { onConflict: "venue_id" }
+  );
+
+  return true;
 }
 
 // Kuyruğun sonundaki yer. Kuyruk boşsa 1'den başlar.

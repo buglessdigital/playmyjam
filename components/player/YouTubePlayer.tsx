@@ -12,7 +12,7 @@ import {
 
 // YouTube IFrame API'nin kullandığımız alt kümesi (resmi @types paketi olmadan)
 type YTPlayer = {
-  loadVideoById: (videoId: string) => void;
+  loadVideoById: (video: string | { videoId: string; startSeconds?: number }) => void;
   cueVideoById: (videoId: string) => void;
   playVideo: () => void;
   pauseVideo: () => void;
@@ -87,6 +87,46 @@ const EXPLICIT_PAUSE_WINDOW_MS = 6_000;
 // Dış kaynaklı duraklatma yakalanınca hızlı toparlama denemeleri
 const RESUME_RETRY_DELAYS_MS = [400, 1_500, 4_000];
 
+// --- Arka plan sekmesi ---
+// Player'ın JS'e ihtiyaç duyduğu TEK an şarkı geçişidir: şarkı çalarken sesi
+// tarayıcının medya hattı taşır, kod uyuyabilir. Ama tarayıcılar gizli
+// sekmelerin zamanlayıcılarını kısar (dakikada bire kadar) ve uzun süre arkada
+// kalan sekmeyi tamamen dondurur; bu kısıntıdan muafiyetin tek şartı sayfanın
+// SES ÇIKARIYOR olmasıdır. Şarkı bittiği saniyede ses kesiliyor, yani kurtarma
+// bekçilerine tam ihtiyaç duyduğumuz anda çalışma hakkımızı kaybediyorduk:
+// sıradaki şarkı başlamıyor, sekmeye dönene kadar sessizlik sürüyordu.
+// Çözüm: duyulmaz bir taşıyıcı ton sürekli çalar, sekme daima "sesli" sayılır.
+// 20 Hz insan işitme eşiğinin dibindedir, seviye de -48 dBFS: mekanda duyulmaz,
+// ama tarayıcının sessizlik eşiğinin (-72 dBFS) belirgin şekilde üstündedir.
+const KEEPALIVE_HZ = 20;
+const KEEPALIVE_GAIN = 0.004;
+// Bir tur ile bir öncekinin arası bu kadar açıldıysa sekme kısılmış/dondurulmuş
+// demektir: geçen süre bize ait değildir, takılma ölçümü sıfırdan başlar.
+const TICK_THAW_MS = 20_000;
+// Takılma bekçisi: "PLAYING/BUFFERING" görünmek çalmak değildir — arka planda
+// yeni video çoğu zaman tam burada, saniye hiç ilerlemeden asılı kalıyor.
+// İlerleme durduktan sonra sırasıyla: dürt → aynı videoyu baştan yükle → pes
+// edip sıradakine geç. Ağ dalgalanmasındaki normal tamponlamayı kesmemek için
+// eşikler bilerek geniş.
+const STALL_NUDGE_MS = 6_000;
+const STALL_RELOAD_MS = 15_000;
+const STALL_SKIP_MS = 28_000;
+// "PLAYING görünüyor ama saniye ilerlemiyor" ayrı bir durumdur: bu çoğunlukla
+// YouTube'un reklamıdır (reklam boyunca getCurrentTime 0'da bekler) ve o sırada
+// mekanda ses VARDIR. Dürtmenin faydası yok, kesmenin zararı var — eşikler
+// reklamın bitmesine fırsat verecek kadar uzun.
+const STALL_PLAYING_RELOAD_MS = 50_000;
+const STALL_PLAYING_SKIP_MS = 95_000;
+// Rampanın duvar saatiyle aşabileceği pay. Kısılmış sekmede 60 ms'lik rampa
+// adımları 1 sn'ye çekilir; rampa hiç bitmezse geçiş bayrağı asılı kalır ve
+// TÜM bekçiler (hepsi geçiş sırasında susar) devre dışı kalırdı.
+const FADE_OVERRUN_MS = 4_000;
+// advance() bu süreden uzun sürdüyse kilidi zorla açılır: asılı kalan tek bir
+// istek kuyruk ilerletmeyi, önyüklemeyi ve uzlaştırmayı birlikte kilitliyordu.
+const ADVANCE_TIMEOUT_MS = 20_000;
+// Hiçbir istek süresiz beklemesin — arka planda asılan fetch aylarca dönmez
+const API_TIMEOUT_MS = 12_000;
+
 // --- Video kalitesi ---
 // Mekanda önemli olan SES; video kimsenin bakmadığı bir yük. YouTube kaliteyi
 // iframe'in FİZİKSEL piksel boyutuna göre seçer: tam genişlikte bir iframe'e
@@ -102,6 +142,16 @@ const VIDEO_H = 144;
 // Boyut hilesi yetmezse diye ek sigorta. Not: YouTube 2019'dan beri bu çağrıyı
 // bağlayıcı değil ÖNERİ sayıyor — tek başına güvenilmez, boyutla birlikte iş görür.
 const FORCE_QUALITY = "tiny";
+
+// Zaman aşımı sinyali. Eski tarayıcılarda AbortSignal.timeout yok; orada
+// sinyalsiz devam ederiz (yoksa her istek daha yola çıkmadan patlardı).
+function timeoutSignal(ms: number): AbortSignal | undefined {
+  try {
+    return AbortSignal.timeout?.(ms);
+  } catch {
+    return undefined;
+  }
+}
 
 function forceLowQuality(player: YTPlayer | null | undefined) {
   try {
@@ -277,6 +327,20 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
 
   const currentVideoRef = useRef<string | null>(null);
   const advancingRef = useRef(false);
+  const advanceStartedAtRef = useRef(0);
+  // Takılma bekçisinin çapası: en son GERÇEKTEN ilerlemiş konum ve o an
+  const progressMarkRef = useRef<{ videoId: string | null; time: number; at: number }>({
+    videoId: null,
+    time: -1,
+    at: 0,
+  });
+  // Takılma sonrası kaçıncı kurtarma adımındayız (0 yok, 1 dürt, 2 yükle, 3 atla)
+  const stallStepRef = useRef(0);
+  // Bekçinin en son çalıştığı an — arada uzun boşluk varsa sekme dondurulmuştu
+  const lastTickAtRef = useRef(0);
+  // Geçişin duvar saatiyle başlangıcı ve süresi (rampa asılırsa zorla bitirmek için)
+  const fadeStartedAtRef = useRef(0);
+  const fadeMsRef = useRef(0);
   // Çalması gereken ama (arka plan sekmesinde autoplay engeli vb.) başlayamayan
   // videoyu bekçinin ayırt edebilmesi için niyet ayrı tutulur
   const desiredPlayingRef = useRef(false);
@@ -306,6 +370,64 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     () => Date.now() - intentAtRef.current > LOCAL_INTENT_GRACE_MS,
     []
   );
+
+  // Kuyruk ilerletme kilidi. Zaman damgalıdır: istek asılı kalır ya da sekme
+  // isteğin ortasında dondurulursa kilit sonsuza dek kapalı kalıyordu ve
+  // bekçilerin hepsi (hepsi bu kilide bakar) sessizce devre dışı oluyordu.
+  const setAdvancing = useCallback((value: boolean) => {
+    advancingRef.current = value;
+    advanceStartedAtRef.current = value ? Date.now() : 0;
+  }, []);
+  const advanceBusy = useCallback(() => {
+    if (!advancingRef.current) return false;
+    if (Date.now() - advanceStartedAtRef.current < ADVANCE_TIMEOUT_MS) return true;
+    advancingRef.current = false;
+    advanceStartedAtRef.current = 0;
+    return false;
+  }, []);
+
+  // İlerleme çapasını sıfırla: yeni video yüklendi ya da oynatma gerçekten
+  // ilerledi. Kurtarma merdiveni de baştan başlar.
+  const markProgress = useCallback((videoId: string | null, time = -1) => {
+    progressMarkRef.current = { videoId, time, at: Date.now() };
+    stallStepRef.current = 0;
+  }, []);
+
+  // --- Sekmeyi uyanık tutan taşıyıcı ton (bkz. KEEPALIVE_HZ) ---
+  // Kullanıcının "Başlat" dokunuşuyla kurulur: autoplay politikası gereği
+  // AudioContext ancak bir etkileşimle çalışmaya başlayabilir.
+  const keepAliveRef = useRef<{ ctx: AudioContext; gain: GainNode } | null>(null);
+  const startKeepAlive = useCallback(() => {
+    if (keepAliveRef.current) {
+      keepAliveRef.current.ctx.resume().catch(() => {});
+      return;
+    }
+    try {
+      const Ctor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      const ctx = new Ctor();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      // Rampa: ani başlangıç bazı hoparlörlerde "tık" sesi çıkarır
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(KEEPALIVE_GAIN, ctx.currentTime + 0.5);
+      osc.frequency.value = KEEPALIVE_HZ;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      keepAliveRef.current = { ctx, gain };
+      ctx.resume().catch(() => {});
+    } catch {}
+  }, []);
+  // İşletim sistemi ses odağını başka uygulamaya verdiğinde context askıya
+  // alınabiliyor; her bekçi turunda ve sekmeye dönüşte geri açılır.
+  const keepAliveAlive = useCallback(() => {
+    const alive = keepAliveRef.current;
+    if (!alive) return;
+    if (alive.ctx.state !== "running") alive.ctx.resume().catch(() => {});
+  }, []);
 
   const [started, setStarted] = useState(false);
   const [idle, setIdle] = useState(false); // kuyruk boş, çalan yok
@@ -440,6 +562,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...payload, claim_id: claimId() }),
+          // Süresiz bekleyen istek yok: arka planda asılan bir çağrı kuyruk
+          // ilerletme kilidini de birlikte asıyordu
+          signal: timeoutSignal(API_TIMEOUT_MS),
         });
         // 401: mekan oturumu düştü. 409: çalma başka bir cihaza geçti.
         if (res.status === 401) {
@@ -470,6 +595,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     }
     const wasFading = fadingRef.current;
     fadingRef.current = false;
+    fadeStartedAtRef.current = 0;
     const idleDeck = standbyPlayer();
     try {
       idleDeck?.setVolume(0);
@@ -479,6 +605,17 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     setVisibleDeck(activeDeckRef.current);
     pushVolume();
   }, [standbyPlayer, pushVolume]);
+
+  // Geçiş sürüyor mu? Bütün bekçiler geçiş sırasında susar (rampaya karışmasınlar
+  // diye) — bu yüzden asılı kalmış bir geçiş player'ı bekçisiz bırakıyordu.
+  // Rampa kendi süresini + payı aştıysa geçiş burada zorla kapatılır.
+  const fadeBusy = useCallback(() => {
+    if (!fadingRef.current) return false;
+    const limit = (fadeMsRef.current || crossfadeMsRef.current) + FADE_OVERRUN_MS;
+    if (Date.now() - fadeStartedAtRef.current < limit) return true;
+    endCrossfade();
+    return false;
+  }, [endCrossfade]);
 
   // Panelin alt barına anlık durum: DB → Realtime turunu beklemeden gider, böylece
   // ilerleme çubuğu ve oynat/duraklat simgesi player'la aynı anda değişir.
@@ -594,6 +731,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     } catch {}
   }, [activePlayer]);
 
+  // Aşağıda tanımlanan tam bekçiye (nudgePlayback) buradan da ulaşılır: takılma
+  // merdiveni tek bir yerde dursun, hem periyodik tur hem de yükleme sonrası
+  // denemeler aynı mantığı çalıştırsın.
+  const nudgeRef = useRef<() => void>(() => {});
+
   const scheduleNudges = useCallback(
     (delays: number[]) => {
       nudgeTimersRef.current.forEach(clearTimeout);
@@ -601,12 +743,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       // açılırsa mekanın ayarı birkaç saniye içinde geri basılır
       nudgeTimersRef.current = delays.map((ms) =>
         setTimeout(() => {
-          ensurePlaying();
+          nudgeRef.current();
           enforceVolume();
         }, ms)
       );
     },
-    [ensurePlaying, enforceVolume]
+    [enforceVolume]
   );
 
   // Sert geçiş: videoyu AKTİF deck'e yükler. Elle atlama, panel komutu, hata
@@ -623,6 +765,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       currentVideoRef.current = videoId;
       setDesiredPlaying(true);
       lastLoadAtRef.current = Date.now();
+      markProgress(videoId);
       setIdle(false);
       const player = activePlayer();
       if (activeReady() && typeof player?.loadVideoById === "function") {
@@ -646,6 +789,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       activeReady,
       broadcastState,
       setDesiredPlaying,
+      markProgress,
     ]
   );
 
@@ -676,6 +820,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       currentVideoRef.current = videoId;
       setDesiredPlaying(true);
       lastLoadAtRef.current = Date.now();
+      markProgress(videoId);
       preloadedVideoRef.current = null;
       preloadedForRef.current = null;
       preloadRetryAtRef.current = 0;
@@ -687,14 +832,14 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
       return true;
     },
-    [onTrackChange, broadcastState, scheduleNudges, setDesiredPlaying]
+    [onTrackChange, broadcastState, scheduleNudges, setDesiredPlaying, markProgress]
   );
 
   // Şarkı bitti / hata verdi → kuyruğu ilerlet, dönen videoyu yükle
   const advance = useCallback(
     async (payload: Record<string, unknown>) => {
-      if (advancingRef.current) return;
-      advancingRef.current = true;
+      if (advanceBusy()) return;
+      setAdvancing(true);
       try {
         let result = await api(payload);
         // Ağ/sunucu hatası "kuyruk boş" DEĞİLDİR: tek denemede idle'a düşmek
@@ -734,10 +879,20 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           broadcastState({ video_id: null, is_playing: false, progress_ms: 0 });
         }
       } finally {
-        advancingRef.current = false;
+        setAdvancing(false);
       }
     },
-    [api, loadVideo, onTrackChange, endCrossfade, broadcastState, playPreloaded, setDesiredPlaying]
+    [
+      api,
+      loadVideo,
+      onTrackChange,
+      endCrossfade,
+      broadcastState,
+      playPreloaded,
+      setDesiredPlaying,
+      advanceBusy,
+      setAdvancing,
+    ]
   );
 
   // Sıradaki videoyu boştaki deck'e tampona al. Kuyruk TÜKETİLMEZ (peek): geçiş
@@ -747,7 +902,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     const anchor = currentVideoRef.current;
     if (!anchor) return;
     // Geçiş sırasında boştaki deck çıkan şarkıyı çalıyor — üstüne cue atma
-    if (fadingRef.current || advancingRef.current) return;
+    if (fadeBusy() || advanceBusy()) return;
     // Bu şarkı için tampon zaten hazır
     if (preloadedVideoRef.current && preloadedForRef.current === anchor) return;
     // Başarısız denemeden sonra hemen tekrar deneme
@@ -778,12 +933,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       forceLowQuality(player);
       preloadedVideoRef.current = videoId;
     } catch {}
-  }, [api]);
+  }, [api, fadeBusy, advanceBusy]);
 
   // Çapraz geçişi başlat: sıradakini boştaki deck'te çaldır, çıkanın sesini
   // 0'a indirirken girenin sesini mekanın seviyesine çıkar.
   const startCrossfade = useCallback(async () => {
-    if (fadingRef.current || advancingRef.current) return;
+    if (fadeBusy() || advanceBusy()) return;
     const ms = crossfadeMsRef.current;
     const from = activeDeckRef.current;
     const to = otherDeck(from);
@@ -792,17 +947,21 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     if (ms <= 0 || !outgoing || !incoming || !deckReadyRef.current[to]) return;
 
     fadingRef.current = true;
+    // Duvar saatiyle çapa: rampa kısılmış sekmede takılırsa fadeBusy() geçişi
+    // zorla kapatsın, bekçiler bekçisiz kalmasın
+    fadeStartedAtRef.current = Date.now();
+    fadeMsRef.current = ms;
     setFadeMs(ms);
     setFading(true);
 
     // Kuyruğu ŞİMDİ ilerlet: yeni şarkı bu andan itibaren duyuluyor, panelin ve
     // müşteri ekranının "şu an çalan"ı da bu anda değişmeli.
-    advancingRef.current = true;
+    setAdvancing(true);
     let result: PlayerApiResult | null = null;
     try {
       result = await api({ action: "next" });
     } finally {
-      advancingRef.current = false;
+      setAdvancing(false);
     }
 
     // İstek sürerken araya komut girmiş olabilir (panelden atlama, duraklatma,
@@ -835,6 +994,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     currentVideoRef.current = videoId;
     setDesiredPlaying(true);
     lastLoadAtRef.current = Date.now();
+    markProgress(videoId);
     preloadedVideoRef.current = null;
     preloadedForRef.current = null;
     setVisibleDeck(to);
@@ -869,13 +1029,17 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     onTrackChange,
     broadcastState,
     setDesiredPlaying,
+    markProgress,
+    fadeBusy,
+    advanceBusy,
+    setAdvancing,
   ]);
 
   // Çalma bekçisi: sıradakini erkenden tampona alır, geçiş vaktini kollar
   const playbackTick = useCallback(() => {
     if (
-      fadingRef.current ||
-      advancingRef.current ||
+      fadeBusy() ||
+      advanceBusy() ||
       blockedRef.current ||
       !desiredPlayingRef.current ||
       !currentVideoRef.current
@@ -915,33 +1079,115 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     // Alt sınır: sekme kısılmışken bekçi geç uyanırsa şarkının son kırıntısında
     // geçiş başlatmanın anlamı yok, ENDED zaten devralır
     if (remaining <= fadeSec && remaining > 0.4) startCrossfade();
-  }, [activePlayer, activeReady, preloadNext, startCrossfade]);
+  }, [activePlayer, activeReady, preloadNext, startCrossfade, fadeBusy, advanceBusy]);
 
-  // Bekçi: çalması gereken video CUED/UNSTARTED'da takıldıysa (arka plan
-  // sekmesinde autoplay engeli) oynatmayı tekrar dene — tek seferlik playVideo
-  // denemesi engellenince şarkı sonsuza dek bekliyordu.
-  // PAUSED de buraya dahildir: niyet "çal" iken duraklamış bir video ancak dış
-  // bir sebeple durmuştur (gerçek duraklatmada niyet zaten sönmüş olur), yani
-  // 3 sn içinde kendiliğinden geri açılır.
+  // Bekçi: çalması gereken video başlamadıysa toparla.
+  //
+  // İki iş yapar. Biri: CUED/UNSTARTED/PAUSED'da takılan videoyu dürtmek (arka
+  // plan sekmesinde ilk playVideo sessizce engellenebiliyor). Diğeri ve asıl
+  // önemlisi: İLERLEME denetimi. "PLAYING" ya da "BUFFERING" görünmek çalmak
+  // demek değildir — gizli sekmede yeni video çoğu zaman tam da bu durumlarda,
+  // saniye hiç ilerlemeden asılı kalıyor ve eski bekçiler bunu sağlıklı sayıp
+  // hiç dokunmuyordu; müzik ancak sekmeye dönülünce geri geliyordu.
   const nudgePlayback = useCallback(() => {
     const player = activePlayer();
     const YT = window.YT;
-    if (!player || !YT || !currentVideoRef.current || !desiredPlayingRef.current) return;
+    const videoId = currentVideoRef.current;
+    keepAliveAlive();
+    if (!player || !YT || !videoId || !desiredPlayingRef.current) return;
     // Geçiş sırasında iki deck kasten farklı durumlarda — rampaya karışma
-    if (fadingRef.current) return;
+    // (asılı kalmış geçişi fadeBusy zaten kapatır)
+    if (fadeBusy() || advanceBusy()) return;
+
+    const now = Date.now();
+    const gap = now - lastTickAtRef.current;
+    lastTickAtRef.current = now;
+    // Turlar arası uzun boşluk: sekme kısılmış/dondurulmuştu. Toparlama
+    // adımları yine de çalışır (asıl ihtiyaç duyulan tur budur), ama TAKILMA
+    // ölçümü sıfırlanır: donmada geçen süre bize ait değildir, onu "takıldı"
+    // sayıp sağlam bir şarkıyı atlamayalım.
+    const thawed = gap > TICK_THAW_MS;
+
+    let state = -1;
+    let position = 0;
     try {
-      const state = player.getPlayerState();
-      if (
-        state === YT.PlayerState.CUED ||
-        state === -1 /* UNSTARTED */ ||
-        state === YT.PlayerState.PAUSED
-      ) {
-        player.playVideo();
-      }
+      state = player.getPlayerState();
+      position = player.getCurrentTime();
     } catch {
       // player henüz hazır değil — sonraki turda denenir
+      return;
     }
-  }, [activePlayer]);
+
+    // Şarkı bitmiş ama ENDED olayı bize ulaşmamış olabilir (iframe mesajı
+    // düşebiliyor): kuyruğu burada ilerlet, sessizlik uzamasın.
+    if (state === YT.PlayerState.ENDED) {
+      advance({ action: "next" });
+      return;
+    }
+
+    if (
+      state === YT.PlayerState.CUED ||
+      state === -1 /* UNSTARTED */ ||
+      state === YT.PlayerState.PAUSED
+    ) {
+      try {
+        player.playVideo();
+      } catch {}
+    }
+
+    if (thawed) {
+      markProgress(videoId, position > 0 ? position : -1);
+      return;
+    }
+
+    // İlerleme çapası: konum gerçekten değiştiyse her şey yolunda
+    const mark = progressMarkRef.current;
+    if (mark.videoId !== videoId || (position > 0 && Math.abs(position - mark.time) > 0.35)) {
+      markProgress(videoId, position);
+      return;
+    }
+
+    // Buradan sonrası: video değişmedi ve konum ilerlemiyor.
+    const stuck = now - mark.at;
+    const playingState = state === YT.PlayerState.PLAYING;
+    // PLAYING iken ilerlememek genelde reklamdır (ses var) — sabırlı davran.
+    // Diğer durumlarda (BUFFERING/CUED/UNSTARTED/PAUSED) mekan sessizdir.
+    const ladder = playingState
+      ? { nudge: Number.POSITIVE_INFINITY, reload: STALL_PLAYING_RELOAD_MS, skip: STALL_PLAYING_SKIP_MS }
+      : { nudge: STALL_NUDGE_MS, reload: STALL_RELOAD_MS, skip: STALL_SKIP_MS };
+    if (stuck >= ladder.skip && stallStepRef.current < 3) {
+      // Yeniden yükleme de tutmadı. Sessiz kalmaktansa sıradakine geçiyoruz —
+      // ama "error" YOLLAMIYORUZ: o, şarkıyı katalogda kalıcı olarak
+      // çalınamaz işaretler. Takılmanın sebebi büyük ihtimalle geçici (ağ,
+      // arka plan kısıntısı); sağlam bir şarkıyı ömürlük cezalandırmayalım.
+      stallStepRef.current = 3;
+      advance({ action: "next" });
+      return;
+    }
+    if (stuck >= ladder.reload && stallStepRef.current < 2) {
+      // Dürtmek yetmedi: videoyu AKTİF deck'e yeniden yükle. Gizli sekmede
+      // cue'lanan tampon deck hiç veri indirmemiş olabiliyor; loadVideoById
+      // yüklemeyi ve oynatmayı birlikte zorlar.
+      stallStepRef.current = 2;
+      try {
+        // Şarkının ORTASINDA takıldıysak (ağ dalgalanması) kaldığımız yerden
+        // devam ederiz — baştan sarmak mekanda aynı şarkıyı iki kez çalardı
+        const resumeAt = mark.time > 1 ? mark.time : 0;
+        player.loadVideoById(resumeAt > 0 ? { videoId, startSeconds: resumeAt } : videoId);
+        forceLowQuality(player);
+      } catch {}
+      // Çapayı BİLEREK sıfırlamıyoruz: merdiven işlemezse bir üst basamağa
+      // (atlama) çıkabilmeli. Gerçekten çalmaya başlarsa ilerleme onu sıfırlar.
+      lastLoadAtRef.current = now;
+      return;
+    }
+    if (stuck >= ladder.nudge && stallStepRef.current < 1) {
+      stallStepRef.current = 1;
+      try {
+        player.playVideo();
+      } catch {}
+    }
+  }, [activePlayer, advance, fadeBusy, advanceBusy, markProgress, keepAliveAlive]);
 
   // Emniyet ağı: Realtime kanalı arka plan sekmesinde sessizce kopabilir ve
   // panelden gelen next/play komutları kaçar — now_playing ile mutabakat kur
@@ -961,12 +1207,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     try {
       progress = Math.floor((activePlayer()?.getCurrentTime() ?? 0) * 1000);
     } catch {}
-    advancingRef.current = true;
+    setAdvancing(true);
     let result: PlayerApiResult | null = null;
     try {
       result = await api({ action: "sync", video_id: videoId, progress_ms: progress });
     } finally {
-      advancingRef.current = false;
+      setAdvancing(false);
     }
     // Hâlâ ulaşılamıyor: çalmaya devam, sonraki turda yeniden denenir
     if (!result) return;
@@ -979,16 +1225,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     }
     // Panel ve müşteri ekranı doğru şarkıyı beklemeden görsün
     sendHeartbeat();
-  }, [api, activePlayer, sendHeartbeat, advance]);
+  }, [api, activePlayer, sendHeartbeat, advance, setAdvancing]);
 
   const reconcile = useCallback(async () => {
-    if (advancingRef.current || fadingRef.current) return;
+    if (advanceBusy() || fadeBusy()) return;
     if (offlineFallbackRef.current) {
       await syncOfflineFallback();
       return;
     }
     const np = await readNowPlaying(supabase, venueDbId);
-    if (!np || advancingRef.current || fadingRef.current) return;
+    if (!np || advanceBusy() || fadeBusy()) return;
     // Realtime kopmuşken değişen ses seviyesi/geçiş süresi de burada yakalanır
     if (np.volume !== volumeRef.current) applyVolume(np.volume);
     applyCrossfade(np.crossfade_ms);
@@ -1031,19 +1277,33 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     syncOfflineFallback,
     dbStateIsFresh,
     setDesiredPlaying,
+    advanceBusy,
+    fadeBusy,
   ]);
 
   // Arka plandan / bfcache'ten dönüşte kaldığı yerden sürdür: sağlık sinyali ve
   // sahiplik tazelenir, açıkça duraklatılmadıysa çalma devam eder.
   const restorePlayback = useCallback(() => {
     if (blockedRef.current === "claim") return;
-    if (desiredPlayingRef.current) ensurePlaying();
+    // Taşıyıcı ton askıya alınmış olabilir (ses odağı başka uygulamaya geçti)
+    keepAliveAlive();
+    // Tam bekçi: dürtmenin yanında ilerleme denetimini de yapar. İlk tur "sekme
+    // donmuştu" sayılıp ölçümü sıfırlar, sonraki turlar gerçek durumu görür.
+    if (desiredPlayingRef.current) {
+      ensurePlaying();
+      nudgePlayback();
+    }
     sendHeartbeat();
     reconcile();
-  }, [ensurePlaying, sendHeartbeat, reconcile]);
+  }, [ensurePlaying, nudgePlayback, sendHeartbeat, reconcile, keepAliveAlive]);
 
   // Aşağıdaki sahiplik effect'inin bağımlılıkları sabit kalmalı (temizliği release
   // planlıyor), bu yüzden güncel sürüm ref üzerinden okunur
+  // scheduleNudges yükleme sonrası denemeleri bu ref üzerinden çalıştırır
+  useEffect(() => {
+    nudgeRef.current = nudgePlayback;
+  }, [nudgePlayback]);
+
   const restoreRef = useRef(restorePlayback);
   useEffect(() => {
     restoreRef.current = restorePlayback;
@@ -1110,6 +1370,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               // doğar; damga da düşer ki yoldaki "duraklatıldı" yankısı bunu
               // saniyesinde geri almasın (mekan "başlatamıyorum" diyordu).
               setDesiredPlaying(true);
+              // Takılma bekçisinin çapası tazelenir: video gerçekten başladı
+              markProgress(currentVideoRef.current);
               // Yeni video/aygıt değişiminde player varsayılan sese dönebilir
               // (geçiş sırasında pushVolume kendini devre dışı bırakır)
               pushVolume();
@@ -1174,6 +1436,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       isExplicitPause,
       scheduleNudges,
       setDesiredPlaying,
+      markProgress,
     ]
   );
 
@@ -1182,6 +1445,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   const start = useCallback(
     async (force = false) => {
       setError("");
+      // Sekmeyi uyanık tutan taşıyıcı ton bu dokunuşla kurulur (bkz.
+      // KEEPALIVE_HZ): AudioContext ancak kullanıcı etkileşimiyle çalışabilir.
+      startKeepAlive();
 
       const claim = await api({ action: "claim", force });
       if (blockedRef.current === "auth") return;
@@ -1210,7 +1476,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
 
       setStarted(true);
     },
-    [api, createDeck]
+    [api, createDeck, startKeepAlive]
   );
 
   // Sahiplik başka cihaza geçtiyse bu sekme derhal susar — çift ses olmasın
@@ -1272,12 +1538,17 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     const onBlur = () => {
       if (iframeFocused()) blurToIframeAtRef.current = Date.now();
     };
+    // Sekme her şeye rağmen dondurulduysa (Page Lifecycle) çözülme anında da
+    // toparla: görünürlük değişmeden çözülen sekmelerde tek sinyal budur
+    const onResume = () => restoreRef.current();
     document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener("resume", onResume);
     window.addEventListener("blur", onBlur);
     return () => {
       clearInterval(nudgeInterval);
       clearInterval(reconcileInterval);
       document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("resume", onResume);
       window.removeEventListener("blur", onBlur);
     };
   }, [started, blocked, nudgePlayback, reconcile, enforceVolume, iframeFocused]);
@@ -1579,6 +1850,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     return () => {
       nudgeTimersRef.current.forEach(clearTimeout);
       if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
+      const alive = keepAliveRef.current;
+      keepAliveRef.current = null;
+      if (alive) {
+        try {
+          // Rampayla kapat: ani kesme bazı hoparlörlerde tık sesi çıkarır
+          alive.gain.gain.setValueAtTime(alive.gain.gain.value, alive.ctx.currentTime);
+          alive.gain.gain.linearRampToValueAtTime(0, alive.ctx.currentTime + 0.2);
+          setTimeout(() => alive.ctx.close().catch(() => {}), 300);
+        } catch {}
+      }
       try {
         decksRef.current.a?.destroy();
         decksRef.current.b?.destroy();

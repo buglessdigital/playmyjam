@@ -67,6 +67,14 @@ const IDLE_RETRY_MS = 8_000;
 // Yükleme sonrası bu süre içinde gelen "duraklat" yankıları yok sayılır — skip
 // anında yarışan bayat heartbeat'ler yeni şarkıyı durduramasın
 const PAUSE_ECHO_GRACE_MS = 8_000;
+// KENDİ yankımızın penceresi. Player durumunu 5 sn'de bir now_playing'e yazıyor;
+// bu yazım Realtime'dan birkaç yüz ms sonra kendisine geri geliyor. Kullanıcı
+// tam o aralıkta videoyu duraklatır/başlatırsa yoldaki BAYAT yankı taze niyetin
+// üstüne biniyordu: durdurunca kendiliğinden başlıyor, başlatınca hemen duruyordu.
+// Niyet yerelde değiştikten sonraki bu pencerede DB'den gelen çalma durumu
+// uygulanmaz — panelin gerçek komutu zaten hızlı hattan (broadcast) geliyor,
+// kaçarsa da pencere kapanınca uzlaştırma onu uygular.
+const LOCAL_INTENT_GRACE_MS = 3_000;
 // loadVideoById sonrası oynatmanın gerçekten başladığı bu aralıklarla doğrulanır
 const PLAY_WATCHDOG_DELAYS_MS = [2_500, 6_000];
 const PLAY_NUDGE_MS = 3_000;
@@ -272,6 +280,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // Çalması gereken ama (arka plan sekmesinde autoplay engeli vb.) başlayamayan
   // videoyu bekçinin ayırt edebilmesi için niyet ayrı tutulur
   const desiredPlayingRef = useRef(false);
+  // Niyetin en son YERELDE değiştiği an (videoya tıklama, panel komutu, yükleme).
+  // DB'den gelen çalma durumu bu andan hemen sonra geldiyse kendi yankımızdır.
+  const intentAtRef = useRef(0);
   // Son loadVideo zamanı — pause yankısı grace penceresinin çapası
   const lastLoadAtRef = useRef(0);
   // Son AÇIK duraklatma niyeti (panel komutu / DB'den gelen duraklat) zamanı
@@ -282,6 +293,19 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   const blurToIframeAtRef = useRef(0);
   const nudgeTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pendingVideoRef = useRef<string | null>(null);
+
+  // Niyeti YERELDE değiştir (videoya tıklama, panel komutu, yükleme): zaman damgası
+  // da düşer, böylece yoldaki bayat DB yankısı bunun üstüne yazamaz.
+  const setDesiredPlaying = useCallback((value: boolean) => {
+    desiredPlayingRef.current = value;
+    intentAtRef.current = Date.now();
+  }, []);
+  // DB'den okunan çalma durumu uygulanabilir mi? Taze yerel niyet varken hayır:
+  // o satırı büyük ihtimalle kendi heartbeat'imiz yazdı ve yankısı geç kaldı.
+  const dbStateIsFresh = useCallback(
+    () => Date.now() - intentAtRef.current > LOCAL_INTENT_GRACE_MS,
+    []
+  );
 
   const [started, setStarted] = useState(false);
   const [idle, setIdle] = useState(false); // kuyruk boş, çalan yok
@@ -597,7 +621,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       preloadRetryAtRef.current = 0;
 
       currentVideoRef.current = videoId;
-      desiredPlayingRef.current = true;
+      setDesiredPlaying(true);
       lastLoadAtRef.current = Date.now();
       setIdle(false);
       const player = activePlayer();
@@ -614,7 +638,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       // Panel yeni şarkıyı DB turunu beklemeden görsün; süre henüz bilinmiyor
       broadcastState({ video_id: videoId, is_playing: true, progress_ms: 0, duration_ms: null });
     },
-    [onTrackChange, scheduleNudges, endCrossfade, activePlayer, activeReady, broadcastState]
+    [
+      onTrackChange,
+      scheduleNudges,
+      endCrossfade,
+      activePlayer,
+      activeReady,
+      broadcastState,
+      setDesiredPlaying,
+    ]
   );
 
   // Sıradaki şarkı zaten boştaki deck'te tamponlanmışsa onu çal: video baştan
@@ -642,7 +674,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
 
       activeDeckRef.current = to;
       currentVideoRef.current = videoId;
-      desiredPlayingRef.current = true;
+      setDesiredPlaying(true);
       lastLoadAtRef.current = Date.now();
       preloadedVideoRef.current = null;
       preloadedForRef.current = null;
@@ -655,7 +687,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
       return true;
     },
-    [onTrackChange, broadcastState, scheduleNudges]
+    [onTrackChange, broadcastState, scheduleNudges, setDesiredPlaying]
   );
 
   // Şarkı bitti / hata verdi → kuyruğu ilerlet, dönen videoyu yükle
@@ -692,7 +724,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           // sahiplik kaybı "kuyruk boş" değildir; kendi ekranını gösterir.
           endCrossfade();
           currentVideoRef.current = null;
-          desiredPlayingRef.current = false;
+          setDesiredPlaying(false);
           preloadedVideoRef.current = null;
           preloadedForRef.current = null;
           preloadRetryAtRef.current = 0;
@@ -705,7 +737,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         advancingRef.current = false;
       }
     },
-    [api, loadVideo, onTrackChange, endCrossfade, broadcastState, playPreloaded]
+    [api, loadVideo, onTrackChange, endCrossfade, broadcastState, playPreloaded, setDesiredPlaying]
   );
 
   // Sıradaki videoyu boştaki deck'e tampona al. Kuyruk TÜKETİLMEZ (peek): geçiş
@@ -801,7 +833,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     // hepsi artık yeni şarkıyı esas alır (now_playing da onu gösteriyor)
     activeDeckRef.current = to;
     currentVideoRef.current = videoId;
-    desiredPlayingRef.current = true;
+    setDesiredPlaying(true);
     lastLoadAtRef.current = Date.now();
     preloadedVideoRef.current = null;
     preloadedForRef.current = null;
@@ -829,7 +861,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         sendHeartbeat();
       }
     }, FADE_STEP_MS);
-  }, [api, endCrossfade, ensurePlaying, sendHeartbeat, onTrackChange, broadcastState]);
+  }, [
+    api,
+    endCrossfade,
+    ensurePlaying,
+    sendHeartbeat,
+    onTrackChange,
+    broadcastState,
+    setDesiredPlaying,
+  ]);
 
   // Çalma bekçisi: sıradakini erkenden tampona alır, geçiş vaktini kollar
   const playbackTick = useCallback(() => {
@@ -956,8 +996,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       loadVideo(np.video_id);
       return;
     }
+    // Az önce yerelde alınmış bir karar varsa (kullanıcı videoya tıkladı, panel
+    // komut yolladı) satır henüz eskidir: okuma yola çıktığında yazımımız daha
+    // ulaşmamıştı. Çalma durumunu ezmeyiz — bir sonraki turda zaten uzlaşırız.
+    if (!dbStateIsFresh()) return;
     if (np.video_id && np.is_playing) {
-      desiredPlayingRef.current = true;
+      if (!desiredPlayingRef.current) setDesiredPlaying(true);
       nudgePlayback();
       return;
     }
@@ -971,7 +1015,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       Date.now() - lastLoadAtRef.current > PAUSE_ECHO_GRACE_MS
     ) {
       explicitPauseAtRef.current = Date.now();
-      desiredPlayingRef.current = false;
+      setDesiredPlaying(false);
       try {
         activePlayer()?.pauseVideo();
       } catch {}
@@ -985,6 +1029,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     applyCrossfade,
     activePlayer,
     syncOfflineFallback,
+    dbStateIsFresh,
+    setDesiredPlaying,
   ]);
 
   // Arka plandan / bfcache'ten dönüşte kaldığı yerden sürdür: sağlık sinyali ve
@@ -1060,7 +1106,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             if (e.data === YT.PlayerState.ENDED) {
               advance({ action: "next" });
             } else if (e.data === YT.PlayerState.PLAYING) {
-              desiredPlayingRef.current = true;
+              // Kullanıcı videonun kendi oynat düğmesine bastıysa niyet BURADA
+              // doğar; damga da düşer ki yoldaki "duraklatıldı" yankısı bunu
+              // saniyesinde geri almasın (mekan "başlatamıyorum" diyordu).
+              setDesiredPlaying(true);
               // Yeni video/aygıt değişiminde player varsayılan sese dönebilir
               // (geçiş sırasında pushVolume kendini devre dışı bırakır)
               pushVolume();
@@ -1075,7 +1124,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               // Eskiden burada niyet körlemesine söndürülüyordu ve hiçbir bekçi
               // devreye giremediği için müzik elle play'e basılana dek susuyordu.
               if (isExplicitPause()) {
-                desiredPlayingRef.current = false;
+                setDesiredPlaying(false);
                 endCrossfade();
                 onTrackChange?.({ videoId: currentVideoRef.current, isPlaying: false });
                 sendHeartbeat();
@@ -1124,6 +1173,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       endCrossfade,
       isExplicitPause,
       scheduleNudges,
+      setDesiredPlaying,
     ]
   );
 
@@ -1253,7 +1303,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         if (!cmd?.type) return;
         switch (cmd.type) {
           case "play": {
-            desiredPlayingRef.current = true;
+            setDesiredPlaying(true);
             try {
               activePlayer()?.playVideo();
             } catch {}
@@ -1265,7 +1315,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             // Panelin açık komutu: DB yolundaki "yankı mı, komut mu" belirsizliği
             // burada yok — doğrudan uygulanır
             explicitPauseAtRef.current = Date.now();
-            desiredPlayingRef.current = false;
+            setDesiredPlaying(false);
             endCrossfade();
             try {
               activePlayer()?.pauseVideo();
@@ -1307,6 +1357,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     loadVideo,
     applyVolume,
     broadcastState,
+    setDesiredPlaying,
   ]);
 
   // Kuyruk değişince tamponu geçersiz kıl. Müşteri öncelikli şarkı eklediğinde
@@ -1397,13 +1448,22 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           }
           // Aynı video, oynat/duraklat komutu
           if (np.video_id) {
+            // KENDİ yankımız mı? Player durumunu 5 sn'de bir bu satıra yazıyor ve
+            // yazım bize geri dönüyor. Kullanıcı tam o sırada videoya tıklayıp
+            // duraklattıysa/başlattıysa yoldaki BAYAT satır taze niyeti eziyordu:
+            // "durduruyorum kendi başlıyor, başlatınca hemen duruyor". Yerel karar
+            // taze olduğu sürece DB'nin çalma durumu uygulanmaz — panelin gerçek
+            // komutu zaten yukarıdaki hızlı hattan geliyor.
+            if (!dbStateIsFresh()) return;
             if (np.is_playing) {
-              desiredPlayingRef.current = true;
+              // Zaten çalıyorsak niyeti yeniden damgalama: dışarıdan gelen bu
+              // onay, kullanıcının bir sonraki duraklatmasını geciktirmesin
+              if (!desiredPlayingRef.current) setDesiredPlaying(true);
               try {
                 activePlayer()?.playVideo();
               } catch {}
               scheduleNudges([PLAY_NUDGE_MS]);
-            } else {
+            } else if (desiredPlayingRef.current) {
               // "Durdu" gerçek bir duraklatma komutu mu, yoksa takılı player'ın
               // kendi heartbeat'inin yankısı mı? Hiç başlamamış (CUED/UNSTARTED)
               // videoda ve yüklemeden hemen sonra niyet söndürülmez — söndürülürse
@@ -1415,7 +1475,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               } catch {}
               if (!neverStarted && Date.now() - lastLoadAtRef.current > PAUSE_ECHO_GRACE_MS) {
                 explicitPauseAtRef.current = Date.now();
-                desiredPlayingRef.current = false;
+                setDesiredPlaying(false);
                 // Duraklatma geçişi de keser: iki şarkı yarım rampada donmasın
                 endCrossfade();
                 try {
@@ -1443,6 +1503,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     applyCrossfade,
     endCrossfade,
     activePlayer,
+    dbStateIsFresh,
+    setDesiredPlaying,
   ]);
 
   // "Çalmayı buraya al": sahipliği zorla devral ve kaldığı yerden sürdür

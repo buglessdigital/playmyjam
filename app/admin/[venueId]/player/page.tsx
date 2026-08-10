@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, use, Suspense } from "react";
+import { useState, useEffect, useMemo, useRef, use, Suspense } from "react";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import YouTubePlayer from "@/components/player/YouTubePlayer";
@@ -54,6 +54,17 @@ function PlayerPageContent({ params }: Props) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [queueTotal, setQueueTotal] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  // Oynat/duraklat düğmesinin iyimser durumu: komut yolda, gerçek satır gelene
+  // kadar düğme donuk görünmesin (bkz. togglePlay)
+  const [pendingPlay, setPendingPlay] = useState<boolean | null>(null);
+  const pendingPlayRef = useRef<boolean | null>(null);
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    },
+    []
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +94,11 @@ function PlayerPageContent({ params }: Props) {
         const raw = data as unknown as Omit<NowPlaying, "songs"> & { songs: Song | Song[] | null };
         const songs = Array.isArray(raw.songs) ? raw.songs[0] ?? null : raw.songs;
         setNowPlaying({ ...raw, songs });
+        // Player komutu uyguladı: iyimser gösterim yerini gerçeğe bırakır
+        if (pendingPlayRef.current !== null && raw.is_playing === pendingPlayRef.current) {
+          pendingPlayRef.current = null;
+          setPendingPlay(null);
+        }
       };
 
       const fetchQueue = async () => {
@@ -125,6 +141,30 @@ function PlayerPageContent({ params }: Props) {
     };
   }, [venueId, supabase]);
 
+  // Oynat/duraklat: videonun ÜSTÜNE bindirmeden, alttaki kartın içinde. Eskiden
+  // mekanın tek yolu videonun kendisine tıklamaktı; orada duraklatma YouTube'un
+  // iç kontrolüne kalıyor ve durumu ancak dolaylı (odak) anlayabiliyorduk. Bu
+  // düğme komutu doğrudan now_playing'e yazar, player Realtime ile uygular.
+  const togglePlay = async () => {
+    if (!venueDbId) return;
+    const next = !(pendingPlayRef.current ?? nowPlaying?.is_playing ?? false);
+    pendingPlayRef.current = next;
+    setPendingPlay(next);
+    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    // Komut kaybolursa iyimser gösterim en geç 4 sn sonra gerçeğe döner
+    pendingTimerRef.current = setTimeout(() => {
+      pendingPlayRef.current = null;
+      setPendingPlay(null);
+    }, 4_000);
+    try {
+      await fetch(`/api/player/${venueDbId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: next ? "play" : "pause" }),
+      });
+    } catch {}
+  };
+
   const npClock = useMemo(
     () =>
       nowPlaying?.songs
@@ -141,7 +181,8 @@ function PlayerPageContent({ params }: Props) {
 
   const durationMs = nowPlaying?.songs?.duration_ms ?? 0;
   const progressPct = durationMs > 0 ? Math.min((progressMs / durationMs) * 100, 100) : 0;
-  const isPlaying = !!nowPlaying?.is_playing && !!nowPlaying?.songs;
+  // Düğmeye basıldıysa iyimser durum gösterilir (komut yolda), yoksa gerçek satır
+  const isPlaying = (pendingPlay ?? !!nowPlaying?.is_playing) && !!nowPlaying?.songs;
 
   // Kuyruk zaten çalma sırasında (priority, position); idx'ten öncekiler bu şarkıdan önce çalar
   const getRowWaitMs = (idx: number) =>
@@ -250,6 +291,26 @@ function PlayerPageContent({ params }: Props) {
                 <p className="text-[10px] uppercase tracking-wider text-[#6b7280]">Kalan</p>
                 <p className="text-lg font-bold tabular-nums text-white">{formatTime(remainingMs)}</p>
               </div>
+
+              <button
+                onClick={togglePlay}
+                disabled={!nowPlaying?.songs}
+                aria-label={isPlaying ? "Duraklat" : "Devam et"}
+                title={isPlaying ? "Duraklat" : "Devam et"}
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white transition-transform active:scale-95 disabled:opacity-40"
+                style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
+              >
+                {isPlaying ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                    <rect x="6" y="5" width="4" height="14" rx="1" />
+                    <rect x="14" y="5" width="4" height="14" rx="1" />
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                )}
+              </button>
             </div>
 
             <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">

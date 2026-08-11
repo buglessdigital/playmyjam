@@ -538,6 +538,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   const [live, setLive] = useState("");
 
   const [started, setStarted] = useState(false);
+  // iOS Safari oynatma iznini YALNIZCA kullanıcı dokunuşunun içinde verir ve
+  // dokunuştan sonraki her await izni düşürür. Bu yüzden "Başlat" akışı ikiye
+  // ayrıldı: ısınma (deck'leri kur + sıradakini sessizce cue'la) sayfa açılır
+  // açılmaz olur, dokunuş anında geriye tek senkron playVideo() kalır. Render
+  // beklemeden okunması gerektiği için ayna ref: onReady/onStateChange hangi
+  // aşamada olduğumuzu buradan anlar.
+  const startedRef = useRef(false);
+  const prewarmDoneRef = useRef(false);
+  // Isınmada cue'lanan video — dokunuş anında çalmaya başlayacak olan
+  const prewarmCuedRef = useRef<string | null>(null);
   const [idle, setIdle] = useState(false); // kuyruk boş, çalan yok
   const [error, setError] = useState("");
   const [blocked, setBlocked] = useState<Blocked | null>(null);
@@ -1459,6 +1469,84 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     restoreRef.current = restorePlayback;
   }, [restorePlayback]);
 
+  // Sunucuyla eşitlenip kaldığı yerden devam et. Eskiden onReady'nin içindeydi;
+  // ısınma aşamasında (sahiplik henüz alınmamışken) çalışmaması gerektiği için
+  // ayrıldı — "Başlat" dokunuşu sahipliği aldıktan sonra buradan çağrılır.
+  const resumeFromServer = useCallback(
+    async (alreadyPlaying: boolean) => {
+      const np = await readNowPlaying(supabase, venueDbId);
+      // Mekanın en son ayarladığı ses seviyesiyle aç — yeniden başlatmada sıfırlanmaz
+      applyVolume(np?.volume);
+      applyCrossfade(np?.crossfade_ms);
+      if (np?.video_id) {
+        // Isınmada cue'lanan video zaten buysa ve dokunuşla çalmaya başladıysa
+        // TEKRAR YÜKLEME: loadVideoById iOS'ta yeni bir izin turu ister, yani
+        // az önce açtığımız kilidi kendi elimizle kapatırdık.
+        if (alreadyPlaying && np.video_id === currentVideoRef.current) {
+          onTrackChange?.({ videoId: np.video_id, isPlaying: true });
+          broadcastState({
+            video_id: np.video_id,
+            is_playing: true,
+            progress_ms: 0,
+            duration_ms: null,
+          });
+          sendHeartbeat();
+          scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
+          return;
+        }
+        loadVideo(np.video_id);
+      } else {
+        advance({ action: "next" });
+      }
+    },
+    [
+      supabase,
+      venueDbId,
+      applyVolume,
+      applyCrossfade,
+      loadVideo,
+      advance,
+      onTrackChange,
+      broadcastState,
+      sendHeartbeat,
+      scheduleNudges,
+    ]
+  );
+
+  // iOS Safari kilidini açan TEK hamle: ısıtılmış deck'te, dokunuşun içinde,
+  // arada hiç await olmadan playVideo(). Bir kez böyle başlayan iframe'e sonradan
+  // gelen programatik komutlar (loadVideoById, playVideo) artık engellenmez.
+  const unlockPlayback = useCallback(() => {
+    const videoId = prewarmCuedRef.current;
+    const key = activeDeckRef.current;
+    const player = decksRef.current[key];
+    if (!videoId || !player || !deckReadyRef.current[key]) return false;
+    try {
+      player.playVideo();
+    } catch {
+      return false;
+    }
+    // loadVideo'nun yaptığı defter tutma, yükleme adımı olmadan: video zaten
+    // deck'te duruyor. Bunlar olmadan heartbeat ve panel yanlış şarkı görürdü.
+    currentVideoRef.current = videoId;
+    setDesiredPlaying(true);
+    lastLoadAtRef.current = Date.now();
+    markProgress(videoId);
+    setIdle(false);
+    plog(`dokunuşla kilit açıldı → ${videoId}`);
+    return true;
+  }, [setDesiredPlaying, markProgress]);
+
+  // Kilidi açtık ama sahiplik başka cihazdaymış: derhal sus. Aksi halde ikinci
+  // ekran claim yanıtı dönene kadar mekanda ses çıkarırdı.
+  const abortUnlock = useCallback(() => {
+    desiredPlayingRef.current = false;
+    currentVideoRef.current = null;
+    try {
+      decksRef.current[activeDeckRef.current]?.pauseVideo();
+    } catch {}
+  }, []);
+
   // Bir deck kur. İki deck de aynı olay kancalarını paylaşır; olayların çoğu
   // yalnızca AKTİF deck için anlamlıdır (boştaki deck'in ENDED'i kuyruğu
   // ilerletmemeli, tamponlanan videonun CUED'i çalmayı başlatmamalı).
@@ -1489,6 +1577,27 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               } catch {}
               return;
             }
+            // ISINMA: "Başlat"a daha basılmadı. Sahiplik alınmadığı için hiçbir
+            // şey ÇALMAZ; yalnızca çalacak video cue'lanır (cue yükler, oynatmaz).
+            // Dokunuş anında iframe hazır ve video yüklü olsun ki geriye tek
+            // senkron playVideo() kalsın — iOS'un istediği tam olarak budur.
+            if (!startedRef.current) {
+              const np = await readNowPlaying(supabase, venueDbId);
+              applyVolume(np?.volume);
+              applyCrossfade(np?.crossfade_ms);
+              // now_playing boşsa (ilk açılış) kuyruğun başına bakılır. peek
+              // kuyruğu TÜKETMEZ ve sahiplik istemez — ısınmada güvenlidir.
+              const cue = np?.video_id ?? (await api({ action: "peek" }))?.video_id ?? null;
+              // Bu arada "Başlat"a basıldıysa akış artık start()'ın elinde
+              if (!cue || startedRef.current) return;
+              try {
+                decksRef.current[key]?.cueVideoById(cue);
+                forceLowQuality(decksRef.current[key]);
+                prewarmCuedRef.current = cue;
+                plog(`ısınma: ${cue} cue'landı (sessiz, sahiplik yok)`);
+              } catch {}
+              return;
+            }
             // Player hazır olmadan gelen ses komutu biriktiyse şimdi uygula
             pushVolume();
             // Hazır olmadan gelen komut biriktiyse önce onu çal
@@ -1498,19 +1607,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               return;
             }
             // Kaldığı yerden devam: now_playing'de video varsa onu, yoksa sıradakini çal
-            const np = await readNowPlaying(supabase, venueDbId);
-            // Mekanın en son ayarladığı ses seviyesiyle aç — yeniden başlatmada sıfırlanmaz
-            applyVolume(np?.volume);
-            applyCrossfade(np?.crossfade_ms);
-            if (np?.video_id) {
-              loadVideo(np.video_id);
-            } else {
-              advance({ action: "next" });
-            }
+            resumeFromServer(false);
           },
           onStateChange: (e) => {
             const YT = window.YT!;
             plog(`deck ${key}${key === activeDeckRef.current ? "*" : ""}: ${stateName(e.data)}`);
+            // Isınma aşamasının olayları çalma akışını yönetmez: cue'lanan video
+            // CUED verir, aşağıdaki dal onu çalmaya kalkardı — sahiplik daha
+            // alınmadan ses çıkması demek olurdu.
+            if (!startedRef.current) return;
             // Boştaki deck'in olayları çalma akışını yönetmez. Geçiş sırasında
             // çıkan şarkı burada biter (ENDED) — kuyruğu ikinci kez ilerletmemeli.
             if (key !== activeDeckRef.current) return;
@@ -1583,6 +1688,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       onTrackChange,
       supabase,
       venueDbId,
+      api,
+      resumeFromServer,
       applyVolume,
       applyCrossfade,
       pushVolume,
@@ -1595,17 +1702,34 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   );
 
   // "Başlat" — tarayıcı autoplay politikası gereği ilk oynatma kullanıcı dokunuşuyla.
-  // Önce sahiplik alınır: aynı mekanda ikinci bir sekme/cihaz açıksa çift ses olmasın.
+  //
+  // SIRA KRİTİKTİR. Eskiden önce sahiplik alınıp sonra deck'ler kuruluyordu; asıl
+  // playVideo() ise iki ağ turu sonra, onReady zincirinde düşüyordu. Masaüstünde
+  // sorun çıkmıyordu (Media Engagement Index sesli otomatik oynatmaya zaten izin
+  // verir) ama iOS Safari'de dokunuş izni ilk await'te tükendiği için oynatma her
+  // seferinde reddediliyor, iframe poster + kırmızı düğme halinde kalıyordu.
+  // Artık ısıtılmış deck ilk iş olarak, await'lerden ÖNCE başlatılır; sahiplik
+  // hemen ardından sorulur ve başkasındaysa ses derhal kesilir.
   const start = useCallback(
     async (force = false) => {
       setError("");
       // Sekmeyi uyanık tutan taşıyıcı ton bu dokunuşla kurulur (bkz.
       // KEEPALIVE_HZ): AudioContext ancak kullanıcı etkileşimiyle çalışabilir.
       startKeepAlive();
+      // Olay kancaları bu andan itibaren gerçek çalma akışını yönetsin: aşağıdaki
+      // playVideo'nun PLAYING olayı claim yanıtından önce dönebilir.
+      startedRef.current = true;
+      const unlocked = unlockPlayback();
 
       const claim = await api({ action: "claim", force });
-      if (blockedRef.current === "auth") return;
+      if (blockedRef.current === "auth") {
+        if (unlocked) abortUnlock();
+        startedRef.current = false;
+        return;
+      }
       if (claim?.taken) {
+        if (unlocked) abortUnlock();
+        startedRef.current = false;
         setClaimTaken(true);
         return;
       }
@@ -1615,23 +1739,62 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       const hostA = deckAHostRef.current;
       const hostB = deckBHostRef.current;
       if (!hostA || !hostB || !window.YT) {
+        startedRef.current = false;
         setError("YouTube player yüklenemedi — sayfayı yenileyin");
         return;
       }
 
       canCrossfadeRef.current = deviceSupportsVolume();
-      activeDeckRef.current = "a";
-      setVisibleDeck("a");
-      pendingVideoRef.current = null;
-      // İki deck de kullanıcı dokunuşunun hemen ardından kurulur: ikincisinin de
-      // autoplay izni bu etkileşimden gelir, geçiş anında sessizce engellenmesin
-      decksRef.current.a = createDeck("a", hostA);
-      decksRef.current.b = createDeck("b", hostB);
+      // Isınmada kurulmuş deck'ler KORUNUR: yeniden yaratmak, dokunuşla az önce
+      // açılan oynatma iznini çöpe atar ve ilk şarkı yine başlamaz. Isınma
+      // yetişmediyse (script geç geldi, ilk render kaçtı) eski yol aynen işler.
+      if (!decksRef.current.a || !decksRef.current.b) {
+        activeDeckRef.current = "a";
+        setVisibleDeck("a");
+        pendingVideoRef.current = null;
+        // İki deck de kullanıcı dokunuşunun hemen ardından kurulur: ikincisinin de
+        // autoplay izni bu etkileşimden gelir, geçiş anında sessizce engellenmesin
+        decksRef.current.a = createDeck("a", hostA);
+        decksRef.current.b = createDeck("b", hostB);
+      } else if (deckReadyRef.current[activeDeckRef.current]) {
+        // Isınma yolundan geldik: onReady'nin "kaldığı yerden devam" adımı o
+        // sırada atlanmıştı (sahiplik yoktu), eşitlemeyi şimdi yap.
+        resumeFromServer(unlocked);
+      }
 
       setStarted(true);
     },
-    [api, createDeck, startKeepAlive]
+    [api, createDeck, startKeepAlive, unlockPlayback, abortUnlock, resumeFromServer]
   );
+
+  // --- Isınma: "Başlat" beklenmeden deck'leri kur, sıradaki videoyu cue'la ---
+  // iOS Safari programatik playVideo()'yu ancak daha önce bir kullanıcı dokunuşu
+  // oynatmayı başlatmışsa kabul eder — ve dokunuş anında iframe'in HAZIR, videonun
+  // YÜKLÜ olması gerekir. Burada ses çıkmaz ve sahiplik alınmaz: cue yalnızca
+  // yükler, onStateChange de ısınma boyunca devre dışıdır.
+  useEffect(() => {
+    if (prewarmDoneRef.current) return;
+    prewarmDoneRef.current = true;
+    void (async () => {
+      // Sahiplik başka cihazdaysa "Başlat" hiç gösterilmesin. Artık oynatma
+      // dokunuşun içinde başlıyor (sahiplik yanıtı sonra geliyor); bu önden
+      // yoklama olmadan ikinci ekran yanıt dönene dek kısa bir ses çıkarırdı.
+      // probe kilidi ALMAZ, yalnızca sorar.
+      const probe = await api({ action: "claim", probe: true });
+      if (probe?.taken === true) setClaimTaken(true);
+
+      await loadIframeApi();
+      // Bu arada "Başlat"a basıldıysa deck'leri start() kuruyor — karışma
+      if (startedRef.current || decksRef.current.a) return;
+      const hostA = deckAHostRef.current;
+      const hostB = deckBHostRef.current;
+      if (!hostA || !hostB || !window.YT) return;
+      canCrossfadeRef.current = deviceSupportsVolume();
+      activeDeckRef.current = "a";
+      decksRef.current.a = createDeck("a", hostA);
+      decksRef.current.b = createDeck("b", hostB);
+    })();
+  }, [createDeck, api]);
 
   // Sahiplik başka cihaza geçtiyse bu sekme derhal susar — çift ses olmasın
   useEffect(() => {

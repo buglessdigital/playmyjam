@@ -107,60 +107,143 @@ function ListNameModal({ kind, onClose, lib }: { kind: "newList" | "rename"; onC
   );
 }
 
+/** Bir metinden bağlantıları ayıklar: satır/boşluk/virgül fark etmez. */
+function splitUrls(raw: string): string[] {
+  return raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+}
+
 function ImportModal({ onClose, lib }: { onClose: () => void; lib: Library }) {
   const { playlists, defaultTarget, refresh, setSelectedId } = lib;
-  const [playlistUrl, setPlaylistUrl] = useState("");
+  // Her bağlantı kendi satırında: "Bağlantı ekle" yeni bir kutu açar.
+  const [urlRows, setUrlRows] = useState<string[]>([""]);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState("");
+  // Satır başına durum: hangi bağlantının nerede takıldığı kutunun altında görünür.
+  const [rowStatus, setRowStatus] = useState<Record<string, { state: "busy" | "ok" | "fail"; text: string }>>({});
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
   // İçe aktarma çoğunlukla yeni bir liste oluşturmak için yapılıyor —
   // varsayılan sekme "Yeni liste".
   const [importAsNew, setImportAsNew] = useState(true);
   const [newListName, setNewListName] = useState("");
   const [targetId, setTargetId] = useState(defaultTarget());
 
-  const importPlaylist = async () => {
-    if (!playlistUrl.trim() || importing) return;
-    if (!importAsNew && !targetId) {
+  const urls = [...new Set(urlRows.map((u) => u.trim()).filter(Boolean))];
+
+  const setRow = (index: number, value: string) => {
+    // Çok satırlı yapıştırma tek kutuya sığmaz — satırlar kendi kutularına dağılır.
+    const parts = splitUrls(value);
+    setUrlRows((rows) =>
+      parts.length > 1
+        ? [...rows.slice(0, index), ...parts, ...rows.slice(index + 1)]
+        : rows.map((r, i) => (i === index ? value : r))
+    );
+  };
+
+  const addRow = () => setUrlRows((rows) => [...rows, ""]);
+  const removeRow = (index: number) =>
+    setUrlRows((rows) => (rows.length === 1 ? [""] : rows.filter((_, i) => i !== index)));
+  // Birden fazla bağlantıda hedef seçimi yok: playlist_sources'ta liste başına tek
+  // kaynak satırı var (0029), hepsi aynı listeye gitse yalnızca sonuncusu senkron
+  // kalırdı. Bu yüzden çoklu aktarımda her bağlantı kendi listesini açar.
+  const multi = urls.length > 1;
+  const asNew = importAsNew || multi;
+
+  const importPlaylists = async () => {
+    if (urls.length === 0 || importing) return;
+    if (!asNew && !targetId) {
       setError("Önce bir playlist seçin");
       return;
     }
     setImporting(true);
     setError("");
     setResult("");
-    try {
-      const res = await fetch("/api/admin/playlist/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          playlist_url: playlistUrl.trim(),
-          ...(importAsNew
-            ? { new_playlist: true, new_playlist_name: newListName.trim() || undefined }
-            : { playlist_id: targetId }),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "İçe aktarılamadı");
-        return;
+    setRowStatus({});
+    setProgress({ done: 0, total: urls.length });
+
+    let added = 0;
+    let skipped = 0;
+    let resolved = 0;
+    let done = 0;
+    let okCount = 0;
+    let lastPlaylistId = "";
+
+    // Sıralı gidiyoruz: her bağlantı YouTube'a 20+ istek atıyor, paralel koşmak
+    // kota hatalarını ve 429'ları tetikler. Bir bağlantının hatası diğerlerini durdurmaz.
+    for (const url of urls) {
+      setRowStatus((s) => ({ ...s, [url]: { state: "busy", text: "aktarılıyor…" } }));
+      try {
+        const res = await fetch("/api/admin/playlist/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            playlist_url: url,
+            ...(asNew
+              ? {
+                  new_playlist: true,
+                  // Çoklu aktarımda tek bir ad tüm listelere verilemez — adlar
+                  // YouTube başlıklarından gelir.
+                  new_playlist_name: multi ? undefined : newListName.trim() || undefined,
+                }
+              : { playlist_id: targetId }),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setRowStatus((s) => ({
+            ...s,
+            [url]: { state: "fail", text: `${res.status} — ${data.error ?? "içe aktarılamadı"}` },
+          }));
+        } else {
+          okCount++;
+          added += data.added ?? 0;
+          skipped += data.skipped ?? 0;
+          resolved += data.resolved_suggestions ?? 0;
+          if (data.playlist_id) lastPlaylistId = data.playlist_id;
+          setRowStatus((s) => ({
+            ...s,
+            [url]: {
+              state: "ok",
+              text: `${data.added ?? 0} şarkı eklendi${data.skipped ? `, ${data.skipped} zaten vardı` : ""}`,
+            },
+          }));
+        }
+      } catch (err) {
+        setRowStatus((s) => ({
+          ...s,
+          [url]: { state: "fail", text: err instanceof Error ? err.message : "bağlantı hatası" },
+        }));
       }
+      done++;
+      setProgress({ done, total: urls.length });
+    }
+
+    if (okCount > 0) {
       setResult(
-        `${data.added} şarkı eklendi${data.skipped ? `, ${data.skipped} şarkı zaten vardı` : ""}` +
-          (data.resolved_suggestions ? `, ${data.resolved_suggestions} müşteri önerisi karşılandı` : "") +
-          (data.auto_sync ? ". Yeni şarkılar her gün otomatik eklenecek." : "")
+        (multi ? `${okCount}/${urls.length} liste aktarıldı — ` : "") +
+          `${added} şarkı eklendi${skipped ? `, ${skipped} şarkı zaten vardı` : ""}` +
+          (resolved ? `, ${resolved} müşteri önerisi karşılandı` : "") +
+          ". Yeni şarkılar her gün otomatik eklenecek."
       );
-      setPlaylistUrl("");
-      await refresh();
-      if (data.playlist_id) {
-        setSelectedId(data.playlist_id);
-        setTargetId(data.playlist_id);
+    }
+    if (okCount < urls.length) {
+      setError(
+        okCount === 0
+          ? "Hiçbir liste aktarılamadı"
+          : `${urls.length - okCount} bağlantı aktarılamadı — kutuların altındaki nedene bakın`
+      );
+    }
+
+    await refresh();
+    if (lastPlaylistId) {
+      setSelectedId(lastPlaylistId);
+      // Tek liste aktarıldıysa hedef ona sabitlenir; çokluda seçim "yeni liste"de kalır.
+      if (!multi) {
+        setTargetId(lastPlaylistId);
         setImportAsNew(false);
       }
-    } catch {
-      setError("Bağlantı hatası, tekrar deneyin");
-    } finally {
-      setImporting(false);
     }
+    setImporting(false);
   };
 
   return (
@@ -174,7 +257,8 @@ function ImportModal({ onClose, lib }: { onClose: () => void; lib: Library }) {
 
       <div className="overflow-y-auto">
         <p className="text-[#9ca3af] text-xs mb-3">
-          Herkese açık bir YouTube playlist bağlantısı yapıştırın — hesap bağlamaya gerek yok.
+          Herkese açık YouTube playlist bağlantısı yapıştırın — hesap bağlamaya gerek yok.
+          Birden fazla liste aktaracaksanız &quot;Bağlantı Ekle&quot; ile yeni kutu açın.
         </p>
 
         {result && (
@@ -183,33 +267,81 @@ function ImportModal({ onClose, lib }: { onClose: () => void; lib: Library }) {
         {error && (
           <p className="text-sm rounded-xl px-3.5 py-2.5 mb-3" style={{ background: "rgba(239,68,68,0.1)", color: "#f87171" }}>{error}</p>
         )}
+        <div className="space-y-2 mb-2">
+          {urlRows.map((url, i) => {
+            const status = rowStatus[url.trim()];
+            return (
+              <div key={i}>
+                <div className="flex gap-2 items-center">
+                  <input
+                    value={url}
+                    onChange={(e) => setRow(i, e.target.value)}
+                    onKeyDown={(e) => {
+                      // Enter son satırdaysa yeni kutu açar, değilse aktarımı başlatır.
+                      if (e.key !== "Enter") return;
+                      if (i === urlRows.length - 1 && url.trim()) addRow();
+                      else importPlaylists();
+                    }}
+                    placeholder="https://www.youtube.com/playlist?list=..."
+                    autoFocus={i === 0}
+                    className="flex-1 min-w-0 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none"
+                    style={inputStyle}
+                  />
+                  {urlRows.length > 1 && (
+                    <button
+                      onClick={() => removeRow(i)}
+                      aria-label="Bağlantıyı kaldır"
+                      className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-[#6b7280] hover:text-white"
+                      style={inputStyle}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                    </button>
+                  )}
+                </div>
+                {status && (
+                  <span
+                    className="block text-[11px] mt-1 px-1 break-all"
+                    style={{ color: status.state === "fail" ? "#f87171" : status.state === "ok" ? "#22c55e" : "#9ca3af" }}
+                  >
+                    {status.text}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
 
-        <input
-          value={playlistUrl}
-          onChange={(e) => setPlaylistUrl(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && importPlaylist()}
-          placeholder="https://www.youtube.com/playlist?list=..."
-          autoFocus
-          className="w-full rounded-xl px-3.5 py-2.5 text-sm text-white outline-none mb-3"
-          style={inputStyle}
-        />
+        <button
+          onClick={addRow}
+          className="w-full py-2 rounded-xl text-xs font-semibold mb-3 flex items-center justify-center gap-1.5"
+          style={{ ...inputStyle, color: "#f9a8d4" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          Bağlantı Ekle
+        </button>
+
+        {multi && (
+          <p className="text-[#9ca3af] text-xs mb-3">
+            {urls.length} bağlantı — her biri kendi listesi olarak, YouTube&apos;daki adıyla eklenecek.
+          </p>
+        )}
 
         <p className="text-[#6b7280] text-xs mb-2">Nereye eklensin?</p>
         <div className="flex gap-2 mb-3">
           <button
             onClick={() => setImportAsNew(false)}
-            disabled={playlists.length === 0}
+            disabled={playlists.length === 0 || multi}
             className="flex-1 py-2 rounded-xl text-xs font-semibold disabled:opacity-40"
-            style={tabStyle(!importAsNew)}
+            style={tabStyle(!asNew)}
           >
             Mevcut liste
           </button>
-          <button onClick={() => setImportAsNew(true)} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={tabStyle(importAsNew)}>
-            Yeni liste
+          <button onClick={() => setImportAsNew(true)} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={tabStyle(asNew)}>
+            {multi ? "Ayrı listeler" : "Yeni liste"}
           </button>
         </div>
 
-        {importAsNew ? (
+        {multi ? null : asNew ? (
           <input
             value={newListName}
             onChange={(e) => setNewListName(e.target.value)}
@@ -243,16 +375,20 @@ function ImportModal({ onClose, lib }: { onClose: () => void; lib: Library }) {
         </p>
 
         <button
-          onClick={importPlaylist}
-          disabled={importing || !playlistUrl.trim()}
+          onClick={importPlaylists}
+          disabled={importing || urls.length === 0}
           className="w-full py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
           style={{ background: "#e91e8c", color: "white" }}
         >
           {importing ? (
             <>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
-              İçe aktarılıyor...
+              {progress.total > 1
+                ? `İçe aktarılıyor... ${progress.done}/${progress.total}`
+                : "İçe aktarılıyor..."}
             </>
+          ) : multi ? (
+            `${urls.length} Listeyi İçe Aktar`
           ) : (
             "İçe Aktar"
           )}

@@ -204,7 +204,9 @@ function EditVenueForm() {
               />
             </div>
             <div>
-              <label className="block text-[#9ca3af] text-xs mb-1.5">Öncelikli istek (jeton)</label>
+              {/* Taban ücret: gerçek fiyat sırada bekleyen her 3 normal şarkı için
+                  1 jeton artar (bkz. priority_cost_now / lib/pricing.ts) */}
+              <label className="block text-[#9ca3af] text-xs mb-1.5">Öncelikli istek (taban jeton)</label>
               <input
                 type="number"
                 min="1"

@@ -262,6 +262,7 @@
     "normalQueue": "Normal Sıra",
     "priorityQueue": "Öncelikli Sıra",
     "waitSuffix": "{wait} bekleme",
+    "priorityBusy": "Sıra kalabalık — öncelikli ücreti arttı",
     "insufficient": "Yetersiz jeton.",
     "topUp": "Jeton Yükle"
   },

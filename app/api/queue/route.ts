@@ -104,5 +104,7 @@ export async function POST(req: NextRequest) {
     }
   });
 
-  return NextResponse.json({ ok: true });
+  // cost: öncelikli ücret kuyruğun anlık haline bağlı (0044) — istemci iyimser
+  // düşümünü gerçekten kesilen tutarla eşitlesin diye geri veriliyor
+  return NextResponse.json({ ok: true, cost: result?.cost });
 }

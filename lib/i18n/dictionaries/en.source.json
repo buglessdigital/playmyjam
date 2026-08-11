@@ -208,6 +208,7 @@
   "addSong.normalQueue": "Normal Sıra",
   "addSong.priorityQueue": "Öncelikli Sıra",
   "addSong.waitSuffix": "{wait} bekleme",
+  "addSong.priorityBusy": "Sıra kalabalık — öncelikli ücreti arttı",
   "addSong.insufficient": "Yetersiz jeton.",
   "addSong.topUp": "Jeton Yükle",
   "search.exitArtistAria": "Sanatçıdan çık",

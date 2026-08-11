@@ -262,6 +262,7 @@
     "normalQueue": "Normal Queue",
     "priorityQueue": "Priority Queue",
     "waitSuffix": "{wait} wait",
+    "priorityBusy": "The queue is busy — priority costs more",
     "insufficient": "Insufficient tokens.",
     "topUp": "Top Up Tokens"
   },

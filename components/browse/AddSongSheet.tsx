@@ -21,14 +21,17 @@ interface Props {
   waitNormalMs?: number;
   waitPriorityMs?: number;
   normalCost?: number;
+  /** Kuyruğa göre hesaplanmış güncel öncelikli ücret (bkz. lib/pricing.ts) */
   priorityCost?: number;
+  /** Mekanın taban öncelikli ücreti — fark varsa "sıra kalabalık" notu gösterilir */
+  basePriorityCost?: number;
   onClose: () => void;
   onAdd: (priority: boolean) => void;
 }
 
 export default function AddSongSheet({
   song, tokenBalance, cooldown, waitNormalMs = 0, waitPriorityMs = 0,
-  normalCost = 1, priorityCost = 2, onClose, onAdd,
+  normalCost = 1, priorityCost = 2, basePriorityCost = priorityCost, onClose, onAdd,
 }: Props) {
   const router = useRouter();
   const params = useParams<{ venueId: string }>();
@@ -50,6 +53,9 @@ export default function AddSongSheet({
   const cooldownReason = cooldown?.reason;
   const canNormal = tokenBalance >= normalCost && !inCooldown;
   const canPriority = tokenBalance >= priorityCost && !inCooldown;
+  // Sıra kalabalıklaştıkça öncelikli pahalılaşır: taban ücretin üstüne çıkıldığında
+  // müşteri fiyatın neden yükseldiğini görsün
+  const prioritySurcharge = priorityCost > basePriorityCost;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -240,6 +246,9 @@ export default function AddSongSheet({
                     {t.addSong.priorityQueue}
                   </p>
                   <p className="text-[#6b7280] text-xs">{fmt(t.addSong.waitSuffix, { wait: formatWait(waitPriorityMs) })}</p>
+                  {prioritySurcharge && (
+                    <p className="text-[#e91e8c]/80 text-[11px] mt-0.5">{t.addSong.priorityBusy}</p>
+                  )}
                 </div>
               </div>
               <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{fmt(t.addSong.tokensValue, { n: priorityCost })}</span>

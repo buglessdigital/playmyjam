@@ -12,6 +12,7 @@ import type { TrackDetails } from "@/lib/youtube";
 import type { LyricsResult } from "@/lib/lyrics";
 import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { formatWait, useNowPlayingClock, waitMs } from "@/lib/wait-time";
+import { normalQueuedCount, priorityCostFor } from "@/lib/pricing";
 import { usePlayerOnline } from "@/lib/use-player-online";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { fmt, useT } from "@/lib/i18n";
@@ -295,6 +296,13 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     [queueEntries, remainingCurrentMs]
   );
 
+  // Öncelikli ücret sıraya göre değişir: bekleyen her 3 normal şarkı için +1 jeton
+  // (aynı formül sunucuda priority_cost_now içinde — bkz. lib/pricing.ts)
+  const dynamicPriorityCost = useMemo(
+    () => priorityCostFor(priorityCost, normalQueuedCount(queueEntries)),
+    [priorityCost, queueEntries]
+  );
+
   const isCurrentlyPlayingThisSong = !!dbSongId && nowPlaying?.songId === dbSongId && nowPlaying.is_playing;
 
   // Sıra bölümü: kuyruk dizisi zaten çalma sırasında (priority, position);
@@ -356,8 +364,9 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     const target = sheetTarget;
     if (!target || !venueDbId) return;
     const videoId = target.song.youtube_video_id;
-    // Optimistic düşüm — gerçek düşüm RPC'de venues.request_cost/priority_cost'tan
-    const cost = priority ? priorityCost : requestCost;
+    // Optimistic düşüm — gerçek düşüm RPC'de; öncelikli ücret kuyruğa bağlı
+    // olduğu için yanıt gelince aradaki fark düzeltilir
+    const cost = priority ? dynamicPriorityCost : requestCost;
     setTokenBalance((b) => b - cost);
     setAddedIds((s) => new Set(s).add(videoId));
     setSheetTarget(null);
@@ -368,7 +377,14 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
       body: JSON.stringify({ venue_id: venueDbId, song_id: target.songId, priority }),
     });
 
-    if (!res.ok) {
+    if (res.ok) {
+      // Başkası tam bu sırada şarkı eklediyse kesilen ücret gösterilenden farklı
+      // olabilir — gerçek tutarla eşitle
+      const charged = await res.json().then((d) => d?.cost).catch(() => null);
+      if (typeof charged === "number" && charged !== cost) {
+        setTokenBalance((b) => b + cost - charged);
+      }
+    } else {
       setTokenBalance((b) => b + cost);
       setAddedIds((s) => {
         const next = new Set(s);
@@ -817,7 +833,8 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
         waitNormalMs={waitNormalMs}
         waitPriorityMs={waitPriorityMs}
         normalCost={requestCost}
-        priorityCost={priorityCost}
+        priorityCost={dynamicPriorityCost}
+        basePriorityCost={priorityCost}
         onClose={() => setSheetTarget(null)}
         onAdd={handleAdd}
       />

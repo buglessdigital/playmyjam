@@ -413,7 +413,7 @@ export default function AdminSettingsPage() {
               onChange={setRequestCost}
             />
             <CostField
-              label="Öncelikli istek (jeton)"
+              label="Öncelikli istek (taban jeton)"
               hint="Sıranın başına geçer"
               value={priorityCost}
               onChange={setPriorityCost}
@@ -423,6 +423,13 @@ export default function AdminSettingsPage() {
           <p className="text-[#6b7280] text-xs">
             Varsayılan: normal 1 jeton, öncelikli 2 jeton. Değişiklik yalnızca bundan sonraki
             isteklere uygulanır.
+          </p>
+
+          <p className="text-[#6b7280] text-xs">
+            <span className="text-white font-semibold">Öncelikli ücret sıraya göre artar:</span>{" "}
+            sırada bekleyen her 3 normal şarkı için taban ücrete 1 jeton eklenir. Örneğin taban 2
+            jetonken sırada 6 normal şarkı varsa öncelikli 4 jetondur. Sıra boşaldıkça fiyat
+            kendiliğinden tabana döner.
           </p>
         </div>
 

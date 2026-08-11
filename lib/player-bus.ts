@@ -23,6 +23,9 @@ export type PlayerCommand =
   | { type: "load"; video_id: string }
   // Sunucu isteği yola çıktı: player kuyruk/ses tarafında hazırlanabilsin diye
   | { type: "seeking" }
+  // Çalan şarkının içinde konum değiştir (panelin alt barındaki sarma çubuğu).
+  // Kuyruğa dokunmaz; yalnızca aktif deck'in konumu değişir.
+  | { type: "seek"; position_ms: number }
   | { type: "volume"; volume: number };
 
 export type PlayerStateBeat = {

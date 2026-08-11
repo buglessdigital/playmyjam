@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { formatTime, type Playback } from "./usePlayback";
+import SeekBar from "./SeekBar";
+import { type Playback } from "./usePlayback";
 
 /** Ana ekranın alt barı: şu an çalan, oynat/duraklat/geç ve ses seviyesi. */
 export default function PlayerBar({
@@ -17,12 +18,15 @@ export default function PlayerBar({
   const {
     nowPlaying,
     progress,
-    progressPct,
     duration,
     isPlaying,
     playerOffline,
     playerLoading,
     playerAction,
+    beginSeek,
+    previewSeek,
+    commitSeek,
+    cancelSeek,
     volume,
     volumeError,
     changeVolume,
@@ -131,16 +135,15 @@ export default function PlayerBar({
           )}
 
           {song && !playerOffline && (
-            <div className="flex items-center gap-2 w-full">
-              <span className="text-[#6b7280] text-[10px] tabular-nums shrink-0">{formatTime(progress)}</span>
-              <div className="h-1 flex-1 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${progressPct}%`, background: "linear-gradient(90deg, #e91e8c, #8b5cf6)" }}
-                />
-              </div>
-              <span className="text-[#6b7280] text-[10px] tabular-nums shrink-0">{formatTime(duration === 1 ? 0 : duration)}</span>
-            </div>
+            <SeekBar
+              progress={progress}
+              // duration === 1: süre henüz bilinmiyor (bkz. usePlayback) — sarma kapalı
+              duration={duration === 1 ? 0 : duration}
+              onBegin={beginSeek}
+              onPreview={previewSeek}
+              onCommit={commitSeek}
+              onCancel={cancelSeek}
+            />
           )}
         </div>
 

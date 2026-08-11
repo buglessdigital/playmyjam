@@ -54,6 +54,9 @@ const QUEUE_SELECT =
 const OFFLINE_AFTER_MS = 45_000;
 // İlerleme çubuğu tick aralığı
 const TICK_MS = 250;
+// Sarma sonrası koruma penceresi: bu süre boyunca dışarıdan gelen ilerleme
+// değerleri yok sayılır (yoldaki heartbeat'ler henüz eski konumu taşıyor).
+const SEEK_GUARD_MS = 2_000;
 
 // Müşterinin jetonla aldığı sıra taşınamaz; taşınabilen tek blok otomatik/elle
 // eklenen şarkılardır (user_id null). Sunucu tarafı da aynı kuralı uygular.
@@ -97,6 +100,17 @@ export function usePlayback(venueDbId: string) {
   const localActionAtRef = useRef(0);
   // Player'ın broadcast ettiği canlı durum: DB turunu beklemeden uygulanır
   const busRef = useRef<ReturnType<typeof playerBusChannel> | null>(null);
+  // --- Sarma (alt bardaki ilerleme çubuğu) ---
+  // Parmak çubuğun üstündeyken dışarıdan gelen hiçbir ilerleme uygulanmaz:
+  // tick de, player'ın yoldaki heartbeat'i de imleci parmağın altından kaçırırdı.
+  const scrubbingRef = useRef(false);
+  // Bırakıldıktan sonraki koruma penceresi: player yeni konumu bildirene kadar
+  // yolda olan BAYAT değerler çubuğu eski yerine geri sıçratmasın.
+  const seekGuardUntilRef = useRef(0);
+  const scrubIgnores = useCallback(
+    () => scrubbingRef.current || Date.now() < seekGuardUntilRef.current,
+    []
+  );
   const nowPlayingRef = useRef<NowPlaying | null>(null);
   const queueRef = useRef<QueueItem[]>([]);
   useEffect(() => {
@@ -164,7 +178,9 @@ export function usePlayback(venueDbId: string) {
       // Az önce düğmeye basıldıysa çalma durumunu sunucudan geri alma: satır
       // henüz yazılmamış ya da yoldaki heartbeat bayat olabilir. Şarkı/kapak
       // bilgisi yine tazelenir, yalnızca oynat/duraklat ekseni korunur.
-      const fresh = Date.now() - localActionAtRef.current < 2_500;
+      // Sarma da "az önce elle dokunuldu" sayılır: sunucudaki satır henüz eski
+      // konumu taşıyor, ekrandaki taze niyeti ezmemeli.
+      const fresh = Date.now() - localActionAtRef.current < 2_500 || scrubIgnores();
       setNowPlaying((prev) =>
         fresh && prev
           ? { ...raw, songs, is_playing: prev.is_playing, started_at: prev.started_at }
@@ -247,16 +263,20 @@ export function usePlayback(venueDbId: string) {
           fetchNowPlaying();
           return;
         }
-        setProgress(beat.progress_ms);
+        // Sarma sürerken (ya da az önce bırakıldıysa) yoldaki değer bayattır
+        if (!scrubIgnores()) setProgress(beat.progress_ms);
         setNowPlaying((prev) =>
           prev
             ? {
                 ...prev,
                 is_playing: beat.is_playing,
-                progress_ms: beat.progress_ms,
-                started_at: beat.is_playing
-                  ? new Date(Date.now() - beat.progress_ms).toISOString()
-                  : prev.started_at,
+                progress_ms: scrubIgnores() ? prev.progress_ms : beat.progress_ms,
+                // Sarmada çapa yerelde tazelendi; bayat çapayı geri yazmak
+                // pencere kapanır kapanmaz çubuğu eski konuma sıçratırdı
+                started_at:
+                  beat.is_playing && !scrubIgnores()
+                    ? new Date(Date.now() - beat.progress_ms).toISOString()
+                    : prev.started_at,
                 last_heartbeat_at: seenAt,
               }
             : prev
@@ -276,7 +296,7 @@ export function usePlayback(venueDbId: string) {
       window.removeEventListener("online", onWake);
       channels.forEach((c) => supabase.removeChannel(c));
     };
-  }, [venueDbId, supabase, fetchQueue]);
+  }, [venueDbId, supabase, fetchQueue, scrubIgnores]);
 
   // Progress + heartbeat tazeliği için tick. 250 ms: çubuk player'a takılmadan
   // ilerlesin, saniye yazısı gecikmeli görünmesin.
@@ -289,6 +309,8 @@ export function usePlayback(venueDbId: string) {
       // hesaplanan çubuk "çalıyor" yalanı söyler (bkz. lib/player-status.ts).
       const beat = nowPlaying.last_heartbeat_at ? Date.parse(nowPlaying.last_heartbeat_at) : NaN;
       if (!Number.isFinite(beat) || tick - beat > OFFLINE_AFTER_MS) return;
+      // Parmak çubuğun üstünde: imleci kullanıcı sürüyor, saat değil
+      if (scrubbingRef.current) return;
       if (nowPlaying.is_playing) {
         const dur = nowPlaying.songs?.duration_ms ?? 0;
         if (nowPlaying.started_at) {
@@ -379,6 +401,53 @@ export function usePlayback(venueDbId: string) {
     } finally {
       setPlayerLoading(null);
     }
+  };
+
+  // --- Alt bardaki sarma çubuğu ---
+  // Sürükleme boyunca YALNIZCA ekran güncellenir; komut parmak kalkınca tek
+  // seferde gider. Her piksel için komut yollamak player'ı sürekli yeniden
+  // tamponlatır ve sarma "hızlı" değil takırtılı hissettirirdi.
+  const beginSeek = () => {
+    scrubbingRef.current = true;
+    seekGuardUntilRef.current = 0;
+  };
+
+  const previewSeek = (ms: number) => {
+    scrubbingRef.current = true;
+    setProgress(Math.max(0, Math.round(ms)));
+  };
+
+  const commitSeek = (ms: number) => {
+    const max = nowPlaying?.songs?.duration_ms ?? 0;
+    // Şarkının son kırıntısına sarmak çalmayı bitirip sıradakine geçirirdi;
+    // 1 sn'lik pay bırakılır.
+    const target = Math.max(0, Math.min(Math.round(ms), max > 0 ? max - 1_000 : Math.round(ms)));
+    scrubbingRef.current = false;
+    seekGuardUntilRef.current = Date.now() + SEEK_GUARD_MS;
+    localActionAtRef.current = Date.now();
+    setProgress(target);
+    // Çapa yerelde kaydırılır: 250 ms'lik tick sunucuyu beklemeden yeni
+    // konumdan saymaya devam eder, çubuk geri sıçramaz.
+    setNowPlaying((prev) =>
+      prev
+        ? {
+            ...prev,
+            progress_ms: target,
+            started_at: prev.is_playing
+              ? new Date(Date.now() - target).toISOString()
+              : prev.started_at,
+          }
+        : prev
+    );
+    // Tek hat: komut doğrudan player'a gider (~50-100 ms). Sunucuya ayrıca
+    // yazmıyoruz — player yeni konumu kendi heartbeat'iyle zaten kalıcılaştırır
+    // ve DB'ye "sarıldı" yazıp player'a ulaşmamak, çalan yerle satırı ayırırdı.
+    sendCommand({ type: "seek", position_ms: target });
+  };
+
+  const cancelSeek = () => {
+    scrubbingRef.current = false;
+    seekGuardUntilRef.current = 0;
   };
 
   // Sahnedeki şarkıyı müşteri jetonuyla mı ekledi? Öyleyse kesilemez.
@@ -597,6 +666,10 @@ export function usePlayback(venueDbId: string) {
     queueError,
     reordering,
     playerAction,
+    beginSeek,
+    previewSeek,
+    commitSeek,
+    cancelSeek,
     changeVolume,
     toggleMute,
     removeFromQueue,

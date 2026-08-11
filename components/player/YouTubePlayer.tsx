@@ -1600,6 +1600,54 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             endCrossfade();
             break;
           }
+          case "seek": {
+            const target = Math.max(0, Math.floor(cmd.position_ms ?? 0));
+            if (!currentVideoRef.current) break;
+            // Sarma sırasında geçiş yapmayız: rampanın ortasında konum değişirse
+            // çıkan ve giren şarkı birbirine karışır. Önyükleme de geçersizleşir,
+            // çünkü kalan süre artık başka.
+            endCrossfade();
+            const player = activePlayer();
+            if (!activeReady() || typeof player?.seekTo !== "function") break;
+            try {
+              // allowSeekAhead: tamponun ötesine gidildiğinde YouTube yeni parçayı
+              // istesin — false olsaydı uzak konumlar yalnızca tampon içinde çalışırdı
+              player.seekTo(target / 1000, true);
+            } catch {
+              break;
+            }
+            // Takılma bekçisinin çapası yeni konuma taşınır: aksi halde "saniye
+            // geriye gitti" görünüp kurtarma merdivenini boşuna tetikliyordu
+            markProgress(currentVideoRef.current, target / 1000);
+            if (desiredPlayingRef.current) {
+              try {
+                player.playVideo();
+              } catch {}
+              scheduleNudges([PLAY_NUDGE_MS]);
+            } else {
+              // Duraklatılmışken sarma duraklatılmış kalmalı. YouTube seek'ten
+              // sonra bazı durumlarda kendiliğinden oynatmaya geçiyor; onStateChange
+              // bunu "kullanıcı başlattı" sanıp müziği açardı.
+              explicitPauseAtRef.current = Date.now();
+              setTimeout(() => {
+                if (desiredPlayingRef.current) return;
+                try {
+                  player.pauseVideo();
+                } catch {}
+              }, 300);
+            }
+            // Panel/müşteri ekranı beklemesin: yeni konum hem hızlı hattan hem de
+            // (started_at çapası için) sunucudan geçer. getCurrentTime seek'ten
+            // hemen sonra eski konumu döndürebildiği için değer elle bildirilir.
+            broadcastState({ progress_ms: target });
+            api({
+              action: "heartbeat",
+              progress_ms: target,
+              is_playing: desiredPlayingRef.current,
+              video_id: currentVideoRef.current,
+            });
+            break;
+          }
           case "load": {
             if (cmd.video_id && cmd.video_id !== currentVideoRef.current) loadVideo(cmd.video_id);
             break;
@@ -1623,12 +1671,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     supabase,
     venueDbId,
     activePlayer,
+    activeReady,
     scheduleNudges,
     endCrossfade,
     loadVideo,
     applyVolume,
     broadcastState,
     setDesiredPlaying,
+    markProgress,
+    api,
   ]);
 
   // Kuyruk değişince tamponu geçersiz kıl. Müşteri öncelikli şarkı eklediğinde

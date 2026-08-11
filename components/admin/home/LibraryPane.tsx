@@ -151,6 +151,10 @@ export default function LibraryPane({
 
   const totalMs = visibleSongs.reduce((n, s) => n + (s.duration_ms || 0), 0);
 
+  // Sahnedeki şarkı listede de belli olsun: video kimliğinden eşleşir, böylece
+  // şarkı ister listeden otomatik gelsin ister müşteriden, aynı satır renklenir.
+  const playingVideoId = playback.nowPlaying?.video_id ?? null;
+
   const virtual = visibleSongs.length > VIRTUAL_THRESHOLD;
   const { scrollRef, listRef, start, end, padTop, padBottom } = useRowWindow(
     visibleSongs.length,
@@ -489,6 +493,7 @@ export default function LibraryPane({
             {padTop > 0 && <div style={{ height: padTop }} aria-hidden />}
             {visibleSongs.slice(start, end).map((song, offset) => {
               const i = start + offset;
+              const nowPlayingRow = !!playingVideoId && song.youtube_video_id === playingVideoId;
               return (
             <div
               key={song.venueSongId}
@@ -515,7 +520,12 @@ export default function LibraryPane({
               style={{
                 borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined,
                 opacity: dragIndex === i ? 0.4 : 1,
-                background: dragOverIndex === i && dragIndex !== i ? "rgba(233,30,140,0.08)" : undefined,
+                background:
+                  dragOverIndex === i && dragIndex !== i
+                    ? "rgba(233,30,140,0.08)"
+                    : nowPlayingRow
+                      ? "rgba(233,30,140,0.06)"
+                      : undefined,
               }}
             >
               {/* Liste içi sıra: sürükle-bırak ya da oklar */}
@@ -556,8 +566,14 @@ export default function LibraryPane({
               </div>
 
               <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-medium truncate">{song.title}</p>
-                <p className="text-[#6b7280] text-xs truncate">
+                <p
+                  className="text-sm font-medium truncate"
+                  style={{ color: nowPlayingRow ? "#e91e8c" : "#ffffff" }}
+                  title={nowPlayingRow ? "Şu an çalıyor" : undefined}
+                >
+                  {song.title}
+                </p>
+                <p className="text-xs truncate" style={{ color: nowPlayingRow ? "#f9a8d4" : "#6b7280" }}>
                   {song.artist} {song.duration_ms ? `· ${formatDur(song.duration_ms)}` : ""} · {song.play_count} çalınma
                   {viewId === ALL && (memberships[song.id] ?? []).length > 0
                     ? ` · ${(memberships[song.id] ?? [])
@@ -567,6 +583,16 @@ export default function LibraryPane({
                     : ""}
                 </p>
               </div>
+
+              {/* Çalan satırın kuyruktakiyle aynı işareti — renge ek olarak
+                  hareket, uzaktan bakınca da yakalanır */}
+              {nowPlayingRow && (
+                <span className="flex items-end gap-[2px] h-3.5 shrink-0" aria-hidden>
+                  <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "60%", background: "#e91e8c" }} />
+                  <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "100%", background: "#e91e8c", animationDelay: "150ms" }} />
+                  <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "40%", background: "#e91e8c", animationDelay: "300ms" }} />
+                </span>
+              )}
 
               {/* Gizli şarkılar satırda da belli olsun — menüye girmeden görülür */}
               {!song.in_venue_list && (

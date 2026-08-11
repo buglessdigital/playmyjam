@@ -659,9 +659,10 @@ export function useLibrary(
       setConsumed(previousConsumed);
       return { ok: false as const, error: (data.error as string) ?? "Çalınamadı" };
     }
-    // Sahne devralındıysa video kimliği döner: player DB → Realtime turunu
-    // beklemeden yeni şarkıya geçer. Dönmediyse sahnede müşteri şarkısı vardır,
-    // liste sırasını bekler.
+    // Sahne değiştiyse video kimliği döner: player DB → Realtime turunu
+    // beklemeden yeni şarkıya geçer. Dönen şarkı listenin ilki olmayabilir —
+    // sırada müşteri şarkısı bekliyorsa sahneyi o alır, liste altından başlar.
+    // Hiç dönmediyse sahnede müşteri şarkısı çalıyordur, liste sırasını bekler.
     if (typeof data.video_id === "string") playback?.stageTakeover(data.video_id);
     return { ok: true as const };
   };

@@ -249,32 +249,51 @@ export async function PATCH(req: NextRequest) {
   // Play: liste BAŞTAN ve HEMEN çalar. İmleç listeye atlar, ilerlemesi sıfırlanır,
   // listenin ilk şarkısı sahneye çıkar, kuyruk listenin devamıyla dolar.
   //
-  // Tek istisna sahnedeki müşteri şarkısıdır: jetonla alınmış sıra yarıda
-  // kesilmez. O halde sahne olduğu gibi kalır, liste yalnızca kuyruğa yazılır ve
-  // müşteri istekleri bitince baştan çalmaya başlar. Sırada bekleyen müşteri
-  // şarkıları da öne geçmeye devam eder (otomatik satırlar position 9000+).
+  // İki istisna sahneyi devralmayı engeller, ikisi de müşterinin jetonla aldığı
+  // sırayı korumak için:
+  //  1) Sahnede müşteri şarkısı çalıyorsa yarıda kesilmez.
+  //  2) Sahnede jetonsuz (otomatik/admin) bir şarkı çalarken sırada bekleyen
+  //     müşteri şarkısı varsa, sahneyi liste değil o müşteri şarkısı devralır —
+  //     müşteri istekleri sırayla çalar, liste onların altından baştan başlar.
+  // Her iki durumda da liste yalnızca kuyruğa yazılır (otomatik satırlar
+  // position 9000+, yani müşteri şarkıları öne geçmeye devam eder).
   if (isPlay) {
     // YANIT SÜRESİ BURADA ÖNEMLİ: düğmeye basılınca şarkı hemen değişmeli.
     // O yüzden senkron kalan tek iş SAHNE (queue satırı + now_playing); imleç
     // taşıma, kuyruk temizliği ve dolum — hepsi onlarca DB turu — yanıttan sonra
     // after() içinde koşar ve panele Realtime ile düşer.
     //
-    // Sahiplik, açılış şarkısı ve sahnedeki satır birbirine bağlı değil: hepsi
-    // aynı anda sorulur.
-    const [{ data: playlist }, opener, { data: playingRows }] = await Promise.all([
-      supabaseAdmin
-        .from("playlists")
-        .select("id")
-        .eq("id", playlistId)
-        .eq("venue_id", session.venue_id)
-        .maybeSingle(),
-      pickPlaylistOpener(session.venue_id, playlistId),
-      supabaseAdmin
-        .from("queue")
-        .select("song_id, user_id")
-        .eq("venue_id", session.venue_id)
-        .eq("status", "playing"),
-    ]);
+    // Sahiplik, açılış şarkısı, sahnedeki satır ve sıradaki müşteri şarkısı
+    // birbirine bağlı değil: hepsi aynı anda sorulur.
+    const [{ data: playlist }, opener, { data: playingRows }, { data: nextCustomerRow }] =
+      await Promise.all([
+        supabaseAdmin
+          .from("playlists")
+          .select("id")
+          .eq("id", playlistId)
+          .eq("venue_id", session.venue_id)
+          .maybeSingle(),
+        pickPlaylistOpener(session.venue_id, playlistId),
+        supabaseAdmin
+          .from("queue")
+          .select("song_id, user_id")
+          .eq("venue_id", session.venue_id)
+          .eq("status", "playing"),
+        // Sıradaki ilk müşteri şarkısı — sıralama playNextFromQueue ile birebir
+        // aynı, yoksa "sıradaki" başka bir şarkı olurdu
+        supabaseAdmin
+          .from("queue")
+          .select("id")
+          .eq("venue_id", session.venue_id)
+          .eq("status", "queued")
+          .not("user_id", "is", null)
+          .order("priority", { ascending: false })
+          .order("position", { ascending: true })
+          .order("added_at", { ascending: true })
+          .order("id", { ascending: true })
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
     if (!playlist) {
       return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
@@ -291,21 +310,42 @@ export async function PATCH(req: NextRequest) {
     const stage = playingRows ?? [];
     const customerOnStage = stage.some((row) => row.user_id !== null);
     const openerOnStage = stage.some((row) => row.song_id === opener);
-    const takeover = !customerOnStage && !openerOnStage;
+    // Jetonsuz şarkı çalarken sırada müşteri şarkısı bekliyorsa sahne ona geçer:
+    // liste sıranın önüne geçemez, müşteri isteklerinin altından başlar.
+    const promoteId = !customerOnStage ? nextCustomerRow?.id ?? null : null;
+    const takeover = !customerOnStage && !openerOnStage && !promoteId;
 
     // Kuyruk işi tek zincir: liste baştan başlar (playPlaylistNow), bekleyen
     // otomatik satırlar düşer, kuyruk listenin başından dolar. Sıra şart —
     // temizlikten sonra dolum.
     //
-    // Açılış şarkısı "çalındı" ancak fiilen sahnedeyse işaretlenir; müşteri
-    // şarkısı kesilmediği için sahneye çıkamadıysa işaretlenmez, yoksa liste
-    // sırası geldiğinde ilk şarkısını atlardı.
+    // Açılış şarkısı "çalındı" ancak fiilen sahnedeyse işaretlenir; sahneyi
+    // müşteri şarkısı tuttuğu için çıkamadıysa işaretlenmez, yoksa liste sırası
+    // geldiğinde ilk şarkısını atlardı.
+    const openerReachedStage = !customerOnStage && !promoteId;
     const queueWork = async () => {
       await playPlaylistNow(session.venue_id, playlistId, { refillQueue: false });
       await clearAutoQueue(session.venue_id);
-      if (!customerOnStage) await jumpPlaylistCursorTo(session.venue_id, playlistId, opener);
+      if (openerReachedStage) await jumpPlaylistCursorTo(session.venue_id, playlistId, opener);
       await fillQueueToTen(session.venue_id);
     };
+
+    // Sahneyi müşteri şarkısı devralıyor: sahnedeki jetonsuz şarkı kapanır,
+    // sıradaki ilk müşteri satırı çalmaya başlar. İmleç yine listeye taşınır ama
+    // listenin ilk şarkısı tüketilmez — müşteri istekleri bitince o çalacak.
+    if (promoteId) {
+      const promoted = await playSongNow(
+        session.venue_id,
+        { queueId: promoteId },
+        { deferQueueWork: true }
+      );
+
+      after(queueWork().catch(() => {}));
+      return NextResponse.json({
+        ok: true,
+        video_id: promoted.ok ? promoted.video_id : undefined,
+      });
+    }
 
     if (!takeover) {
       after(queueWork().catch(() => {}));

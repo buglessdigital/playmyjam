@@ -111,6 +111,11 @@ const TICK_THAW_MS = 20_000;
 const STALL_NUDGE_MS = 6_000;
 const STALL_RELOAD_MS = 15_000;
 const STALL_SKIP_MS = 28_000;
+// Video HİÇ başlamadıysa ve tamponlamıyorsa (CUED/UNSTARTED/PAUSED'da asılı)
+// ortada beklenecek bir indirme yok: bütün bir şarkı boyunca cue'lu bekleyen
+// deck çoğunlukla böyle ölü kalıyor. Mekan 15 sn sessiz durmasın diye yeniden
+// yükleme öne çekilir; tamponlayan (yani gerçekten indiren) video etkilenmez.
+const STALL_DEAD_RELOAD_MS = 7_000;
 // "PLAYING görünüyor ama saniye ilerlemiyor" ayrı bir durumdur: bu çoğunlukla
 // YouTube'un reklamıdır (reklam boyunca getCurrentTime 0'da bekler) ve o sırada
 // mekanda ses VARDIR. Dürtmenin faydası yok, kesmenin zararı var — eşikler
@@ -855,8 +860,14 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           result = await api(payload);
         }
         if (result?.started && result.video_id) {
+          // Bu videoyu az önce başka bir yol (Realtime yankısı, panelin hızlı
+          // hattı) yüklediyse ikinci kez yükleme: arka arkaya iki loadVideoById
+          // iframe'i asılı bırakıp şarkıyı hiç başlatmayabiliyor.
+          const justLoaded =
+            result.video_id === currentVideoRef.current &&
+            Date.now() - lastLoadAtRef.current < 5_000;
           // Tamponda duruyorsa oradan çal, yoksa normal yükle
-          if (!playPreloaded(result.video_id)) loadVideo(result.video_id);
+          if (!justLoaded && !playPreloaded(result.video_id)) loadVideo(result.video_id);
         } else if (!result && !blockedRef.current && preloadedVideoRef.current) {
           // Sunucuya ulaşılamıyor AMA sıradaki şarkıyı önceden öğrenip tampona
           // almıştık: müzik susmasın, onu çal. Kuyruk sunucuda ilerlemedi;
@@ -1152,9 +1163,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     const playingState = state === YT.PlayerState.PLAYING;
     // PLAYING iken ilerlememek genelde reklamdır (ses var) — sabırlı davran.
     // Diğer durumlarda (BUFFERING/CUED/UNSTARTED/PAUSED) mekan sessizdir.
+    // Hiç ilerlememiş (mark.time < 0) ve tamponlamayan video: ölü yükleme
+    const deadLoad = mark.time < 0 && state !== YT.PlayerState.BUFFERING;
     const ladder = playingState
       ? { nudge: Number.POSITIVE_INFINITY, reload: STALL_PLAYING_RELOAD_MS, skip: STALL_PLAYING_SKIP_MS }
-      : { nudge: STALL_NUDGE_MS, reload: STALL_RELOAD_MS, skip: STALL_SKIP_MS };
+      : {
+          nudge: STALL_NUDGE_MS,
+          reload: deadLoad ? STALL_DEAD_RELOAD_MS : STALL_RELOAD_MS,
+          skip: STALL_SKIP_MS,
+        };
     if (stuck >= ladder.skip && stallStepRef.current < 3) {
       // Yeniden yükleme de tutmadı. Sessiz kalmaktansa sıradakine geçiyoruz —
       // ama "error" YOLLAMIYORUZ: o, şarkıyı katalogda kalıcı olarak
@@ -1726,6 +1743,22 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           // Heartbeat yankılarında değer değişmediği için setVolume çağrılmaz.
           if (np.volume !== volumeRef.current) applyVolume(np.volume);
           applyCrossfade(np.crossfade_ms);
+          // ŞARKI GEÇİŞİNİN KENDİ YANKISI. Kuyruğu ilerleten "next" isteğini biz
+          // attık; sunucu now_playing'i yeni şarkıyla günceller ve Realtime bu
+          // satırı bize çoğu zaman HTTP yanıtından ÖNCE getirir. O anda aşağıdaki
+          // "video değişti" dalı devreye giriyordu ve:
+          //   • tamponlanmış deck yok sayılıp aktif deck'e baştan yükleme yapılıyor
+          //     (preload boşa gidiyor, geçiş yeniden ağa bağımlı hâle geliyordu),
+          //   • hemen ardından gelen yanıt aynı videoyu İKİNCİ kez yüklüyor —
+          //     arka arkaya iki loadVideoById iframe'i UNSTARTED/BUFFERING'de
+          //     asılı bırakabiliyor ve şarkı hiç başlamıyordu,
+          //   • çapraz geçişin ortasındaysak endCrossfade rampayı kesiyor, çalan
+          //     şarkı birkaç saniye erken kesiliyordu.
+          // Geçişi zaten biz yürütüyoruz: yanıt geldiğinde doğru deck'ten
+          // çalınacak. Bu pencerede DB'nin söylediğine kulak asmayız; gerçekten
+          // dışarıdan gelen bir değişiklik olsaydı da hızlı hat (broadcast) onu
+          // taşır, kaçarsa reconcile en geç 15 sn içinde uygular.
+          if (advancingRef.current || fadingRef.current) return;
           // Panelden "baştan başlat": aynı video, ilerleme sıfırlanmış. Şarkının
           // ilk saniyelerinde gelen heartbeat yankısı da sıfır taşır; o yüzden
           // yalnızca gerçekten ilerlemiş bir videoda başa sarılır. Yeni yüklenen

@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getGlobalTokenPackages, getTokenUnitPrice } from "@/lib/pricing-cache";
+import { getVenueBySlug } from "@/lib/venue-cache";
 import TokensClient from "./TokensClient";
 import TokensLoading from "./loading";
 
@@ -26,8 +27,14 @@ export default function TokensPage({ params }: Props) {
 }
 
 async function TokensShell({ venueId }: { venueId: string }) {
-  // Paketler ve birim fiyat globaldir (super admin belirler) — mekandan bağımsız
-  const [packages, unitPrice] = await Promise.all([getGlobalTokenPackages(), getTokenUnitPrice()]);
+  // Paketler ve birim fiyat globaldir (super admin belirler) — mekandan bağımsız.
+  // Mekanın normal şarkı isteği ücreti başlangıç adedini belirler (müşteri en az
+  // bir şarkı çaldıracak kadar jetonla gelsin).
+  const [packages, unitPrice, venue] = await Promise.all([
+    getGlobalTokenPackages(),
+    getTokenUnitPrice(),
+    getVenueBySlug(venueId),
+  ]);
 
   return (
     <TokensClient
@@ -35,6 +42,7 @@ async function TokensShell({ venueId }: { venueId: string }) {
       initialPackages={packages}
       initialSelectedId={packages.find((p) => p.popular)?.id ?? packages[0]?.id ?? ""}
       unitPrice={unitPrice}
+      requestCost={venue?.request_cost ?? 1}
     />
   );
 }

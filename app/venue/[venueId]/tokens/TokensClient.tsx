@@ -56,6 +56,8 @@ interface Props {
   initialPackages: TokenPackage[];
   initialSelectedId: string;
   unitPrice: number;
+  /** Mekanda normal bir şarkı isteğinin jeton bedeli — başlangıç adedi buna göre gelir */
+  requestCost: number;
 }
 
 // Eski sürümde ödeme formundan toplanan alıcı bilgisi; artık istenmiyor, kalıntı temizleniyor.
@@ -112,7 +114,7 @@ function Radio({ selected }: { selected: boolean }) {
   );
 }
 
-export default function TokensClient({ venueId, initialPackages, initialSelectedId, unitPrice }: Props) {
+export default function TokensClient({ venueId, initialPackages, initialSelectedId, unitPrice, requestCost }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
@@ -129,12 +131,26 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const [balanceLoaded, setBalanceLoaded] = useState(false);
   const [balance, setBalance] = useState(0);
   const [selected, setSelected] = useState<string>(initialSelectedId || SINGLE_ID);
-  // Seçili paketin kaç kez alınacağı; paket değişince 1'e döner
-  const [multiplier, setMultiplier] = useState(1);
+
+  // Başlangıç adedi: mekandaki bir normal şarkı isteğini karşılayacak en küçük kat
+  // (1'lik satırda doğrudan request_cost kadar jeton seçili gelir).
+  const defaultMultiplier = useCallback(
+    (p: TokenPackage | undefined) => {
+      if (!p || p.tokens <= 0) return 1;
+      const needed = Math.ceil(Math.max(1, requestCost) / p.tokens);
+      return Math.min(Math.max(1, needed), Math.max(1, Math.floor(MAX_TOKENS / p.tokens)));
+    },
+    [requestCost]
+  );
+
+  // Seçili paketin kaç kez alınacağı; paket değişince yine bir şarkılık adede döner
+  const [multiplier, setMultiplier] = useState(() =>
+    defaultMultiplier(packages.find((p) => p.id === (initialSelectedId || SINGLE_ID)))
+  );
 
   const selectPackage = (id: string) => {
     setSelected(id);
-    setMultiplier(1);
+    setMultiplier(defaultMultiplier(packages.find((p) => p.id === id)));
   };
 
   const [txs, setTxs] = useState<WalletTx[]>([]);

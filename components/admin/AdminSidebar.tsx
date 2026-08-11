@@ -3,9 +3,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { createClient } from "@/lib/supabase/client";
 
-const navItems = (venueId: string) => [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  badge?: boolean;
+};
+
+const navItems = (venueId: string): NavItem[] => [
   {
     href: `/admin/${venueId}`,
     label: "Ana Ekran",
@@ -21,6 +29,8 @@ const navItems = (venueId: string) => [
   {
     href: `/admin/${venueId}/requests`,
     label: "İstekler",
+    // Bekleyen istek sayısı rozet olarak bu satırda gösterilir
+    badge: true,
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
         <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -80,15 +90,63 @@ const writeCollapsed = (value: boolean) => {
   collapseListeners.forEach((cb) => cb());
 };
 
+// Bekleyen istek sayısı: ilk yüklemede sayılır, sonrasında realtime ile canlı kalır.
+// İstekler sayfası da aynı tabloyu dinliyor; buradaki abonelik ayrı bir kanal
+// olduğu için hangi sayfada olunursa olunsun rozet güncel kalır.
+function usePendingRequestCount(venueId: string) {
+  const [count, setCount] = useState(0);
+  const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const refresh = async (venueDbId: string) => {
+      const { count: c } = await supabase
+        .from("song_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("venue_id", venueDbId)
+        .eq("status", "pending");
+      if (!cancelled) setCount(c ?? 0);
+    };
+
+    const load = async () => {
+      const { data: venue } = await supabase.from("venues").select("id").eq("slug", venueId).single();
+      if (cancelled || !venue) return;
+
+      await refresh(venue.id);
+
+      channel = supabase
+        .channel(`sidebar_requests:${venue.id}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "song_requests", filter: `venue_id=eq.${venue.id}` },
+          () => refresh(venue.id),
+        )
+        .subscribe();
+    };
+    load();
+
+    return () => {
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [venueId, supabase]);
+
+  return count;
+}
+
 function NavContent({
   venueId,
   pathname,
   collapsed,
+  pendingCount,
   onNavigate,
 }: {
   venueId: string;
   pathname: string;
   collapsed: boolean;
+  pendingCount: number;
   onNavigate: () => void;
 }) {
   const items = navItems(venueId);
@@ -101,22 +159,40 @@ function NavContent({
 
   return (
     <nav className="flex flex-col gap-1">
-      {items.map((item) => (
-        <Link
-          key={item.href}
-          href={item.href}
-          onClick={onNavigate}
-          title={collapsed ? item.label : undefined}
-          className={`flex items-center gap-3 py-2.5 rounded-xl text-sm font-medium transition-all ${collapsed ? "justify-center px-0" : "px-3"}`}
-          style={{
-            color: isActive(item.href) ? "#e91e8c" : "#9ca3af",
-            background: isActive(item.href) ? "rgba(233,30,140,0.1)" : "transparent",
-          }}
-        >
-          {item.icon}
-          {!collapsed && item.label}
-        </Link>
-      ))}
+      {items.map((item) => {
+        const showBadge = item.badge === true && pendingCount > 0;
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            title={collapsed && showBadge ? `${item.label} (${pendingCount} bekleyen)` : collapsed ? item.label : undefined}
+            className={`relative flex items-center gap-3 py-2.5 rounded-xl text-sm font-medium transition-all ${collapsed ? "justify-center px-0" : "px-3"}`}
+            style={{
+              color: isActive(item.href) ? "#e91e8c" : "#9ca3af",
+              background: isActive(item.href) ? "rgba(233,30,140,0.1)" : "transparent",
+            }}
+          >
+            <span className="relative flex shrink-0">
+              {item.icon}
+              {/* Daraltılmış menüde sayı sığmaz — simgenin köşesinde nokta kalır */}
+              {showBadge && collapsed && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2" style={{ background: "#e91e8c", borderColor: "#0f0a18" }} />
+              )}
+            </span>
+            {!collapsed && <span className="flex-1">{item.label}</span>}
+            {showBadge && !collapsed && (
+              <span
+                className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center"
+                style={{ background: "#e91e8c", color: "#fff" }}
+              >
+                {pendingCount > 99 ? "99+" : pendingCount}
+              </span>
+            )}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
@@ -125,6 +201,7 @@ export default function AdminSidebar({ venueId }: Props) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
+  const pendingCount = usePendingRequestCount(venueId);
 
   const toggleCollapsed = () => writeCollapsed(!collapsed);
 
@@ -156,7 +233,7 @@ export default function AdminSidebar({ venueId }: Props) {
             </svg>
           </button>
         </div>
-        <NavContent venueId={venueId} pathname={pathname} collapsed={collapsed} onNavigate={() => setOpen(false)} />
+        <NavContent venueId={venueId} pathname={pathname} collapsed={collapsed} pendingCount={pendingCount} onNavigate={() => setOpen(false)} />
       </aside>
 
       {/* Mobil üst bar */}
@@ -167,13 +244,17 @@ export default function AdminSidebar({ venueId }: Props) {
         <Image src="/logo.png" alt="PlayMyJam" width={1600} height={500} priority className="h-9 w-auto object-contain" />
         <button
           onClick={() => setOpen(true)}
-          className="w-9 h-9 flex items-center justify-center rounded-xl"
+          className="relative w-9 h-9 flex items-center justify-center rounded-xl"
           style={{ background: "rgba(255,255,255,0.08)" }}
-          aria-label="Menü"
+          aria-label={pendingCount > 0 ? `Menü (${pendingCount} bekleyen istek)` : "Menü"}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <path d="M3 6h18M3 12h18M3 18h18" stroke="white" strokeWidth="2" strokeLinecap="round" />
           </svg>
+          {/* Menü kapalıyken bekleyen istek olduğu buradan belli olsun */}
+          {pendingCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2" style={{ background: "#e91e8c", borderColor: "#0f0a18" }} />
+          )}
         </button>
       </header>
 
@@ -186,7 +267,7 @@ export default function AdminSidebar({ venueId }: Props) {
               <Image src="/logo.png" alt="PlayMyJam" width={1600} height={500} className="h-11 w-auto object-contain" />
               <p className="text-[#6b7280] text-xs mt-1.5">Admin Paneli</p>
             </div>
-            <NavContent venueId={venueId} pathname={pathname} collapsed={false} onNavigate={() => setOpen(false)} />
+            <NavContent venueId={venueId} pathname={pathname} collapsed={false} pendingCount={pendingCount} onNavigate={() => setOpen(false)} />
           </aside>
         </div>
       )}

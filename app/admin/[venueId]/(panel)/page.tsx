@@ -94,8 +94,10 @@ function AdminDashboardContent({ params }: Props) {
     };
   }, [venueId, supabase]);
 
-  const lib = useLibrary(venueDbId, initialListId);
+  // Sıra önemli: "hangi liste çalıyor" kuyruktan okunur, rayın rozeti de onu
+  // gösterir — bu yüzden playback önce kurulur.
   const playback = usePlayback(venueDbId);
+  const lib = useLibrary(venueDbId, initialListId, playback);
 
   return (
     <div className="flex flex-col h-full min-h-0">

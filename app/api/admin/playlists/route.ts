@@ -2,7 +2,16 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
-import { nextQueuePosition, playPlaylistNow, resetAutoQueue } from "@/lib/queue-fill";
+import {
+  clearAutoQueue,
+  fillQueueToTen,
+  jumpPlaylistCursorTo,
+  nextQueuePosition,
+  pickPlaylistOpener,
+  playPlaylistNow,
+  resetAutoQueue,
+} from "@/lib/queue-fill";
+import { playSongNow } from "@/lib/queue";
 
 const MAX_NAME = 40;
 
@@ -237,39 +246,82 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Eksik alan" }, { status: 400 });
   }
 
-  // Play: imleç bu listeye atlar, liste baştan başlar, bekleyen otomatik şarkılar
-  // bu listeden yeniden seçilir. Sahnedeki şarkı ve müşteri istekleri korunur.
+  // Play: liste BAŞTAN ve HEMEN çalar. İmleç listeye atlar, ilerlemesi sıfırlanır,
+  // listenin ilk şarkısı sahneye çıkar, kuyruk listenin devamıyla dolar.
+  //
+  // Tek istisna sahnedeki müşteri şarkısıdır: jetonla alınmış sıra yarıda
+  // kesilmez. O halde sahne olduğu gibi kalır, liste yalnızca kuyruğa yazılır ve
+  // müşteri istekleri bitince baştan çalmaya başlar. Sırada bekleyen müşteri
+  // şarkıları da öne geçmeye devam eder (otomatik satırlar position 9000+).
   if (isPlay) {
-    // Sahiplik ve "listede şarkı var mı" birbirine bağlı değil — birlikte gider
-    const [{ data: playlist }, { count }] = await Promise.all([
+    // YANIT SÜRESİ BURADA ÖNEMLİ: düğmeye basılınca şarkı hemen değişmeli.
+    // O yüzden senkron kalan tek iş SAHNE (queue satırı + now_playing); imleç
+    // taşıma, kuyruk temizliği ve dolum — hepsi onlarca DB turu — yanıttan sonra
+    // after() içinde koşar ve panele Realtime ile düşer.
+    //
+    // Sahiplik, açılış şarkısı ve sahnedeki satır birbirine bağlı değil: hepsi
+    // aynı anda sorulur.
+    const [{ data: playlist }, opener, { data: playingRows }] = await Promise.all([
       supabaseAdmin
         .from("playlists")
         .select("id")
         .eq("id", playlistId)
         .eq("venue_id", session.venue_id)
         .maybeSingle(),
+      pickPlaylistOpener(session.venue_id, playlistId),
       supabaseAdmin
-        .from("playlist_songs")
-        .select("song_id", { count: "exact", head: true })
+        .from("queue")
+        .select("song_id, user_id")
         .eq("venue_id", session.venue_id)
-        .eq("playlist_id", playlistId),
+        .eq("status", "playing"),
     ]);
 
     if (!playlist) {
       return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
     }
 
-    if (!count) {
-      return NextResponse.json({ error: "Bu listede şarkı yok" }, { status: 400 });
+    // Açılış şarkısı yoksa listede çalınabilir şarkı da yok
+    if (!opener) {
+      return NextResponse.json({ error: "Bu listede çalınabilir şarkı yok" }, { status: 400 });
     }
 
-    // İmleç taşıma yanıttan önce biter (panel "hangi liste çalıyor"u hemen doğru
-    // gösterir), bekleyen otomatik şarkıların yeniden seçilmesi yanıttan sonraya
-    // kalır: düğme 20+ DB turunu beklemez, kuyruk birkaç yüz ms sonra kendi
-    // kendine düzelir ve panele Realtime ile düşer.
-    await playPlaylistNow(session.venue_id, playlistId, { refillQueue: false });
-    after(resetAutoQueue(session.venue_id).catch(() => {}));
-    return NextResponse.json({ ok: true });
+    // Müşterinin jetonla aldığı sıra yarıda kesilmez; jetonsuz (otomatik ya da
+    // adminin elle koyduğu) şarkı kesilir. Liste zaten açılış şarkısını
+    // çalıyorsa da sahneye dokunulmaz — o şarkı yeniden baştan başlamasın.
+    const stage = playingRows ?? [];
+    const customerOnStage = stage.some((row) => row.user_id !== null);
+    const openerOnStage = stage.some((row) => row.song_id === opener);
+    const takeover = !customerOnStage && !openerOnStage;
+
+    // Kuyruk işi tek zincir: liste baştan başlar (playPlaylistNow), bekleyen
+    // otomatik satırlar düşer, kuyruk listenin başından dolar. Sıra şart —
+    // temizlikten sonra dolum.
+    //
+    // Açılış şarkısı "çalındı" ancak fiilen sahnedeyse işaretlenir; müşteri
+    // şarkısı kesilmediği için sahneye çıkamadıysa işaretlenmez, yoksa liste
+    // sırası geldiğinde ilk şarkısını atlardı.
+    const queueWork = async () => {
+      await playPlaylistNow(session.venue_id, playlistId, { refillQueue: false });
+      await clearAutoQueue(session.venue_id);
+      if (!customerOnStage) await jumpPlaylistCursorTo(session.venue_id, playlistId, opener);
+      await fillQueueToTen(session.venue_id);
+    };
+
+    if (!takeover) {
+      after(queueWork().catch(() => {}));
+      return NextResponse.json({ ok: true });
+    }
+
+    // Sahne devralınıyor. video_id yanıtla döner — panel player'a DB → Realtime
+    // turunu beklemeden "bu videoyu yükle" der.
+    const played = await playSongNow(
+      session.venue_id,
+      { songId: opener, playlistId },
+      { deferQueueWork: true }
+    );
+
+    after(queueWork().catch(() => {}));
+    return NextResponse.json({ ok: true, video_id: played.ok ? played.video_id : undefined });
   }
 
   // Kuyruğa alma / kuyruktan çıkarma. Sıraya eklemek çalanı değiştirmez: liste

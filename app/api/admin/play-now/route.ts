@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { playSongNow } from "@/lib/queue";
+import { clearAutoQueue, fillQueueToTen, jumpPlaylistCursorTo } from "@/lib/queue-fill";
 
 // Panelden "şimdi çal": sahnedeki şarkı yarıda kesilir, seçilen şarkı başlar.
 //
@@ -27,16 +28,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "queue_id ya da song_id gerekli" }, { status: 400 });
   }
 
-  const result = await playSongNow(session.venue_id, {
-    queueId: queueId || undefined,
-    songId: songId || undefined,
-    // Kuyruk satırı çalınırken imleç taşınmaz: kuyruğun geri kalanı olduğu gibi
-    // devam etmeli.
-    playlistId: queueId ? null : playlistId,
-  });
+  // Kuyruk satırı çalınırken imleç taşınmaz: kuyruğun geri kalanı olduğu gibi
+  // devam etmeli.
+  const targetList = queueId ? null : playlistId;
+
+  // Senkron kalan tek iş sahne; kuyruk temizliği, imleç ve dolum (onlarca DB
+  // turu) yanıttan sonra koşar — düğme bekletmesin, kuyruk Realtime ile düzelir.
+  const result = await playSongNow(
+    session.venue_id,
+    {
+      queueId: queueId || undefined,
+      songId: songId || undefined,
+      playlistId: targetList,
+    },
+    { deferQueueWork: true }
+  );
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error ?? "Çalınamadı" }, { status: 409 });
   }
+
+  const playedSongId = result.song_id;
+  after(
+    (async () => {
+      if (targetList && playedSongId) {
+        await clearAutoQueue(session.venue_id);
+        await jumpPlaylistCursorTo(session.venue_id, targetList, playedSongId);
+      }
+      await fillQueueToTen(session.venue_id);
+    })().catch(() => {})
+  );
+
   return NextResponse.json(result);
 }

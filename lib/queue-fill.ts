@@ -546,6 +546,75 @@ export async function playPlaylistNow(
   await resetAutoQueue(venueId);
 }
 
+// Play tuşuna basılınca SAHNEYE çıkacak şarkı: listenin ilk şarkısı, liste
+// karıştırmalıysa rastgele bir şarkısı.
+//
+// 30 dk kilidi burada UYGULANMAZ: kilit "otomatik dolum bunu seçmesin" kuralıdır,
+// admin düğmeye bilerek basmıştır. Çalınamaz olanlar (katalogdan düşmüş, embed'e
+// kapalı) yine elenir — sahnede sessizlik olmasın.
+//
+// null dönerse listede çalınabilir şarkı yok: çağıran taraf sahneyi olduğu gibi
+// bırakıp yalnızca kuyruğu tazeler.
+export async function pickPlaylistOpener(
+  venueId: string,
+  playlistId: string
+): Promise<string | null> {
+  const [{ data: playlist }, { data: members }] = await Promise.all([
+    supabaseAdmin
+      .from("playlists")
+      .select("shuffle")
+      .eq("id", playlistId)
+      .eq("venue_id", venueId)
+      .maybeSingle(),
+    // Sıra pickFromRotation ile birebir aynı — "listenin ilk şarkısı" iki yerde
+    // farklı şarkı olmasın
+    fetchAllRows<{ song_id: string }>((from, to) =>
+      supabaseAdmin
+        .from("playlist_songs")
+        .select("song_id, position, added_at")
+        .eq("venue_id", venueId)
+        .eq("playlist_id", playlistId)
+        .order("position", { ascending: true })
+        .order("added_at", { ascending: true })
+        .order("song_id", { ascending: true })
+        .range(from, to)
+    ),
+  ]);
+
+  if (!playlist) return null;
+
+  const memberIds = (members ?? []).map((m) => m.song_id);
+  if (memberIds.length === 0) return null;
+
+  // Uygunluk YALNIZCA listenin şarkıları için sorulur. Tüm katalogu sayfalayarak
+  // çekmek düğmeyi gözle görülür şekilde geciktiriyordu (3000 şarkılık mekanda
+  // arka arkaya 3-4 tur); burada 200'erlik parçalar aynı anda gider.
+  const CHUNK = 200;
+  const chunks: string[][] = [];
+  for (let i = 0; i < memberIds.length; i += CHUNK) chunks.push(memberIds.slice(i, i + CHUNK));
+
+  const results = await Promise.all(
+    chunks.map((ids) =>
+      supabaseAdmin
+        .from("venue_songs")
+        .select("song_id, songs!inner(embeddable, youtube_video_id)")
+        .eq("venue_id", venueId)
+        .eq("in_venue_list", true)
+        .eq("songs.embeddable", true)
+        .not("songs.youtube_video_id", "is", null)
+        .in("song_id", ids)
+    )
+  );
+
+  const eligible = new Set(results.flatMap((r) => (r.data ?? []).map((vs) => vs.song_id)));
+  const candidates = memberIds.filter((id) => eligible.has(id));
+  if (candidates.length === 0) return null;
+
+  return playlist.shuffle
+    ? candidates[Math.floor(Math.random() * candidates.length)]
+    : candidates[0];
+}
+
 // "Listenin 4. şarkısını şimdi çal" dendiğinde rotasyon imlecini o noktaya
 // taşır: liste çalan liste olur, ondan ÖNCEKİ şarkılar bu turda çalınmış sayılır,
 // SONRAKİLER (5, 6, 7...) sıraya girer. Şarkının kendisi de tüketilmiş işaretlenir
@@ -564,7 +633,7 @@ export async function jumpPlaylistCursorTo(
   const [{ data: playlist }, { data: state }] = await Promise.all([
     supabaseAdmin
       .from("playlists")
-      .select("id, queue_position")
+      .select("id, queue_position, shuffle")
       .eq("id", playlistId)
       .eq("venue_id", venueId)
       .maybeSingle(),
@@ -597,17 +666,23 @@ export async function jumpPlaylistCursorTo(
 
   const cycle = state?.cycle ?? 1;
 
-  // Bu turdaki ilerleme baştan yazılır: seçilen şarkıya kadarı (kendisi dahil)
-  // çalınmış, sonrası çalınmamış sayılır.
-  await supabaseAdmin
-    .from("playlist_rotation_consumed")
-    .delete()
-    .eq("venue_id", venueId)
-    .eq("playlist_id", playlistId)
-    .eq("cycle", cycle);
+  // Karıştırmalı listede "öncesi/sonrası" diye bir şey yoktur: yalnızca seçilen
+  // şarkı tüketilmiş sayılır, listenin o turdaki ilerlemesi olduğu gibi kalır.
+  // (Sıra numarasına göre silseydik listenin yarısı hiç çalmadan turu kaçırırdı.)
+  //
+  // Sıralı listede ilerleme baştan yazılır: seçilen şarkıya kadarı (kendisi
+  // dahil) çalınmış, sonrası çalınmamış sayılır.
+  if (!playlist.shuffle) {
+    await supabaseAdmin
+      .from("playlist_rotation_consumed")
+      .delete()
+      .eq("venue_id", venueId)
+      .eq("playlist_id", playlistId)
+      .eq("cycle", cycle);
+  }
 
   await supabaseAdmin.from("playlist_rotation_consumed").upsert(
-    ids.slice(0, index + 1).map((id) => ({
+    (playlist.shuffle ? [songId] : ids.slice(0, index + 1)).map((id) => ({
       venue_id: venueId,
       playlist_id: playlistId,
       song_id: id,

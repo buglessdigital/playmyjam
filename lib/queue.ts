@@ -174,7 +174,16 @@ type PlayNowTarget = {
 //
 // Kesilen otomatik şarkı 'played' yazılır: fiilen sahneye çıkmıştı, geçmişte ve
 // istatistikte yerini korur.
-export async function playSongNow(venueId: string, target: PlayNowTarget): Promise<PlayNowResult> {
+//
+// deferQueueWork: kuyruk temizliği, imleç taşıma ve dolum ATLANIR — yalnızca
+// sahne değişir. Çağıran taraf bunları yanıttan sonra (after) kendisi yapmalıdır;
+// aksi halde kuyruk eski listenin şarkılarıyla kalır. Düğmenin sahneyi ~20 DB
+// turu beklemeden değiştirmesi için var.
+export async function playSongNow(
+  venueId: string,
+  target: PlayNowTarget,
+  options?: { deferQueueWork?: boolean }
+): Promise<PlayNowResult> {
   const { data: playingRows } = await supabaseAdmin
     .from("queue")
     .select("id, song_id, user_id")
@@ -237,7 +246,7 @@ export async function playSongNow(venueId: string, target: PlayNowTarget): Promi
   // Playlist'in ortasından seçildiyse: bekleyen otomatik satırlar düşer, imleç bu
   // noktaya taşınır, dolum aşağıda listenin DEVAMINDAN yapılır. Müşteri istekleri
   // ve adminin elle eklediği satırlar bu temizlikten etkilenmez.
-  if (target.playlistId) {
+  if (target.playlistId && !options?.deferQueueWork) {
     await clearAutoQueue(venueId);
     await jumpPlaylistCursorTo(venueId, target.playlistId, song.id);
   }
@@ -310,7 +319,7 @@ export async function playSongNow(venueId: string, target: PlayNowTarget): Promi
 
   // Boşalan yer (ve playlist atlamasında tamamen boşaltılan otomatik blok)
   // doldurulur: imleç yeni yerinde olduğu için liste kaldığı noktadan devam eder.
-  await fillQueueToTen(venueId).catch(() => {});
+  if (!options?.deferQueueWork) await fillQueueToTen(venueId).catch(() => {});
 
   notifySongOwner(venueId, rowUserId, song);
 

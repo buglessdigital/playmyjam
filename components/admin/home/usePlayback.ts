@@ -18,6 +18,9 @@ export type QueueItem = {
   priority: boolean;
   position: number;
   added_at: string;
+  // Otomatik satırın hangi listeden geldiği (0032). Müşteri isteklerinde ve
+  // adminin elle eklediklerinde null.
+  source_playlist_id: string | null;
   songs: {
     youtube_video_id: string;
     title: string;
@@ -45,7 +48,7 @@ const NP_SONGS = "songs(title, artist, album_cover_url, duration_ms)";
 let volumeColumnMissing = false;
 
 const QUEUE_SELECT =
-  "id, user_id, added_by, tokens_spent, priority, position, added_at, songs(youtube_video_id, title, artist, album_cover_url, duration_ms)";
+  "id, user_id, added_by, tokens_spent, priority, position, added_at, source_playlist_id, songs(youtube_video_id, title, artist, album_cover_url, duration_ms)";
 
 // Player 15 sn'de bir heartbeat yollar — bunun ~3 katı sessizlik "çevrimdışı" sayılır
 const OFFLINE_AFTER_MS = 45_000;
@@ -71,7 +74,9 @@ export function usePlayback(venueDbId: string) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   // Sahnedeki satırın sahibi: müşteri şarkısıysa "şimdi çal" düğmeleri kapanır
   // (jetonla alınan sıra yarıda kesilemez). Sunucu da aynı kuralı uygular.
-  const [playingRow, setPlayingRow] = useState<{ user_id: string | null; added_by: string } | null>(null);
+  const [playingRow, setPlayingRow] = useState<
+    { user_id: string | null; added_by: string; source_playlist_id: string | null } | null
+  >(null);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [progress, setProgress] = useState(0);
   const [playerLoading, setPlayerLoading] = useState<string | null>(null);
@@ -117,14 +122,17 @@ export function usePlayback(venueDbId: string) {
           .order("id", { ascending: true }),
         supabase
           .from("queue")
-          .select("user_id, added_by")
+          .select("user_id, added_by, source_playlist_id")
           .eq("venue_id", dbId)
           .eq("status", "playing")
           .limit(1)
           .maybeSingle(),
       ]);
       if (data) setQueue(data as unknown as QueueItem[]);
-      setPlayingRow((current as { user_id: string | null; added_by: string } | null) ?? null);
+      setPlayingRow(
+        (current as { user_id: string | null; added_by: string; source_playlist_id: string | null } | null) ??
+          null
+      );
     },
     [supabase]
   );
@@ -376,6 +384,21 @@ export function usePlayback(venueDbId: string) {
   // Sahnedeki şarkıyı müşteri jetonuyla mı ekledi? Öyleyse kesilemez.
   const currentIsCustomer = playingRow?.user_id != null;
 
+  // Sahneyi bu hook'un DIŞINDAN değiştiren akışlar için (playlist play tuşu:
+  // /api/admin/playlists yanıtında video_id döner). Player DB → Realtime turunu
+  // beklemeden videoyu yükler; alt bardaki şarkı bilgisi birazdan now_playing
+  // aboneliğiyle gelir.
+  const stageTakeover = (videoId: string) => {
+    localActionAtRef.current = Date.now();
+    setProgress(0);
+    sendCommand({ type: "seeking" });
+    sendCommand({ type: "load", video_id: videoId });
+    // nowPlaying'e elle dokunulmaz: video_id'yi burada yazsaydık player'ın
+    // yayınladığı yeni durum "değişmemiş" görünür ve alt bar eski şarkının
+    // adını/kapağını taşımaya devam ederdi. Satır now_playing aboneliğiyle gelir.
+    if (venueDbId) void fetchQueue(venueDbId);
+  };
+
   // "Şimdi çal": seçilen şarkı sahneye çıkar, çalan şarkı yarıda kesilir.
   // Sahnedeki şarkı müşterinin ise düğmeler zaten kapalı — sunucu da reddeder.
   //
@@ -535,6 +558,16 @@ export function usePlayback(venueDbId: string) {
     return { ok: true as const };
   };
 
+  // Fiilen çalınan liste: sahnedeki satırın kaynağı, o yoksa (müşteri şarkısı
+  // çalıyorsa) kuyrukta bekleyen ilk playlist satırının kaynağı. Rotasyon imleci
+  // bunun yerine geçemez — imleç "bir sonraki dolum nereden yapılacak"tır ve
+  // kuyruk 10 şarkı ileriyi tuttuğu için çalan listenin şarkıları hâlâ sırada
+  // beklerken çoktan sıradaki listeye kaymış olabilir.
+  const playingListId = useMemo(() => {
+    if (playingRow?.source_playlist_id) return playingRow.source_playlist_id;
+    return queue.find((q) => q.source_playlist_id)?.source_playlist_id ?? null;
+  }, [playingRow, queue]);
+
   const queuedVideoIds = useMemo(
     () => new Set(queue.map((q) => q.songs?.youtube_video_id).filter(Boolean)),
     [queue]
@@ -551,6 +584,7 @@ export function usePlayback(venueDbId: string) {
   return {
     queue,
     queuedVideoIds,
+    playingListId,
     nowPlaying,
     progress,
     progressPct,
@@ -570,6 +604,7 @@ export function usePlayback(venueDbId: string) {
     nudge,
     addToQueue,
     playNow,
+    stageTakeover,
     currentIsCustomer,
     movableCount: queue.filter(isMovable).length,
   };

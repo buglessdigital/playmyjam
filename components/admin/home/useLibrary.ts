@@ -58,8 +58,16 @@ export function formatDur(ms: number) {
 /**
  * Mekan katalogu + playlist'ler: ana ekranın sol rayı ve orta panosu bunu kullanır.
  * (Eski /playlist sayfasının tüm mantığı buraya taşındı.)
+ *
+ * playback: alt bar/kuyruk hook'u. İki şey için lazım — "hangi liste çalıyor"
+ * kuyruktan okunur (bkz. currentList) ve play tuşu sahneyi devraldığında
+ * player'a gecikmesiz "bu videoyu yükle" denir.
  */
-export function useLibrary(venueDbId: string, initialListId: string = ALL) {
+export function useLibrary(
+  venueDbId: string,
+  initialListId: string = ALL,
+  playback?: { playingListId: string | null; stageTakeover: (videoId: string) => void }
+) {
   const supabase = useMemo(() => createClient(), []);
 
   const [songs, setSongs] = useState<Song[]>([]);
@@ -340,13 +348,23 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     [playlists]
   );
 
-  // Şu an hangi listeden çalınıyor. İmleçteki liste kuyruktan çıkarılmış ya da
-  // silinmişse sunucu da kuyruğun başına döneceği için burada da öyle.
-  // Kuyruk boşsa null — o zaman tüm katalogdan karışık çalınır.
+  // Şu an hangi listeden çalınıyor. Ölçüt kuyruğun kendisidir: sahnedeki şarkı
+  // (o olmazsa sırada bekleyen ilk playlist şarkısı) hangi listeden geldiyse
+  // çalan liste odur.
+  //
+  // Rotasyon imleci bunu söyleyemez, yalnızca yedektir: imleç "bir sonraki dolum
+  // nereden yapılacak"tır ve kuyruk 10 şarkı ileriyi tuttuğu için listenin son
+  // şarkıları hâlâ sırada beklerken çoktan sıradaki listeye kaymış olur. Listenin
+  // ortasından bir şarkı çalındığında ("17. şarkıdan devam") bu fark hemen
+  // görünüyordu: sıra hâlâ o listeden çalarken rozet sıradaki listeye geçiyordu.
+  //
+  // İmleçteki liste kuyruktan çıkarılmış ya da silinmişse sunucu da kuyruğun
+  // başına döner, burada da öyle. Kuyruk boşsa null — tüm katalogdan karışık çalınır.
   const currentList = useMemo(() => {
+    const playing = queueLists.find((p) => p.id === playback?.playingListId);
     const pointed = queueLists.find((p) => p.id === rotation?.playlist_id);
-    return pointed ?? queueLists[0] ?? null;
-  }, [queueLists, rotation]);
+    return playing ?? pointed ?? queueLists[0] ?? null;
+  }, [queueLists, rotation, playback?.playingListId]);
 
   const selectedList = useMemo(
     () => playlists.find((p) => p.id === selectedId) ?? null,
@@ -592,9 +610,12 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
     refreshRotation();
   };
 
-  // Play: imleç bu listeye atlar, liste baştan başlar. O ana kadar çalan liste
-  // kuyruktan düşer — yani bu liste bitince sıradaki liste gelir, çalması kesilen
-  // liste başa dönmez. Sahnedeki şarkı kesilmez, müşteri istekleri etkilenmez.
+  // Play: liste baştan ve HEMEN çalar — ilk şarkısı sahneye çıkar, kuyruk
+  // devamıyla dolar. O ana kadar çalan liste kuyruktan düşer: bu liste bitince
+  // sıradaki gelir, kesilen liste başa dönmez.
+  //
+  // Sahnedeki şarkı müşterinin ise kesilmez (sunucudaki kilit): liste sahneyi
+  // devralmaz, müşteri istekleri bitince baştan çalmaya başlar.
   const playNow = async (playlist: Playlist) => {
     // Ekran sunucuyu beklemeden değişir: "Çalıyor" rozeti bu listeye geçer,
     // ilerleme sıfırlanır, o ana kadar çalan liste kuyruktan düşer. Sunucudaki
@@ -638,6 +659,10 @@ export function useLibrary(venueDbId: string, initialListId: string = ALL) {
       setConsumed(previousConsumed);
       return { ok: false as const, error: (data.error as string) ?? "Çalınamadı" };
     }
+    // Sahne devralındıysa video kimliği döner: player DB → Realtime turunu
+    // beklemeden yeni şarkıya geçer. Dönmediyse sahnede müşteri şarkısı vardır,
+    // liste sırasını bekler.
+    if (typeof data.video_id === "string") playback?.stageTakeover(data.video_id);
     return { ok: true as const };
   };
 

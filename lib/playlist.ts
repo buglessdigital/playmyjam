@@ -115,6 +115,47 @@ export async function attachSongsToPlaylist(
   return { added: fresh.length, skipped: songs.length - fresh.length, resolvedSuggestions };
 }
 
+// Kaynak YouTube listesinden çıkarılmış videoları hedef playlist'ten düşürür.
+// Yalnızca video kimliğiyle çağrılır: mekanın elle eklediği şarkılar bu yoldan
+// asla silinmez, çünkü çağıran taraf yalnızca snapshot'ta (yani bir zamanlar
+// YouTube'dan gelmiş) olup artık listede olmayan kimlikleri verir.
+// Katalog satırı (venue_songs) son üyelik gidince 0026'daki trigger ile düşer —
+// şarkı başka bir listede duruyorsa play_count korunur.
+export async function detachVideosFromPlaylist(
+  venueId: string,
+  playlistId: string,
+  videoIds: string[]
+): Promise<number> {
+  if (videoIds.length === 0) return 0;
+
+  const songIds: string[] = [];
+  for (let i = 0; i < videoIds.length; i += 200) {
+    const { data, error } = await supabaseAdmin
+      .from("songs")
+      .select("id")
+      .in("youtube_video_id", videoIds.slice(i, i + 200));
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) songIds.push(row.id);
+  }
+  if (songIds.length === 0) return 0;
+
+  let removed = 0;
+  for (let i = 0; i < songIds.length; i += 200) {
+    const { data, error } = await supabaseAdmin
+      .from("playlist_songs")
+      .delete()
+      .eq("venue_id", venueId)
+      .eq("playlist_id", playlistId)
+      .in("song_id", songIds.slice(i, i + 200))
+      .select("song_id");
+    if (error) throw new Error(error.message);
+    removed += data?.length ?? 0;
+  }
+
+  if (removed > 0) revalidateTag(`venue-songs-${venueId}`, "max");
+  return removed;
+}
+
 // songs'a upsert eder, mekan kataloguna (venue_songs) ve hedef playlist'e ekler.
 // Katalog satırı zaten varsa korunur (play_count/in_venue_list kaybolmaz), yalnızca
 // playlist üyeliği eklenir; şarkı o playlist'te zaten varsa 409 döner.

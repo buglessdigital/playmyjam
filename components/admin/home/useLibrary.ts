@@ -837,9 +837,13 @@ export function useLibrary(
         setSyncNote(data.error ?? "Güncellenemedi");
         return;
       }
+      // Elle senkron iki yönlü: YouTube'dan çıkarılan şarkı buradan da düşer
+      const parts: string[] = [];
+      if (data.added > 0) parts.push(`${data.added} yeni şarkı eklendi`);
+      if (data.removed > 0) parts.push(`${data.removed} şarkı kaldırıldı`);
       setSyncNote(
-        data.added > 0
-          ? `"${playlist.name}" listesine ${data.added} yeni şarkı eklendi`
+        parts.length > 0
+          ? `"${playlist.name}": ${parts.join(", ")}`
           : `"${playlist.name}" zaten güncel`
       );
       await refresh();

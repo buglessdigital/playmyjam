@@ -9,6 +9,8 @@ import { syncPlaylistSources } from "@/lib/playlist-sync";
 // veya senkron hata verip durduğunda elle tetiklemek için.
 // force: sıra ve şarkı-sayısı kısayolu atlanır — mekan butona bastıysa listenin
 // gerçekten okunduğunu görmeli.
+// prune: elle senkronda iki liste birebir eşitlenir, YouTube'dan çıkarılan şarkı
+// PMJ listesinden de düşer. Günlük cron bunu YAPMAZ (bkz. syncPlaylistSources).
 export async function POST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
@@ -39,8 +41,17 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const report = await syncPlaylistSources({ playlistIds: [playlistId], force: true });
-    return NextResponse.json({ ok: true, added: report.added, failed: report.failed });
+    const report = await syncPlaylistSources({
+      playlistIds: [playlistId],
+      force: true,
+      prune: true,
+    });
+    return NextResponse.json({
+      ok: true,
+      added: report.added,
+      removed: report.removed,
+      failed: report.failed,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Senkron başarısız";
     return NextResponse.json({ error: message }, { status: 500 });

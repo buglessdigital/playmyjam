@@ -1,5 +1,9 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { attachSongsToPlaylist, type AttachableSong } from "@/lib/playlist";
+import {
+  attachSongsToPlaylist,
+  detachVideosFromPlaylist,
+  type AttachableSong,
+} from "@/lib/playlist";
 import {
   getPlaylistItemCounts,
   getPlaylistVideoIds,
@@ -40,6 +44,7 @@ export type SyncReport = {
   checked: number;
   fetched: number;
   added: number;
+  removed: number;
   failed: number;
   units: number;
   budget_exhausted: boolean;
@@ -151,18 +156,24 @@ async function resolveSongs(
  *                     gün 1 ekleyip 1 silmektir (sayı sabit kalır), bu tur onu kapatır.
  * @param playlistIds  Yalnızca bu playlist'ler. Panelden "şimdi güncelle" için;
  *                     verildiğinde sıra (next_check_at) ve auto_sync gözetilmez.
+ * @param prune        Kaynak listeden çıkarılan şarkıları PMJ listesinden de düşürür.
+ *                     Yalnızca panelden elle tetiklenen senkronda açılır: günlük cron
+ *                     kimseye sormadan katalog silmemeli, ama butona basan mekan iki
+ *                     listenin birebir aynı olmasını bekliyor.
  */
 export async function syncPlaylistSources(
   {
     force = false,
     budget = UNIT_BUDGET,
     playlistIds,
-  }: { force?: boolean; budget?: number; playlistIds?: string[] } = {}
+    prune = false,
+  }: { force?: boolean; budget?: number; playlistIds?: string[]; prune?: boolean } = {}
 ): Promise<SyncReport> {
   const report: SyncReport = {
     checked: 0,
     fetched: 0,
     added: 0,
+    removed: 0,
     failed: 0,
     units: 0,
     budget_exhausted: false,
@@ -255,10 +266,17 @@ export async function syncPlaylistSources(
       report.units += units;
       report.fetched++;
 
-      // Kademe 3 — fark, tamamen yerel
+      // Kademe 3 — fark, tamamen yerel. Silinenler snapshot'tan çıkarılır:
+      // ölçüt "bir zamanlar bu kaynaktan geldi ama artık listede yok" olduğu için
+      // mekanın elle eklediği şarkılar prune turunda da yerinde kalır.
+      const current = new Set(videoIds);
       const perRow = rows.map((row) => {
         const seen = new Set(row.snapshot_video_ids);
-        return { row, newIds: videoIds.filter((id) => !seen.has(id)) };
+        return {
+          row,
+          newIds: videoIds.filter((id) => !seen.has(id)),
+          goneIds: prune ? row.snapshot_video_ids.filter((id) => !current.has(id)) : [],
+        };
       });
 
       // Kademe 4 — detay yalnızca hiç tanımadığımız videolar için
@@ -266,7 +284,7 @@ export async function syncPlaylistSources(
       const { songs, units: detailUnits } = await resolveSongs(union);
       report.units += detailUnits;
 
-      for (const { row, newIds } of perRow) {
+      for (const { row, newIds, goneIds } of perRow) {
         const toAttach = newIds
           .map((id) => songs.get(id))
           .filter((s): s is AttachableSong => !!s);
@@ -278,9 +296,15 @@ export async function syncPlaylistSources(
           report.added += added;
         }
 
+        let removed = 0;
+        if (goneIds.length > 0) {
+          removed = await detachVideosFromPlaylist(row.venue_id, row.playlist_id, goneIds);
+          report.removed += removed;
+        }
+
         // snapshot HER ZAMAN tam listeyle güncellenir — embed'e kapalı ve
         // eklenemeyen videolar dahil. Yoksa her gün yeniden denenirler.
-        const streak = added > 0 ? 0 : row.unchanged_streak + 1;
+        const streak = added > 0 || removed > 0 ? 0 : row.unchanged_streak + 1;
         await supabaseAdmin
           .from("playlist_sources")
           .update({

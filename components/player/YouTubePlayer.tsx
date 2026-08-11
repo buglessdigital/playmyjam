@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   CMD_EVENT,
@@ -148,6 +148,60 @@ const VIDEO_H = 144;
 // bağlayıcı değil ÖNERİ sayıyor — tek başına güvenilmez, boyutla birlikte iş görür.
 const FORCE_QUALITY = "tiny";
 
+// --- Teşhis kaydı ---
+// Çalma kesintileri mekanda, saatler sonra ve tekrarlanamayan biçimde oluyor;
+// "ne oldu" sorusunun cevabı ancak olay anında yazılmış bir kayıtta bulunur.
+// Konsola HER ZAMAN yazılır (mekanda DevTools açıksa yeter). Ekrandaki panel
+// ise yalnızca adres satırına ?debug=1 eklenince görünür — müşteri/mekan normal
+// kullanımda hiçbir şey görmez.
+type LogLine = { at: number; text: string };
+const LOG_LIMIT = 80;
+const logBuf: LogLine[] = [];
+let logVersion = 0;
+let logSubscriber: (() => void) | null = null;
+
+function plog(text: string) {
+  const line = { at: Date.now(), text };
+  logBuf.push(line);
+  if (logBuf.length > LOG_LIMIT) logBuf.shift();
+  logVersion += 1;
+  try {
+    console.log(`[pmj ${new Date(line.at).toLocaleTimeString("tr-TR")}] ${text}`);
+  } catch {}
+  logSubscriber?.();
+}
+
+function debugEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).has("debug");
+}
+
+// Panel dış bir kaynağa (kayıt tamponu) abone: React'in bu iş için tuttuğu
+// useSyncExternalStore ile bağlanır. Anlık görüntü debug kapalıyken -1 döner;
+// sunucu tarafında da -1'dir, yani hidrasyon uyuşmazlığı olmaz.
+function subscribeLog(callback: () => void) {
+  logSubscriber = callback;
+  return () => {
+    logSubscriber = null;
+  };
+}
+const logSnapshot = () => (debugEnabled() ? logVersion : -1);
+const logServerSnapshot = () => -1;
+
+// YouTube durum kodlarını okunur hale getir
+function stateName(state: number): string {
+  const YT = typeof window !== "undefined" ? window.YT : undefined;
+  if (!YT) return String(state);
+  switch (state) {
+    case YT.PlayerState.ENDED: return "BITTI";
+    case YT.PlayerState.PLAYING: return "CALIYOR";
+    case YT.PlayerState.PAUSED: return "DURAKLADI";
+    case YT.PlayerState.BUFFERING: return "TAMPON";
+    case YT.PlayerState.CUED: return "HAZIR";
+    default: return state === -1 ? "BASLAMADI" : String(state);
+  }
+}
+
 // Zaman aşımı sinyali. Eski tarayıcılarda AbortSignal.timeout yok; orada
 // sinyalsiz devam ederiz (yoksa her istek daha yola çıkmadan patlardı).
 function timeoutSignal(ms: number): AbortSignal | undefined {
@@ -155,6 +209,50 @@ function timeoutSignal(ms: number): AbortSignal | undefined {
     return AbortSignal.timeout?.(ms);
   } catch {
     return undefined;
+  }
+}
+
+// --- Kısıntıya dayanıklı bekçi darbesi ---
+// Chrome, GÖRÜNMEYEN bir sayfanın ana iş parçacığındaki setInterval'ini saniyede
+// bire (uzun süre arkada kalırsa dakikada bire) indirir. Mekanda player penceresi
+// başka pencerelerin arkasında kaldığı anda bekçiler böylece susuyor: şarkı bitiyor,
+// sıradakini başlatacak kod çalışmıyor, ses kesiliyor — ve sessiz kalan sayfa artık
+// tamamen dondurulabildiği için kurtarma da gelmiyordu. (Kullanıcı pencereye
+// dönünce müziğin ANINDA başlaması tam olarak bunun kanıtıdır.)
+// Dedicated worker'ın kendi zamanlayıcısı bu kısıntıya tabi değildir; oradan
+// gelen mesaj ana iş parçacığında bir görev açar ve bekçi çalışır. Sayfa gerçekten
+// dondurulursa worker da durur — o durumu da freeze kaydı ele verir.
+const TICKER_SOURCE = `
+let id = null;
+onmessage = (e) => {
+  if (e.data === "start") {
+    if (id) clearInterval(id);
+    id = setInterval(() => postMessage("tick"), ${PLAY_NUDGE_MS});
+  } else if (e.data === "stop") {
+    if (id) clearInterval(id);
+    id = null;
+  }
+};
+`;
+
+function createTicker(onTick: () => void): { stop: () => void } | null {
+  if (typeof Worker === "undefined") return null;
+  try {
+    const url = URL.createObjectURL(new Blob([TICKER_SOURCE], { type: "text/javascript" }));
+    const worker = new Worker(url);
+    worker.onmessage = onTick;
+    worker.postMessage("start");
+    return {
+      stop: () => {
+        try {
+          worker.postMessage("stop");
+          worker.terminate();
+          URL.revokeObjectURL(url);
+        } catch {}
+      },
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -434,6 +532,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     if (alive.ctx.state !== "running") alive.ctx.resume().catch(() => {});
   }, []);
 
+  // Teşhis paneli: yalnızca ?debug=1 ile. Kayıt her hâlükârda konsola yazılır;
+  // panel, mekanda DevTools açmadan olay dökümünü okuyabilmek için var.
+  const debugOn = useSyncExternalStore(subscribeLog, logSnapshot, logServerSnapshot) >= 0;
+  const [live, setLive] = useState("");
+
   const [started, setStarted] = useState(false);
   const [idle, setIdle] = useState(false); // kuyruk boş, çalan yok
   const [error, setError] = useState("");
@@ -573,17 +676,23 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         });
         // 401: mekan oturumu düştü. 409: çalma başka bir cihaza geçti.
         if (res.status === 401) {
+          plog(`api ${payload.action}: 401 — mekan oturumu düştü`);
           setBlock("auth");
           return null;
         }
         if (res.status === 409) {
+          plog(`api ${payload.action}: 409 — sahiplik başka cihazda`);
           setBlock("claim");
           return null;
         }
-        if (!res.ok) return null;
+        if (!res.ok) {
+          plog(`api ${payload.action}: HTTP ${res.status}`);
+          return null;
+        }
         setBlock(null);
         return res.json();
-      } catch {
+      } catch (e) {
+        plog(`api ${payload.action}: AĞ HATASI (${(e as Error)?.name ?? "?"})`);
         return null;
       }
     },
@@ -773,6 +882,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       markProgress(videoId);
       setIdle(false);
       const player = activePlayer();
+      plog(
+        `yükle ${videoId} → deck ${activeDeckRef.current}${activeReady() ? "" : " (deck hazır değil, bekliyor)"}`
+      );
       if (activeReady() && typeof player?.loadVideoById === "function") {
         pendingVideoRef.current = null;
         player.loadVideoById(videoId);
@@ -821,6 +933,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         decksRef.current[from]?.pauseVideo();
       } catch {}
 
+      plog(`tampondan çal ${videoId} → deck ${to}`);
       activeDeckRef.current = to;
       currentVideoRef.current = videoId;
       setDesiredPlaying(true);
@@ -843,8 +956,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // Şarkı bitti / hata verdi → kuyruğu ilerlet, dönen videoyu yükle
   const advance = useCallback(
     async (payload: Record<string, unknown>) => {
-      if (advanceBusy()) return;
+      if (advanceBusy()) {
+        plog(`ilerlet(${payload.action}) ATLANDI — önceki istek sürüyor`);
+        return;
+      }
       setAdvancing(true);
+      plog(`ilerlet(${payload.action}) istendi`);
       try {
         let result = await api(payload);
         // Ağ/sunucu hatası "kuyruk boş" DEĞİLDİR: tek denemede idle'a düşmek
@@ -859,6 +976,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           await new Promise((resolve) => setTimeout(resolve, 1_200));
           result = await api(payload);
         }
+        plog(
+          `ilerlet(${payload.action}) sonuç: ${
+            result ? `başladı=${result.started} video=${result.video_id ?? "-"}` : "YANIT YOK"
+          }`
+        );
         if (result?.started && result.video_id) {
           // Bu videoyu az önce başka bir yol (Realtime yankısı, panelin hızlı
           // hattı) yüklediyse ikinci kez yükleme: arka arkaya iki loadVideoById
@@ -873,9 +995,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           // almıştık: müzik susmasın, onu çal. Kuyruk sunucuda ilerlemedi;
           // bağlantı dönünce reconcile eşitler (bkz. syncOfflineFallback).
           const fallback = preloadedVideoRef.current;
+          plog(`sunucuya ulaşılamadı — çevrimdışı yedek çalınıyor (${fallback})`);
           if (!playPreloaded(fallback)) loadVideo(fallback);
           offlineFallbackRef.current = true;
         } else if (!blockedRef.current) {
+          plog("kuyruk boş — sessizlik ekranı");
           // Yalnızca gerçekten sıradaki yoksa idle'a düş. Oturum düşmesi ya da
           // sahiplik kaybı "kuyruk boş" değildir; kendi ekranını gösterir.
           endCrossfade();
@@ -1147,6 +1271,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     }
 
     if (thawed) {
+      // ASIL KANIT: bekçi 3 sn'de bir dönmeli. Aradaki boşluk bu kadar açıldıysa
+      // tarayıcı sayfayı kısmış ya da dondurmuştur — kesintinin sebebi ağ ya da
+      // YouTube değil, sekmenin/pencerenin uyutulmasıdır.
+      plog(`SEKME KISILDI/DONDU: bekçi ${Math.round(gap / 1000)} sn çalışmadı (${stateName(state)})`);
       markProgress(videoId, position > 0 ? position : -1);
       return;
     }
@@ -1172,12 +1300,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           reload: deadLoad ? STALL_DEAD_RELOAD_MS : STALL_RELOAD_MS,
           skip: STALL_SKIP_MS,
         };
+    if (stuck >= ladder.nudge && stallStepRef.current < 1) {
+      plog(`TAKILDI ${stateName(state)} ${Math.round(stuck / 1000)} sn — konum ${position.toFixed(1)}`);
+    }
     if (stuck >= ladder.skip && stallStepRef.current < 3) {
       // Yeniden yükleme de tutmadı. Sessiz kalmaktansa sıradakine geçiyoruz —
       // ama "error" YOLLAMIYORUZ: o, şarkıyı katalogda kalıcı olarak
       // çalınamaz işaretler. Takılmanın sebebi büyük ihtimalle geçici (ağ,
       // arka plan kısıntısı); sağlam bir şarkıyı ömürlük cezalandırmayalım.
       stallStepRef.current = 3;
+      plog(`kurtarma 3/3: pes edildi, sıradakine geçiliyor (${Math.round(stuck / 1000)} sn takılı)`);
       advance({ action: "next" });
       return;
     }
@@ -1186,6 +1318,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       // cue'lanan tampon deck hiç veri indirmemiş olabiliyor; loadVideoById
       // yüklemeyi ve oynatmayı birlikte zorlar.
       stallStepRef.current = 2;
+      plog(`kurtarma 2/3: video yeniden yükleniyor (${Math.round(stuck / 1000)} sn takılı)`);
       try {
         // Şarkının ORTASINDA takıldıysak (ağ dalgalanması) kaldığımız yerden
         // devam ederiz — baştan sarmak mekanda aynı şarkıyı iki kez çalardı
@@ -1377,6 +1510,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           },
           onStateChange: (e) => {
             const YT = window.YT!;
+            plog(`deck ${key}${key === activeDeckRef.current ? "*" : ""}: ${stateName(e.data)}`);
             // Boştaki deck'in olayları çalma akışını yönetmez. Geçiş sırasında
             // çıkan şarkı burada biter (ENDED) — kuyruğu ikinci kez ilerletmemeli.
             if (key !== activeDeckRef.current) return;
@@ -1403,11 +1537,13 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               // Eskiden burada niyet körlemesine söndürülüyordu ve hiçbir bekçi
               // devreye giremediği için müzik elle play'e basılana dek susuyordu.
               if (isExplicitPause()) {
+                plog("duraklatma AÇIK komut sayıldı — müzik duruyor");
                 setDesiredPlaying(false);
                 endCrossfade();
                 onTrackChange?.({ videoId: currentVideoRef.current, isPlaying: false });
                 sendHeartbeat();
               } else {
+                plog("duraklatma DIŞ KAYNAKLI — geri açılıyor");
                 try {
                   decksRef.current[key]?.playVideo();
                 } catch {}
@@ -1423,7 +1559,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             if (e.data === FORCE_QUALITY) return;
             forceLowQuality(decksRef.current[key]);
           },
-          onError: () => {
+          onError: (e) => {
+            plog(`deck ${key}: YOUTUBE HATASI ${e.data}`);
             // 100/101/150: video kaldırılmış ya da embed'e kapalı — işaretle ve atla
             if (key !== activeDeckRef.current) {
               // Tamponlanan video çalınamıyor: tamponu düşür, geçiş anında
@@ -1540,16 +1677,25 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     // Yalnızca sahiplik kaybında susarız (çift ses olmasın). Oturum düşmesi gibi
     // geçici engellerde bekçi çalışmaya devam eder: çalan şarkı kesilmesin.
     if (!started || blocked === "claim") return;
-    const nudgeInterval = setInterval(() => {
+    const beat = () => {
       nudgePlayback();
       enforceVolume();
-    }, PLAY_NUDGE_MS);
+    };
+    // İki kaynaktan da darbe alırız: worker (kısıntıya dayanıklı, asıl yol) ve
+    // klasik setInterval (worker kurulamayan tarayıcılar için yedek). İkisi aynı
+    // anda çalışsa bile bekçi kendi içinde tekrara dayanıklıdır.
+    const ticker = createTicker(beat);
+    const nudgeInterval = setInterval(beat, ticker ? PLAY_NUDGE_MS * 2 : PLAY_NUDGE_MS);
     const reconcileInterval = setInterval(reconcile, RECONCILE_MS);
     // Sekme öne gelince yalnızca mutabakat değil, çalmayı sürdürme de yapılır:
     // arka planda engellenen/durdurulan oynatma ilk anda toparlanır
     const onVisibility = () => {
+      plog(`görünürlük: ${document.visibilityState}`);
       if (document.visibilityState === "visible") restoreRef.current();
     };
+    // Chrome sayfayı gerçekten DONDURDUYSA (Page Lifecycle) bu olay düşer:
+    // pencere uygulama olarak kurulduğunda ve arkada kaldığında görülür.
+    const onFreeze = () => plog("SAYFA DONDURULDU (freeze)");
     // Odak video iframe'ine geçtiyse kullanıcı videonun üstüne tıklamış demektir;
     // hemen ardından gelen duraklatma GERÇEK duraklatmadır, geri açılmaz
     const onBlur = () => {
@@ -1557,16 +1703,30 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     };
     // Sekme her şeye rağmen dondurulduysa (Page Lifecycle) çözülme anında da
     // toparla: görünürlük değişmeden çözülen sekmelerde tek sinyal budur
-    const onResume = () => restoreRef.current();
+    const onResume = () => {
+      plog("SAYFA ÇÖZÜLDÜ (resume)");
+      restoreRef.current();
+    };
+    // Mekanın internetinin gidip gelmesi de kesinti sebebi olabilir — ayırt
+    // edebilmek için kaydedilir
+    const onOffline = () => plog("AĞ KOPTU (offline)");
+    const onOnline = () => plog("ağ geri geldi (online)");
     document.addEventListener("visibilitychange", onVisibility);
     document.addEventListener("resume", onResume);
+    document.addEventListener("freeze", onFreeze);
     window.addEventListener("blur", onBlur);
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
     return () => {
+      ticker?.stop();
       clearInterval(nudgeInterval);
       clearInterval(reconcileInterval);
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("resume", onResume);
+      document.removeEventListener("freeze", onFreeze);
       window.removeEventListener("blur", onBlur);
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
     };
   }, [started, blocked, nudgePlayback, reconcile, enforceVolume, iframeFocused]);
 
@@ -1576,6 +1736,31 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     const interval = setInterval(playbackTick, CROSSFADE_TICK_MS);
     return () => clearInterval(interval);
   }, [started, blocked, playbackTick]);
+
+  // Teşhis panelinin canlı satırı: player'ın o anki gerçek durumu
+  useEffect(() => {
+    if (!debugOn) return;
+    const tick = () => {
+      const player = activePlayer();
+      let state = "-";
+      let pos = "-";
+      try {
+        if (player) {
+          state = stateName(player.getPlayerState());
+          pos = player.getCurrentTime().toFixed(0);
+        }
+      } catch {}
+      setLive(
+        `deck ${activeDeckRef.current} · ${state} · ${pos}sn · niyet:${
+          desiredPlayingRef.current ? "çal" : "dur"
+        } · tampon:${preloadedVideoRef.current ?? "-"}${fadingRef.current ? " · GEÇİŞ" : ""}${
+          advancingRef.current ? " · İLERLETİYOR" : ""
+        } · ses:${volumeRef.current ?? "-"}`
+      );
+    };
+    const interval = setInterval(tick, 1_000);
+    return () => clearInterval(interval);
+  }, [debugOn, activePlayer]);
 
   // HIZLI HAT: panelin oynat/duraklat/atla/ses komutları doğrudan buraya düşer.
   // Aşağıdaki now_playing aboneliği yerini almaz — o kalıcı ve garanti yol, bu
@@ -1980,6 +2165,27 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         <div ref={deckAHostRef} className="absolute left-1/2 top-1/2" style={deckStyle("a")} />
         <div ref={deckBHostRef} className="absolute left-1/2 top-1/2" style={deckStyle("b")} />
       </div>
+
+      {/* Teşhis paneli — yalnızca ?debug=1 ile. Videonun ÜSTÜNE değil ALTINA
+          çizilir (YouTube kuralı: video alanına hiçbir şey bindirilemez). */}
+      {debugOn && (
+        <div className="mt-2 rounded-xl border border-white/10 bg-black/60 p-2 font-mono text-[10px] leading-[1.35] text-[#9ca3af]">
+          <p className="mb-1 font-bold text-[#e91e8c]">{live}</p>
+          <div className="max-h-40 overflow-y-auto">
+            {logBuf
+              .slice()
+              .reverse()
+              .map((line, i) => (
+                <p key={`${line.at}-${i}`} className="whitespace-pre-wrap">
+                  <span className="text-[#6b7280]">
+                    {new Date(line.at).toLocaleTimeString("tr-TR")}{" "}
+                  </span>
+                  {line.text}
+                </p>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Cihaz ses komutunu kabul etmiyorsa (mobil tarayıcılarda ses donanımdan
           yönetilir) mekan bunu ekranda görsün — panelde boşuna uğraşmasın */}

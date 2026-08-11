@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import BottomNav from "@/components/ui/BottomNav";
 import LegalFooter from "@/components/ui/LegalFooter";
 import NotificationWatcher from "@/components/notifications/NotificationWatcher";
+import VibeIntroModal from "@/components/ui/VibeIntroModal";
 
 interface Props {
   children: React.ReactNode;
@@ -40,6 +41,7 @@ function VenueLayoutContent({ children, params }: Props) {
         <>
           <NotificationWatcher venueId={venueId} />
           <BottomNav venueId={venueId} />
+          <VibeIntroModal venueId={venueId} />
         </>
       )}
     </>

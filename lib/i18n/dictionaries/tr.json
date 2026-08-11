@@ -189,6 +189,11 @@
     "tokenBadge": "Jeton",
     "addSong": "Şarkı Ekle"
   },
+  "vibeIntro": {
+    "title": "Her şarkı listede olmayabilir",
+    "desc": "Mekanlar kendi vibe'ına uyan şarkıları çalar. Aradığın şarkı yoksa GÖZAT sekmesindeki aramadan mekana ücretsiz öneri gönder.",
+    "cta": "Anladım"
+  },
   "playerOffline": {
     "badge": "Oynatıcı kapalı",
     "short": "Kapalı",

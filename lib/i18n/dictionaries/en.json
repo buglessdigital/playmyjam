@@ -189,6 +189,11 @@
     "tokenBadge": "Token",
     "addSong": "Add Song"
   },
+  "vibeIntro": {
+    "title": "Not every song will be here",
+    "desc": "Venues play songs that match their own vibe. If yours isn't there, suggest it to the venue for free from the search in the BROWSE tab.",
+    "cta": "Got it"
+  },
   "playerOffline": {
     "badge": "Player offline",
     "short": "Offline",

@@ -18,6 +18,8 @@ import NowPlayingBanner from "@/components/browse/NowPlayingBanner";
 import SearchView, { type SuggestResult } from "@/components/browse/SearchView";
 import SongCard from "@/components/browse/SongCard";
 import SongRow from "@/components/browse/SongRow";
+import NotifyOptIn from "@/components/browse/NotifyOptIn";
+import { savePendingSuggestion, takePendingSuggestion } from "@/lib/pending-suggestion";
 import {
   artistKey,
   getCooldown,
@@ -68,6 +70,10 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   // süreleri dolunca ya da biri çaldırınca kendiliğinden düşerler
   const [oneTimeSongs, setOneTimeSongs] = useState<VenueSong[]>([]);
   const [oneTimeTick, setOneTimeTick] = useState(() => Date.now());
+  // Girişten sonra kendiliğinden gönderilen talebin sonucu
+  const [suggestFlash, setSuggestFlash] = useState<
+    { state: "sent" | "error"; title: string; artist: string } | null
+  >(null);
   const isAddingRef = useRef(false);
   const userIdRef = useRef<string | null>(null);
 
@@ -446,28 +452,68 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     });
   }, [venueDbId, venueId, requireAccount]);
 
-  // Mekan listesinde bulunamayan şarkı için serbest metin öneri — jeton harcamaz,
-  // mekanın istekler bölümüne düşer (bkz. /api/venue/[venueId]/request)
-  const handleSuggest = useCallback(async (title: string, artist: string): Promise<SuggestResult> => {
-    if (!requireAccount(`/venue/${venueId}/browse`)) return "auth";
-
-    try {
-      const res = await fetch(`/api/venue/${venueId}/request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ suggested_title: title, suggested_artist: artist }),
-      });
-      if (res.ok) return "ok";
-      if (res.status === 429) return "limit";
-      if (res.status === 401 || res.status === 403) {
-        router.push(venueLoginPath(venueId, `/venue/${venueId}/browse`));
-        return "auth";
+  const sendSuggestion = useCallback(
+    async (title: string, artist: string): Promise<SuggestResult> => {
+      try {
+        const res = await fetch(`/api/venue/${venueId}/request`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ suggested_title: title, suggested_artist: artist }),
+        });
+        if (res.ok) return "ok";
+        if (res.status === 429) return "limit";
+        if (res.status === 401 || res.status === 403) return "auth";
+        return "error";
+      } catch {
+        return "error";
       }
-      return "error";
-    } catch {
-      return "error";
+    },
+    [venueId]
+  );
+
+  // Mekan listesinde bulunamayan şarkı için serbest metin talep — jeton harcamaz,
+  // mekanın istekler bölümüne düşer (bkz. /api/venue/[venueId]/request).
+  //
+  // Misafirse talep giriş öncesi saklanır: hesabına girip gözat sayfasına
+  // döndüğünde kendiliğinden gönderilir, kullanıcı aramayı baştan yapmaz.
+  const handleSuggest = useCallback(async (title: string, artist: string): Promise<SuggestResult> => {
+    if (!requireAccount(`/venue/${venueId}/browse`)) {
+      savePendingSuggestion(venueId, title, artist);
+      return "auth";
     }
-  }, [venueId, requireAccount, router]);
+
+    const result = await sendSuggestion(title, artist);
+    if (result === "auth") {
+      // Oturum bu arada düşmüş: talep saklanır, girişten sonra kendiliğinden gider
+      savePendingSuggestion(venueId, title, artist);
+      router.push(venueLoginPath(venueId, `/venue/${venueId}/browse`));
+    }
+    return result;
+  }, [venueId, requireAccount, router, sendSuggestion]);
+
+  // Girişten dönüş: saklanan talep varsa gönder ve sonucu üstte bildir
+  useEffect(() => {
+    if (!isMember) return;
+    const pending = takePendingSuggestion(venueId);
+    if (!pending) return;
+
+    let cancelled = false;
+    (async () => {
+      const result = await sendSuggestion(pending.title, pending.artist);
+      if (cancelled) return;
+      // 'auth' burada da gelirse çerez var ama sunucu kabul etmiyor demektir;
+      // kullanıcıyı döngüye sokmamak için hata olarak gösterilir
+      setSuggestFlash({
+        state: result === "ok" || result === "duplicate" ? "sent" : "error",
+        title: pending.title,
+        artist: pending.artist,
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMember, venueId, sendSuggestion]);
 
   const toggleFavorite = useCallback(async (song: DisplaySong) => {
     if (!song.id) return;
@@ -571,6 +617,47 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
               showProgress={!playerOffline}
               onClick={() => router.push(`/venue/${venueId}/queue`)}
             />
+          </div>
+        )}
+
+        {/* Girişten sonra kendiliğinden gönderilen talebin sonucu */}
+        {suggestFlash && (
+          <div className="mb-6 px-5">
+            <div
+              className="rounded-2xl border p-4"
+              style={
+                suggestFlash.state === "sent"
+                  ? { borderColor: "rgba(34,197,94,0.3)", background: "rgba(34,197,94,0.1)" }
+                  : { borderColor: "rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.1)" }
+              }
+            >
+              <div className="flex items-start gap-2">
+                {suggestFlash.state === "sent" ? (
+                  <svg className="mt-0.5 shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                ) : (
+                  <svg className="mt-0.5 shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ef4444" strokeWidth="2" /><path d="M12 7v6M12 16.5v.5" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" /></svg>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-white">
+                    {suggestFlash.state === "sent" ? t.suggest.sentTitle : t.suggest.sendError}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-[#9ca3af]">
+                    {suggestFlash.title} — {suggestFlash.artist}
+                  </p>
+                  {suggestFlash.state === "sent" && (
+                    <p className="mt-1.5 text-xs text-[#9ca3af]">{t.suggest.sentDesc}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setSuggestFlash(null)}
+                  className="shrink-0 p-1"
+                  aria-label={t.common.close}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
+                </button>
+              </div>
+              {suggestFlash.state === "sent" && <NotifyOptIn />}
+            </div>
           </div>
         )}
 

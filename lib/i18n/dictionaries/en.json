@@ -306,7 +306,10 @@
     "notifyCta": "Turn On Notifications",
     "notifyBusy": "Turning on...",
     "notifyDenied": "Notifications are blocked on this device. You can allow them in your browser settings.",
-    "notifyIos": "On iPhone: use the share menu, tap “Add to Home Screen”, then open the app from your home screen."
+    "notifyIos": "On iPhone: use the share menu, tap “Add to Home Screen”, then open the app from your home screen.",
+    "notifyOn": "Notifications are on",
+    "notifyTest": "Test",
+    "notifyFailed": "Notification setup could not be completed. Check your connection and try again."
   },
   "favoritesPage": {
     "title": "My Favorites",

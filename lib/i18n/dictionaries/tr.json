@@ -306,7 +306,10 @@
     "notifyCta": "Bildirimleri Aç",
     "notifyBusy": "Açılıyor...",
     "notifyDenied": "Bildirim izni bu cihazda engellenmiş. Tarayıcı ayarlarından izin verebilirsin.",
-    "notifyIos": "iPhone’da bildirim için: paylaş menüsünden “Ana Ekrana Ekle”, sonra uygulamayı ana ekrandan aç."
+    "notifyIos": "iPhone’da bildirim için: paylaş menüsünden “Ana Ekrana Ekle”, sonra uygulamayı ana ekrandan aç.",
+    "notifyOn": "Bildirimler açık",
+    "notifyTest": "Sına",
+    "notifyFailed": "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene."
   },
   "favoritesPage": {
     "title": "Favorilerim",

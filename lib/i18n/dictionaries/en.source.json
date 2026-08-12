@@ -562,5 +562,8 @@
   "oneTime.remaining": "{t} kaldı",
   "requestsPage.expired": "Süre doldu",
   "requestsPage.playWindow": "Çaldırmak için {t} kaldı",
-  "requestsPage.decisionWindow": "Karar için {t} kaldı"
+  "requestsPage.decisionWindow": "Karar için {t} kaldı",
+  "suggest.notifyOn": "Bildirimler açık",
+  "suggest.notifyTest": "Sına",
+  "suggest.notifyFailed": "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene."
 }

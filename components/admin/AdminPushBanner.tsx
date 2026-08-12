@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import {
   ADMIN_PUSH_ENDPOINT,
   getPermission,
@@ -10,13 +10,14 @@ import {
 
 // Mekan admininin telefonuna talep bildirimi düşebilmesi için abonelik kartı.
 //
-// iOS özel durumu: Safari web push'u YALNIZCA ana ekrana eklenmiş (standalone)
-// uygulamada verir. Tarayıcı sekmesinde açıkken izin isteme düğmesi hiç
-// çalışmayacağı için kullanıcıya doğrudan "ana ekrana ekle" yönergesi gösterilir.
+// Karar TARAYICI İZNİNE değil, GERÇEK ABONELİĞE bakar: izin verilmiş olması
+// bildirimin geleceği anlamına gelmiyor — abonelik sunucuya ulaşmamış olabilir.
+// O durumda düğme yine görünür ve tek dokunuşla kayıt tamamlanır.
+//
+// iOS: Safari web push'u yalnızca ana ekrana eklenmiş uygulamada verir; API'ler
+// sekmede hiç yok. Yönerge, deneme başarısız olunca gösterilir.
 
-type Detected = "ios-install" | "unsupported" | "denied" | "granted" | "ready";
-
-const noopSubscribe = () => () => {};
+type State = "checking" | "ready" | "on" | "unsupported" | "ios-install" | "denied" | "failed";
 
 function needsHomeScreen(): boolean {
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -26,70 +27,88 @@ function needsHomeScreen(): boolean {
   return isIOS && !standalone;
 }
 
-// Önce YETENEĞE bakılır, cihaz markasına değil: push API'leri varsa düğme
-// gösterilir ve tek dokunuşla izin istenir. "Ana ekrana ekle" yönergesi ancak
-// deneme gerçekten başarısız olursa çıkar.
-function detect(): Detected {
-  if (isPushSupported()) {
-    const permission = getPermission();
-    if (permission === "denied") return "denied";
-    if (permission === "granted") return "granted";
-    return "ready";
+// Tarayıcıdaki abonelik sunucuda da kayıtlı mı? (silent: doğrulama bildirimi atma)
+async function registeredOnServer(): Promise<boolean> {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return false;
+    const res = await fetch(ADMIN_PUSH_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...subscription.toJSON(), silent: true }),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
-  // API'ler yok: iOS'ta ana ekrana eklenince gelirler, o yüzden düğme dursun
-  return needsHomeScreen() ? "ready" : "unsupported";
 }
 
 export default function AdminPushBanner() {
-  // Tarayıcı yeteneği sunucuda bilinemez: sunucu anlık görüntüsü "unsupported"
-  // (kart hiç çizilmez), istemcide gerçek durumla değişir
-  const detected = useSyncExternalStore<Detected>(noopSubscribe, detect, () => "unsupported");
-  const [override, setOverride] = useState<"on" | "ready" | "denied" | "ios-install" | null>(null);
+  const [state, setState] = useState<State>("checking");
   const [busy, setBusy] = useState(false);
 
-  // İzin verilmiş olsa bile abonelik bu cihazda sunucuya kayıtlı olmayabilir
-  // (ör. tarayıcı verisi temizlenmiş) — kaydı sessizce tazele.
   useEffect(() => {
-    if (detected !== "granted") return;
     let cancelled = false;
 
-    navigator.serviceWorker.ready
-      .then((reg) => reg.pushManager.getSubscription())
-      .then(async (sub) => {
-        if (cancelled) return;
-        if (!sub) {
-          setOverride("ready");
-          return;
-        }
-        const res = await fetch(ADMIN_PUSH_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // silent: sayfa her açılışında doğrulama bildirimi düşmesin
-          body: JSON.stringify({ ...sub.toJSON(), silent: true }),
-        });
-        if (!cancelled) setOverride(res.ok ? "on" : "ready");
-      })
-      .catch(() => {
-        if (!cancelled) setOverride("ready");
-      });
+    (async () => {
+      if (!isPushSupported()) {
+        if (!cancelled) setState(needsHomeScreen() ? "ready" : "unsupported");
+        return;
+      }
+      const permission = getPermission();
+      if (permission === "denied") {
+        if (!cancelled) setState("denied");
+        return;
+      }
+      if (permission !== "granted") {
+        if (!cancelled) setState("ready");
+        return;
+      }
+      const ok = await registeredOnServer();
+      if (!cancelled) setState(ok ? "on" : "ready");
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [detected]);
-
-  const state = override ?? (detected === "granted" ? "on" : detected);
+  }, []);
 
   const enable = async () => {
     setBusy(true);
     const ok = await subscribeToPush(ADMIN_PUSH_ENDPOINT);
     setBusy(false);
-    if (ok) return setOverride("on");
-    // Neden olmadı: izin reddedildi mi, yoksa cihazda API'ler yok mu?
-    setOverride(needsHomeScreen() && !isPushSupported() ? "ios-install" : "denied");
+    if (ok) return setState("on");
+    if (getPermission() === "denied") return setState("denied");
+    setState(needsHomeScreen() && !isPushSupported() ? "ios-install" : "failed");
   };
 
-  if (state === "on" || state === "unsupported") return null;
+  // "Açık" yazıyor ama bildirim gelmiyorsa admin kendi sınayabilsin
+  const test = async () => {
+    setBusy(true);
+    await subscribeToPush(ADMIN_PUSH_ENDPOINT);
+    setBusy(false);
+  };
+
+  if (state === "checking" || state === "unsupported") return null;
+
+  if (state === "on") {
+    return (
+      <div className="mb-5 flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+        <p className="flex items-center gap-2 text-xs text-[#9ca3af]">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          Talep bildirimleri bu cihazda açık
+        </p>
+        <button
+          onClick={test}
+          disabled={busy}
+          className="shrink-0 text-xs font-semibold text-[#e91e8c] disabled:opacity-50"
+        >
+          {busy ? "..." : "Sına"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="mb-5 rounded-2xl border border-[#fbbf24]/25 bg-[#fbbf24]/[0.07] px-4 py-3.5">
@@ -108,8 +127,9 @@ export default function AdminPushBanner() {
       ) : (
         <>
           <p className="mt-1 text-xs text-[#9ca3af]">
-            Müşteri şarkı talebi gönderdiğinde telefonuna bildirim düşer; paneli açmadan
-            bildirim üstünden onaylayıp reddedebilirsin.
+            {state === "failed"
+              ? "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene."
+              : "Müşteri şarkı talebi gönderdiğinde telefonuna bildirim düşer; paneli açmadan bildirim üstünden onaylayıp reddedebilirsin."}
           </p>
           <button
             onClick={enable}

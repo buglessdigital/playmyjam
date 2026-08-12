@@ -1,19 +1,24 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
-import { getPermission, isPushSupported, subscribeToPush } from "@/lib/notifications";
+import { useEffect, useState } from "react";
+import {
+  CUSTOMER_PUSH_ENDPOINT,
+  getPermission,
+  isPushSupported,
+  subscribeToPush,
+} from "@/lib/notifications";
 import { useT } from "@/lib/i18n";
 
 // Talep gönderildikten sonraki isteğe bağlı adım: onay bildirimi için izin.
 // Talep izinden BAĞIMSIZ olarak zaten iletildi — burada sadece "onaylanırsa
 // haberin olsun" teklifi var, çünkü onay sonrası çalma penceresi 10 dakika.
 //
-// iOS: Safari web push'u yalnızca ana ekrana eklenmiş uygulamada verir; sekmede
-// izin istemek sonuçsuz kalacağı için doğrudan yönerge gösterilir.
+// Karar TARAYICI İZNİNE değil, GERÇEK ABONELİĞE bakar: izin verilmiş olması
+// bildirimin geleceği anlamına gelmiyor — abonelik sunucuya ulaşmamış olabilir
+// (istek yarıda kalmış, abonelik yenilenmiş, kayıt silinmiş). O durumda düğme
+// yine görünür ve tek dokunuşla kayıt tamamlanır.
 
-type NotifyState = "idle" | "on" | "hidden" | "ios" | "denied";
-
-const noopSubscribe = () => () => {};
+type State = "checking" | "idle" | "on" | "hidden" | "ios" | "denied" | "failed";
 
 function needsHomeScreen(): boolean {
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -23,47 +28,108 @@ function needsHomeScreen(): boolean {
   return isIOS && !standalone;
 }
 
-// Önce YETENEĞE bakılır, cihaz markasına değil: push API'leri varsa düğme
-// gösterilir ve tek dokunuşla izin istenir. "Ana ekrana ekle" yönergesi ancak
-// deneme gerçekten başarısız olursa çıkar — kimse gereksiz yere uğraşmasın.
-function detectNotifyState(): NotifyState {
-  if (isPushSupported()) {
-    const permission = getPermission();
-    if (permission === "granted") return "on";
-    if (permission === "denied") return "denied";
-    return "idle";
+// Tarayıcıdaki abonelik sunucuda da kayıtlı mı? (silent: doğrulama bildirimi atma)
+async function registeredOnServer(): Promise<boolean> {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return false;
+    const res = await fetch(CUSTOMER_PUSH_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...subscription.toJSON(), silent: true }),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
-  // API'ler yok: iOS'ta ana ekrana eklenince gelirler, o yüzden düğme dursun
-  return needsHomeScreen() ? "idle" : "hidden";
 }
 
 export default function NotifyOptIn() {
   const t = useT();
-  // Tarayıcı yeteneği sunucuda bilinemez: sunucu anlık görüntüsü "hidden"
-  // (kart çizilmez), istemcide gerçek durumla değişir
-  const detected = useSyncExternalStore<NotifyState>(noopSubscribe, detectNotifyState, () => "hidden");
-  const [override, setOverride] = useState<"on" | "idle" | "denied" | "ios" | null>(null);
+  const [state, setState] = useState<State>("checking");
   const [busy, setBusy] = useState(false);
 
-  const state = override ?? detected;
-  if (state === "hidden" || state === "on") return null;
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (!isPushSupported()) {
+        // API'ler yok: iOS'ta ana ekrana eklenince gelirler, düğme dursun
+        if (!cancelled) setState(needsHomeScreen() ? "idle" : "hidden");
+        return;
+      }
+      const permission = getPermission();
+      if (permission === "denied") {
+        if (!cancelled) setState("denied");
+        return;
+      }
+      if (permission !== "granted") {
+        if (!cancelled) setState("idle");
+        return;
+      }
+      // İzin var — abonelik gerçekten sunucuda mı?
+      const ok = await registeredOnServer();
+      if (!cancelled) setState(ok ? "on" : "idle");
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const enable = async () => {
+    setBusy(true);
+    const ok = await subscribeToPush();
+    setBusy(false);
+    if (ok) return setState("on");
+    if (getPermission() === "denied") return setState("denied");
+    setState(needsHomeScreen() && !isPushSupported() ? "ios" : "failed");
+  };
+
+  // Doğrulama bildirimini yeniden yollar: "açık" yazıyor ama bildirim gelmiyorsa
+  // kullanıcı bunu kendi sınayabilsin
+  const test = async () => {
+    setBusy(true);
+    await subscribeToPush();
+    setBusy(false);
+  };
+
+  if (state === "checking" || state === "hidden") return null;
+
+  if (state === "on") {
+    return (
+      <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#1a0e2a] px-3 py-2.5">
+        <p className="flex items-center gap-1.5 text-[11px] text-[#9ca3af]">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          {t.suggest.notifyOn}
+        </p>
+        <button
+          onClick={test}
+          disabled={busy}
+          className="shrink-0 text-[11px] font-semibold text-[#e91e8c] disabled:opacity-50"
+        >
+          {busy ? t.suggest.notifyBusy : t.suggest.notifyTest}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-3 rounded-xl border border-white/10 bg-[#1a0e2a] p-3">
       <p className="text-xs font-semibold text-white">{t.suggest.notifyTitle}</p>
       <p className="mt-1 text-[11px] text-[#9ca3af]">
-        {state === "ios" ? t.suggest.notifyIos : state === "denied" ? t.suggest.notifyDenied : t.suggest.notifyDesc}
+        {state === "ios"
+          ? t.suggest.notifyIos
+          : state === "denied"
+            ? t.suggest.notifyDenied
+            : state === "failed"
+              ? t.suggest.notifyFailed
+              : t.suggest.notifyDesc}
       </p>
-      {state === "idle" && (
+      {state !== "denied" && state !== "ios" && (
         <button
-          onClick={async () => {
-            setBusy(true);
-            const ok = await subscribeToPush();
-            setBusy(false);
-            if (ok) return setOverride("on");
-            // Neden olmadı: izin reddedildi mi, yoksa cihazda API'ler yok mu?
-            setOverride(needsHomeScreen() && !isPushSupported() ? "ios" : "denied");
-          }}
+          onClick={enable}
           disabled={busy}
           className="mt-2.5 flex h-9 w-full items-center justify-center rounded-lg text-xs font-bold text-white disabled:opacity-50"
           style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}

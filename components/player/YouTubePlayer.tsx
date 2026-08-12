@@ -580,6 +580,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   });
   // Takılma sonrası kaçıncı kurtarma adımındayız (0 yok, 1 dürt, 2 yükle, 3 atla)
   const stallStepRef = useRef(0);
+  // Atlama gizli pencere yüzünden ertelendi mi (kayda tek satır düşsün diye)
+  const skipDeferredRef = useRef(false);
+  // Bu oturumda çalınamaz olduğu görülen videolar. Sunucudaki işaretleme yola
+  // çıkana kadar geçen birkaç saniyede aynı videoyu tekrar tampona almayalım.
+  const unplayableRef = useRef<Set<string>>(new Set());
   // Bekçinin en son çalıştığı an — arada uzun boşluk varsa sekme dondurulmuştu
   const lastTickAtRef = useRef(0);
   // Geçişin duvar saatiyle başlangıcı ve süresi (rampa asılırsa zorla bitirmek için)
@@ -630,11 +635,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     return false;
   }, []);
 
+  // Pencere arkada kaldığı için çalma başlayamadı: mekan ekrana dönünce sebebi
+  // görsün. Sessizliğin sebebini bilmeden "sistem bozuk" diye bakılıyordu.
+  const [backgroundBlocked, setBackgroundBlocked] = useState(false);
+
   // İlerleme çapasını sıfırla: yeni video yüklendi ya da oynatma gerçekten
   // ilerledi. Kurtarma merdiveni de baştan başlar.
   const markProgress = useCallback((videoId: string | null, time = -1) => {
     progressMarkRef.current = { videoId, time, at: Date.now() };
     stallStepRef.current = 0;
+    skipDeferredRef.current = false;
   }, []);
 
   // --- Sekmeyi uyanık tutan taşıyıcı ton (bkz. KEEPALIVE_HZ) ---
@@ -1215,6 +1225,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     }
     // Kuyruk değişti diye tazeledik ama sıradaki aynı çıktı: tamponu bozma
     if (videoId === preloadedVideoRef.current) return;
+    // İşaretleme sunucuya henüz işlemediyse aynı bozuk videoyu tekrar cue'lamayalım
+    if (unplayableRef.current.has(videoId)) return;
 
     const deck = otherDeck(activeDeckRef.current);
     const player = decksRef.current[deck];
@@ -1466,6 +1478,38 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         };
     if (stuck >= ladder.nudge && stallStepRef.current < 1) {
       plog(`TAKILDI ${stateName(state)} ${Math.round(stuck / 1000)} sn — konum ${position.toFixed(1)}`);
+    }
+    // GİZLİ PENCEREDE ATLAMA YOK. Tarayıcı, görünmeyen sayfada YENİ yüklenen
+    // videoyu başlatmıyor: video TAMPON'da konum 0.0'da asılı kalıyor ve pencere
+    // öne alındığı saniye çalmaya başlıyor. Merdiven bunu "bozuk şarkı" sanıp
+    // 30 saniyede bir sıradakine geçiyordu; sıradaki de aynı sebeple çalmadığı
+    // için mekan sessiz kalırken kuyruk teker teker eriyordu (6 dakikada 12
+    // şarkı — hepsi müşterinin jetonuyla eklenmiş, hiçbiri çalmadan). Bu
+    // durumda doğru davranış BEKLEMEK: aynı video denenmeye devam eder,
+    // görünürlük gelince zaten anında başlar.
+    const hiddenNeverStarted =
+      typeof document !== "undefined" &&
+      document.visibilityState === "hidden" &&
+      mark.time < 0 &&
+      position <= 0;
+    if (hiddenNeverStarted && stuck >= ladder.skip && stallStepRef.current < 3) {
+      // Kayda tek satır düşer (her turda değil): sebebi sonradan okuyabilelim
+      if (!skipDeferredRef.current) {
+        skipDeferredRef.current = true;
+        // Taşıyıcı tonun durumu da yazılır: varsayımımız "sayfa sessizleşince
+        // tarayıcı medyayı askıya alıyor". ctx suspended görünüyorsa varsayım
+        // doğrulanır, running görünüyorsa sebep başkadır ve orayı kazarız.
+        const ctxState = keepAliveRef.current?.ctx.state ?? "yok";
+        plog(
+          `atlama ERTELENDİ: pencere arkada, video hiç başlamadı — görünürlük beklenecek (${Math.round(stuck / 1000)} sn, taşıyıcı ton: ${ctxState})`
+        );
+        setBackgroundBlocked(true);
+      }
+      // Bekleme boş geçmesin: aynı videoyu dürtmeye devam et
+      try {
+        player.playVideo();
+      } catch {}
+      return;
     }
     if (stuck >= ladder.skip && stallStepRef.current < 3) {
       // Yeniden yükleme de tutmadı. Sessiz kalmaktansa sıradakine geçiyoruz —
@@ -1782,6 +1826,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               setDesiredPlaying(true);
               // Takılma bekçisinin çapası tazelenir: video gerçekten başladı
               markProgress(currentVideoRef.current);
+              // Müzik akıyor: arka plan uyarısı varsa kalkar
+              setBackgroundBlocked(false);
               // Yeni video/aygıt değişiminde player varsayılan sese dönebilir
               // (geçiş sırasında pushVolume kendini devre dışı bırakır)
               pushVolume();
@@ -1822,9 +1868,23 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             plog(`deck ${key}: YOUTUBE HATASI ${e.data}`);
             // 100/101/150: video kaldırılmış ya da embed'e kapalı — işaretle ve atla
             if (key !== activeDeckRef.current) {
-              // Tamponlanan video çalınamıyor: tamponu düşür, geçiş anında
-              // sunucudan dönen kimlik zaten yüklenecek
+              // BOŞTAKİ deck: çalan şarkı kesilmez, ama şarkı SUNUCUDA da
+              // işaretlenmeli. Eskiden yalnızca tampon düşürülüyordu; peek 10 sn
+              // sonra AYNI videoyu döndürdüğü için önyükleme sonsuz hata
+              // döngüsüne giriyor, çapraz geçiş ve çevrimdışı yedek fiilen
+              // devre dışı kalıyordu (mekan kaydında 10 sn'de bir HATA 150).
+              const failed = preloadedVideoRef.current ?? prewarmCuedRef.current;
               preloadedVideoRef.current = null;
+              preloadedForRef.current = null;
+              if (failed) {
+                unplayableRef.current.add(failed);
+                plog(`önyükleme videosu çalınamıyor — işaretleniyor (${failed})`);
+                void api({ action: "unplayable", video_id: failed }).finally(() => {
+                  // İşaretleme yolda: sıradaki peek artık bu videoyu atlayacak,
+                  // 10 sn'lik cezayı beklemeden hemen yeniden dene
+                  preloadRetryAtRef.current = 0;
+                });
+              }
               return;
             }
             endCrossfade();
@@ -2537,6 +2597,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               ))}
           </div>
         </div>
+      )}
+
+      {/* Tarayıcı, arkada kalan pencerede yeni şarkıyı başlatmıyor. Mekan
+          ekrana döndüğünde müzik zaten çalmaya başlamış olur; bu şerit sebebi
+          söyler ki bir daha aynı sessizlik yaşanmasın. */}
+      {backgroundBlocked && (
+        <p className="mt-2 rounded-xl border border-[#fbbf24]/40 bg-[#fbbf24]/10 px-3 py-2 text-center text-xs text-[#fbbf24]">
+          Player penceresi arkada kaldığı için tarayıcı yeni şarkıyı başlatmadı.
+          Bu pencereyi her zaman en önde/açık bırakın — kuyruk korundu, hiçbir şarkı atlanmadı.
+        </p>
       )}
 
       {/* Cihaz ses komutunu kabul etmiyorsa (mobil tarayıcılarda ses donanımdan

@@ -505,6 +505,19 @@ export async function markUnplayableAndSkip(
   venueId: string,
   videoId: string
 ): Promise<NextResult> {
-  await supabaseAdmin.from("songs").update({ embeddable: false }).eq("youtube_video_id", videoId);
+  await markUnplayable(videoId);
   return playNextFromQueue(venueId);
+}
+
+// Aynı işaretleme, ATLAMADAN. Hatayı bildiren boştaki (önyükleme) deck ise
+// çalan şarkıya dokunulmamalıdır. Bu yol olmadığı için önyükleme sonsuz
+// döngüye giriyordu: peek gömmeye kapalı videoyu döndürüyor → deck 150 hatası
+// veriyor → istemci tamponu düşürüp susuyor → 10 sn sonra peek AYNI videoyu
+// döndürüyor. Şarkı bir kez işaretlendiğinde peek onu artık atlar.
+export async function markUnplayable(videoId: string): Promise<{ ok: boolean }> {
+  const { error } = await supabaseAdmin
+    .from("songs")
+    .update({ embeddable: false })
+    .eq("youtube_video_id", videoId);
+  return { ok: !error };
 }

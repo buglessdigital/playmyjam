@@ -5,6 +5,7 @@ import {
   playNextFromQueue,
   playPreviousFromQueue,
   markUnplayableAndSkip,
+  markUnplayable,
   peekNextFromQueue,
   syncPlayingVideo,
 } from "@/lib/queue";
@@ -217,6 +218,19 @@ export async function POST(
       }
       const result = await markUnplayableAndSkip(venueId, videoId);
       return reply(result);
+    }
+
+    // Aynı hata BOŞTAKİ deck'ten geldiyse (önyükleme) çalan şarkı kesilmemeli:
+    // yalnızca işaretlenir, kuyruk olduğu yerde kalır. Bu uç olmadığı için
+    // gömmeye kapalı bir şarkı kuyruğun başında tıkanıp önyüklemeyi 10 sn'de
+    // bir sonsuz hata döngüsüne sokuyordu (bkz. lib/queue.ts markUnplayable).
+    case "unplayable": {
+      const videoId = typeof body?.video_id === "string" ? body.video_id : "";
+      if (!videoId) return reply({ error: "video_id gerekli" }, { status: 400 });
+      if (!(await isOwner(venueId, claimId))) {
+        return reply({ ok: false, claim_lost: true }, { status: 409 });
+      }
+      return reply(await markUnplayable(videoId));
     }
 
     // Player 15 sn'de bir ilerleme + sağlık sinyali yollar. started_at çapası

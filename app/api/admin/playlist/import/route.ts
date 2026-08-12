@@ -9,6 +9,7 @@ import {
   YouTubeQuotaError,
 } from "@/lib/youtube";
 import { assertVenuePlaylist, attachSongsToPlaylist, getDefaultPlaylistId } from "@/lib/playlist";
+import { readYoutubeToken } from "@/lib/youtube-token";
 
 // Public YouTube playlist'indeki tüm şarkıları mekanın bir playlist'ine toplu ekler.
 // OAuth gerekmez — admin playlist URL'sini yapıştırır.
@@ -22,10 +23,17 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null);
-  const playlistId = parsePlaylistId(typeof body?.playlist_url === "string" ? body.playlist_url : "");
+  // İki giriş yolu: yapıştırılan bağlantı ya da hesap seçicisinden gelen ham kimlik.
+  const playlistId =
+    (typeof body?.youtube_playlist_id === "string" ? body.youtube_playlist_id.trim() : "") ||
+    parsePlaylistId(typeof body?.playlist_url === "string" ? body.playlist_url : "");
   if (!playlistId) {
     return NextResponse.json({ error: "Geçersiz playlist bağlantısı" }, { status: 400 });
   }
+
+  // Hesap bağlıysa istekler mekanın adına gider — gizli listeler ancak böyle okunur.
+  // Bağlı değilse eski davranış: yalnızca herkese açık listeler.
+  const accessToken = readYoutubeToken(req) ?? undefined;
 
   const targetId = typeof body?.playlist_id === "string" ? body.playlist_id : "";
   if (targetId && !(await assertVenuePlaylist(session.venue_id, targetId))) {
@@ -39,16 +47,18 @@ export async function POST(req: NextRequest) {
   let videoIds: string[] = [];
   let playlistTitle: string | null = null;
   let itemCount: number | null = null;
+  let privacy: string | null = null;
   let tracks;
   try {
     const [items, info] = await Promise.all([
-      getPlaylistVideoIds(playlistId),
-      getPlaylistInfo(playlistId),
+      getPlaylistVideoIds(playlistId, accessToken),
+      getPlaylistInfo(playlistId, accessToken),
     ]);
     videoIds = items.videoIds;
     playlistTitle = info.title;
     itemCount = info.itemCount;
-    tracks = await getVideoDetails(videoIds);
+    privacy = info.privacy;
+    tracks = await getVideoDetails(videoIds, accessToken);
   } catch (err) {
     if (err instanceof YouTubeQuotaError) {
       return NextResponse.json({ error: err.message }, { status: 429 });
@@ -62,7 +72,12 @@ export async function POST(req: NextRequest) {
   // Senkron her içe aktarımda açılır — mekanın kapatma seçeneği yok. Kotaya
   // etkisi ihmal edilebilir (bkz. lib/playlist-sync.ts kademeli bütçe),
   // buna karşılık liste hep YouTube'daki haliyle güncel kalır.
-  const autoSync = true;
+  //
+  // Tek istisna gizli (private) listeler: günlük cron API anahtarıyla koşuyor ve
+  // o listeyi göremez. Kalıcı senkron ancak refresh token saklanırsa mümkün olur;
+  // o güne kadar gizli listeler tek seferlik aktarılır ve kaynak satırı senkrona
+  // girmez (boşuna 404 yiyip fail_count şişirmesin).
+  const autoSync = privacy !== "private";
 
   const rows = tracks.map((t) => ({
     youtube_video_id: t.youtube_video_id,

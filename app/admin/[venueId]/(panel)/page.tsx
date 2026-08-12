@@ -70,11 +70,15 @@ export default function AdminDashboard({ params }: Props) {
  */
 function AdminDashboardContent({ params }: Props) {
   const { venueId } = use(params);
+  const searchParams = useSearchParams();
   // Dışarıdan ?list=... ile gelindiğinde ilgili liste seçili başlar
-  const initialListId = useSearchParams().get("list") ?? ALL;
+  const initialListId = searchParams.get("list") ?? ALL;
+  // Google'dan dönüşte (?youtube=connected|youtube_error) içe aktarma kutusu
+  // kendiliğinden açılır: kullanıcı hesabı bağlamak için oradan çıkmıştı.
+  const youtubeReturn = searchParams.get("youtube") ?? searchParams.get("youtube_error");
 
   const [venueDbId, setVenueDbId] = useState("");
-  const [modal, setModal] = useState<ModalKind>(null);
+  const [modal, setModal] = useState<ModalKind>(youtubeReturn ? "import" : null);
   // Dar ekranda üç sütun sığmaz: aynı anda tek pano gösterilir
   const [pane, setPane] = useState<Pane>("songs");
   const railWidth = useSyncExternalStore(subscribeRail, readRailWidth, () => RAIL_DEFAULT);

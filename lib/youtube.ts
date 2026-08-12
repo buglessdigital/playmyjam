@@ -96,8 +96,10 @@ function toTrack(v: VideoItem): TrackDetails {
   };
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+// accessToken verilirse istek mekanın kendi YouTube hesabı adına gider: gizli
+// listeler ancak böyle okunabilir. Kota yine bizim projemizden düşer.
+async function fetchJson<T>(url: string, accessToken?: string): Promise<T> {
+  const res = await fetch(url, accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     // Kota dolduğunda Google 403 döner — çağıran taraf zarifçe yerel kataloga düşer
@@ -117,7 +119,7 @@ export class YouTubeQuotaError extends Error {
 }
 
 // videos.list (1 birim): süre + embed + izlenme. 50'şerlik parti halinde.
-export async function getVideoDetails(videoIds: string[]): Promise<TrackDetails[]> {
+export async function getVideoDetails(videoIds: string[], accessToken?: string): Promise<TrackDetails[]> {
   const tracks: TrackDetails[] = [];
   for (let i = 0; i < videoIds.length; i += 50) {
     const batch = videoIds.slice(i, i + 50);
@@ -126,7 +128,7 @@ export async function getVideoDetails(videoIds: string[]): Promise<TrackDetails[
       id: batch.join(","),
       key: API_KEY,
     });
-    const data = await fetchJson<{ items?: VideoItem[] }>(`${API_BASE}/videos?${params}`);
+    const data = await fetchJson<{ items?: VideoItem[] }>(`${API_BASE}/videos?${params}`, accessToken);
     for (const v of data.items ?? []) {
       // Embed'e kapalı veya süre dışı (canlı yayın/çok uzun) videolar gömülü player'da çalmaz
       if (v.status?.embeddable === false) continue;
@@ -152,7 +154,8 @@ export type VideoRefresh = {
 // silinmeli (video id muaf). videos.list yanıtında hiç dönmeyen id silinmiş/
 // gizlenmiş videodur → null (çağıran embeddable=false işaretler).
 export async function refreshVideoMetadata(
-  videoIds: string[]
+  videoIds: string[],
+  accessToken?: string
 ): Promise<Map<string, VideoRefresh | null>> {
   const result = new Map<string, VideoRefresh | null>(videoIds.map((id) => [id, null]));
   for (let i = 0; i < videoIds.length; i += 50) {
@@ -162,7 +165,7 @@ export async function refreshVideoMetadata(
       id: batch.join(","),
       key: API_KEY,
     });
-    const data = await fetchJson<{ items?: VideoItem[] }>(`${API_BASE}/videos?${params}`);
+    const data = await fetchJson<{ items?: VideoItem[] }>(`${API_BASE}/videos?${params}`, accessToken);
     for (const v of data.items ?? []) {
       const t = toTrack(v);
       result.set(v.id, {
@@ -232,29 +235,34 @@ export function parsePlaylistId(input: string): string | null {
   return null;
 }
 
-type PlaylistInfo = { title: string | null; itemCount: number | null };
+type PlaylistInfo = { title: string | null; itemCount: number | null; privacy: string | null };
 
 // playlists.list (1 birim) — başlık + şarkı sayısı tek çağrıda.
 // itemCount otomatik senkronun ön kontrolü: sayı değişmediyse liste hiç açılmaz
 // (bkz. lib/playlist-sync.ts). Başarısız olursa null'lar döner, çağıran taraf akar.
-export async function getPlaylistInfo(playlistId: string): Promise<PlaylistInfo> {
+export async function getPlaylistInfo(playlistId: string, accessToken?: string): Promise<PlaylistInfo> {
   const params = new URLSearchParams({
-    part: "snippet,contentDetails",
+    part: "snippet,contentDetails,status",
     id: playlistId,
     key: API_KEY,
   });
   try {
     const data = await fetchJson<{
-      items?: Array<{ snippet?: { title?: string }; contentDetails?: { itemCount?: number } }>;
-    }>(`${API_BASE}/playlists?${params}`);
+      items?: Array<{
+        snippet?: { title?: string };
+        contentDetails?: { itemCount?: number };
+        status?: { privacyStatus?: string };
+      }>;
+    }>(`${API_BASE}/playlists?${params}`, accessToken);
     const item = data.items?.[0];
-    if (!item) return { title: null, itemCount: null };
+    if (!item) return { title: null, itemCount: null, privacy: null };
     return {
       title: item.snippet?.title?.trim() || null,
       itemCount: typeof item.contentDetails?.itemCount === "number" ? item.contentDetails.itemCount : null,
+      privacy: item.status?.privacyStatus ?? null,
     };
   } catch {
-    return { title: null, itemCount: null };
+    return { title: null, itemCount: null, privacy: null };
   }
 }
 
@@ -289,13 +297,65 @@ export async function getPlaylistItemCounts(
   return { counts, units };
 }
 
+export type OwnedPlaylist = {
+  id: string;
+  title: string;
+  itemCount: number;
+  thumbnail: string | null;
+  privacy: string;
+};
+
+// playlists.list?mine=true (1 birim / 50 liste) — mekanın kendi hesabındaki listeler.
+// YouTube Music'te oluşturulan listeler de burada döner; "Beğenilen Müzik" ve
+// algoritmik karışımlar (Discover Mix vb.) API'de görünmez, seçicide de çıkmazlar.
+const OWNED_PLAYLIST_MAX = 200;
+
+export async function getMyPlaylists(accessToken: string): Promise<OwnedPlaylist[]> {
+  const playlists: OwnedPlaylist[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      part: "snippet,contentDetails,status",
+      mine: "true",
+      maxResults: "50",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const data = await fetchJson<{
+      nextPageToken?: string;
+      items?: Array<{
+        id?: string;
+        snippet?: { title?: string; thumbnails?: { medium?: { url?: string }; default?: { url?: string } } };
+        contentDetails?: { itemCount?: number };
+        status?: { privacyStatus?: string };
+      }>;
+    }>(`${API_BASE}/playlists?${params}`, accessToken);
+
+    for (const item of data.items ?? []) {
+      if (!item.id) continue;
+      playlists.push({
+        id: item.id,
+        title: item.snippet?.title?.trim() || "Adsız liste",
+        itemCount: item.contentDetails?.itemCount ?? 0,
+        thumbnail: item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
+        privacy: item.status?.privacyStatus ?? "private",
+      });
+    }
+    pageToken = data.nextPageToken;
+  } while (pageToken && playlists.length < OWNED_PLAYLIST_MAX);
+
+  // Boş listeler seçicide yer kaplamasın
+  return playlists.filter((p) => p.itemCount > 0);
+}
+
 const PLAYLIST_MAX_ITEMS = 500;
 
 // playlistItems.list (1 birim/sayfa) — public playlist'ler için OAuth gerekmez.
 // Yalnızca ham video kimlikleri: detay (videos.list) ayrı bir adım, çünkü senkronda
 // zaten tanıdığımız videolar için o çağrıyı hiç atmıyoruz.
 export async function getPlaylistVideoIds(
-  playlistId: string
+  playlistId: string,
+  accessToken?: string
 ): Promise<{ videoIds: string[]; units: number }> {
   const videoIds: string[] = [];
   let pageToken: string | undefined;
@@ -312,7 +372,7 @@ export async function getPlaylistVideoIds(
     const data = await fetchJson<{
       nextPageToken?: string;
       items?: Array<{ contentDetails?: { videoId?: string } }>;
-    }>(`${API_BASE}/playlistItems?${params}`);
+    }>(`${API_BASE}/playlistItems?${params}`, accessToken);
     units++;
     for (const item of data.items ?? []) {
       if (item.contentDetails?.videoId) videoIds.push(item.contentDetails.videoId);

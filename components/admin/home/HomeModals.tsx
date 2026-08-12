@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { formatDur, type Library, type Playlist } from "./useLibrary";
 import type { Playback } from "./usePlayback";
 
@@ -107,6 +108,302 @@ function ListNameModal({ kind, onClose, lib }: { kind: "newList" | "rename"; onC
   );
 }
 
+type OwnedList = {
+  id: string;
+  title: string;
+  itemCount: number;
+  thumbnail: string | null;
+  privacy: string;
+  imported: boolean;
+};
+
+const YOUTUBE_ERRORS: Record<string, string> = {
+  denied: "İzin verilmedi — listeleri okuyabilmemiz için onay gerekiyor.",
+  missing_code: "Google'dan yanıt alınamadı, tekrar deneyin.",
+  oauth_failed: "Google oturumu doğrulanamadı, tekrar deneyin.",
+  no_token: "Google erişim izni vermedi, tekrar deneyin.",
+};
+
+/**
+ * Mekanın kendi YouTube (Music) hesabındaki listeleri gösterir; seçilenler tek
+ * tek içe aktarılır. Erişim jetonu httpOnly çerezde durur ve ~1 saat sonra ölür —
+ * o yüzden "bağlan" adımı her seferinde tekrar gerekebilir, akış buna göre kurulu.
+ */
+function AccountPicker({
+  onClose,
+  lib,
+  onUseUrl,
+}: {
+  onClose: () => void;
+  lib: Library;
+  onUseUrl: () => void;
+}) {
+  const { refresh, setSelectedId } = lib;
+  const [lists, setLists] = useState<OwnedList[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [needsConnect, setNeedsConnect] = useState(false);
+  // Google'dan hatayla dönülmüşse sebebi adres çubuğunda gelir (sayfa yeniden yüklendi)
+  const [error, setError] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const failure = new URLSearchParams(window.location.search).get("youtube_error");
+    if (!failure) return "";
+    return YOUTUBE_ERRORS[failure] ?? "YouTube hesabı bağlanamadı.";
+  });
+  const [result, setResult] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [rowStatus, setRowStatus] = useState<Record<string, { state: "busy" | "ok" | "fail"; text: string }>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/playlist/youtube-lists");
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          if (data.reconnect) setNeedsConnect(true);
+          else setError(data.error ?? "Listeler alınamadı");
+          return;
+        }
+        setLists(data.playlists ?? []);
+      } catch {
+        if (!cancelled) setError("Bağlantı hatası, tekrar deneyin");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const connect = async () => {
+    const supabase = createClient();
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/api/admin/youtube/callback`,
+        scopes: "https://www.googleapis.com/auth/youtube.readonly",
+        // consent: kapsam ilk kez isteniyorsa Google onay ekranını atlamasın
+        queryParams: { prompt: "consent", access_type: "online" },
+      },
+    });
+    if (oauthError) setError("Google'a yönlendirilemedi, tekrar deneyin.");
+  };
+
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const importSelected = async () => {
+    const ids = [...selected];
+    if (ids.length === 0 || importing) return;
+    setImporting(true);
+    setError("");
+    setResult("");
+    setRowStatus({});
+    setProgress({ done: 0, total: ids.length });
+
+    let added = 0;
+    let okCount = 0;
+    let done = 0;
+    let lastPlaylistId = "";
+
+    // Bağlantı yapıştırma akışındaki gerekçenin aynısı: sıralı gidiyoruz,
+    // bir listenin hatası diğerlerini durdurmuyor.
+    for (const id of ids) {
+      setRowStatus((s) => ({ ...s, [id]: { state: "busy", text: "aktarılıyor…" } }));
+      try {
+        const res = await fetch("/api/admin/playlist/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ youtube_playlist_id: id, new_playlist: true }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setRowStatus((s) => ({
+            ...s,
+            [id]: { state: "fail", text: `${res.status} — ${data.error ?? "içe aktarılamadı"}` },
+          }));
+        } else {
+          okCount++;
+          added += data.added ?? 0;
+          if (data.playlist_id) lastPlaylistId = data.playlist_id;
+          setRowStatus((s) => ({
+            ...s,
+            [id]: {
+              state: "ok",
+              text: `${data.added ?? 0} şarkı eklendi${data.auto_sync ? "" : " · otomatik güncellenmez"}`,
+            },
+          }));
+        }
+      } catch {
+        setRowStatus((s) => ({ ...s, [id]: { state: "fail", text: "bağlantı hatası" } }));
+      }
+      done++;
+      setProgress({ done, total: ids.length });
+    }
+
+    if (okCount > 0) {
+      setResult(`${okCount}/${ids.length} liste aktarıldı — toplam ${added} şarkı eklendi.`);
+      setSelected(new Set());
+    }
+    if (okCount < ids.length) {
+      setError(okCount === 0 ? "Hiçbir liste aktarılamadı" : "Bazı listeler aktarılamadı");
+    }
+
+    await refresh();
+    if (lastPlaylistId) setSelectedId(lastPlaylistId);
+    setImporting(false);
+  };
+
+  return (
+    <Shell onClose={onClose} wide>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-white font-semibold">YouTube Hesabımdan Seç</h3>
+        <button onClick={onClose} className="text-[#6b7280] hover:text-white">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+        </button>
+      </div>
+
+      <div className="overflow-y-auto">
+        {result && (
+          <p className="text-sm rounded-xl px-3.5 py-2.5 mb-3" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}>{result}</p>
+        )}
+        {error && (
+          <p className="text-sm rounded-xl px-3.5 py-2.5 mb-3" style={{ background: "rgba(239,68,68,0.1)", color: "#f87171" }}>{error}</p>
+        )}
+
+        {loading && <p className="text-[#9ca3af] text-sm py-6 text-center">Listeler yükleniyor…</p>}
+
+        {!loading && needsConnect && (
+          <div className="py-2">
+            <p className="text-[#9ca3af] text-xs mb-4 leading-relaxed">
+              YouTube (veya YouTube Music) hesabınızı bağlayın; oradaki çalma listelerinizi
+              tek tek seçip aktarabilirsiniz. Yalnızca <strong className="text-white">okuma</strong> izni
+              isteniyor — hesabınızda hiçbir değişiklik yapılmaz.
+            </p>
+            <button
+              onClick={connect}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold"
+              style={{ background: "#e91e8c", color: "white" }}
+            >
+              Google ile Bağlan
+            </button>
+          </div>
+        )}
+
+        {!loading && !needsConnect && lists.length === 0 && !error && (
+          <p className="text-[#9ca3af] text-sm py-6 text-center leading-relaxed">
+            Hesabınızda aktarılabilir çalma listesi bulunamadı.
+            <br />
+            <span className="text-[#6b7280] text-xs">
+              &quot;Beğenilen Müzik&quot; ve otomatik karışımlar (Discover Mix gibi) YouTube tarafından
+              paylaşılmadığı için burada görünmez.
+            </span>
+          </p>
+        )}
+
+        {!loading && lists.length > 0 && (
+          <div className="space-y-1.5 mb-3">
+            {lists.map((list) => {
+              const status = rowStatus[list.id];
+              const checked = selected.has(list.id);
+              return (
+                <div key={list.id}>
+                  <button
+                    onClick={() => toggle(list.id)}
+                    disabled={importing}
+                    className="w-full flex items-center gap-3 rounded-xl px-3 py-2 text-left disabled:opacity-60"
+                    style={{
+                      background: checked ? "rgba(233,30,140,0.12)" : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${checked ? "rgba(233,30,140,0.5)" : "rgba(255,255,255,0.08)"}`,
+                    }}
+                  >
+                    {list.thumbnail ? (
+                      // Kapaklar YouTube CDN'inden geliyor; next/image için ek domain
+                      // yapılandırması gerekmesin diye düz img
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={list.thumbnail} alt="" className="h-10 w-10 rounded-lg object-cover shrink-0" />
+                    ) : (
+                      <div className="h-10 w-10 rounded-lg shrink-0" style={{ background: "rgba(255,255,255,0.06)" }} />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white text-sm truncate">{list.title}</p>
+                      <p className="text-[#6b7280] text-[11px]">
+                        {list.itemCount} şarkı
+                        {list.privacy === "private" && " · gizli liste"}
+                        {list.imported && " · daha önce aktarıldı"}
+                      </p>
+                    </div>
+                    <span
+                      className="h-5 w-5 rounded-md shrink-0 flex items-center justify-center"
+                      style={{
+                        background: checked ? "#e91e8c" : "transparent",
+                        border: `1px solid ${checked ? "#e91e8c" : "rgba(255,255,255,0.25)"}`,
+                      }}
+                    >
+                      {checked && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      )}
+                    </span>
+                  </button>
+                  {status && (
+                    <span
+                      className="block text-[11px] mt-1 px-1"
+                      style={{ color: status.state === "fail" ? "#f87171" : status.state === "ok" ? "#22c55e" : "#9ca3af" }}
+                    >
+                      {status.text}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {!loading && lists.length > 0 && (
+          <>
+            <p className="text-[#6b7280] text-[11px] mb-3 leading-relaxed">
+              Seçilen her liste, YouTube&apos;daki adıyla ayrı bir playlist olarak eklenir ve her gün
+              otomatik güncellenir. Gizli listeler tek seferlik aktarılır — günlük senkron için
+              listenin herkese açık veya bağlantıya açık olması gerekiyor.
+            </p>
+            <button
+              onClick={importSelected}
+              disabled={importing || selected.size === 0}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ background: "#e91e8c", color: "white" }}
+            >
+              {importing ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
+                  {`İçe aktarılıyor... ${progress.done}/${progress.total}`}
+                </>
+              ) : selected.size > 0 ? (
+                `${selected.size} Listeyi İçe Aktar`
+              ) : (
+                "Liste seçin"
+              )}
+            </button>
+          </>
+        )}
+
+        <button onClick={onUseUrl} className="w-full mt-3 py-2 text-xs text-[#9ca3af] hover:text-white">
+          Bunun yerine bağlantı yapıştır
+        </button>
+      </div>
+    </Shell>
+  );
+}
+
 /** Bir metinden bağlantıları ayıklar: satır/boşluk/virgül fark etmez. */
 function splitUrls(raw: string): string[] {
   return raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
@@ -114,6 +411,11 @@ function splitUrls(raw: string): string[] {
 
 function ImportModal({ onClose, lib }: { onClose: () => void; lib: Library }) {
   const { playlists, defaultTarget, refresh, setSelectedId } = lib;
+  // İki yol var: bağlantı yapıştırmak ya da YouTube hesabındaki listeleri seçmek.
+  // Google'dan dönüldüyse (?youtube=...) doğrudan seçiciyle açılır.
+  const [source, setSource] = useState<"url" | "account">(() =>
+    typeof window !== "undefined" && /[?&]youtube(_error)?=/.test(window.location.search) ? "account" : "url"
+  );
   // Her bağlantı kendi satırında: "Bağlantı ekle" yeni bir kutu açar.
   const [urlRows, setUrlRows] = useState<string[]>([""]);
   const [importing, setImporting] = useState(false);
@@ -246,6 +548,10 @@ function ImportModal({ onClose, lib }: { onClose: () => void; lib: Library }) {
     setImporting(false);
   };
 
+  if (source === "account") {
+    return <AccountPicker onClose={onClose} lib={lib} onUseUrl={() => setSource("url")} />;
+  }
+
   return (
     <Shell onClose={onClose} wide>
       <div className="flex items-center justify-between mb-4">
@@ -256,9 +562,18 @@ function ImportModal({ onClose, lib }: { onClose: () => void; lib: Library }) {
       </div>
 
       <div className="overflow-y-auto">
+        <button
+          onClick={() => setSource("account")}
+          className="w-full mb-4 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
+          style={{ background: "rgba(233,30,140,0.12)", border: "1px solid rgba(233,30,140,0.4)", color: "#f9a8d4" }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4a2.5 2.5 0 0 0-1.8 1.8A26 26 0 0 0 2 12c0 1.6.1 3.2.4 4.8a2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8c.3-1.6.4-3.2.4-4.8s-.1-3.2-.4-4.8ZM10 15V9l5 3-5 3Z" /></svg>
+          YouTube hesabımdaki listelerden seç
+        </button>
+
         <p className="text-[#9ca3af] text-xs mb-3">
-          Herkese açık YouTube playlist bağlantısı yapıştırın — hesap bağlamaya gerek yok.
-          Birden fazla liste aktaracaksanız &quot;Bağlantı Ekle&quot; ile yeni kutu açın.
+          Ya da herkese açık bir playlist bağlantısı yapıştırın — hesap bağlamaya gerek yok.
+          Birden fazla liste için &quot;Bağlantı Ekle&quot; ile yeni kutu açın.
         </p>
 
         {result && (

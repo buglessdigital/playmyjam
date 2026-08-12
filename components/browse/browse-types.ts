@@ -29,6 +29,12 @@ export type VenueSong = {
   duration_ms: number;
   play_count: number;
   in_venue_list: boolean;
+  /**
+   * Mekanın onayladığı TEK SEFERLİK çalma hakkı (0045): şarkı mekanın kalıcı
+   * kataloğunda değil, yalnızca bu ana kadar ve yalnızca bir kez eklenebilir.
+   * İlk ekleyen hakkı tüketir, şarkı herkesten kaybolur.
+   */
+  one_time_expires_at?: string;
 };
 
 export type DisplaySong = {
@@ -40,6 +46,7 @@ export type DisplaySong = {
   id?: string;
   play_count?: number;
   in_venue_list?: boolean;
+  one_time_expires_at?: string;
 };
 
 export const COOLDOWN_MS = 30 * 60 * 1000;

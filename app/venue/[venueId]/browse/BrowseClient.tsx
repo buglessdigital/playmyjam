@@ -64,6 +64,10 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [requestedIds, setRequestedIds] = useState<Set<string>>(new Set());
   const [stateLoaded, setStateLoaded] = useState(false);
+  // Mekanın onayladığı tek seferlik şarkılar (0045) — katalogda değiller,
+  // süreleri dolunca ya da biri çaldırınca kendiliğinden düşerler
+  const [oneTimeSongs, setOneTimeSongs] = useState<VenueSong[]>([]);
+  const [oneTimeTick, setOneTimeTick] = useState(() => Date.now());
   const isAddingRef = useRef(false);
   const userIdRef = useRef<string | null>(null);
 
@@ -82,11 +86,19 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     });
   }, [supabase]);
 
+  // Tek seferlik haklar katalogun ÜSTÜNE biner: arama, sanatçı listesi ve
+  // "şansına bırak" hepsi tek liste üzerinden çalıştığı için tek yerde birleşir.
+  const catalogSongs = useMemo(() => {
+    if (oneTimeSongs.length === 0) return venueSongs;
+    const oneTimeIds = new Set(oneTimeSongs.map((s) => s.id));
+    return [...oneTimeSongs, ...venueSongs.filter((s) => !oneTimeIds.has(s.id))];
+  }, [venueSongs, oneTimeSongs]);
+
   const venueSongMap = useMemo(() => {
     const map = new Map<string, VenueSong>();
-    venueSongs.forEach((s) => map.set(s.youtube_video_id, s));
+    catalogSongs.forEach((s) => map.set(s.youtube_video_id, s));
     return map;
-  }, [venueSongs]);
+  }, [catalogSongs]);
 
   useEffect(() => {
     if (!venueDbId) return;
@@ -131,6 +143,66 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       .subscribe();
 
     return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [venueDbId, supabase]);
+
+  // Onaylanan talepler: mekan admini bir talebi kabul edince şarkı 10 dakikalığına
+  // herkese açılır ve İLK ekleyen hakkı tüketir (bkz. 0045 request_song).
+  // Katalogdan ayrı yaşadığı için ayrı okunur; realtime + saniyelik saat ile
+  // hem beliriyor hem süresi dolunca kayboluyor.
+  useEffect(() => {
+    if (!venueDbId) return;
+    let cancelled = false;
+
+    type OneTimeRow = {
+      expires_at: string;
+      songs: Omit<VenueSong, "play_count" | "in_venue_list"> | null;
+    };
+
+    const fetchOneTime = async () => {
+      const { data } = await supabase
+        .from("one_time_songs")
+        .select("expires_at, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
+        .eq("venue_id", venueDbId)
+        .is("consumed_at", null)
+        .gt("expires_at", new Date().toISOString())
+        .order("expires_at", { ascending: true });
+
+      if (cancelled) return;
+      setOneTimeSongs(
+        ((data ?? []) as unknown as OneTimeRow[])
+          .filter((r) => r.songs)
+          .map((r) => ({
+            ...r.songs!,
+            play_count: 0,
+            in_venue_list: true,
+            one_time_expires_at: r.expires_at,
+          }))
+      );
+    };
+
+    fetchOneTime();
+
+    const channel = supabase
+      .channel(`browse-one-time:${venueDbId}:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "one_time_songs", filter: `venue_id=eq.${venueDbId}` }, fetchOneTime)
+      .subscribe();
+
+    // Süresi dolanı listeden düşür (sunucu tarafı zaten reddeder; ekran da yalan
+    // söylemesin) ve geri sayımları tazele
+    const sweep = setInterval(() => {
+      setOneTimeTick(Date.now());
+      setOneTimeSongs((prev) => {
+        const now = Date.now();
+        const alive = prev.filter((s) => new Date(s.one_time_expires_at!).getTime() > now);
+        return alive.length === prev.length ? prev : alive;
+      });
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(sweep);
       supabase.removeChannel(channel);
     };
   }, [venueDbId, supabase]);
@@ -201,9 +273,9 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
   const songById = useMemo(() => {
     const map = new Map<string, VenueSong>();
-    venueSongs.forEach((s) => map.set(s.id, s));
+    catalogSongs.forEach((s) => map.set(s.id, s));
     return map;
-  }, [venueSongs]);
+  }, [catalogSongs]);
 
   const topSongs = useMemo(
     () =>
@@ -216,7 +288,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
   const artists = useMemo(() => {
     const map = new Map<string, ArtistEntry>();
-    for (const s of venueSongs) {
+    for (const s of catalogSongs) {
       const name = primaryArtist(s.artist);
       if (!name) continue;
       const key = name.toLocaleLowerCase("tr");
@@ -235,7 +307,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     return [...map.values()]
       .sort((a, b) => b.songCount - a.songCount || b.totalPlays - a.totalPlays)
       .slice(0, 12);
-  }, [venueSongs]);
+  }, [catalogSongs]);
 
   const recentSongs = useMemo(() => {
     const seen = new Set<string>();
@@ -256,11 +328,11 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   // Sanatçı seçiliyken onun şarkıları; değilse mekanın en çok çalınan 10 şarkısı
   const listSongs = useMemo(() => {
     if (!selectedArtist) return topSongs;
-    const result = venueSongs.filter((s) => artistKey(s.artist) === selectedArtist);
+    const result = catalogSongs.filter((s) => artistKey(s.artist) === selectedArtist);
     if (sortBy === "az") result.sort((a, b) => a.title.localeCompare(b.title, "tr"));
     else if (sortBy === "plays") result.sort((a, b) => b.play_count - a.play_count);
     return result;
-  }, [venueSongs, selectedArtist, sortBy, topSongs]);
+  }, [catalogSongs, selectedArtist, sortBy, topSongs]);
 
   const selectedArtistName = selectedArtist
     ? artists.find((a) => a.key === selectedArtist)?.name ??
@@ -268,8 +340,8 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     : null;
 
   const favoriteSongs = useMemo(
-    () => venueSongs.filter((s) => favoriteIds.has(s.id)).slice(0, 10),
-    [venueSongs, favoriteIds]
+    () => catalogSongs.filter((s) => favoriteIds.has(s.id)).slice(0, 10),
+    [catalogSongs, favoriteIds]
   );
 
   const actionFor = useCallback(
@@ -282,10 +354,10 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   const luckyPick = useCallback(() => {
     if (playerOffline) return;
     if (!requireAccount()) return;
-    const eligible = venueSongs.filter((s) => s.in_venue_list && actionFor(s).kind === "add");
+    const eligible = catalogSongs.filter((s) => s.in_venue_list && actionFor(s).kind === "add");
     if (eligible.length === 0) return;
     setSelectedSong(eligible[Math.floor(Math.random() * eligible.length)]);
-  }, [venueSongs, actionFor, requireAccount, playerOffline]);
+  }, [catalogSongs, actionFor, requireAccount, playerOffline]);
 
   const openSong = useCallback(
     (song: DisplaySong) => router.push(`/venue/${venueId}/song/${song.youtube_video_id}`),
@@ -500,6 +572,43 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
               onClick={() => router.push(`/venue/${venueId}/queue`)}
             />
           </div>
+        )}
+
+        {/* Mekanın onayladığı talepler: tek seferlik, süreli. İlk ekleyen alır. */}
+        {!selectedArtist && oneTimeSongs.length > 0 && (
+          <section className="mb-6 px-5">
+            <div className="rounded-2xl border border-[#fbbf24]/30 bg-[#fbbf24]/[0.06] px-4 py-3.5">
+              <div className="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fbbf24" strokeWidth="2" /><path d="M12 7v5l3 3" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" /></svg>
+                <h2 className="text-base font-bold text-white">{t.oneTime.heading}</h2>
+              </div>
+              <p className="mt-1 text-xs text-[#9ca3af]">{t.oneTime.desc}</p>
+              <div className="mt-2">
+                {oneTimeSongs.map((song) => {
+                  const leftMs = Math.max(0, new Date(song.one_time_expires_at!).getTime() - oneTimeTick);
+                  const mins = Math.floor(leftMs / 60000);
+                  const secs = Math.floor((leftMs % 60000) / 1000);
+                  return (
+                    <div key={song.youtube_video_id}>
+                      <p className="pt-2 text-[11px] font-semibold text-[#fbbf24]">
+                        {fmt(t.oneTime.remaining, { t: `${mins}:${secs.toString().padStart(2, "0")}` })}
+                      </p>
+                      <SongRow
+                        song={song}
+                        action={actionFor(song)}
+                        isFav={favoriteIds.has(song.id)}
+                        showPlayCount={false}
+                        onOpen={openSong}
+                        onToggleFavorite={toggleFavorite}
+                        onAdd={openSheet}
+                        onRequest={handleRequest}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
         )}
 
         {!selectedArtist && favoriteSongs.length > 0 && (

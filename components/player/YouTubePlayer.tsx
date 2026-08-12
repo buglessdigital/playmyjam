@@ -417,6 +417,22 @@ const PRELOAD_AFTER_SEC = 5;
 // Önyükleme başarısız olduysa (ağ koptu, sunucuya ulaşılamadı) bu aralıkla
 // yeniden denenir — her turda denemek isteği boşuna yağdırırdı
 const PRELOAD_RETRY_MS = 10_000;
+
+// --- YOUTUBE HATA KODLARI ---
+// Yalnızca bu üçü videonun KALICI olarak çalınamadığını söyler: 100 kaldırılmış
+// ya da gizlenmiş, 101/150 sahibi gömmeyi kapatmış. Şarkı ancak bu kodlarda
+// damgalanır (bkz. lib/queue.ts markUnplayable) — damga kalıcıdır, şarkıyı
+// mekanların kataloğundan ve playlist'lerinden de siler.
+// 2 (geçersiz parametre) ve 5 (HTML5 oynatıcı hatası) ise GEÇİCİ olabiliyor:
+// iframe henüz oturmamışken gelen cue/load çağrısı ya da tarayıcının o anki
+// hali bu kodları üretiyor. Eskiden onError her kodda damga vuruyordu; mekan
+// kaydında hata 2 ile düşen ve YouTube'a sorulduğunda pekâlâ oynatılabilir olan
+// şarkılar kataloglardan siliniyordu. Geçici kodlarda artık sunucuya
+// dokunulmaz, yalnızca yeniden denenir.
+const FATAL_YT_ERROR_CODES = new Set([100, 101, 150]);
+// Aynı video bu kadar kez geçici hata verdiyse ısrar etmeyi bırak: YALNIZCA BU
+// OTURUM için atlanır, sunucudaki kayda hâlâ dokunulmaz.
+const TRANSIENT_ERROR_LIMIT = 3;
 // --- SICAK TAMPON ---
 // Kesintinin kökü şu: tarayıcı, GÖRÜNMEYEN sayfada bir videoyu BAŞLATMIYOR.
 // Zaten çalmakta olan video arka planda sorunsuz devam ediyor — yasak olan
@@ -598,6 +614,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // Bu oturumda çalınamaz olduğu görülen videolar. Sunucudaki işaretleme yola
   // çıkana kadar geçen birkaç saniyede aynı videoyu tekrar tampona almayalım.
   const unplayableRef = useRef<Set<string>>(new Set());
+  // Video başına geçici hata sayacı (bkz. FATAL_YT_ERROR_CODES). Şarkı bir kez
+  // gerçekten çalmaya başlayınca sayaç silinir: tek seferlik bir aksilik onu
+  // sonsuza dek şüpheli bırakmasın.
+  const transientErrorsRef = useRef<Map<string, number>>(new Map());
   // Sessizce çalar halde bekleyen tampon deck (bkz. WARM_LOOP_SEC)
   const warmDeckRef = useRef<{ deck: DeckKey; videoId: string } | null>(null);
   // Bekçinin en son çalıştığı an — arada uzun boşluk varsa sekme dondurulmuştu
@@ -1923,6 +1943,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               setDesiredPlaying(true);
               // Takılma bekçisinin çapası tazelenir: video gerçekten başladı
               markProgress(currentVideoRef.current);
+              // Şarkı çaldı: geçici hata sicili temizlenir, bir sonraki aksilik
+              // yeniden baştan üç hak alsın
+              if (currentVideoRef.current) {
+                transientErrorsRef.current.delete(currentVideoRef.current);
+              }
               // Müzik akıyor: arka plan uyarısı varsa kalkar
               setBackgroundBlocked(false);
               // Yeni video/aygıt değişiminde player varsayılan sese dönebilir
@@ -1962,8 +1987,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             forceLowQuality(decksRef.current[key]);
           },
           onError: (e) => {
-            plog(`deck ${key}: YOUTUBE HATASI ${e.data}`);
-            // 100/101/150: video kaldırılmış ya da embed'e kapalı — işaretle ve atla
+            // KALICI mı GEÇİCİ mi? Damga yalnızca kalıcı kodlarda vurulur
+            // (bkz. FATAL_YT_ERROR_CODES) — kalıcı damga şarkıyı kataloglardan
+            // da siliyor, geçici bir aksilik bunu hak etmez.
+            const code = typeof e.data === "number" ? e.data : -1;
+            const fatal = FATAL_YT_ERROR_CODES.has(code);
+            plog(`deck ${key}: YOUTUBE HATASI ${code}${fatal ? "" : " (geçici)"}`);
             if (key !== activeDeckRef.current) {
               // BOŞTAKİ deck: çalan şarkı kesilmez, ama şarkı SUNUCUDA da
               // işaretlenmeli. Eskiden yalnızca tampon düşürülüyordu; peek 10 sn
@@ -1973,21 +2002,52 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               const failed = preloadedVideoRef.current ?? prewarmCuedRef.current;
               preloadedVideoRef.current = null;
               preloadedForRef.current = null;
-              if (failed) {
-                unplayableRef.current.add(failed);
-                plog(`önyükleme videosu çalınamıyor — işaretleniyor (${failed})`);
-                void api({ action: "unplayable", video_id: failed }).finally(() => {
-                  // İşaretleme yolda: sıradaki peek artık bu videoyu atlayacak,
-                  // 10 sn'lik cezayı beklemeden hemen yeniden dene
-                  preloadRetryAtRef.current = 0;
-                });
+              if (!failed) return;
+              if (!fatal) {
+                // Geçici: sunucuya HABER GİTMEZ. Tampon düşer, biraz sonra aynı
+                // video yeniden denenir; ısrarla düşerse sonsuz döngüye girmesin
+                // diye bu oturumluk atlanır.
+                const seen = (transientErrorsRef.current.get(failed) ?? 0) + 1;
+                transientErrorsRef.current.set(failed, seen);
+                if (seen >= TRANSIENT_ERROR_LIMIT) {
+                  unplayableRef.current.add(failed);
+                  plog(`önyükleme ${seen} kez geçici hata verdi — bu oturumda atlanıyor (${failed})`);
+                }
+                preloadRetryAtRef.current = Date.now() + PRELOAD_RETRY_MS;
+                return;
               }
+              unplayableRef.current.add(failed);
+              plog(`önyükleme videosu çalınamıyor — işaretleniyor (${failed})`);
+              void api({ action: "unplayable", video_id: failed, code }).finally(() => {
+                // İşaretleme yolda: sıradaki peek artık bu videoyu atlayacak,
+                // 10 sn'lik cezayı beklemeden hemen yeniden dene
+                preloadRetryAtRef.current = 0;
+              });
               return;
             }
             endCrossfade();
             const failed = currentVideoRef.current;
-            if (failed) advance({ action: "error", video_id: failed });
-            else advance({ action: "next" });
+            if (!failed) {
+              advance({ action: "next" });
+              return;
+            }
+            if (fatal) {
+              advance({ action: "error", video_id: failed, code });
+              return;
+            }
+            // ÇALAN deck'te geçici hata: mekan sessiz kaldığı için beklemeye yer
+            // yok ama şarkıyı da damgalamıyoruz. Önce aynı videoyu bir kez
+            // yeniden yükle (hata iframe'in o anki halindense bu yeter), ısrar
+            // ederse damgasız biçimde sıradakine geç.
+            const seen = (transientErrorsRef.current.get(failed) ?? 0) + 1;
+            transientErrorsRef.current.set(failed, seen);
+            if (seen < TRANSIENT_ERROR_LIMIT) {
+              plog(`çalan şarkı geçici hata verdi (${seen}. kez) — yeniden yükleniyor`);
+              loadVideo(failed);
+              return;
+            }
+            plog(`çalan şarkı ${seen} kez geçici hata verdi — damgasız atlanıyor`);
+            advance({ action: "next" });
           },
         },
       });

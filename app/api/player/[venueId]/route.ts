@@ -14,6 +14,21 @@ import {
 // Panelin "oynatıcı çevrimdışı" eşiğiyle aynı: 45 sn.
 const CLAIM_STALE_MS = 45_000;
 
+// Şarkıyı KALICI olarak çalınamaz sayan YouTube hata kodları: 100 kaldırılmış/
+// gizli, 101/150 gömmeye kapalı. Damga şarkıyı mekanların kataloğundan da
+// sildiği için (bkz. lib/queue.ts markUnplayable) geri dönüşü elle olur —
+// 2 ve 5 gibi geçici kodlarda asla vurulmamalı. İstemci artık geçici kodları
+// zaten göndermiyor; burası önbellekten açılmış eski bir player'a karşı emniyet.
+const FATAL_YT_ERROR_CODES = new Set([100, 101, 150]);
+
+// Kod GÖNDERİLMEDİYSE (eski istemci) eski davranış korunur: damga vurulur.
+// Gönderildiyse yalnızca kalıcı kodlar damgalanır.
+function isFatalPlaybackError(body: unknown): boolean {
+  const code = (body as { code?: unknown } | null)?.code;
+  if (typeof code !== "number") return true;
+  return FATAL_YT_ERROR_CODES.has(code);
+}
+
 type ClaimRow = { player_claim: string | null; player_claim_at: string | null };
 
 // 0027 uygulanmadan kod deploy edilirse kilit sessizce devre dışı kalmalı —
@@ -216,6 +231,11 @@ export async function POST(
       if (!(await isOwner(venueId, claimId))) {
         return reply({ started: false, claim_lost: true }, { status: 409 });
       }
+      // Geçici hata: şarkıyı damgalamadan yalnızca sıradakine geç. Mekan sessiz
+      // kalmasın diye atlama yine yapılır, ama şarkı katalogda kalır.
+      if (!isFatalPlaybackError(body)) {
+        return reply(await playNextFromQueue(venueId));
+      }
       const result = await markUnplayableAndSkip(venueId, videoId);
       return reply(result);
     }
@@ -230,6 +250,8 @@ export async function POST(
       if (!(await isOwner(venueId, claimId))) {
         return reply({ ok: false, claim_lost: true }, { status: 409 });
       }
+      // Geçici hatada damga yok: önyükleme birazdan aynı videoyu yeniden dener
+      if (!isFatalPlaybackError(body)) return reply({ ok: true, skipped: true });
       return reply(await markUnplayable(videoId));
     }
 

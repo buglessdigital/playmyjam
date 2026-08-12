@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
-import { addSongToVenuePlaylist } from "@/lib/playlist";
+import { resolveRequest } from "@/lib/request-resolve";
 
 export async function PATCH(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
@@ -17,52 +15,5 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Eksik veya geçersiz alan" }, { status: 400 });
   }
 
-  const { data: request } = await supabaseAdmin
-    .from("song_requests")
-    .select("id, status, songs(youtube_video_id, title, artist, album_cover_url, duration_ms)")
-    .eq("id", requestId)
-    .eq("venue_id", session.venue_id)
-    .single();
-
-  if (!request) {
-    return NextResponse.json({ error: "İstek bulunamadı" }, { status: 404 });
-  }
-  if (request.status !== "pending") {
-    return NextResponse.json({ error: "İstek zaten sonuçlandırılmış" }, { status: 409 });
-  }
-
-  // Kabul edilirse şarkıyı mekan playlist'ine ekle (zaten varsa sorun değil)
-  if (status === "accepted") {
-    const songRel = request.songs as unknown as
-      | { youtube_video_id: string; title: string; artist: string; album_cover_url: string | null; duration_ms: number }
-      | { youtube_video_id: string; title: string; artist: string; album_cover_url: string | null; duration_ms: number }[]
-      | null;
-    const song = Array.isArray(songRel) ? songRel[0] : songRel;
-    if (song?.youtube_video_id) {
-      const result = await addSongToVenuePlaylist(session.venue_id, {
-        youtube_video_id: song.youtube_video_id,
-        title: song.title,
-        artist: song.artist,
-        album_cover_url: song.album_cover_url ?? "",
-        duration_ms: song.duration_ms,
-      });
-      if ("error" in result && result.status !== 409) {
-        return NextResponse.json({ error: result.error }, { status: result.status });
-      }
-      if (!("error" in result)) {
-        revalidateTag(`venue-songs-${session.venue_id}`, "max");
-      }
-    }
-  }
-
-  const { error } = await supabaseAdmin
-    .from("song_requests")
-    .update({ status, resolved_at: new Date().toISOString() })
-    .eq("id", requestId)
-    .eq("venue_id", session.venue_id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-  return NextResponse.json({ ok: true });
+  return resolveRequest(session.venue_id, requestId, status);
 }

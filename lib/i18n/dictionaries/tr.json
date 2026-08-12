@@ -289,18 +289,24 @@
     "youtubeSuffix": "tarafından sağlanır"
   },
   "suggest": {
-    "limitError": "Çok fazla öneri gönderdin, biraz sonra tekrar dene.",
-    "sendError": "Öneri gönderilemedi, tekrar dene.",
-    "sentTitle": "Önerin mekana iletildi",
-    "sentDesc": "Mekan şarkıyı listesine eklerse bildirim göndereceğiz — sonra sıraya ekleyebilirsin.",
+    "limitError": "Çok fazla talep gönderdin, biraz sonra tekrar dene.",
+    "sendError": "Talep gönderilemedi, tekrar dene.",
+    "sentTitle": "Talebin mekana iletildi",
+    "sentDesc": "Mekan 10 dakika içinde karar verecek. Onaylanırsa şarkıyı 10 dakika boyunca jetonunla sıraya ekleyebilirsin.",
     "emptyTitle": "Bu şarkı mekanın listesinde yok",
-    "emptyDesc": "Sanatçı ve şarkı adını yaz, mekana öneri olarak iletelim.",
-    "inlineTitle": "Mekana şarkı öner",
+    "emptyDesc": "Sanatçı ve şarkı adını yaz, mekana talep olarak iletelim.",
+    "inlineTitle": "Mekandan şarkı iste",
     "titlePlaceholder": "Şarkı adı",
     "artistPlaceholder": "Sanatçı adı",
     "sending": "Gönderiliyor...",
-    "submit": "Mekana Öner",
-    "freeNote": "Öneri ücretsizdir, jeton harcamaz"
+    "submit": "Talep Gönder",
+    "freeNote": "Talep ücretsizdir, jeton harcamaz",
+    "notifyTitle": "Bildirimleri aç (tavsiye edilir)",
+    "notifyDesc": "Talebin onaylandığı an haberin olsun — şarkıyı çaldırmak için yalnızca 10 dakikan olacak.",
+    "notifyCta": "Bildirimleri Aç",
+    "notifyBusy": "Açılıyor...",
+    "notifyDenied": "Bildirim izni bu cihazda engellenmiş. Tarayıcı ayarlarından izin verebilirsin.",
+    "notifyIos": "iPhone’da bildirim için: paylaş menüsünden “Ana Ekrana Ekle”, sonra uygulamayı ana ekrandan aç."
   },
   "favoritesPage": {
     "title": "Favorilerim",
@@ -324,15 +330,18 @@
   "requestsPage": {
     "title": "İsteklerim",
     "empty": "Henüz istek yapılmadı",
-    "suggestionsHeading": "Mekana Önerdiklerin",
+    "suggestionsHeading": "Mekandan İstediklerin",
     "queuedHeading": "Sıraya Eklediklerin",
-    "added": "Listeye eklendi",
-    "notAdded": "Eklenmedi",
-    "sent": "Mekana iletildi",
+    "added": "Onaylandı",
+    "notAdded": "Reddedildi",
+    "sent": "Mekan karar veriyor",
     "statusPlayed": "Çalındı",
     "statusQueued": "Sırada",
     "tokensLine": "{n} jeton",
-    "prioritySuffix": " · Öncelikli"
+    "prioritySuffix": " · Öncelikli",
+    "expired": "Süre doldu",
+    "playWindow": "Çaldırmak için {t} kaldı",
+    "decisionWindow": "Karar için {t} kaldı"
   },
   "profile": {
     "changeAvatarAria": "Avatarını değiştir",
@@ -637,5 +646,10 @@
     "submit": "Onayla ve devam et",
     "saving": "Kaydediliyor...",
     "error": "Onaylar kaydedilemedi. Lütfen tekrar dene."
+  },
+  "oneTime": {
+    "heading": "Onaylanan Talepler",
+    "desc": "Mekan bu şarkıları tek seferliğine açtı. Süre dolmadan ekleyen çaldırır — sonra listeden düşer.",
+    "remaining": "{t} kaldı"
   }
 }

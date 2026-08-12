@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { parseSongInput, parseSuggestionInput } from "@/lib/validate";
 import { hasVenueSession } from "@/lib/venue-auth-cookie";
 import { consumeRateLimit, tooManyRequests } from "@/lib/rate-limit";
+import {
+  REQUEST_DECISION_MS,
+  expireStaleRequests,
+  notifyAdminsOfRequest,
+} from "@/lib/request-approval";
 
 // Öneri kutusu serbest metin ve doğrudan admin panelinde görünüyor — spam'i
 // kişi başına sınırla (mekan listesinden gelen normal istekler kapsam dışı).
@@ -91,9 +97,9 @@ export async function POST(
   return NextResponse.json({ ok: true });
 }
 
-// Serbest metin öneri: mekan listesinde olmayan şarkı için sanatçı + şarkı adı.
-// song_id boş kalır; mekan şarkıyı playlist'ine ekleyince otomatik eşleşir
-// (bkz. lib/suggestions.ts).
+// Serbest metin talep: mekan listesinde olmayan şarkı için sanatçı + şarkı adı.
+// song_id boş kalır; mekan admini 10 dakika içinde onaylarsa şarkı YouTube'da
+// aranıp TEK SEFERLİK çalınabilir hale gelir (bkz. lib/request-approval.ts).
 async function handleSuggestion(
   venueId: string,
   userId: string,
@@ -119,6 +125,10 @@ async function handleSuggestion(
     supabaseAdmin.from("venues").select("id").eq("slug", venueId).single(),
     supabase.from("profiles").select("username").eq("id", userId).single(),
   ]);
+
+  // Süresi dolmuş bekleyen talepler kapansın: hem admin listesi temiz kalır hem
+  // aşağıdaki "aynı şarkıyı tekrar yollama" kontrolü eski satırlara takılmaz
+  await expireStaleRequests(venueRes.data?.id ?? undefined);
 
   const venue = venueRes.data;
   if (!venue) {
@@ -147,18 +157,38 @@ async function handleSuggestion(
     return NextResponse.json({ ok: true, duplicate: true });
   }
 
-  const { error } = await supabaseAdmin.from("song_requests").insert({
-    venue_id: venue.id,
-    user_id: userId,
-    suggested_title: parsed.suggestion.suggested_title,
-    suggested_artist: parsed.suggestion.suggested_artist,
-    requested_by: profileRes.data?.username ?? email.split("@")[0] ?? "Misafir",
-    status: "pending",
-  });
+  const requestedBy = profileRes.data?.username ?? email.split("@")[0] ?? "Misafir";
+  const expiresAt = new Date(Date.now() + REQUEST_DECISION_MS).toISOString();
 
-  if (error) {
-    return NextResponse.json({ error: "Öneri gönderilemedi" }, { status: 500 });
+  const { data: inserted, error } = await supabaseAdmin
+    .from("song_requests")
+    .insert({
+      venue_id: venue.id,
+      user_id: userId,
+      suggested_title: parsed.suggestion.suggested_title,
+      suggested_artist: parsed.suggestion.suggested_artist,
+      requested_by: requestedBy,
+      status: "pending",
+      expires_at: expiresAt,
+    })
+    .select("id")
+    .single();
+
+  if (error || !inserted) {
+    return NextResponse.json({ error: "Talep gönderilemedi" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  // Mekan adminine anında bildirim — yanıtı bekletmez
+  after(async () => {
+    await notifyAdminsOfRequest({
+      requestId: inserted.id,
+      venueId: venue.id,
+      venueSlug: venueId,
+      title: parsed.suggestion.suggested_title,
+      artist: parsed.suggestion.suggested_artist,
+      requestedBy,
+    }).catch(() => {});
+  });
+
+  return NextResponse.json({ ok: true, expires_at: expiresAt });
 }

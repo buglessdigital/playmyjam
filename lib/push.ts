@@ -25,18 +25,22 @@ export interface PushPayload {
   body?: string;
   url?: string;
   icon?: string;
+  /**
+   * Bildirim üstündeki düğmeler (Android/masaüstü). iOS Safari bu alanı yok
+   * sayar — orada bildirime dokunmak `url`'i açar, karar oradan verilir.
+   */
+  actions?: { action: string; title: string }[];
+  /** Service worker'ın düğmelere basılınca kullanacağı veri (ör. onay jetonu) */
+  data?: Record<string, unknown>;
+  /** Aynı tag'li eski bildirimin üstüne yazar — talep listesi bildirimle şişmesin */
+  tag?: string;
+  /** Kullanıcı karar verene kadar ekranda kalsın (yalnızca masaüstü/Android) */
+  requireInteraction?: boolean;
 }
 
-// Kullanıcının tüm cihazlarına gönderir; süresi dolmuş abonelikleri (404/410) temizler.
-export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
-  if (!ensureVapid()) return;
+type SubscriptionRow = { id: string; endpoint: string; p256dh: string; auth: string };
 
-  const { data: subs } = await supabaseAdmin
-    .from("push_subscriptions")
-    .select("id, endpoint, p256dh, auth")
-    .eq("user_id", userId);
-  if (!subs || subs.length === 0) return;
-
+async function deliver(subs: SubscriptionRow[], payload: PushPayload): Promise<void> {
   const body = JSON.stringify(payload);
   await Promise.all(
     subs.map(async (sub) => {
@@ -53,4 +57,39 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
       }
     })
   );
+}
+
+// Kullanıcının tüm cihazlarına gönderir; süresi dolmuş abonelikleri (404/410) temizler.
+export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
+  if (!ensureVapid()) return;
+
+  const { data: subs } = await supabaseAdmin
+    .from("push_subscriptions")
+    .select("id, endpoint, p256dh, auth")
+    .eq("user_id", userId);
+  if (!subs || subs.length === 0) return;
+
+  await deliver(subs, payload);
+}
+
+// Mekanın tüm adminlerinin cihazlarına gönderir (0045: admin_id'li abonelikler).
+// Aynı mekanda birden çok admin olabilir — hepsi haberdar olur, ilk karar veren
+// kazanır (sunucu talebin hâlâ 'pending' olduğunu doğruluyor).
+export async function sendPushToVenueAdmins(venueId: string, payload: PushPayload): Promise<void> {
+  if (!ensureVapid()) return;
+
+  const { data: admins } = await supabaseAdmin
+    .from("venue_admins")
+    .select("id")
+    .eq("venue_id", venueId);
+  const adminIds = (admins ?? []).map((a) => a.id as string);
+  if (adminIds.length === 0) return;
+
+  const { data: subs } = await supabaseAdmin
+    .from("push_subscriptions")
+    .select("id, endpoint, p256dh, auth")
+    .in("admin_id", adminIds);
+  if (!subs || subs.length === 0) return;
+
+  await deliver(subs, payload);
 }

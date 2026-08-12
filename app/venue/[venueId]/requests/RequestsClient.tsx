@@ -21,6 +21,8 @@ type Suggestion = {
   id: string;
   status: string;
   requested_at: string;
+  expires_at: string | null;
+  play_deadline: string | null;
   suggested_title: string | null;
   suggested_artist: string | null;
   songs: { title: string; artist: string; album_cover_url: string } | null;
@@ -50,10 +52,17 @@ export default function RequestsClient() {
   const [loaded, setLoaded] = useState(false);
   const [requests, setRequests] = useState<Request[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  // Talep pencerelerinin geri sayımı saniyede bir tazelensin
+  const [tick, setTick] = useState(() => Date.now());
   const supabase = useMemo(() => createClient(), []);
   const t = useT();
   const statusLabel = (status: string) =>
     status === "played" ? t.requestsPage.statusPlayed : status === "queued" ? t.requestsPage.statusQueued : status;
+
+  useEffect(() => {
+    const id = setInterval(() => setTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +71,7 @@ export default function RequestsClient() {
     const fetchSuggestions = async (userId: string) => {
       const { data } = await supabase
         .from("song_requests")
-        .select("id, status, requested_at, suggested_title, suggested_artist, songs(title, artist, album_cover_url)")
+        .select("id, status, requested_at, expires_at, play_deadline, suggested_title, suggested_artist, songs(title, artist, album_cover_url)")
         .eq("user_id", userId)
         .not("suggested_title", "is", null)
         .order("requested_at", { ascending: false })
@@ -154,6 +163,12 @@ export default function RequestsClient() {
               {suggestions.map((s) => {
                 const added = s.status === "accepted";
                 const rejected = s.status === "rejected";
+                const expired = s.status === "expired";
+                // İki ayrı 10 dakikalık pencere: mekanın karar süresi ve
+                // onaydan sonra müşterinin şarkıyı çaldırma süresi (0045)
+                const deadline = added ? s.play_deadline : s.status === "pending" ? s.expires_at : null;
+                const leftMs = deadline ? new Date(deadline).getTime() - tick : 0;
+                const clock = `${Math.floor(Math.max(0, leftMs) / 60000)}:${Math.floor((Math.max(0, leftMs) % 60000) / 1000).toString().padStart(2, "0")}`;
                 return (
                   <div key={s.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: "#1a0e2a" }}>
                     <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-white/10 flex items-center justify-center">
@@ -168,10 +183,17 @@ export default function RequestsClient() {
                       <p className="text-[#6b7280] text-xs">{s.songs?.artist ?? s.suggested_artist}</p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className="text-xs font-medium" style={{ color: added ? "#22c55e" : rejected ? "#6b7280" : "#fbbf24" }}>
-                        {added ? t.requestsPage.added : rejected ? t.requestsPage.notAdded : t.requestsPage.sent}
+                      <p className="text-xs font-medium" style={{ color: added ? "#22c55e" : rejected || expired ? "#6b7280" : "#fbbf24" }}>
+                        {added ? t.requestsPage.added : rejected ? t.requestsPage.notAdded : expired ? t.requestsPage.expired : t.requestsPage.sent}
                       </p>
-                      <p className="text-[#6b7280] text-xs mt-0.5">{timeAgo(s.requested_at)}</p>
+                      {/* Süre dolduysa geri sayım yerine tarih gösterilir */}
+                      {deadline && leftMs > 0 ? (
+                        <p className="mt-0.5 text-xs font-medium" style={{ color: added ? "#22c55e" : "#fbbf24" }}>
+                          {fmt(added ? t.requestsPage.playWindow : t.requestsPage.decisionWindow, { t: clock })}
+                        </p>
+                      ) : (
+                        <p className="text-[#6b7280] text-xs mt-0.5">{timeAgo(s.requested_at)}</p>
+                      )}
                     </div>
                   </div>
                 );

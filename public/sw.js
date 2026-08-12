@@ -5,7 +5,7 @@
 // Marka varlıkları değişince yükselt: statik varlıklar cache öncelikli servis
 // edildiği için, sürüm sabit kalırsa eski logo/ikonlar cihazlarda takılı kalır
 // (activate eski sürümdeki tüm cache'leri siler).
-const CACHE_VERSION = "pmj-v2";
+const CACHE_VERSION = "pmj-v3";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_URLS = [
@@ -79,7 +79,8 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
-// Web push desteği (ileride bildirim gönderimi için hazır)
+// Web push. Şarkı talebi bildirimlerinde yük ayrıca onay/ret düğmelerini
+// (actions) ve imzalı kararı taşır — bkz. lib/request-approval.ts.
 self.addEventListener("push", (event) => {
   if (!event.data) return;
   let data;
@@ -93,14 +94,73 @@ self.addEventListener("push", (event) => {
       body: data.body ?? "",
       icon: data.icon ?? "/icon-192.png",
       badge: "/icon-192.png",
-      data: { url: data.url ?? "/" },
+      tag: data.tag,
+      requireInteraction: data.requireInteraction === true,
+      // iOS Safari actions'ı desteklemez; orada bildirime dokunmak url'i açar
+      // ve karar ekranı sayfada gösterilir (aynı sonuç, bir dokunuş fazla).
+      actions: Array.isArray(data.actions) ? data.actions : undefined,
+      data: { url: data.url ?? "/", ...(data.data ?? {}) },
     })
   );
 });
 
+// Talep bildirimindeki düğmeye basıldı: uygulamayı hiç açmadan karar ver.
+async function decideRequest(action, payload) {
+  try {
+    const res = await fetch("/api/admin/requests/act", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        action,
+        token: payload.token,
+        request_id: payload.requestId,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+
+    if (res.ok) {
+      await self.registration.showNotification(
+        action === "approve" ? "Talep onaylandı" : "Talep reddedildi",
+        {
+          body:
+            action === "approve"
+              ? `${body?.title ?? "Şarkı"} müşteriye 10 dakikalığına açıldı.`
+              : "Müşteriye bilgi verildi.",
+          icon: "/icon-192.png",
+          badge: "/icon-192.png",
+          tag: payload.requestId ? `req-done-${payload.requestId}` : undefined,
+        }
+      );
+      return;
+    }
+
+    await self.registration.showNotification("Karar işlenemedi", {
+      body: body?.error ?? "Paneli açıp tekrar dene.",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: payload.url ?? "/" },
+    });
+  } catch {
+    await self.registration.showNotification("Bağlantı yok", {
+      body: "Karar gönderilemedi, paneli açıp tekrar dene.",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: payload.url ?? "/" },
+    });
+  }
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url ?? "/";
+  const payload = event.notification.data ?? {};
+  const targetUrl = payload.url ?? "/";
+
+  if (event.action === "approve" || event.action === "reject") {
+    event.waitUntil(decideRequest(event.action, payload));
+    return;
+  }
+
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       const existing = clients.find((client) => "focus" in client);

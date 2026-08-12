@@ -17,6 +17,17 @@ export interface SuperSession {
   exp: number;
 }
 
+// Bildirim üstünden onay/ret için tek kullanımlık yetki. Service worker'ın push
+// yükünde taşıdığı bu jeton, admin çerezi olmadan da (ör. bildirim başka bir
+// tarayıcı bağlamından tetiklenirse) isteği yetkilendirir; ömrü talebin ömrü
+// kadar kısa ve yalnızca TEK bir talebi kapsar.
+export interface RequestActionToken {
+  kind: "req_act";
+  request_id: string;
+  venue_id: string;
+  exp: number;
+}
+
 export const ADMIN_SESSION_COOKIE = "admin_session";
 export const SUPER_SESSION_COOKIE = "sa_session";
 
@@ -44,7 +55,7 @@ function hmac(data: string): Buffer {
   return createHmac("sha256", getSecret()).update(data).digest();
 }
 
-export function signSession(payload: AdminSession | SuperSession): string {
+export function signSession(payload: AdminSession | SuperSession | RequestActionToken): string {
   const body = b64url(Buffer.from(JSON.stringify(payload), "utf8"));
   return `${body}.${b64url(hmac(body))}`;
 }
@@ -79,6 +90,27 @@ export function renewedAdminToken(session: AdminSession): string | null {
   const now = Math.floor(Date.now() / 1000);
   if (session.exp - now > ADMIN_RENEW_BELOW) return null;
   return signSession({ ...session, exp: now + ADMIN_SESSION_MAX_AGE });
+}
+
+// Talep bildirimindeki onay/ret bağlantısının yetkisi (bkz. RequestActionToken).
+// ttlSeconds talebin kalan ömrüyle aynı tutulur; jeton geçse de sunucu ayrıca
+// talebin hâlâ 'pending' olduğunu doğrular — çift onay mümkün değil.
+export function signRequestActionToken(
+  requestId: string,
+  venueId: string,
+  ttlSeconds: number
+): string {
+  return signSession({
+    kind: "req_act",
+    request_id: requestId,
+    venue_id: venueId,
+    exp: Math.floor(Date.now() / 1000) + ttlSeconds,
+  });
+}
+
+export function verifyRequestActionToken(token: string | undefined | null): RequestActionToken | null {
+  const payload = verifySession<RequestActionToken>(token);
+  return payload?.kind === "req_act" ? payload : null;
 }
 
 type CookieSource = Pick<NextRequest, "cookies">;

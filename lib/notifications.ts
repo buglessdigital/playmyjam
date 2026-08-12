@@ -69,9 +69,16 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+// Aboneliği kaydeden uç. Müşteri hesabı varsayılan; mekan paneli kendi ucunu
+// kullanır (admin oturumu Supabase kullanıcısı değil — bkz. 0045 migration).
+export const CUSTOMER_PUSH_ENDPOINT = "/api/notifications/subscribe";
+export const ADMIN_PUSH_ENDPOINT = "/api/admin/notifications/subscribe";
+
 // İzin ister, push aboneliği oluşturur ve sunucuya kaydeder.
 // true = abonelik aktif; false = izin reddedildi / desteklenmiyor / kayıt başarısız.
-export async function subscribeToPush(): Promise<boolean> {
+export async function subscribeToPush(
+  apiEndpoint: string = CUSTOMER_PUSH_ENDPOINT
+): Promise<boolean> {
   if (!isPushSupported()) return false;
   if ((await requestPermission()) !== "granted") return false;
 
@@ -84,7 +91,7 @@ export async function subscribeToPush(): Promise<boolean> {
         applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
       }));
 
-    const res = await fetch("/api/notifications/subscribe", {
+    const res = await fetch(apiEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(subscription.toJSON()),
@@ -96,13 +103,15 @@ export async function subscribeToPush(): Promise<boolean> {
 }
 
 // Cihazdaki push aboneliğini kaldırır ve sunucudaki kaydı siler.
-export async function unsubscribeFromPush(): Promise<void> {
+export async function unsubscribeFromPush(
+  apiEndpoint: string = CUSTOMER_PUSH_ENDPOINT
+): Promise<void> {
   if (!isPushSupported()) return;
   try {
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
     if (!subscription) return;
-    await fetch("/api/notifications/subscribe", {
+    await fetch(apiEndpoint, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ endpoint: subscription.endpoint }),

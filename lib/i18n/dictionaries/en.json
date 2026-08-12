@@ -289,18 +289,24 @@
     "youtubeSuffix": "provided by"
   },
   "suggest": {
-    "limitError": "You've sent too many suggestions; try again later.",
-    "sendError": "The suggestion could not be sent, please try again.",
-    "sentTitle": "Your suggestion was sent to the venue",
-    "sentDesc": "We'll send you a notification if the venue adds the song to their playlist — then you can add it to your queue.",
+    "limitError": "You’ve sent too many requests; try again later.",
+    "sendError": "The request could not be sent, please try again.",
+    "sentTitle": "Your request was sent to the venue",
+    "sentDesc": "The venue will decide within 10 minutes. If approved, you can add the song to the queue with your tokens for 10 minutes.",
     "emptyTitle": "This song isn't in the venue's list",
-    "emptyDesc": "Write the artist and song title and we'll pass it to the venue as a suggestion.",
-    "inlineTitle": "Suggest a song to the venue",
+    "emptyDesc": "Write the artist and song title and we’ll pass it to the venue as a request.",
+    "inlineTitle": "Request a song from the venue",
     "titlePlaceholder": "Song title",
     "artistPlaceholder": "Artist name",
     "sending": "Sending...",
-    "submit": "Suggest to Venue",
-    "freeNote": "Suggestions are free — no tokens spent"
+    "submit": "Send Request",
+    "freeNote": "Requests are free — no tokens spent",
+    "notifyTitle": "Turn on notifications (recommended)",
+    "notifyDesc": "Get notified the moment your request is approved — you’ll only have 10 minutes to play the song.",
+    "notifyCta": "Turn On Notifications",
+    "notifyBusy": "Turning on...",
+    "notifyDenied": "Notifications are blocked on this device. You can allow them in your browser settings.",
+    "notifyIos": "On iPhone: use the share menu, tap “Add to Home Screen”, then open the app from your home screen."
   },
   "favoritesPage": {
     "title": "My Favorites",
@@ -324,15 +330,18 @@
   "requestsPage": {
     "title": "My Requests",
     "empty": "No requests yet",
-    "suggestionsHeading": "Your suggestions to the venue",
+    "suggestionsHeading": "Your requests to the venue",
     "queuedHeading": "What you added to the queue",
-    "added": "Added to the list",
-    "notAdded": "Not added",
-    "sent": "Sent to the venue",
+    "added": "Approved",
+    "notAdded": "Declined",
+    "sent": "Awaiting the venue’s decision",
     "statusPlayed": "Played",
     "statusQueued": "In queue",
     "tokensLine": "{n} tokens",
-    "prioritySuffix": " · Priority"
+    "prioritySuffix": " · Priority",
+    "expired": "Time ran out",
+    "playWindow": "{t} left to play it",
+    "decisionWindow": "{t} left for the decision"
   },
   "profile": {
     "changeAvatarAria": "Change your avatar",
@@ -637,5 +646,10 @@
     "submit": "Accept and continue",
     "saving": "Saving...",
     "error": "Your consents couldn't be saved. Please try again."
+  },
+  "oneTime": {
+    "heading": "Approved Requests",
+    "desc": "The venue opened these songs one time only. Whoever adds one before the timer ends gets it played — then it disappears.",
+    "remaining": "{t} left"
   }
 }

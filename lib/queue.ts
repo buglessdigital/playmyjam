@@ -8,6 +8,7 @@ import {
   jumpPlaylistCursorTo,
 } from "@/lib/queue-fill";
 import { sendPushToUser } from "@/lib/push";
+import { purgeUnplayableSong } from "@/lib/playlist";
 
 export type NextResult = {
   started: boolean;
@@ -93,6 +94,8 @@ export async function playNextFromQueue(
     if (!song?.youtube_video_id && nextItem.song_id) {
       await supabaseAdmin.from("songs").update({ embeddable: false }).eq("id", nextItem.song_id);
     }
+    // Çalınamayan şarkı listelerde kalmasın (embed kapalı olan da dahil)
+    if (nextItem.song_id) await purgeUnplayableSong(nextItem.song_id);
 
     if (skips >= MAX_SKIPS) {
       return { started: false, error: `çalınabilir şarkı bulunamadı (${unplayable})` };
@@ -515,9 +518,15 @@ export async function markUnplayableAndSkip(
 // veriyor → istemci tamponu düşürüp susuyor → 10 sn sonra peek AYNI videoyu
 // döndürüyor. Şarkı bir kez işaretlendiğinde peek onu artık atlar.
 export async function markUnplayable(videoId: string): Promise<{ ok: boolean }> {
-  const { error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("songs")
     .update({ embeddable: false })
-    .eq("youtube_video_id", videoId);
+    .eq("youtube_video_id", videoId)
+    .select("id")
+    .maybeSingle();
+
+  // İşaretlemek yetmez: şarkı playlist'lerde durdukça mekan onu listesinde
+  // görmeye devam eder ve elle çalmayı deneyip aynı hatayı alır.
+  if (data?.id) await purgeUnplayableSong(data.id);
   return { ok: !error };
 }

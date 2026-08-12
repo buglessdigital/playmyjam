@@ -84,8 +84,23 @@ export async function attachSongsToPlaylist(
     .in("song_id", songs.map((s) => s.id));
 
   const existingSet = new Set((existing ?? []).map((e) => e.song_id));
-  const fresh = songs.filter((s) => !existingSet.has(s.id));
+  let fresh = songs.filter((s) => !existingSet.has(s.id));
   if (fresh.length === 0) return { added: 0, skipped: songs.length, resolvedSuggestions: 0 };
+
+  // Son kapı: toplu içe aktarım ve senkron buradan geçer. Çağıranlar embed'e
+  // kapalı videoyu zaten eliyor ama kara liste tek noktada da doğrulanmalı —
+  // aksi halde yarın eklenen üçüncü bir yol kataloğu yeniden kirletebilir.
+  const { data: blocked } = await supabaseAdmin
+    .from("songs")
+    .select("id")
+    .eq("embeddable", false)
+    .in("id", fresh.map((s) => s.id));
+
+  if (blocked?.length) {
+    const blockedSet = new Set(blocked.map((b) => b.id));
+    fresh = fresh.filter((s) => !blockedSet.has(s.id));
+    if (fresh.length === 0) return { added: 0, skipped: songs.length, resolvedSuggestions: 0 };
+  }
 
   const { error: catalogErr } = await supabaseAdmin.from("venue_songs").upsert(
     fresh.map((s) => ({ venue_id: venueId, song_id: s.id, play_count: 0, in_venue_list: true })),
@@ -113,6 +128,32 @@ export async function attachSongsToPlaylist(
   const resolvedSuggestions = await resolveMatchingSuggestions(venueId, fresh).catch(() => 0);
 
   return { added: fresh.length, skipped: songs.length - fresh.length, resolvedSuggestions };
+}
+
+// Embed'e kapalı bulunan şarkıyı TÜM mekanların kataloğundan ve playlist'lerinden
+// söker. songs satırı bilerek bırakılır: hem çalma geçmişi (queue) ona bağlıdır,
+// hem de embeddable=false'ın kendisi kara listedir — satır silinseydi bir sonraki
+// playlist senkronu videoyu "yeni" sanıp geri koyardı.
+export async function purgeUnplayableSong(songId: string): Promise<void> {
+  const { data: affected } = await supabaseAdmin
+    .from("playlist_songs")
+    .delete()
+    .eq("song_id", songId)
+    .select("venue_id");
+
+  // 0026 trigger'ı son playlist üyeliği gidince venue_songs satırını düşürür,
+  // ama şarkı playlist'e hiç girmeden doğrudan kataloğa eklenmiş olabilir
+  const { data: catalogRows } = await supabaseAdmin
+    .from("venue_songs")
+    .delete()
+    .eq("song_id", songId)
+    .select("venue_id");
+
+  const venueIds = new Set([
+    ...(affected ?? []).map((r) => r.venue_id),
+    ...(catalogRows ?? []).map((r) => r.venue_id),
+  ]);
+  for (const venueId of venueIds) revalidateTag(`venue-songs-${venueId}`, "max");
 }
 
 // Kaynak YouTube listesinden çıkarılmış videoları hedef playlist'ten düşürür.
@@ -181,11 +222,18 @@ export async function addSongToVenuePlaylist(
       },
       { onConflict: "youtube_video_id" }
     )
-    .select("id")
+    .select("id, embeddable")
     .single();
 
   if (songErr || !songRow) {
     return { error: songErr?.message ?? "Şarkı kaydedilemedi", status: 500 };
+  }
+
+  // Kara liste: upsert embeddable'a dokunmaz, yani bir kez kapalı işaretlenen
+  // video bu yoldan (panelden elle ekleme / öneri kabulü) geri giremez.
+  if (songRow.embeddable === false) {
+    await purgeUnplayableSong(songRow.id);
+    return { error: "Bu şarkı YouTube'da dış oynatıcıya kapalı, kataloğa eklenemez", status: 422 };
   }
 
   const { data: existingMember } = await supabaseAdmin

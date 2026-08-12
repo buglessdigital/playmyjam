@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { refreshVideoMetadata, YouTubeQuotaError } from "@/lib/youtube";
 import { syncPlaylistSources } from "@/lib/playlist-sync";
+import { purgeUnplayableSong } from "@/lib/playlist";
 
 // YouTube API veri saklama uyumu (Developer Policy III.E.4): günlük cron.
 // 1) 30 günden eski search_cache satırları silinir.
@@ -61,7 +62,11 @@ export async function GET(req: NextRequest) {
               .from("songs")
               .update({ ...m, metadata_refreshed_at: now })
               .eq("id", row.id);
-            if (!error) refreshed++;
+            if (!error) {
+              refreshed++;
+              // Video duruyor ama hak sahibi embed'i kapatmış: en sık yol bu
+              if (!m.embeddable) await purgeUnplayableSong(row.id);
+            }
           } else {
             // Video silinmiş/gizlenmiş — metadata artık doğrulanamaz; embed dışı
             // bırak ki arama ve otomatik dolum bir daha önermesin
@@ -69,7 +74,10 @@ export async function GET(req: NextRequest) {
               .from("songs")
               .update({ embeddable: false, metadata_refreshed_at: now })
               .eq("id", row.id);
-            if (!error) delisted++;
+            if (!error) {
+              delisted++;
+              await purgeUnplayableSong(row.id);
+            }
           }
         })
       );

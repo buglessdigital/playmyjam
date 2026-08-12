@@ -154,13 +154,113 @@ const FORCE_QUALITY = "tiny";
 // Konsola HER ZAMAN yazılır (mekanda DevTools açıksa yeter). Ekrandaki panel
 // ise yalnızca adres satırına ?debug=1 eklenince görünür — müşteri/mekan normal
 // kullanımda hiçbir şey görmez.
+// Kayıt SAYFA KAPANSA DA yaşar: kesinti mekanda, kimse bakmıyorken oluyor ve
+// eski bellek-içi tampon sekme yenilenince ya da pencere kapanınca siliniyordu
+// — olay yaşandıktan saatler sonra "ne oldu" diye bakacak kimse için elimizde
+// hiçbir şey kalmıyordu. Artık her satır localStorage'daki halka tampona da
+// yazılır; mekandaki makinede olaydan SONRA ?debug=1 ile açıp okumak yeter.
 type LogLine = { at: number; text: string };
-const LOG_LIMIT = 80;
+// Ekranda ve bellekte tutulan satır sayısı. Kesinti çözümlemesi tek bir olayın
+// öncesi/sonrasını ister; bir gecelik oturum bu tampona rahat sığar.
+const LOG_LIMIT = 600;
+// Panelde bir kerede çizilen satır: tamponun tamamını her kayıtta yeniden
+// çizmek player'ın ana iş parçacığını meşgul ederdi.
+const LOG_VIEW_LIMIT = 200;
+const LOG_STORAGE_KEY = "pmj:player-log";
+// Yazma her satırda değil, kısa bir bekleyişle toplu yapılır (kesinti anında
+// bekleyiş beklenmez: sayfa gizlenirken/donarken zorla boşaltılır).
+const LOG_FLUSH_MS = 1_000;
 const logBuf: LogLine[] = [];
 let logVersion = 0;
 let logSubscriber: (() => void) | null = null;
+let logStore: Storage | null | undefined; // undefined = henüz bakılmadı
+let logFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let logHydrated = false;
+
+// Gizli sekmede/özel modda localStorage patlayabilir — bir kez bakılır, erişim
+// yoksa kalıcılık sessizce kapanır (konsol kaydı ve panel çalışmaya devam eder).
+function logStorage(): Storage | null {
+  if (logStore !== undefined) return logStore;
+  try {
+    const store = window.localStorage;
+    const probe = `${LOG_STORAGE_KEY}:probe`;
+    store.setItem(probe, "1");
+    store.removeItem(probe);
+    logStore = store;
+  } catch {
+    logStore = null;
+  }
+  return logStore;
+}
+
+function flushLog() {
+  if (logFlushTimer) {
+    clearTimeout(logFlushTimer);
+    logFlushTimer = null;
+  }
+  const store = logStorage();
+  if (!store) return;
+  try {
+    store.setItem(LOG_STORAGE_KEY, JSON.stringify(logBuf));
+  } catch {
+    // Kota dolduysa tamponu yarıya indirip bir kez daha dene; yine olmuyorsa
+    // kalıcılıktan vazgeçilir, kayıt akışı kesilmez.
+    try {
+      store.setItem(LOG_STORAGE_KEY, JSON.stringify(logBuf.slice(-Math.floor(LOG_LIMIT / 2))));
+    } catch {
+      logStore = null;
+    }
+  }
+}
+
+// Önceki oturumun kaydını geri yükle ve oturum sınırını işaretle: paneldeki
+// dökümde "burada sayfa yeniden yüklendi" görünmezse zaman çizgisi yanıltır.
+function hydrateLog() {
+  if (logHydrated || typeof window === "undefined") return;
+  logHydrated = true;
+  const store = logStorage();
+  if (!store) return;
+  try {
+    const raw = store.getItem(LOG_STORAGE_KEY);
+    if (!raw) return;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return;
+    for (const item of parsed) {
+      if (
+        item &&
+        typeof item === "object" &&
+        typeof (item as LogLine).at === "number" &&
+        typeof (item as LogLine).text === "string"
+      ) {
+        logBuf.push({ at: (item as LogLine).at, text: (item as LogLine).text });
+      }
+    }
+    if (logBuf.length > LOG_LIMIT) logBuf.splice(0, logBuf.length - LOG_LIMIT);
+  } catch {
+    // Bozuk kayıt tüm paneli çökertmesin
+    try {
+      store.removeItem(LOG_STORAGE_KEY);
+    } catch {}
+  }
+}
+
+// Sayfa gizlenirken/dondurulurken bekleyen yazma kaybolmasın. Kesintinin tam
+// olduğu an burasıdır: son satırlar en kıymetlileri.
+let logHooksInstalled = false;
+function installLogFlushHooks() {
+  if (typeof window === "undefined" || logHooksInstalled) return;
+  logHooksInstalled = true;
+  const flush = () => flushLog();
+  window.addEventListener("pagehide", flush);
+  window.addEventListener("beforeunload", flush);
+  document.addEventListener("freeze", flush);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flush();
+  });
+}
 
 function plog(text: string) {
+  hydrateLog();
   const line = { at: Date.now(), text };
   logBuf.push(line);
   if (logBuf.length > LOG_LIMIT) logBuf.shift();
@@ -168,7 +268,38 @@ function plog(text: string) {
   try {
     console.log(`[pmj ${new Date(line.at).toLocaleTimeString("tr-TR")}] ${text}`);
   } catch {}
+  if (!logFlushTimer && logStorage()) logFlushTimer = setTimeout(flushLog, LOG_FLUSH_MS);
   logSubscriber?.();
+}
+
+function clearLog() {
+  logBuf.length = 0;
+  logVersion += 1;
+  const store = logStorage();
+  try {
+    store?.removeItem(LOG_STORAGE_KEY);
+  } catch {}
+  logSubscriber?.();
+}
+
+// Panel damgası: kayıt artık günler boyu yaşadığı için bugünden eski satırlarda
+// tarih de gösterilir, yoksa "15:00:27" hangi güne aitti belli olmaz.
+function logStamp(at: number): string {
+  const d = new Date(at);
+  const time = d.toLocaleTimeString("tr-TR");
+  const today = new Date();
+  const sameDay =
+    d.getDate() === today.getDate() &&
+    d.getMonth() === today.getMonth() &&
+    d.getFullYear() === today.getFullYear();
+  return sameDay ? time : `${d.toLocaleDateString("tr-TR")} ${time}`;
+}
+
+// Dökümün tamamı düz metin: mekan "Kopyala"ya basıp bize yapıştırabilsin diye.
+function logAsText(): string {
+  return logBuf
+    .map((line) => `[${new Date(line.at).toLocaleString("tr-TR")}] ${line.text}`)
+    .join("\n");
 }
 
 function debugEnabled(): boolean {
@@ -536,6 +667,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // panel, mekanda DevTools açmadan olay dökümünü okuyabilmek için var.
   const debugOn = useSyncExternalStore(subscribeLog, logSnapshot, logServerSnapshot) >= 0;
   const [live, setLive] = useState("");
+
+  // Önceki oturumun kaydını geri yükle ve sınırı işaretle. Bu satır olmadan
+  // döküm yanıltır: sayfanın yeniden yüklendiği an ile kesintinin yaşandığı an
+  // birbirine karışırdı.
+  useEffect(() => {
+    hydrateLog();
+    installLogFlushHooks();
+    plog(`— oturum başladı (${new Date().toLocaleString("tr-TR")})`);
+  }, []);
 
   const [started, setStarted] = useState(false);
   // iOS Safari oynatma iznini YALNIZCA kullanıcı dokunuşunun içinde verir ve
@@ -2333,16 +2473,51 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           çizilir (YouTube kuralı: video alanına hiçbir şey bindirilemez). */}
       {debugOn && (
         <div className="mt-2 rounded-xl border border-white/10 bg-black/60 p-2 font-mono text-[10px] leading-[1.35] text-[#9ca3af]">
-          <p className="mb-1 font-bold text-[#e91e8c]">{live}</p>
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <p className="font-bold text-[#e91e8c]">{live}</p>
+            <span className="text-[#6b7280]">({logBuf.length} satır)</span>
+            {/* Dökümü mekandan bize taşımanın yolu: pano ya da dosya. DevTools
+                açtırmadan, tek tuşla. */}
+            <button
+              type="button"
+              onClick={() => {
+                const text = logAsText();
+                navigator.clipboard?.writeText(text).catch(() => {});
+              }}
+              className="rounded-md border border-white/20 px-2 py-0.5 text-white"
+            >
+              Kopyala
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const blob = new Blob([logAsText()], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `pmj-player-log-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="rounded-md border border-white/20 px-2 py-0.5 text-white"
+            >
+              İndir
+            </button>
+            <button
+              type="button"
+              onClick={clearLog}
+              className="rounded-md border border-white/20 px-2 py-0.5 text-[#9ca3af]"
+            >
+              Temizle
+            </button>
+          </div>
           <div className="max-h-40 overflow-y-auto">
             {logBuf
-              .slice()
+              .slice(-LOG_VIEW_LIMIT)
               .reverse()
               .map((line, i) => (
                 <p key={`${line.at}-${i}`} className="whitespace-pre-wrap">
-                  <span className="text-[#6b7280]">
-                    {new Date(line.at).toLocaleTimeString("tr-TR")}{" "}
-                  </span>
+                  <span className="text-[#6b7280]">{logStamp(line.at)} </span>
                   {line.text}
                 </p>
               ))}

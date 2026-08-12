@@ -23,6 +23,11 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+  // Search Console sahiplik doğrulaması — Google OAuth marka doğrulaması domainin
+  // bize ait olduğunu buradan görüyor. Doğrulama geçtikten sonra da kalmalı.
+  verification: {
+    google: "iYPFWH3Yc185LpwsJzaTN3l7ysvdzGL1r2-u6-qLH-U",
+  },
 };
 
 export const viewport: Viewport = {

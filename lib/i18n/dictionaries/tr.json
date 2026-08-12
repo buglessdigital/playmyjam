@@ -16,7 +16,7 @@
     "venueLogin": "Mekan Girişi"
   },
   "footer": {
-    "tagline": "Kafe ve eğlence mekanlarında müzik sırasını misafirlere açan dijital şarkı istek platformu. {company} tarafından işletilmektedir.",
+    "tagline": "PlayMyJam, kafe ve eğlence mekanlarında müzik sırasını misafirlere açan dijital şarkı istek platformudur. {company} tarafından işletilmektedir.",
     "product": "Ürün",
     "venues": "Mekanlar",
     "faqLong": "Sık Sorulan Sorular",
@@ -45,7 +45,7 @@
   },
   "home": {
     "hero": {
-      "badge": "Mekan içi dijital şarkı istek platformu",
+      "badge": "PlayMyJam · Mekan içi dijital şarkı istek platformu",
       "titleLead": "Mekanda müziği",
       "titleAccent": "sen seç",
       "sub": "PlayMyJam, kafe ve eğlence mekanlarında çalma sırasını misafirlere açar. Jetonunu al, şarkını kuyruğa ekle, çalma anını saniye saniye takip et — DJ artık sensin.",

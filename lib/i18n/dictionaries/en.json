@@ -16,7 +16,7 @@
     "venueLogin": "Venue Login"
   },
   "footer": {
-    "tagline": "The digital song request platform that hands the music queue to guests in cafés and entertainment venues. Operated by {company}.",
+    "tagline": "PlayMyJam is a digital song request platform that hands the music queue to guests in cafés and entertainment venues. Operated by {company}.",
     "product": "Product",
     "venues": "Venues",
     "faqLong": "Frequently Asked Questions",
@@ -45,7 +45,7 @@
   },
   "home": {
     "hero": {
-      "badge": "In-venue digital song request platform",
+      "badge": "PlayMyJam · In-venue digital song request platform",
       "titleLead": "The music here is",
       "titleAccent": "yours to pick",
       "sub": "PlayMyJam opens up the playback queue to guests at cafés and entertainment venues. Get your tokens, add your song to the queue, and follow it play out second by second — you're the DJ now.",

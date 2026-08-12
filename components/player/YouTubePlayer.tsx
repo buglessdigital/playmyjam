@@ -417,6 +417,19 @@ const PRELOAD_AFTER_SEC = 5;
 // Önyükleme başarısız olduysa (ağ koptu, sunucuya ulaşılamadı) bu aralıkla
 // yeniden denenir — her turda denemek isteği boşuna yağdırırdı
 const PRELOAD_RETRY_MS = 10_000;
+// --- SICAK TAMPON ---
+// Kesintinin kökü şu: tarayıcı, GÖRÜNMEYEN sayfada bir videoyu BAŞLATMIYOR.
+// Zaten çalmakta olan video arka planda sorunsuz devam ediyor — yasak olan
+// "başlatma" fiili. Geçiş anında yaptığımız şey tam olarak buydu: cue'lanmış
+// (durmuş) deck'e playVideo(). Pencere arkadaysa bu çağrı TAMPON'da asılı
+// kalıyor, mekan susuyor, pencere öne alınana dek de açılmıyordu.
+// Çözüm: sıradaki şarkı tamponda DURMUYOR, sessize alınmış halde ÇALIYOR.
+// Geçiş anında yeni bir başlatma yok — yalnızca başa sarma + ses açma, ikisi de
+// çalan bir video üzerinde serbest. Böylece pencerenin önde olması şart olmaktan
+// çıkıyor.
+// Sessiz deck şarkının başında döner: hem tampon hep sıcak kalır hem de video
+// sonuna varıp durmaz (durursa yeniden başlatmak gerekirdi — yasak olan fiil).
+const WARM_LOOP_SEC = 25;
 // Ses rampasının adım aralığı: 60 ms'de bir setVolume — kulakta sürekli duyulur,
 // iframe'e de aşırı çağrı gitmez
 const FADE_STEP_MS = 60;
@@ -585,6 +598,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // Bu oturumda çalınamaz olduğu görülen videolar. Sunucudaki işaretleme yola
   // çıkana kadar geçen birkaç saniyede aynı videoyu tekrar tampona almayalım.
   const unplayableRef = useRef<Set<string>>(new Set());
+  // Sessizce çalar halde bekleyen tampon deck (bkz. WARM_LOOP_SEC)
+  const warmDeckRef = useRef<{ deck: DeckKey; videoId: string } | null>(null);
   // Bekçinin en son çalıştığı an — arada uzun boşluk varsa sekme dondurulmuştu
   const lastTickAtRef = useRef(0);
   // Geçişin duvar saatiyle başlangıcı ve süresi (rampa asılırsa zorla bitirmek için)
@@ -885,6 +900,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       idleDeck?.setVolume(0);
       idleDeck?.pauseVideo();
     } catch {}
+    // Duraklattığımız deck artık sıcak tampon değil; sıradaki şarkı için
+    // preloadNext yeniden ısıtacak
+    warmDeckRef.current = null;
     if (wasFading) setFading(false);
     setVisibleDeck(activeDeckRef.current);
     pushVolume();
@@ -1093,6 +1111,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       const incoming = decksRef.current[to];
       if (!incoming || !deckReadyRef.current[to]) return false;
       try {
+        // Sıcak tampon başta dönüyor olabilir: önce başa sar (bkz. WARM_LOOP_SEC)
+        incoming.seekTo(0, true);
         incoming.unMute?.();
         incoming.setVolume(volumeRef.current ?? 100);
         incoming.playVideo();
@@ -1239,8 +1259,54 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       player.cueVideoById(videoId);
       forceLowQuality(player);
       preloadedVideoRef.current = videoId;
+      // SICAK TAMPON: cue yetmez, sessizce ÇALDIRIYORUZ (bkz. WARM_LOOP_SEC).
+      // Geçişte "başlatma" fiili kalmasın diye deck bu andan itibaren çalar
+      // durumda tutulur; sesi 0 ve mute olduğu için mekanda duyulmaz.
+      // Mobilde YAPILMAZ: iOS/Android aynı anda tek medya öğesi çalmasına izin
+      // verir, ikinci deck çalanı durdururdu. Zaten arka plan sorunu mekandaki
+      // masaüstü penceresinin sorunu (mobilde çapraz geçiş de kapalı).
+      if (canCrossfadeRef.current) {
+        player.playVideo();
+        warmDeckRef.current = { deck, videoId };
+      }
     } catch {}
   }, [api, fadeBusy, advanceBusy]);
+
+  // Sıcak tamponu çalar ve BAŞA YAKIN tut. İki işi var:
+  //  - video sonuna varıp durmasın (durursa geçişte "başlatma" gerekir, gizli
+  //    pencerede yasak olan fiil tam olarak budur),
+  //  - tarayıcı sessiz deck'i kendiliğinden duraklattıysa geri açsın.
+  const keepWarmDeckLooping = useCallback(() => {
+    const warm = warmDeckRef.current;
+    if (!warm || fadingRef.current) return;
+    // Devredilmiş deck artık sıcak tampon değildir
+    if (warm.deck === activeDeckRef.current) {
+      warmDeckRef.current = null;
+      return;
+    }
+    const player = decksRef.current[warm.deck];
+    if (!player || !deckReadyRef.current[warm.deck]) return;
+    const YT = window.YT;
+    try {
+      // Sesi her turda teyit et: YouTube video değişiminde sessizliği kaldırabiliyor
+      player.setVolume(0);
+      player.mute?.();
+      const state = player.getPlayerState();
+      if (YT && (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED)) {
+        player.playVideo();
+        return;
+      }
+      if (YT && state === YT.PlayerState.ENDED) {
+        // Buraya düşmemeliydi; yine de tamponu sıcak tutmayı dene
+        player.seekTo(0, true);
+        player.playVideo();
+        return;
+      }
+      if (YT && state === YT.PlayerState.PLAYING && player.getCurrentTime() > WARM_LOOP_SEC) {
+        player.seekTo(0, true);
+      }
+    } catch {}
+  }, []);
 
   // Çapraz geçişi başlat: sıradakini boştaki deck'te çaldır, çıkanın sesini
   // 0'a indirirken girenin sesini mekanın seviyesine çıkar.
@@ -1288,8 +1354,13 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       incoming.setVolume(0);
       incoming.unMute?.();
       // Tampon tuttuysa doğrudan çal; kuyruk değiştiyse (öncelikli istek) yükle
-      if (preloadedVideoRef.current === videoId) incoming.playVideo();
-      else {
+      if (preloadedVideoRef.current === videoId) {
+        // Sıcak tampon şarkının başında dönüyordu: sesi açmadan önce başa sar.
+        // Seek + ses açma, ÇALAN bir video üzerinde serbesttir — gizli pencerede
+        // yasak olan tek fiil "durmuş videoyu başlatmak"tı.
+        incoming.seekTo(0, true);
+        incoming.playVideo();
+      } else {
         incoming.loadVideoById(videoId);
         forceLowQuality(incoming);
       }
@@ -1372,6 +1443,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     // boştaki deck'te hazır bekler — şarkı değişimi ağa bağımlı olmaktan çıkar
     if (position >= PRELOAD_AFTER_SEC) preloadNext();
 
+    // Sıcak tamponu başa sar: sessiz deck şarkının sonuna varıp DURMAMALI,
+    // yoksa geçişte onu yeniden başlatmak gerekir ve gizli pencerede tam olarak
+    // bu yasak. İlk saniyelerde döndüğü için ek bant genişliği de harcamaz.
+    keepWarmDeckLooping();
+
     const ms = crossfadeMsRef.current;
     if (ms <= 0 || !canCrossfadeRef.current || volumeIgnoredRef.current) return;
     // Süre bilinmiyorsa (canlı yayın, henüz meta gelmemiş) geçiş yapılamaz
@@ -1386,7 +1462,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     // Alt sınır: sekme kısılmışken bekçi geç uyanırsa şarkının son kırıntısında
     // geçiş başlatmanın anlamı yok, ENDED zaten devralır
     if (remaining <= fadeSec && remaining > 0.4) startCrossfade();
-  }, [activePlayer, activeReady, preloadNext, startCrossfade, fadeBusy, advanceBusy]);
+  }, [
+    activePlayer,
+    activeReady,
+    preloadNext,
+    startCrossfade,
+    fadeBusy,
+    advanceBusy,
+    keepWarmDeckLooping,
+  ]);
 
   // Bekçi: çalması gereken video başlamadıysa toparla.
   //
@@ -1816,7 +1900,20 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             if (!startedRef.current) return;
             // Boştaki deck'in olayları çalma akışını yönetmez. Geçiş sırasında
             // çıkan şarkı burada biter (ENDED) — kuyruğu ikinci kez ilerletmemeli.
-            if (key !== activeDeckRef.current) return;
+            if (key !== activeDeckRef.current) {
+              // Tek istisna: sıcak tamponun gerçekten ÇALMAYA başlayıp
+              // başlamadığı, gizli pencere çözümünün işleyip işlemediğinin tek
+              // kanıtıdır — kayda tek satır düşürülür.
+              const warm = warmDeckRef.current;
+              if (warm?.deck === key && e.data === YT.PlayerState.PLAYING) {
+                plog(
+                  `sıcak tampon HAZIR (sessiz çalıyor, pencere ${
+                    typeof document !== "undefined" ? document.visibilityState : "?"
+                  })`
+                );
+              }
+              return;
+            }
             if (e.data === YT.PlayerState.ENDED) {
               advance({ action: "next" });
             } else if (e.data === YT.PlayerState.PLAYING) {

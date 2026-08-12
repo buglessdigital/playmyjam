@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, use, Suspense } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import YouTubePlayer from "@/components/player/YouTubePlayer";
 import { formatWait, useNowPlayingClock } from "@/lib/wait-time";
@@ -219,6 +220,18 @@ function PlayerPageContent({ params }: Props) {
               CANLI
             </span>
           )}
+
+          {/* Tablet/telefon tarayıcıları player'ı çoğu zaman yeni sekme yerine
+              aynı sekmede açar; o durumda panele dönecek başka yol kalmıyordu. */}
+          <Link
+            href={`/admin/${venueId}`}
+            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-[#d1d5db] transition-colors hover:bg-white/[0.08] hover:text-white"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Panele Dön
+          </Link>
         </div>
       </header>
 

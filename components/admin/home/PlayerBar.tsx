@@ -189,11 +189,13 @@ export default function PlayerBar({
             <span className="text-[#9ca3af] text-[11px] font-semibold tabular-nums w-8 text-right shrink-0">%{volume}</span>
           </div>
 
-          {/* Adlandırılmış pencere: tekrar tıklamak yeni sekme açmaz, aynı player'a döner */}
+          {/* Adlandırılmış pencere: tekrar tıklamak yeni sekme açmaz, aynı player'a
+              döner. rel="noopener" YOK: noopener verilince tarayıcı pencere adını
+              yok sayar, her tıklama yeni sekme açardı. Aynı köken olduğu için
+              noopener'ın güvenlik faydası da yok. */}
           <a
             href={`/admin/${venueId}/player`}
             target={`pmj-player-${venueId}`}
-            rel="noopener"
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0"
             style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}
           >

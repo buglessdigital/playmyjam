@@ -9,7 +9,7 @@ export default function HakkimizdaPage() {
     <BilingualLegal
       tr={
         <main className="max-w-3xl mx-auto px-6 pb-16 pt-6 text-white">
-          <h1 className="text-3xl font-bold mb-2">Hakkımızda</h1>
+          <h1 className="text-3xl font-bold mb-2">PlayMyJam Hakkında</h1>
           <p className="text-gray-400 mb-10 text-sm">Son güncelleme: 15 Temmuz 2026</p>
 
           <section className="mb-8">
@@ -82,7 +82,7 @@ export default function HakkimizdaPage() {
       }
       en={
         <main className="max-w-3xl mx-auto px-6 pb-16 pt-6 text-white">
-          <h1 className="text-3xl font-bold mb-2">About Us</h1>
+          <h1 className="text-3xl font-bold mb-2">About PlayMyJam</h1>
           <p className="text-gray-400 mb-10 text-sm">Last updated: July 15, 2026</p>
 
           <section className="mb-8">

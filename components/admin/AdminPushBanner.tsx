@@ -18,25 +18,33 @@ type Detected = "ios-install" | "unsupported" | "denied" | "granted" | "ready";
 
 const noopSubscribe = () => () => {};
 
-function detect(): Detected {
+function needsHomeScreen(): boolean {
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const standalone =
     window.matchMedia("(display-mode: standalone)").matches ||
     (window.navigator as { standalone?: boolean }).standalone === true;
+  return isIOS && !standalone;
+}
 
-  if (isIOS && !standalone) return "ios-install";
-  if (!isPushSupported()) return "unsupported";
-  const permission = getPermission();
-  if (permission === "denied") return "denied";
-  if (permission === "granted") return "granted";
-  return "ready";
+// Önce YETENEĞE bakılır, cihaz markasına değil: push API'leri varsa düğme
+// gösterilir ve tek dokunuşla izin istenir. "Ana ekrana ekle" yönergesi ancak
+// deneme gerçekten başarısız olursa çıkar.
+function detect(): Detected {
+  if (isPushSupported()) {
+    const permission = getPermission();
+    if (permission === "denied") return "denied";
+    if (permission === "granted") return "granted";
+    return "ready";
+  }
+  // API'ler yok: iOS'ta ana ekrana eklenince gelirler, o yüzden düğme dursun
+  return needsHomeScreen() ? "ready" : "unsupported";
 }
 
 export default function AdminPushBanner() {
   // Tarayıcı yeteneği sunucuda bilinemez: sunucu anlık görüntüsü "unsupported"
   // (kart hiç çizilmez), istemcide gerçek durumla değişir
   const detected = useSyncExternalStore<Detected>(noopSubscribe, detect, () => "unsupported");
-  const [override, setOverride] = useState<"on" | "ready" | "denied" | null>(null);
+  const [override, setOverride] = useState<"on" | "ready" | "denied" | "ios-install" | null>(null);
   const [busy, setBusy] = useState(false);
 
   // İzin verilmiş olsa bile abonelik bu cihazda sunucuya kayıtlı olmayabilir
@@ -75,7 +83,9 @@ export default function AdminPushBanner() {
     setBusy(true);
     const ok = await subscribeToPush(ADMIN_PUSH_ENDPOINT);
     setBusy(false);
-    setOverride(ok ? "on" : getPermission() === "denied" ? "denied" : "ready");
+    if (ok) return setOverride("on");
+    // Neden olmadı: izin reddedildi mi, yoksa cihazda API'ler yok mu?
+    setOverride(needsHomeScreen() && !isPushSupported() ? "ios-install" : "denied");
   };
 
   if (state === "on" || state === "unsupported") return null;

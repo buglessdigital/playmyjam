@@ -15,18 +15,26 @@ type NotifyState = "idle" | "on" | "hidden" | "ios" | "denied";
 
 const noopSubscribe = () => () => {};
 
-function detectNotifyState(): NotifyState {
+function needsHomeScreen(): boolean {
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const standalone =
     window.matchMedia("(display-mode: standalone)").matches ||
     (window.navigator as { standalone?: boolean }).standalone === true;
+  return isIOS && !standalone;
+}
 
-  if (isIOS && !standalone) return "ios";
-  if (!isPushSupported()) return "hidden";
-  const permission = getPermission();
-  if (permission === "granted") return "on";
-  if (permission === "denied") return "denied";
-  return "idle";
+// Önce YETENEĞE bakılır, cihaz markasına değil: push API'leri varsa düğme
+// gösterilir ve tek dokunuşla izin istenir. "Ana ekrana ekle" yönergesi ancak
+// deneme gerçekten başarısız olursa çıkar — kimse gereksiz yere uğraşmasın.
+function detectNotifyState(): NotifyState {
+  if (isPushSupported()) {
+    const permission = getPermission();
+    if (permission === "granted") return "on";
+    if (permission === "denied") return "denied";
+    return "idle";
+  }
+  // API'ler yok: iOS'ta ana ekrana eklenince gelirler, o yüzden düğme dursun
+  return needsHomeScreen() ? "idle" : "hidden";
 }
 
 export default function NotifyOptIn() {
@@ -34,7 +42,7 @@ export default function NotifyOptIn() {
   // Tarayıcı yeteneği sunucuda bilinemez: sunucu anlık görüntüsü "hidden"
   // (kart çizilmez), istemcide gerçek durumla değişir
   const detected = useSyncExternalStore<NotifyState>(noopSubscribe, detectNotifyState, () => "hidden");
-  const [override, setOverride] = useState<"on" | "idle" | "denied" | null>(null);
+  const [override, setOverride] = useState<"on" | "idle" | "denied" | "ios" | null>(null);
   const [busy, setBusy] = useState(false);
 
   const state = override ?? detected;
@@ -52,7 +60,9 @@ export default function NotifyOptIn() {
             setBusy(true);
             const ok = await subscribeToPush();
             setBusy(false);
-            setOverride(ok ? "on" : getPermission() === "denied" ? "denied" : "idle");
+            if (ok) return setOverride("on");
+            // Neden olmadı: izin reddedildi mi, yoksa cihazda API'ler yok mu?
+            setOverride(needsHomeScreen() && !isPushSupported() ? "ios" : "denied");
           }}
           disabled={busy}
           className="mt-2.5 flex h-9 w-full items-center justify-center rounded-lg text-xs font-bold text-white disabled:opacity-50"

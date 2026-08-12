@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { sendPushToSubscription } from "@/lib/push";
 
 // Web Push aboneliği kaydet/sil. Tablo istemciye kapalı (RLS, policy yok);
 // tüm erişim buradan service-role ile yapılır.
@@ -29,11 +30,25 @@ export async function POST(req: NextRequest) {
   // Aynı endpoint başka hesapla kayıtlıysa da güncel kullanıcıya geçer (cihazda hesap değişimi)
   const { error } = await supabaseAdmin
     .from("push_subscriptions")
-    .upsert({ user_id: userId, endpoint, p256dh, auth }, { onConflict: "endpoint" });
+    .upsert({ user_id: userId, admin_id: null, endpoint, p256dh, auth }, { onConflict: "endpoint" });
 
   if (error) {
     return NextResponse.json({ error: "Kaydedilemedi" }, { status: 500 });
   }
+
+  // Kullanıcı düğmeye bastıysa açıldığını görsün. Sessiz tazelemede (sayfa
+  // açılışında kaydın kendini onarması) bildirim atılmaz.
+  if (body?.silent !== true) {
+    await sendPushToSubscription(
+      { endpoint, p256dh, auth },
+      {
+        title: "Bildirimler açık 🔔",
+        body: "Talebin onaylandığında sana haber vereceğiz.",
+        tag: "pmj-push-test",
+      }
+    );
+  }
+
   return NextResponse.json({ ok: true });
 }
 

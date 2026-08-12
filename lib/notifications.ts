@@ -74,6 +74,31 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 export const CUSTOMER_PUSH_ENDPOINT = "/api/notifications/subscribe";
 export const ADMIN_PUSH_ENDPOINT = "/api/admin/notifications/subscribe";
 
+/**
+ * Tarayıcı abone ama sunucuda kaydı yoksa sessizce geri yazar. İzin İSTEMEZ:
+ * yalnızca izin zaten verilmişse çalışır. Kayıt kaybolabiliyor (istek yarıda
+ * kalmış, abonelik yenilenmiş, 410 sonrası satır silinmiş) ve kullanıcı bunu
+ * ancak beklediği bildirim hiç gelmeyince fark ediyordu.
+ */
+export async function refreshPushSubscription(
+  apiEndpoint: string = CUSTOMER_PUSH_ENDPOINT
+): Promise<void> {
+  if (!isPushSupported() || getPermission() !== "granted") return;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+    await fetch(apiEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // silent: doğrulama bildirimi atılmasın — kullanıcı bir şey istemedi
+      body: JSON.stringify({ ...subscription.toJSON(), silent: true }),
+    });
+  } catch {
+    // Ağ yoksa bir dahaki açılışta tekrar denenir
+  }
+}
+
 // İzin ister, push aboneliği oluşturur ve sunucuya kaydeder.
 // true = abonelik aktif; false = izin reddedildi / desteklenmiyor / kayıt başarısız.
 export async function subscribeToPush(

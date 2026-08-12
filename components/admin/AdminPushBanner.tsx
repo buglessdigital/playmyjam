@@ -64,7 +64,8 @@ export default function AdminPushBanner() {
         const res = await fetch(ADMIN_PUSH_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sub.toJSON()),
+          // silent: sayfa her açılışında doğrulama bildirimi düşmesin
+          body: JSON.stringify({ ...sub.toJSON(), silent: true }),
         });
         if (!cancelled) setOverride(res.ok ? "on" : "ready");
       })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
+import { sendPushToSubscription } from "@/lib/push";
 
 // Mekan admininin cihazı için Web Push aboneliği. Müşteri ucunun (
 // /api/notifications/subscribe) aynısı, tek farkı kimlik: admin oturumu bir
@@ -33,6 +34,19 @@ export async function POST(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: "Kaydedilemedi" }, { status: 500 });
   }
+
+  // Admin düğmeye bastıysa açıldığını görsün; sessiz tazelemede bildirim atılmaz
+  if (body?.silent !== true) {
+    await sendPushToSubscription(
+      { endpoint, p256dh, auth },
+      {
+        title: "Bildirimler açık 🔔",
+        body: "Müşteri şarkı talebi gönderdiğinde buraya düşecek.",
+        tag: "pmj-push-test",
+      }
+    );
+  }
+
   return NextResponse.json({ ok: true });
 }
 

@@ -20,6 +20,7 @@ import SongCard from "@/components/browse/SongCard";
 import SongRow from "@/components/browse/SongRow";
 import NotifyOptIn from "@/components/browse/NotifyOptIn";
 import { savePendingSuggestion, takePendingSuggestion } from "@/lib/pending-suggestion";
+import { refreshPushSubscription } from "@/lib/notifications";
 import {
   artistKey,
   getCooldown,
@@ -490,6 +491,14 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     }
     return result;
   }, [venueId, requireAccount, router, sendSuggestion]);
+
+  // Bildirim izni verilmiş ama sunucuda abonelik kaydı yoksa geri yaz.
+  // (Kayıt kaybolduğunda kullanıcı bunu ancak beklediği bildirim gelmeyince
+  // fark ediyordu — sessizce onarılıyor.)
+  useEffect(() => {
+    if (!isMember) return;
+    refreshPushSubscription();
+  }, [isMember]);
 
   // Girişten dönüş: saklanan talep varsa gönder ve sonucu üstte bildir
   useEffect(() => {

@@ -59,6 +59,25 @@ async function deliver(subs: SubscriptionRow[], payload: PushPayload): Promise<v
   );
 }
 
+// Tek bir cihaza gönderir. Abonelik yeni kaydedildiğinde "bildirimler açıldı"
+// doğrulaması için kullanılır: kullanıcı düğmeye bastıktan sonra bildirimin
+// gerçekten düştüğünü GÖRÜR, aylar sonra "acaba çalışıyor mu" diye kalmaz.
+export async function sendPushToSubscription(
+  sub: { endpoint: string; p256dh: string; auth: string },
+  payload: PushPayload
+): Promise<boolean> {
+  if (!ensureVapid()) return false;
+  try {
+    await webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+      JSON.stringify(payload)
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Kullanıcının tüm cihazlarına gönderir; süresi dolmuş abonelikleri (404/410) temizler.
 export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
   if (!ensureVapid()) return;

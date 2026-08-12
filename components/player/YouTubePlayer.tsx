@@ -272,6 +272,16 @@ function plog(text: string) {
   logSubscriber?.();
 }
 
+// Oturum sınırı sayfa yüklenişi başına BİR kez düşer: bileşen iki kez
+// bağlanınca (StrictMode'un çift çağrısı, hızlı yeniden çizim) döküm aynı
+// damgadan iki satırla açılıyordu.
+let logSessionMarked = false;
+function markSession() {
+  if (logSessionMarked) return;
+  logSessionMarked = true;
+  plog(`— oturum başladı (${new Date().toLocaleString("tr-TR")})`);
+}
+
 function clearLog() {
   logBuf.length = 0;
   logVersion += 1;
@@ -674,7 +684,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   useEffect(() => {
     hydrateLog();
     installLogFlushHooks();
-    plog(`— oturum başladı (${new Date().toLocaleString("tr-TR")})`);
+    markSession();
   }, []);
 
   const [started, setStarted] = useState(false);
@@ -1385,7 +1395,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     if (fadeBusy() || advanceBusy()) return;
 
     const now = Date.now();
-    const gap = now - lastTickAtRef.current;
+    // İLK tur kıyaslanacak bir önceki tur yoktur: ayraç 0 olduğu için boşluk
+    // epoch'tan beri geçen süre çıkıyor ve bekçi her açılışta "sekme donmuştu"
+    // diye bağırıyordu — tam da güvenmemiz gereken sinyali kirletiyordu.
+    const last = lastTickAtRef.current;
+    const gap = last > 0 ? now - last : 0;
     lastTickAtRef.current = now;
     // Turlar arası uzun boşluk: sekme kısılmış/dondurulmuştu. Toparlama
     // adımları yine de çalışır (asıl ihtiyaç duyulan tur budur), ama TAKILMA

@@ -68,8 +68,15 @@ export default function AddSongSheet({
   const inCooldown = !!cooldown && cooldown.remainingMs > 0;
   const cooldownMin = inCooldown ? Math.ceil(cooldown!.remainingMs / 60000) : 0;
   const cooldownReason = cooldown?.reason;
-  const canNormal = tokenBalance >= normalCost && !inCooldown;
-  const canPriority = tokenBalance >= priorityCost && !inCooldown;
+  const affordNormal = tokenBalance >= normalCost;
+  const affordPriority = tokenBalance >= priorityCost;
+  const canNormal = affordNormal && !inCooldown;
+  const canPriority = affordPriority && !inCooldown;
+  // Jeton yetmediğinde seçenekler ölü buton gibi durmasın: tıklayınca yükleme
+  // sayfasına götürsün ve altta ayrıca büyük bir yükleme çağrısı çıksın.
+  const goTokens = () => { onClose(); router.push(`/venue/${params.venueId}/tokens`); };
+  const missingTokens = Math.max(0, (affordNormal ? priorityCost : normalCost) - tokenBalance);
+  const showTopUpCta = !inCooldown && !affordPriority;
   // Sıra kalabalıklaştıkça öncelikli pahalılaşır: taban ücretin üstüne çıkıldığında
   // müşteri fiyatın neden yükseldiğini görsün
   const prioritySurcharge = priorityCost > basePriorityCost;
@@ -134,10 +141,37 @@ export default function AddSongSheet({
             </div>
           </div>
         ) : (
-          <p className="text-[#9ca3af] text-sm mb-4">
-            {t.addSong.balance}{" "}
-            <span className="text-white font-bold">{fmt(t.addSong.tokensValue, { n: tokenBalance })}</span>
-          </p>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <p className="text-[#9ca3af] text-sm">
+              {t.addSong.balance}{" "}
+              <span className="text-white font-bold">{fmt(t.addSong.tokensValue, { n: tokenBalance })}</span>
+            </p>
+            <button
+              onClick={goTokens}
+              className="flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold text-[#e91e8c] border border-[#e91e8c]/40 bg-[#e91e8c]/10 hover:bg-[#e91e8c]/20 transition-all"
+            >
+              + {t.addSong.topUp}
+            </button>
+          </div>
+        )}
+
+        {/* Jeton hiç yetmiyorsa seçeneklerin üstünde neden yetmediğini söyle */}
+        {!inCooldown && !affordNormal && (
+          <div
+            className="flex items-start gap-3 p-4 rounded-2xl mb-4"
+            style={{ background: "rgba(233,30,140,0.08)", border: "1px solid rgba(233,30,140,0.25)" }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="flex-shrink-0 mt-0.5">
+              <circle cx="12" cy="12" r="9" stroke="#e91e8c" strokeWidth="1.5" />
+              <path d="M12 8v5M12 16h.01" stroke="#e91e8c" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            <div>
+              <p className="text-white text-sm font-semibold">{t.addSong.needTitle}</p>
+              <p className="text-[#9ca3af] text-xs mt-1 leading-relaxed">
+                {fmt(t.addSong.needDesc, { n: normalCost, balance: tokenBalance })}
+              </p>
+            </div>
+          </div>
         )}
 
         {confirmNormal ? (
@@ -174,7 +208,7 @@ export default function AddSongSheet({
               </button>
             ) : (
               <button
-                onClick={() => { onClose(); router.push(`/venue/${params.venueId}/tokens`); }}
+                onClick={goTokens}
                 className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
                 style={{ background: "rgba(233,30,140,0.16)", borderColor: "rgba(233,30,140,0.45)" }}
               >
@@ -209,15 +243,15 @@ export default function AddSongSheet({
           </div>
         ) : (
           <div className="space-y-3">
-            {/* Normal Sıra */}
+            {/* Normal Sıra — jeton yetmiyorsa tıklayınca yükleme sayfasına gider */}
             <button
-              onClick={() => canNormal && setConfirmNormal(true)}
-              disabled={!canNormal}
+              onClick={() => (canNormal ? setConfirmNormal(true) : !inCooldown && goTokens())}
+              disabled={inCooldown}
               className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
               style={{
                 background: canNormal ? "rgba(59,130,246,0.1)" : "rgba(255,255,255,0.03)",
                 borderColor: canNormal ? "rgba(59,130,246,0.3)" : "rgba(255,255,255,0.08)",
-                opacity: canNormal ? 1 : 0.5,
+                opacity: canNormal || !inCooldown ? 1 : 0.5,
               }}
             >
               <div className="flex items-center gap-3">
@@ -232,6 +266,9 @@ export default function AddSongSheet({
                 <div className="text-left">
                   <p className="text-white font-semibold text-sm">{t.addSong.normalQueue}</p>
                   <p className="text-[#6b7280] text-xs">{fmt(t.addSong.waitSuffix, { wait: formatWait(waitNormalMs) })}</p>
+                  {!inCooldown && !affordNormal && (
+                    <p className="text-[#e91e8c] text-[11px] font-semibold mt-0.5">{t.addSong.lockedHint}</p>
+                  )}
                 </div>
               </div>
               {costLabel(normalCost, "#3b82f6")}
@@ -239,13 +276,13 @@ export default function AddSongSheet({
 
             {/* Öncelikli Sıra */}
             <button
-              onClick={() => canPriority && onAdd(true)}
-              disabled={!canPriority}
+              onClick={() => (canPriority ? onAdd(true) : !inCooldown && goTokens())}
+              disabled={inCooldown}
               className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
               style={{
                 background: canPriority ? "rgba(233,30,140,0.1)" : "rgba(255,255,255,0.03)",
                 borderColor: canPriority ? "rgba(233,30,140,0.3)" : "rgba(255,255,255,0.08)",
-                opacity: canPriority ? 1 : 0.5,
+                opacity: canPriority || !inCooldown ? 1 : 0.5,
               }}
             >
               <div className="flex items-center gap-3">
@@ -266,20 +303,37 @@ export default function AddSongSheet({
                   {prioritySurcharge && (
                     <p className="text-[#e91e8c]/80 text-[11px] mt-0.5">{t.addSong.priorityBusy}</p>
                   )}
+                  {!inCooldown && !affordPriority && (
+                    <p className="text-[#e91e8c] text-[11px] font-semibold mt-0.5">{t.addSong.lockedHint}</p>
+                  )}
                 </div>
               </div>
               {costLabel(priorityCost, "#e91e8c")}
             </button>
+
+            {/* Eksik jeton varsa asıl çağrı: seçeneklerin hemen altında dolu bir buton */}
+            {showTopUpCta && (
+              <button
+                onClick={goTokens}
+                className="w-full py-4 rounded-2xl font-bold text-white text-sm shadow-lg"
+                style={{ background: "linear-gradient(135deg,#e91e8c,#7c3aed)" }}
+              >
+                {t.addSong.topUp}
+                {missingTokens > 0 && (
+                  <span className="block text-[11px] font-semibold text-white/80 mt-0.5">
+                    {fmt(t.addSong.needMore, { n: missingTokens })}
+                    {tokenUnitPrice > 0 ? ` · ${priceLabel(missingTokens)}` : ""}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         )}
 
-        {!canNormal && (
+        {inCooldown && !affordNormal && (
           <p className="text-center text-[#6b7280] text-xs mt-4">
             {t.addSong.insufficient}{" "}
-            <span
-              className="text-[#e91e8c] underline cursor-pointer"
-              onClick={() => { onClose(); router.push(`/venue/${params.venueId}/tokens`); }}
-            >{t.addSong.topUp}</span>
+            <span className="text-[#e91e8c] underline cursor-pointer" onClick={goTokens}>{t.addSong.topUp}</span>
           </p>
         )}
 

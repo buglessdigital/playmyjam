@@ -269,7 +269,11 @@
     "waitSuffix": "{wait} bekleme",
     "priorityBusy": "Sıra kalabalık — öncelikli ücreti arttı",
     "insufficient": "Yetersiz jeton.",
-    "topUp": "Jeton Yükle"
+    "topUp": "Jeton Yükle",
+    "needTitle": "Jetonun yetmiyor",
+    "needDesc": "Şarkı eklemek için en az {n} jeton gerekiyor. Bakiyen: {balance} jeton.",
+    "needMore": "{n} jeton daha gerekiyor",
+    "lockedHint": "Bakiyen yetmiyor"
   },
   "search": {
     "exitArtistAria": "Sanatçıdan çık",

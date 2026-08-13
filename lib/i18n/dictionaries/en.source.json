@@ -590,5 +590,9 @@
   "blocked.recheck": "Açtım, kontrol et",
   "blocked.checking": "Kontrol ediliyor...",
   "blocked.stillBlocked": "İzin hâlâ kapalı görünüyor. Ayarı kaydettiğinden emin olup tekrar dene.",
-  "blocked.recovered": "Bildirimler açıldı, hazırsın."
+  "blocked.recovered": "Bildirimler açıldı, hazırsın.",
+  "addSong.needTitle": "Jetonun yetmiyor",
+  "addSong.needDesc": "Şarkı eklemek için en az {n} jeton gerekiyor. Bakiyen: {balance} jeton.",
+  "addSong.needMore": "{n} jeton daha gerekiyor",
+  "addSong.lockedHint": "Bakiyen yetmiyor"
 }

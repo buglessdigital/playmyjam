@@ -497,7 +497,7 @@ export default function LibraryPane({
                 setDragIndex(null);
                 setDragOverIndex(null);
               }}
-              className={`flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.03] transition-colors ${orderable ? "cursor-grab active:cursor-grabbing" : ""}`}
+              className={`group flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.03] transition-colors ${orderable ? "cursor-grab active:cursor-grabbing" : ""}`}
               style={{
                 borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined,
                 opacity: dragIndex === i ? 0.4 : 1,
@@ -536,7 +536,13 @@ export default function LibraryPane({
                 </div>
               )}
 
-              <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/10">
+              {/* Kapak + üstünde "şimdi çal": düğme yalnızca satırın üstüne
+                  gelince (dokunmatikte hep) görünür, satır sadeleşir.
+                  Bu şarkı sahneye çıkar, çalan şarkı yarıda kesilir. Bir liste
+                  görüntüleniyorsa rotasyon imleci de buraya taşınır — listenin
+                  devamı (bir sonraki şarkıdan itibaren) sıraya girer.
+                  Sahnedeki şarkı müşteriye aitse düğme kapalı. */}
+              <div className="relative w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/10">
                 {song.album_cover_url ? (
                   <Image src={song.album_cover_url} alt="" width={40} height={40} className="w-full h-full object-cover" />
                 ) : (
@@ -544,6 +550,47 @@ export default function LibraryPane({
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="2" /></svg>
                   </div>
                 )}
+                <button
+                  onClick={async () => {
+                    setPlayNote("");
+                    setPlayingSongId(song.id);
+                    const res = await playback.playNow(
+                      { song_id: song.id, playlist_id: viewId === ALL ? null : viewId },
+                      {
+                        youtube_video_id: song.youtube_video_id,
+                        title: song.title,
+                        artist: song.artist,
+                        album_cover_url: song.album_cover_url,
+                        duration_ms: song.duration_ms,
+                      }
+                    );
+                    setPlayingSongId(null);
+                    if (!res.ok) setPlayNote(res.error);
+                    // İmleç ve tur ilerlemesi değişti: raydaki "çalıyor" işareti ve
+                    // ilerleme sayacı tazelensin. Katalog değişmediği için tam
+                    // yükleme değil, iki sorgusu olan rotasyon tazelemesi yeter.
+                    else if (viewId !== ALL) lib.refreshRotation();
+                  }}
+                  disabled={playback.currentIsCustomer || playingSongId !== null}
+                  className={
+                    playback.currentIsCustomer || playingSongId !== null
+                      ? // Kapalıyken hiç görünmesin: kapak da örtülmemiş olur
+                        "hidden"
+                      : "absolute inset-0 flex items-center justify-center transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                  }
+                  style={{ background: "rgba(0,0,0,0.55)" }}
+                  title={
+                    playback.currentIsCustomer
+                      ? "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez"
+                      : viewId === ALL
+                        ? "Şimdi çal — çalan şarkı kesilir"
+                        : "Şimdi çal — çalan şarkı kesilir, liste buradan devam eder"
+                  }
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#22c55e">
+                    <path d="M8 5.5v13l11-6.5L8 5.5z" />
+                  </svg>
+                </button>
               </div>
 
               <div className="flex-1 min-w-0">
@@ -585,47 +632,6 @@ export default function LibraryPane({
                   Gizli
                 </span>
               )}
-
-              {/* Şimdi çal: bu şarkı sahneye çıkar, çalan şarkı yarıda kesilir.
-                  Bir liste görüntüleniyorsa rotasyon imleci de buraya taşınır —
-                  listenin devamı (bir sonraki şarkıdan itibaren) sıraya girer.
-                  Sahnedeki şarkı müşteriye aitse düğme kapalı. */}
-              <button
-                onClick={async () => {
-                  setPlayNote("");
-                  setPlayingSongId(song.id);
-                  const res = await playback.playNow(
-                    { song_id: song.id, playlist_id: viewId === ALL ? null : viewId },
-                    {
-                      youtube_video_id: song.youtube_video_id,
-                      title: song.title,
-                      artist: song.artist,
-                      album_cover_url: song.album_cover_url,
-                      duration_ms: song.duration_ms,
-                    }
-                  );
-                  setPlayingSongId(null);
-                  if (!res.ok) setPlayNote(res.error);
-                  // İmleç ve tur ilerlemesi değişti: raydaki "çalıyor" işareti ve
-                  // ilerleme sayacı tazelensin. Katalog değişmediği için tam
-                  // yükleme değil, iki sorgusu olan rotasyon tazelemesi yeter.
-                  else if (viewId !== ALL) lib.refreshRotation();
-                }}
-                disabled={playback.currentIsCustomer || playingSongId !== null}
-                className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 transition-all disabled:opacity-30"
-                style={{ background: "rgba(34,197,94,0.12)" }}
-                title={
-                  playback.currentIsCustomer
-                    ? "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez"
-                    : viewId === ALL
-                      ? "Şimdi çal — çalan şarkı kesilir"
-                      : "Şimdi çal — çalan şarkı kesilir, liste buradan devam eder"
-                }
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="#22c55e">
-                  <path d="M8 5.5v13l11-6.5L8 5.5z" />
-                </svg>
-              </button>
 
               {/* Tüm satır işlemleri tek menüde: sıraya al, gizle/göster, listeye
                   ekle, listeden çıkar, mekandan kaldır */}

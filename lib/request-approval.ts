@@ -218,9 +218,14 @@ export async function rejectSuggestion(request: SuggestionRow): Promise<void> {
 }
 
 /**
- * Yeni talep geldiğinde mekan adminlerine bildirim atar. Bildirimde onay/ret
- * düğmeleri (Android/masaüstü) ve dokununca açılan onay ekranı (iOS) için
- * imzalı jeton taşınır.
+ * Yeni talep geldiğinde mekan adminlerine bildirim atar. Bildirimde TEK düğme
+ * (Onayla) ve dokununca açılan panel için imzalı jeton taşınır.
+ *
+ * Neden tek düğme: iki düğmeli bildirimde Android'de basılan düğme ile sunucuya
+ * ulaşan komutun ters eşleştiği ölçüldü (13 Ağu 2026 — "Onayla"ya basıldığında
+ * talep reddediliyordu). Tek eylemli bildirimde aynı akış doğru çalışıyor.
+ * Reddetmek bildirime dokunup açılan panelden yapılır; sık olan işlem onay,
+ * ve o tek dokunuşla kalıyor.
  */
 export async function notifyAdminsOfRequest(params: {
   requestId: string;
@@ -239,15 +244,12 @@ export async function notifyAdminsOfRequest(params: {
 
   await sendPushToVenueAdmins(params.venueId, {
     title: "Yeni şarkı talebi",
-    body: `${params.title} — ${params.artist} (${params.requestedBy}). Karar için 10 dakikan var.`,
+    body: `${params.title} — ${params.artist} (${params.requestedBy}). Onayla'ya bas ya da reddetmek için bildirime dokun. Karar için 10 dakikan var.`,
     url,
     tag: `req-${params.requestId}`,
     requireInteraction: true,
     // iOS bu alanı yok sayar; orada bildirime dokunmak yukarıdaki url'i açar
-    actions: [
-      { action: "approve", title: "Onayla" },
-      { action: "reject", title: "Reddet" },
-    ],
+    actions: [{ action: "approve", title: "Onayla" }],
     data: { requestId: params.requestId, token },
   }).catch(() => {});
 }

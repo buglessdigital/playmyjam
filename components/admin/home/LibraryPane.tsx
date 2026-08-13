@@ -160,6 +160,24 @@ export default function LibraryPane({
     virtual
   );
 
+  // Kapak/başlık bloğu araç çubuğunun altına kayınca liste adı çubukta belirir —
+  // uzun listede kaydırırken hangi listede olduğun kaybolmasın diye.
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const [condensed, setCondensed] = useState(false);
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    const title = titleRef.current;
+    if (!scroller || !title) return;
+    const io = new IntersectionObserver(([e]) => setCondensed(!e.isIntersecting), {
+      root: scroller,
+      // Yapışık araç çubuğu üstte ~56px yer kaplıyor: başlık onun ARDINA
+      // geçtiğinde tetiklensin, sadece kaydırma alanından çıkınca değil.
+      rootMargin: "-56px 0px 0px 0px",
+    });
+    io.observe(title);
+    return () => io.disconnect();
+  }, [scrollRef]);
+
   const isPlaying = !!selectedList && currentList?.id === selectedList.id;
   // "Sırada" artık listenin bir bayrağı değil, KUYRUKTAKİ gerçek satırlar: elle
   // sıraya eklenmiş ve hâlâ bekleyen şarkı sayısı (rayla aynı kaynak).
@@ -172,6 +190,20 @@ export default function LibraryPane({
       : queuedSongs > 0
         ? `Sırada ${queuedSongs} şarkı — çalan şarkıdan sonra bu liste çalacak, bitince eski liste kaldığı yerden devam eder`
         : "Sırada değil — şarkıları müşteri yine de seçebilir, otomatik çalmaz";
+
+  // Çubuktaki liste adı: yer kaplamasın diye hep basılı ama genişliği/opaklığı
+  // sıfır — böylece belirip kaybolurken düğmeler zıplamadan kayar.
+  const condensedTitle = (
+    <span
+      aria-hidden={!condensed}
+      className={`shrink-0 truncate font-bold text-white text-[15px] transition-all duration-200 ${
+        condensed ? "max-w-[240px] opacity-100 ml-1 mr-0.5" : "max-w-0 opacity-0"
+      }`}
+      title={selectedList ? selectedList.name : "Tüm Şarkılar"}
+    >
+      {selectedList ? selectedList.name : "Tüm Şarkılar"}
+    </span>
+  );
 
   return (
     <div className="flex flex-col min-h-0 h-full">
@@ -199,7 +231,7 @@ export default function LibraryPane({
                 {selectedList ? "Mekan çalma listesi" : "Mekan katalogu"}
               </p>
               {/* Liste adı tek satır: uzadıkça sığana kadar küçülür, düzen oynamaz */}
-              <h1 className="text-white font-extrabold mt-2.5 mb-3.5">
+              <h1 ref={titleRef} className="text-white font-extrabold mt-2.5 mb-3.5">
                 <FitTitle text={selectedList ? selectedList.name : "Tüm Şarkılar"} />
               </h1>
               <p className="text-[#e5e7eb] text-sm font-semibold">
@@ -239,6 +271,7 @@ export default function LibraryPane({
           style={{ background: "rgba(17,11,27,0.92)", backdropFilter: "blur(10px)" }}
         >
           <div className="flex items-center gap-2 flex-wrap">
+            {!selectedList && condensedTitle}
             {selectedList && (
               <>
                 {/* Play: sırayı beklemeden bu liste çalmaya başlar. Sahnedeki
@@ -269,6 +302,8 @@ export default function LibraryPane({
                     </svg>
                   )}
                 </button>
+
+                {condensedTitle}
 
                 {/* Sıraya ekle: liste tek blok halinde çalan şarkıdan HEMEN
                     SONRAYA girer (Spotify gibi). Çalan liste kesilmez, blok

@@ -185,8 +185,8 @@
     "upNext": "Up Next",
     "countInQueue": "{n} songs in queue",
     "empty": "The queue is empty — add the first song!",
-    "priorityBadge": "First",
-    "tokenBadge": "Token",
+    "priorityBadge": "Priority",
+    "tokenBadge": "Normal",
     "addSong": "Add Song"
   },
   "vibeIntro": {

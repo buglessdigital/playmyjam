@@ -185,8 +185,8 @@
     "upNext": "Sıradaki Şarkılar",
     "countInQueue": "Kuyrukta {n} şarkı",
     "empty": "Kuyruk boş — ilk şarkıyı sen ekle!",
-    "priorityBadge": "Önce",
-    "tokenBadge": "Jeton",
+    "priorityBadge": "Öncelikli",
+    "tokenBadge": "Normal",
     "addSong": "Şarkı Ekle"
   },
   "vibeIntro": {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getPermission, isPushSupported, subscribeToPush, CUSTOMER_PUSH_ENDPOINT } from "@/lib/notifications";
+import BlockedHelp from "@/components/notifications/BlockedHelp";
 import { useT } from "@/lib/i18n";
 
 // Uygulama (PWA) olarak açıldığında çıkan bildirim izni kartı.
@@ -139,7 +140,9 @@ export default function EnablePushPrompt() {
         </h2>
 
         {state === "denied" ? (
-          <p className="mt-3 text-center text-sm text-[#9ca3af]">{t.pushPrompt.denied}</p>
+          /* İzin engellenmiş: sayfa tekrar soramaz, cihaz ayarına giden adımlar
+             gösterilir; kullanıcı ayarı açıp dönünce abonelik kendiliğinden kurulur */
+          <BlockedHelp onRecovered={() => setState("done")} />
         ) : (
           <>
             <p className="mt-2 text-center text-sm text-[#9ca3af]">{t.pushPrompt.desc}</p>

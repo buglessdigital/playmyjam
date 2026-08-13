@@ -328,6 +328,18 @@
     "denied": "Bildirim izni bu cihazda engellenmiş. Cihaz ayarlarından bu uygulamaya bildirim izni verebilirsin.",
     "failed": "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene."
   },
+  "blocked": {
+    "title": "Bildirimler bu cihazda engellenmiş",
+    "intro": "Tarayıcı kuralı gereği izni buradan tekrar soramıyoruz; bir kez cihaz ayarından açman gerekiyor. Açtıktan sonra bu ekrana dön — gerisini biz hallederiz.",
+    "androidApp": "Telefon Ayarları → Uygulamalar → bu uygulamayı bul (mekanın adıyla görünür) → Bildirimler → izin ver.",
+    "androidBrowser": "Chrome'da adres çubuğundaki kilit simgesine dokun → İzinler (veya Site ayarları) → Bildirimler → Sıfırla.",
+    "ios": "Telefon Ayarları → Bildirimler → listeden bu uygulamayı seç → Bildirimlere İzin Ver.",
+    "desktop": "Adres çubuğundaki kilit simgesine tıkla → Bildirimler → İzin ver, sonra sayfayı yenile.",
+    "recheck": "Açtım, kontrol et",
+    "checking": "Kontrol ediliyor...",
+    "stillBlocked": "İzin hâlâ kapalı görünüyor. Ayarı kaydettiğinden emin olup tekrar dene.",
+    "recovered": "Bildirimler açıldı, hazırsın."
+  },
   "favoritesPage": {
     "title": "Favorilerim",
     "empty": "Henüz favori eklenmedi"

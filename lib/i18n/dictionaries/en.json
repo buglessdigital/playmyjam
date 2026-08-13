@@ -328,6 +328,18 @@
     "denied": "Notifications are blocked on this device. You can allow them for this app in your device settings.",
     "failed": "Notification setup could not be completed. Check your connection and try again."
   },
+  "blocked": {
+    "title": "Notifications are blocked on this device",
+    "intro": "Browser rules stop us from asking again here; you need to allow it once in your device settings. Come back to this screen afterwards — we'll take care of the rest.",
+    "androidApp": "Phone Settings → Apps → find this app (it appears under the venue's name) → Notifications → allow.",
+    "androidBrowser": "In Chrome, tap the lock icon in the address bar → Permissions (or Site settings) → Notifications → Reset.",
+    "ios": "Phone Settings → Notifications → pick this app from the list → Allow Notifications.",
+    "desktop": "Click the lock icon in the address bar → Notifications → Allow, then reload the page.",
+    "recheck": "I've allowed it, check again",
+    "checking": "Checking...",
+    "stillBlocked": "Permission still looks off. Make sure the setting is saved and try again.",
+    "recovered": "Notifications are on — you're all set."
+  },
   "favoritesPage": {
     "title": "My Favorites",
     "empty": "No favorites added yet"

@@ -580,5 +580,15 @@
   "pushPrompt.busy": "Açılıyor...",
   "pushPrompt.later": "Şimdi değil",
   "pushPrompt.denied": "Bildirim izni bu cihazda engellenmiş. Cihaz ayarlarından bu uygulamaya bildirim izni verebilirsin.",
-  "pushPrompt.failed": "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene."
+  "pushPrompt.failed": "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene.",
+  "blocked.title": "Bildirimler bu cihazda engellenmiş",
+  "blocked.intro": "Tarayıcı kuralı gereği izni buradan tekrar soramıyoruz; bir kez cihaz ayarından açman gerekiyor. Açtıktan sonra bu ekrana dön — gerisini biz hallederiz.",
+  "blocked.androidApp": "Telefon Ayarları → Uygulamalar → bu uygulamayı bul (mekanın adıyla görünür) → Bildirimler → izin ver.",
+  "blocked.androidBrowser": "Chrome'da adres çubuğundaki kilit simgesine dokun → İzinler (veya Site ayarları) → Bildirimler → Sıfırla.",
+  "blocked.ios": "Telefon Ayarları → Bildirimler → listeden bu uygulamayı seç → Bildirimlere İzin Ver.",
+  "blocked.desktop": "Adres çubuğundaki kilit simgesine tıkla → Bildirimler → İzin ver, sonra sayfayı yenile.",
+  "blocked.recheck": "Açtım, kontrol et",
+  "blocked.checking": "Kontrol ediliyor...",
+  "blocked.stillBlocked": "İzin hâlâ kapalı görünüyor. Ayarı kaydettiğinden emin olup tekrar dene.",
+  "blocked.recovered": "Bildirimler açıldı, hazırsın."
 }

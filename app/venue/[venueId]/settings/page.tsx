@@ -3,6 +3,7 @@
 import { useState, useEffect, useSyncExternalStore } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import BlockedHelp from "@/components/notifications/BlockedHelp";
 import LangToggle from "@/components/ui/LangToggle";
 import { fmt, useT } from "@/lib/i18n";
 import {
@@ -335,10 +336,10 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
-        {permission === "denied" && (notifNearby || notifQueue) && (
-          <p className="text-amber-400/80 text-xs mt-2 px-1">
-            {t.settings.permissionDenied}
-          </p>
+        {permission === "denied" && (
+          /* Sayfa izni tekrar isteyemez (tarayıcı kuralı): cihaz ayarına giden
+             adımlar + dönüşte aboneliği kendiliğinden tamamlayan yardımcı */
+          <BlockedHelp />
         )}
         {permission === "unsupported" && (
           <p className="text-amber-400/80 text-xs mt-2 px-1">

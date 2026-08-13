@@ -245,7 +245,7 @@ export default function QueuePane({
                   if (movable && dragId) moveWithinAuto(dragId, item.id);
                   setDragId(null);
                 }}
-                className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/[0.03] transition-colors"
+                className="group flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/[0.03] transition-colors"
                 style={{
                   borderTop: showHeader ? undefined : "1px solid rgba(255,255,255,0.06)",
                   borderLeft: stripe ? `3px solid ${stripe}` : "3px solid transparent",
@@ -256,11 +256,41 @@ export default function QueuePane({
               >
                 <span className="text-[#6b7280] text-[11px] w-4 shrink-0 tabular-nums">{i + 1}</span>
 
-                {item.songs.album_cover_url ? (
-                  <Image src={item.songs.album_cover_url} alt="" width={36} height={36} className="w-9 h-9 rounded-lg object-cover shrink-0" />
-                ) : (
-                  <div className="w-9 h-9 rounded-lg bg-white/10 shrink-0" />
-                )}
+                {/* Kapak + üstünde "şimdi çal": düğme yalnızca satırın üstüne
+                    gelince (dokunmatikte hep) görünür, satır sadeleşir.
+                    Bu satır sahneye çıkar, çalan şarkı yarıda kesilir.
+                    Sahnedeki şarkı müşteriye aitse düğme kapalı. */}
+                <div className="relative w-9 h-9 rounded-lg overflow-hidden shrink-0 bg-white/10">
+                  {item.songs.album_cover_url && (
+                    <Image src={item.songs.album_cover_url} alt="" width={36} height={36} className="w-full h-full object-cover" />
+                  )}
+                  <button
+                    onClick={async () => {
+                      setPlayError("");
+                      setPlayingId(item.id);
+                      const res = await playNow({ queue_id: item.id }, item.songs);
+                      setPlayingId(null);
+                      if (!res.ok) setPlayError(res.error);
+                    }}
+                    disabled={currentIsCustomer || playingId !== null}
+                    className={
+                      currentIsCustomer || playingId !== null
+                        ? // Kapalıyken hiç görünmesin: kapak da örtülmemiş olur
+                          "hidden"
+                        : "absolute inset-0 flex items-center justify-center transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                    }
+                    style={{ background: "rgba(0,0,0,0.55)" }}
+                    title={
+                      currentIsCustomer
+                        ? "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez"
+                        : "Şimdi çal — çalan şarkı kesilir"
+                    }
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="#22c55e">
+                      <path d="M8 5.5v13l11-6.5L8 5.5z" />
+                    </svg>
+                  </button>
+                </div>
 
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-[13px] font-medium truncate">{item.songs.title}</p>
@@ -307,30 +337,6 @@ export default function QueuePane({
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M8 11V7a4 4 0 018 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
                   </span>
                 )}
-
-                {/* Şimdi çal: bu satır sahneye çıkar, çalan şarkı yarıda kesilir.
-                    Sahnedeki şarkı müşteriye aitse düğme kapalı. */}
-                <button
-                  onClick={async () => {
-                    setPlayError("");
-                    setPlayingId(item.id);
-                    const res = await playNow({ queue_id: item.id }, item.songs);
-                    setPlayingId(null);
-                    if (!res.ok) setPlayError(res.error);
-                  }}
-                  disabled={currentIsCustomer || playingId !== null}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg shrink-0 transition-all disabled:opacity-30"
-                  style={{ background: "rgba(34,197,94,0.12)" }}
-                  title={
-                    currentIsCustomer
-                      ? "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez"
-                      : "Şimdi çal — çalan şarkı kesilir"
-                  }
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="#22c55e">
-                    <path d="M8 5.5v13l11-6.5L8 5.5z" />
-                  </svg>
-                </button>
 
                 <button
                   onClick={() => removeFromQueue(item.id)}

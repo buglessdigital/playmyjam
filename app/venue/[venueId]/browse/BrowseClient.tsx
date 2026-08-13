@@ -47,9 +47,11 @@ interface Props {
   initialVenueSongs: VenueSong[];
   requestCost: number;
   priorityCost: number;
+  /** Jeton başına TL — sheet'te jeton tutarlarının altında para karşılığı gösterilir */
+  tokenUnitPrice: number;
 }
 
-export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, requestCost, priorityCost }: Props) {
+export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, requestCost, priorityCost, tokenUnitPrice }: Props) {
   const [venueSongs, setVenueSongs] = useState<VenueSong[]>(initialVenueSongs);
   const [queuedSongIds, setQueuedSongIds] = useState<Set<string>>(new Set());
   const [tokenBalance, setTokenBalance] = useState(0);
@@ -879,6 +881,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
         normalCost={requestCost}
         priorityCost={dynamicPriorityCost}
         basePriorityCost={priorityCost}
+        tokenUnitPrice={tokenUnitPrice}
         onClose={() => setSelectedSong(null)}
         onAdd={handleAdd}
       />

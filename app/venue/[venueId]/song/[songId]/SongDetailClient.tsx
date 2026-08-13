@@ -86,6 +86,8 @@ interface Props {
   track: TrackDetails | null;
   requestCost: number;
   priorityCost: number;
+  /** Jeton başına TL — sheet'te jeton tutarlarının altında para karşılığı gösterilir */
+  tokenUnitPrice: number;
 }
 
 // Bilgi pilleri tek satırda kaydığı için hiçbiri daralmaz, metinleri de sarmaz
@@ -112,7 +114,7 @@ function formatReleaseDate(date: string | null): string {
   return parts[0] ?? date;
 }
 
-export default function SongDetailClient({ venueId, venueDbId, track, requestCost, priorityCost }: Props) {
+export default function SongDetailClient({ venueId, venueDbId, track, requestCost, priorityCost, tokenUnitPrice }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   // Sayfa misafire açık; sıraya ekleme/istek/favori hesaba bağlı
@@ -835,6 +837,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
         normalCost={requestCost}
         priorityCost={dynamicPriorityCost}
         basePriorityCost={priorityCost}
+        tokenUnitPrice={tokenUnitPrice}
         onClose={() => setSheetTarget(null)}
         onAdd={handleAdd}
       />

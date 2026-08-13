@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getVenueBySlug, getVenueSongCatalog } from "@/lib/venue-cache";
+import { getTokenUnitPrice } from "@/lib/pricing-cache";
 import BrowseClient from "./BrowseClient";
 import BrowseLoading from "./loading";
 
@@ -28,7 +29,10 @@ export default function BrowsePage({ params }: Props) {
 
 async function BrowseShell({ venueId }: { venueId: string }) {
   const venue = await getVenueBySlug(venueId);
-  const catalog = venue ? await getVenueSongCatalog(venue.id) : [];
+  const [catalog, tokenUnitPrice] = await Promise.all([
+    venue ? getVenueSongCatalog(venue.id) : [],
+    getTokenUnitPrice(),
+  ]);
 
   return (
     <BrowseClient
@@ -37,6 +41,7 @@ async function BrowseShell({ venueId }: { venueId: string }) {
       initialVenueSongs={catalog}
       requestCost={venue?.request_cost ?? 1}
       priorityCost={venue?.priority_cost ?? 2}
+      tokenUnitPrice={tokenUnitPrice}
     />
   );
 }

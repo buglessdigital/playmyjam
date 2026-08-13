@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 import { formatWait } from "@/lib/wait-time";
 import type { Cooldown } from "./browse-types";
-import { fmt, useT } from "@/lib/i18n";
+import { fmt, useI18n } from "@/lib/i18n";
 
 interface Song {
   youtube_video_id: string;
@@ -25,17 +25,34 @@ interface Props {
   priorityCost?: number;
   /** Mekanın taban öncelikli ücreti — fark varsa "sıra kalabalık" notu gösterilir */
   basePriorityCost?: number;
+  /** Jeton başına TL (app_settings.token_unit_price) — jeton tutarının altında para karşılığı */
+  tokenUnitPrice?: number;
   onClose: () => void;
   onAdd: (priority: boolean) => void;
 }
 
 export default function AddSongSheet({
   song, tokenBalance, cooldown, waitNormalMs = 0, waitPriorityMs = 0,
-  normalCost = 1, priorityCost = 2, basePriorityCost = priorityCost, onClose, onAdd,
+  normalCost = 1, priorityCost = 2, basePriorityCost = priorityCost, tokenUnitPrice = 0,
+  onClose, onAdd,
 }: Props) {
   const router = useRouter();
   const params = useParams<{ venueId: string }>();
-  const t = useT();
+  const { lang, t } = useI18n();
+
+  // Jeton tutarı + altında TL karşılığı. Fiyat bilinmiyorsa (0) yalnızca jeton yazılır.
+  const priceLabel = (tokens: number) =>
+    tokenUnitPrice > 0
+      ? `${(tokens * tokenUnitPrice).toLocaleString(lang === "tr" ? "tr-TR" : "en-US", { maximumFractionDigits: 2 })}₺`
+      : null;
+  const costLabel = (tokens: number, color: string) => (
+    <span className="flex flex-col items-end leading-tight">
+      <span className="font-bold text-sm" style={{ color }}>{fmt(t.addSong.tokensValue, { n: tokens })}</span>
+      {priceLabel(tokens) && (
+        <span className="text-[#6b7280] text-[11px] font-semibold tabular-nums">{priceLabel(tokens)}</span>
+      )}
+    </span>
+  );
 
   // Normal sıra seçildiğinde araya giren onay adımı: sonradan eklenen öncelikli
   // şarkılar normal sıradakilerin önüne geçtiği için uyarıp yönlendiriyoruz.
@@ -153,7 +170,7 @@ export default function AddSongSheet({
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
                   {t.addSong.addPriority}
                 </span>
-                <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{fmt(t.addSong.tokensValue, { n: priorityCost })}</span>
+                {costLabel(priorityCost, "#e91e8c")}
               </button>
             ) : (
               <button
@@ -165,7 +182,7 @@ export default function AddSongSheet({
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
                   {t.addSong.buyForPriority}
                 </span>
-                <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{fmt(t.addSong.tokensValue, { n: priorityCost })}</span>
+                {costLabel(priorityCost, "#e91e8c")}
               </button>
             )}
 
@@ -187,7 +204,7 @@ export default function AddSongSheet({
                 </svg>
                 {t.addSong.addNormalAnyway}
               </span>
-              <span className="font-bold text-sm" style={{ color: "#3b82f6" }}>{fmt(t.addSong.tokensValue, { n: normalCost })}</span>
+              {costLabel(normalCost, "#3b82f6")}
             </button>
           </div>
         ) : (
@@ -217,7 +234,7 @@ export default function AddSongSheet({
                   <p className="text-[#6b7280] text-xs">{fmt(t.addSong.waitSuffix, { wait: formatWait(waitNormalMs) })}</p>
                 </div>
               </div>
-              <span className="text-[#3b82f6] font-bold text-sm">{fmt(t.addSong.tokensValue, { n: normalCost })}</span>
+              {costLabel(normalCost, "#3b82f6")}
             </button>
 
             {/* Öncelikli Sıra */}
@@ -251,7 +268,7 @@ export default function AddSongSheet({
                   )}
                 </div>
               </div>
-              <span className="font-bold text-sm" style={{ color: "#e91e8c" }}>{fmt(t.addSong.tokensValue, { n: priorityCost })}</span>
+              {costLabel(priorityCost, "#e91e8c")}
             </button>
           </div>
         )}

@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { getVenueBySlug } from "@/lib/venue-cache";
 import { getTrackDetails } from "@/lib/youtube";
+import { getTokenUnitPrice } from "@/lib/pricing-cache";
 import SongDetailClient from "./SongDetailClient";
 import SongDetailLoading from "./loading";
 
@@ -25,9 +26,10 @@ export default function SongDetailPage({ params }: Props) {
 }
 
 async function SongDetailShell({ venueId, songId }: { venueId: string; songId: string }) {
-  const [venue, track] = await Promise.all([
+  const [venue, track, tokenUnitPrice] = await Promise.all([
     getVenueBySlug(venueId),
     getTrackDetails(songId).catch(() => null),
+    getTokenUnitPrice(),
   ]);
 
   return (
@@ -37,6 +39,7 @@ async function SongDetailShell({ venueId, songId }: { venueId: string; songId: s
       track={venue ? track : null}
       requestCost={venue?.request_cost ?? 1}
       priorityCost={venue?.priority_cost ?? 2}
+      tokenUnitPrice={tokenUnitPrice}
     />
   );
 }

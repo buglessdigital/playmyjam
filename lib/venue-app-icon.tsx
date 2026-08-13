@@ -5,7 +5,7 @@ import { getVenueBranding } from "@/lib/venue-cache";
 // ikon üretimi. Mekan logosu her boyutta/oranda olabildiği için (ve WebP/GIF'i
 // satori güvenilir çizemediği için) logo doğrudan manifest'e verilmez: burada
 // marka zemininin ortasına, kenar boşluklu ve kare olarak PNG'ye gömülür.
-// Logo yoksa/uygun değilse mekan adının baş harfi çizilir.
+// Logo yoksa/uygun değilse PMJ markası çizilir.
 
 const SIZES: Record<string, number> = { "192.png": 192, "512.png": 512 };
 const EMBEDDABLE = /^image\/(png|jpeg)$/;
@@ -28,14 +28,27 @@ async function embedLogo(url: string | null): Promise<string | null> {
   }
 }
 
-export async function venueIconResponse(slug: string, size: string): Promise<Response> {
+// PMJ markası da satori'ye veri URL'i olarak veriliyor; dosya kendi
+// dağıtımımızda olduğu için istek adresinden çekilip süreç boyunca saklanıyor.
+let brandMarkCache: string | null = null;
+async function brandMark(requestUrl: string): Promise<string | null> {
+  if (brandMarkCache) return brandMarkCache;
+  brandMarkCache = await embedLogo(new URL("/logo-mark.png", requestUrl).toString());
+  return brandMarkCache;
+}
+
+export async function venueIconResponse(
+  req: Request,
+  slug: string,
+  size: string
+): Promise<Response> {
   const px = SIZES[size];
   if (!px) return new Response("Not found", { status: 404 });
 
   const venue = await getVenueBranding(slug);
   if (!venue) return new Response("Not found", { status: 404 });
 
-  const logo = await embedLogo(venue.logo_url);
+  const logo = (await embedLogo(venue.logo_url)) ?? (await brandMark(req.url));
   // Maskable ikonlarda Android dış %20'yi kırpabilir: içerik hep ortadaki %60'ta.
   const inner = Math.round(px * 0.6);
 
@@ -61,6 +74,7 @@ export async function venueIconResponse(slug: string, size: string): Promise<Res
             style={{ objectFit: "contain", borderRadius: Math.round(inner * 0.18) }}
           />
         ) : (
+          // Buraya ancak kendi /logo-mark.png dosyamız bile çekilemezse düşülür.
           <div
             style={{
               width: inner,

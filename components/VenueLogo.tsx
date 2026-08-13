@@ -4,13 +4,9 @@ import { useState, type CSSProperties } from "react";
 
 // Logo host'ları mekandan mekana değiştiği için next/image yerine düz <img>
 // kullanılıyor (remotePatterns'a her host'u eklemek mümkün değil). Görsel
-// yüklenemezse (kırık link, 403, silinmiş dosya) sessizce baş harfe düşülür.
+// yüklenemezse (kırık link, 403, silinmiş dosya) sessizce PMJ markasına düşülür.
 function isDisplayableUrl(url: string) {
   return /^(https?:\/\/|\/)/i.test(url);
-}
-
-export function venueInitial(name: string) {
-  return name.trim().charAt(0).toLocaleUpperCase("tr-TR") || "?";
 }
 
 export default function VenueLogo({
@@ -26,7 +22,7 @@ export default function VenueLogo({
   /** Kutunun boyutu/köşesi — hem logo hem baş harf için geçerli */
   className?: string;
   style?: CSSProperties;
-  /** Yalnızca baş harf gösterilirken uygulanan sınıf/stil (arka plan, renk) */
+  /** Yalnızca PMJ markasına düşüldüğünde uygulanan sınıf/stil (arka plan) */
   fallbackClassName?: string;
   fallbackStyle?: CSSProperties;
 }) {
@@ -56,13 +52,21 @@ export default function VenueLogo({
     );
   }
 
+  // Mekan logosunu yüklemediyse baş harf yerine PMJ markası: her mekan kutusu
+  // aynı yerel dosyayı gösterdiği için boyut/oran sabit, kırık link riski yok.
   return (
     <span
       className={`${className} ${fallbackClassName}`}
       style={{ ...style, ...fallbackStyle }}
       aria-hidden
     >
-      {venueInitial(name)}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logo-mark.png"
+        alt=""
+        decoding="async"
+        className="h-[62%] w-[62%] object-contain"
+      />
     </span>
   );
 }

@@ -103,6 +103,12 @@ function AdminDashboardContent({ params }: Props) {
   const playback = usePlayback(venueDbId);
   const lib = useLibrary(venueDbId, initialListId, playback);
 
+  // Kuyruktaki "sıraya eklenen liste" bloklarının başlığında adı yazsın
+  const playlistNames = useMemo(
+    () => Object.fromEntries(lib.playlists.map((p) => [p.id, p.name])),
+    [lib.playlists]
+  );
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Dar ekran pano seçici */}
@@ -159,7 +165,12 @@ function AdminDashboardContent({ params }: Props) {
         <div
           className={`${pane === "queue" ? "flex" : "hidden"} lg:flex flex-col min-h-0 h-full lg:border-l border-white/10`}
         >
-          <QueuePane playback={playback} onAddSong={() => setModal("addQueue")} />
+          <QueuePane
+            playback={playback}
+            onAddSong={() => setModal("addQueue")}
+            contextName={lib.currentList?.name ?? null}
+            playlistNames={playlistNames}
+          />
         </div>
       </div>
 

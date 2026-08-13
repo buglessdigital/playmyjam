@@ -1,16 +1,66 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
-import { formatTime, isMovable, type Playback } from "./usePlayback";
+import { useMemo, useState } from "react";
+import { formatTime, isManualRow, isMovable, type Playback } from "./usePlayback";
+
+// Kuyruk Spotify'daki gibi BLOKLARA ayrılır ve başlık yalnızca blok değişince
+// çizilir. Elle sıra iki şerittir: önce tekli eklenenler, sonra sıraya eklenen
+// listeler — her liste kendi başlığıyla (bkz. lib/queue-fill.ts pozisyon
+// bantları).
+type QueueGroup =
+  | { kind: "customer" }
+  | { kind: "manual-single" }
+  | { kind: "manual-list"; playlistId: string }
+  | { kind: "auto" };
+
+const groupKey = (g: QueueGroup) => (g.kind === "manual-list" ? `manual-list:${g.playlistId}` : g.kind);
 
 /** Ana ekranın sağ sütunu: şu an çalan + sıradaki şarkılar. */
-export default function QueuePane({ playback, onAddSong }: { playback: Playback; onAddSong: () => void }) {
+export default function QueuePane({
+  playback,
+  onAddSong,
+  contextName,
+  playlistNames,
+}: {
+  playback: Playback;
+  onAddSong: () => void;
+  /** Otomatik bloğun başlığında yazan çalan liste adı */
+  contextName?: string | null;
+  /** playlist_id -> ad: sıraya eklenen liste bloklarının başlığı için */
+  playlistNames?: Record<string, string>;
+}) {
   const {
     queue, queueError, reordering, movableCount, moveWithinAuto, nudge, removeFromQueue,
     nowPlaying, progress, progressPct, duration, isPlaying, playerOffline,
-    playNow, currentIsCustomer,
+    playNow, currentIsCustomer, manualCount, clearManualQueue,
   } = playback;
+  const movableIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    let n = 0;
+    for (const item of queue) if (isMovable(item)) map.set(item.id, n++);
+    return map;
+  }, [queue]);
+  const groupOf = (item: (typeof queue)[number]): QueueGroup => {
+    if (item.user_id !== null) return { kind: "customer" };
+    if (!isManualRow(item)) return { kind: "auto" };
+    return item.source_playlist_id
+      ? { kind: "manual-list", playlistId: item.source_playlist_id }
+      : { kind: "manual-single" };
+  };
+
+  // Blok başlığındaki sayı: satır başına yeniden saymak 500 satırda kare
+  // karmaşıklık olurdu (bkz. movableIndexById).
+  const countByGroup = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of queue) {
+      const key = groupKey(groupOf(item));
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue]);
+
   const [dragId, setDragId] = useState<string | null>(null);
   const [playError, setPlayError] = useState("");
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -26,14 +76,30 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
               {queue.length} şarkı · {movableCount} tanesi taşınabilir
             </p>
           </div>
-          <button
-            onClick={onAddSong}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold shrink-0"
-            style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-            Ekle
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Yalnızca "Sıraya ekle" ile eklenenleri siler: çalan listenin
+                şarkıları ve müşterinin jetonla aldığı sıra olduğu gibi kalır. */}
+            {manualCount > 0 && (
+              <button
+                onClick={() => void clearManualQueue()}
+                title={`Sıraya eklenen ${manualCount} şarkı silinsin — çalan listeye ve müşteri şarkılarına dokunulmaz`}
+                aria-label="Sırayı temizle"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
+                style={{ background: "rgba(239,68,68,0.12)", color: "#f87171" }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                Sırayı temizle
+              </button>
+            )}
+            <button
+              onClick={onAddSong}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
+              style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+              Ekle
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap text-[#6b7280] text-[10px] mt-2">
@@ -42,6 +108,9 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-sm" style={{ background: "#8b5cf6" }} /> Jeton
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-sm" style={{ background: "#22c55e" }} /> Sıraya eklenen
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-sm" style={{ background: "rgba(255,255,255,0.15)" }} /> Otomatik
@@ -113,17 +182,57 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
         ) : (
           queue.map((item, i) => {
             const movable = isMovable(item);
-            const movableIndex = movable ? queue.filter(isMovable).findIndex((q) => q.id === item.id) : -1;
-            const isAdminAdded = movable && item.added_by === "admin";
+            // Kuyruk liste sonuna kadar uzayabiliyor: sıra numarası satır başına
+            // yeniden taranırsa (filter+findIndex) 500 satırda kare karmaşıklık
+            // olur. Tek geçişte hazırlanan haritadan okunur.
+            const movableIndex = movable ? movableIndexById.get(item.id) ?? -1 : -1;
+            const isAdminAdded = isManualRow(item);
             // Jetonla eklenenler renkle ayrışsın: öncelikli = pembe, normal = mor,
-            // otomatik/mekan = renksiz.
+            // elle sıraya eklenen = yeşil (rayla aynı renk), otomatik = renksiz.
             const accent = item.tokens_spent > 0 ? (item.priority ? "#e91e8c" : "#8b5cf6") : null;
             const accentBg =
               item.tokens_spent > 0 ? (item.priority ? "rgba(233,30,140,0.08)" : "rgba(139,92,246,0.08)") : undefined;
+            const stripe = accent ?? (isAdminAdded ? "#22c55e" : null);
+
+            const group = groupOf(item);
+            const key = groupKey(group);
+            const showHeader = i === 0 || groupKey(groupOf(queue[i - 1])) !== key;
+            const groupCount = countByGroup.get(key) ?? 0;
+            const listName = group.kind === "manual-list" ? playlistNames?.[group.playlistId] : null;
+            const headerLabel =
+              group.kind === "customer"
+                ? "MÜŞTERİ İSTEKLERİ"
+                : group.kind === "manual-single"
+                  ? "SIRAYA EKLENEN ŞARKILAR"
+                  : group.kind === "manual-list"
+                    ? `SIRAYA EKLENEN LİSTE${listName ? ` · ${listName.toLocaleUpperCase("tr")}` : ""}`
+                    : `ÇALAN LİSTEDEN${contextName ? ` · ${contextName.toLocaleUpperCase("tr")}` : ""}`;
 
             return (
+              <div key={item.id}>
+                {showHeader && (
+                  <div
+                    className="flex items-center gap-2 px-3 pt-3 pb-1.5"
+                    style={{ borderTop: i > 0 ? "1px solid rgba(255,255,255,0.08)" : undefined }}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-sm shrink-0"
+                      style={{
+                        background:
+                          group.kind === "customer"
+                            ? "#8b5cf6"
+                            : group.kind === "auto"
+                              ? "rgba(255,255,255,0.2)"
+                              : "#22c55e",
+                      }}
+                    />
+                    <p className="text-[10px] font-bold tracking-[0.14em] text-[#6b7280] truncate">
+                      {headerLabel}
+                    </p>
+                    <span className="text-[10px] text-[#4b5563] shrink-0 ml-auto tabular-nums">{groupCount}</span>
+                  </div>
+                )}
               <div
-                key={item.id}
                 draggable={movable && !reordering}
                 onDragStart={() => movable && setDragId(item.id)}
                 onDragEnd={() => setDragId(null)}
@@ -138,9 +247,9 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
                 }}
                 className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/[0.03] transition-colors"
                 style={{
-                  borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined,
-                  borderLeft: accent ? `3px solid ${accent}` : "3px solid transparent",
-                  background: accentBg,
+                  borderTop: showHeader ? undefined : "1px solid rgba(255,255,255,0.06)",
+                  borderLeft: stripe ? `3px solid ${stripe}` : "3px solid transparent",
+                  background: accentBg ?? (isAdminAdded ? "rgba(34,197,94,0.05)" : undefined),
                   opacity: dragId === item.id ? 0.4 : 1,
                   cursor: movable && !reordering ? "grab" : "default",
                 }}
@@ -159,7 +268,7 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
                     {item.songs.artist} ·{" "}
                     {movable ? (
                       isAdminAdded ? (
-                        "mekan ekledi"
+                        "sıraya eklendi"
                       ) : (
                         "otomatik"
                       )
@@ -231,6 +340,7 @@ export default function QueuePane({ playback, onAddSong }: { playback: Playback;
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" /></svg>
                 </button>
+              </div>
               </div>
             );
           })

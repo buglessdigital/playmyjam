@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { playNextFromQueue } from "@/lib/queue";
-import { fillQueueToTen } from "@/lib/queue-fill";
+import { fillQueue } from "@/lib/queue-fill";
 import { hasVenueSession } from "@/lib/venue-auth-cookie";
 import { isPlayerOnline } from "@/lib/player-status";
 
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
   // Yanıtı bloklamayan işler: auto-fill ve hiçbir şey çalmıyorsa kuyruğu başlatma.
   // now_playing güncellenince admin cihazındaki player Realtime ile videoyu yükler.
   after(async () => {
-    await fillQueueToTen(venue_id).catch(() => {});
+    await fillQueue(venue_id).catch(() => {});
     try {
       const { data: np } = await supabaseAdmin
         .from("now_playing")

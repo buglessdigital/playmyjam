@@ -21,8 +21,6 @@ export type Playlist = {
   name: string;
   // Çalma kuyruğundaki yer; null = sırada değil (0037)
   queue_position: number | null;
-  // Bir turunu bitirince kuyruktan düşer (0037)
-  play_once: boolean;
   // Sırada olmayan listelerin raydaki görünüm sırası
   sort_order: number;
   // Liste İÇİNDEKİ sıra yerine rastgele çalar (0032)
@@ -66,7 +64,12 @@ export function formatDur(ms: number) {
 export function useLibrary(
   venueDbId: string,
   initialListId: string = ALL,
-  playback?: { playingListId: string | null; stageTakeover: (videoId: string) => void }
+  playback?: {
+    playingListId: string | null;
+    pendingByList: Record<string, number>;
+    manualByList: Record<string, number>;
+    stageTakeover: (videoId: string) => void;
+  }
 ) {
   const supabase = useMemo(() => createClient(), []);
 
@@ -81,7 +84,9 @@ export function useLibrary(
   const [loading, setLoading] = useState(true);
 
   const [rotation, setRotation] = useState<Rotation | null>(null);
-  // playlist_id -> bu turda tüketilmiş şarkı sayısı (ilerleme göstergesi)
+  // playlist_id -> bu turda TÜKETİLMİŞ (kuyruğa yazılmış) şarkı sayısı. Ekranda
+  // gösterilen "çalındı" sayısı bu değil, bunun kuyrukta bekleyenler düşülmüş
+  // hali — bkz. aşağıdaki playedByList.
   const [consumed, setConsumed] = useState<Record<string, number>>({});
   const [reordering, setReordering] = useState(false);
   const [orderError, setOrderError] = useState("");
@@ -176,7 +181,7 @@ export function useLibrary(
     async (venueDbIdArg: string) => {
       const { data } = await supabase
         .from("playlists")
-        .select("id, name, queue_position, play_once, sort_order, shuffle, customer_visible")
+        .select("id, name, queue_position, sort_order, shuffle, customer_visible")
         .eq("venue_id", venueDbIdArg)
         .order("sort_order", { ascending: true });
       if (data) setPlaylists(data as Playlist[]);
@@ -353,8 +358,9 @@ export function useLibrary(
   // çalan liste odur.
   //
   // Rotasyon imleci bunu söyleyemez, yalnızca yedektir: imleç "bir sonraki dolum
-  // nereden yapılacak"tır ve kuyruk 10 şarkı ileriyi tuttuğu için listenin son
-  // şarkıları hâlâ sırada beklerken çoktan sıradaki listeye kaymış olur. Listenin
+  // nereden yapılacak"tır ve kuyruk listenin sonuna kadar dolu olduğu için
+  // listenin son şarkıları hâlâ sırada beklerken imleç sıradaki listeye kaymış
+  // olur. Listenin
   // ortasından bir şarkı çalındığında ("17. şarkıdan devam") bu fark hemen
   // görünüyordu: sıra hâlâ o listeden çalarken rozet sıradaki listeye geçiyordu.
   //
@@ -365,6 +371,18 @@ export function useLibrary(
     const pointed = queueLists.find((p) => p.id === rotation?.playlist_id);
     return playing ?? pointed ?? queueLists[0] ?? null;
   }, [queueLists, rotation, playback?.playingListId]);
+
+  // Ekrandaki "çalındı" sayısı: kuyruğa yazılmış (consumed) eksi hâlâ kuyrukta
+  // bekleyen. Kuyruk listenin sonuna kadar dolduğu için çıplak consumed listeyi
+  // daha ilk anda "40/40" gösterirdi.
+  const playedByList = useMemo(() => {
+    const pending = playback?.pendingByList ?? {};
+    const map: Record<string, number> = {};
+    for (const [id, n] of Object.entries(consumed)) {
+      map[id] = Math.max(0, n - (pending[id] ?? 0));
+    }
+    return map;
+  }, [consumed, playback?.pendingByList]);
 
   const selectedList = useMemo(
     () => playlists.find((p) => p.id === selectedId) ?? null,
@@ -435,27 +453,13 @@ export function useLibrary(
     [matchCountsByList]
   );
 
-  // Raydaki sıralama: önce çalma kuyruğu (çalacakları sırayla), sonra sırada
-  // olmayan listeler. Böylece "ne zaman çalacak" sorusunun cevabı yukarıdan
-  // aşağı okunur.
-  //
-  // Kuyruk döngüsel: sonuncu bitince başa dönülür. Bu yüzden ham queue_position
-  // sırası "sıradaki kim" sorusuna yanıt vermiyordu — çalan liste ortada kalıp
-  // altındakiler ondan önce çalmış gibi görünüyordu. Dizi imleçten itibaren
-  // döndürülür: en üstte çalan liste, altında çalacakları sırayla ötekiler.
+  // Raydaki sıralama: en üstte ÇALAN liste, altında ötekiler. Listelerin
+  // birbiri ardına dizildiği eski "playlist kuyruğu" kalktı — sıraya eklenen
+  // liste artık kuyruğa şarkı yazar (bkz. queuedByList), rayda sıra tutmaz.
   const queueRail = useMemo(() => {
     const at = currentList ? queueLists.findIndex((p) => p.id === currentList.id) : -1;
     return at > 0 ? [...queueLists.slice(at), ...queueLists.slice(0, at)] : queueLists;
   }, [queueLists, currentList]);
-
-  // Liste kaç tur sonra çalacak: çalan 0, sıradaki 1...
-  const turnByList = useMemo(() => {
-    const map: Record<string, number> = {};
-    queueRail.forEach((p, i) => {
-      map[p.id] = i;
-    });
-    return map;
-  }, [queueRail]);
 
   const railLists = useMemo(() => {
     const idle = playlists
@@ -590,24 +594,24 @@ export function useLibrary(
 
   // Listeyi çalma kuyruğuna alır ya da kuyruktan çıkarır. Kuyruğa eklemek çalanı
   // değiştirmez — liste sıranın sonuna girer, sırası gelince çalar.
+  // "Sıraya ekle" / "Sıradan çıkar" (Spotify mantığı): liste tek blok halinde
+  // ÇALAN ŞARKIDAN HEMEN SONRAYA girer, çalan liste kesilmez ve blok bitince
+  // kaldığı yerden devam eder. Ekranda gösterilen "sırada" durumu artık
+  // playlist satırından değil KUYRUKTAN okunur (bkz. playback.manualByList), o
+  // yüzden burada iyimser güncelleme yok — kuyruk Realtime ile hemen tazelenir.
   const setQueued = async (playlist: Playlist, next: boolean) => {
-    if ((playlist.queue_position !== null) === next) return;
-    const optimistic = next ? (queueLists.at(-1)?.queue_position ?? 0) + 1 : null;
-    setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, queue_position: optimistic } : p)));
-
     const res = await fetch("/api/admin/playlists", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ playlist_id: playlist.id, queued: next }),
     });
     if (!res.ok) {
-      setPlaylists((prev) =>
-        prev.map((p) => (p.id === playlist.id ? { ...p, queue_position: playlist.queue_position } : p))
-      );
-      return;
+      const data = await res.json().catch(() => ({}));
+      return { ok: false as const, error: (data.error as string) ?? "Sıraya eklenemedi" };
     }
-    // Kuyruk sırası ve imleç değişti — katalog değişmedi: yalnızca rotasyon okunur
-    refreshRotation();
+    // Sıradan çıkarma çalan listeyi de durdurabilir — rotasyon tazelenir
+    if (!next) refreshRotation();
+    return { ok: true as const };
   };
 
   // Play: liste baştan ve HEMEN çalar — ilk şarkısı sahneye çıkar, kuyruk
@@ -665,20 +669,6 @@ export function useLibrary(
     // Hiç dönmediyse sahnede müşteri şarkısı çalıyordur, liste sırasını bekler.
     if (typeof data.video_id === "string") playback?.stageTakeover(data.video_id);
     return { ok: true as const };
-  };
-
-  // Tek seferlik çalma: liste bir turunu bitirince kuyruktan düşer.
-  const setPlayOnce = async (playlist: Playlist, next: boolean) => {
-    if (playlist.play_once === next) return;
-    setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, play_once: next } : p)));
-    const res = await fetch("/api/admin/playlists", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ playlist_id: playlist.id, play_once: next }),
-    });
-    if (!res.ok) {
-      setPlaylists((prev) => prev.map((p) => (p.id === playlist.id ? { ...p, play_once: !next } : p)));
-    }
   };
 
   // Müşteriye aktiflik (0040): pasif listedeki şarkılar müşteri panelinde hiç
@@ -930,14 +920,16 @@ export function useLibrary(
     visibleSongs,
     railLists,
     queueLists,
-    turnByList,
     currentList,
     selectedList,
     selectedSource,
     sourceByList,
     coversByList,
     catalogCovers,
-    consumed,
+    consumed: playedByList,
+    // Liste başına ELLE sıraya eklenmiş, hâlâ bekleyen şarkı sayısı. Raydaki
+    // "sırada" durumu artık playlist satırından değil kuyruktan okunur.
+    queuedByList: playback?.manualByList ?? {},
     loading,
     viewId,
     // arama
@@ -966,7 +958,6 @@ export function useLibrary(
     addSongToPlaylist,
     setQueued,
     playNow,
-    setPlayOnce,
     setShuffle,
     setCustomerVisible,
     syncNow,

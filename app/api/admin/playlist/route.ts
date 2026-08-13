@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { parseSongInput } from "@/lib/validate";
 import { addSongToVenuePlaylist, assertVenuePlaylist } from "@/lib/playlist";
+import { AUTO_ADDED_BY, fillQueue } from "@/lib/queue-fill";
 
 export async function POST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
@@ -28,6 +29,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
   revalidateTag(`venue-songs-${session.venue_id}`, "max");
+  // Kuyruk listelerin sonuna kadar yazılı: yeni şarkı kendiliğinden görünmez,
+  // kuyruğun arkasına eklenmesi gerekir. Yanıttan SONRA — düğme beklemez.
+  after(fillQueue(session.venue_id).catch(() => {}));
   return NextResponse.json(result);
 }
 
@@ -107,6 +111,24 @@ export async function DELETE(req: NextRequest) {
       .eq("id", venueSongId)
       .eq("venue_id", session.venue_id);
   }
+
+  // Kuyruk artık saatler ilerisini tuttuğu için listeden çıkarılan şarkı
+  // kuyrukta öylece kalır ve yine çalardı: bekleyen OTOMATİK satırı düşürülür,
+  // boşalan yer bir sonraki dolumda kapanır. Müşterinin jetonla aldığı satıra
+  // ve sahnedeki şarkıya dokunulmaz.
+  after(
+    (async () => {
+      await supabaseAdmin
+        .from("queue")
+        .update({ status: "removed" })
+        .eq("venue_id", session.venue_id)
+        .eq("status", "queued")
+        .is("user_id", null)
+        .eq("added_by", AUTO_ADDED_BY)
+        .eq("song_id", venueSong.song_id);
+      await fillQueue(session.venue_id);
+    })().catch(() => {})
+  );
 
   revalidateTag(`venue-songs-${session.venue_id}`, "max");
   return NextResponse.json({ ok: true });

@@ -1,13 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { parseSongInput } from "@/lib/validate";
-import { ADMIN_ADDED_BY, AUTO_POSITION_BASE } from "@/lib/queue-fill";
+import {
+  AUTO_POSITION_BASE,
+  clearManualQueue,
+  enqueueManual,
+  fillQueue,
+  playlistSongsForQueue,
+} from "@/lib/queue-fill";
 
-// Adminin kuyruğa doğrudan eklediği şarkı, otomatik çalanlarla aynı sınıftadır:
-// user_id null (jeton harcanmaz, 30 dk kilidi doğurmaz, müşteri şarkılarının
-// arkasında çalar). Tek farkı added_by='admin' — otomatik dolum kendi eklediğini
-// buduyor, adminin bilerek eklediğine dokunmuyor (bkz. lib/queue-fill.ts).
+// "Sıraya ekle": şarkı ÇALAN ŞARKIDAN HEMEN SONRA çalar (Spotify'daki gibi).
+// Satır user_id null'dır — jeton harcanmaz, 30 dk kilidi doğurmaz — ve
+// müşterinin jetonla aldığı sıranın ARKASINA girer; çalan listenin otomatik
+// şarkılarının ise ÖNÜNE (bkz. lib/queue-fill.ts pozisyon bantları).
 export async function POST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
@@ -15,6 +21,29 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null);
+
+  // Bütün bir listeyi sıraya ekleme: liste sırasıyla (karıştırmalıysa rastgele)
+  // tek blok halinde girer, çalan liste kesilmeden beklemeye geçer.
+  const playlistId = typeof body?.playlist_id === "string" ? body.playlist_id : "";
+  if (playlistId) {
+    const { data: playlist } = await supabaseAdmin
+      .from("playlists")
+      .select("id")
+      .eq("id", playlistId)
+      .eq("venue_id", session.venue_id)
+      .maybeSingle();
+    if (!playlist) {
+      return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
+    }
+
+    const songIds = await playlistSongsForQueue(session.venue_id, playlistId);
+    if (songIds.length === 0) {
+      return NextResponse.json({ error: "Bu listede çalınabilir şarkı yok" }, { status: 409 });
+    }
+    const added = await enqueueManual(session.venue_id, songIds, playlistId);
+    return NextResponse.json({ ok: true, added });
+  }
+
   const parsed = parseSongInput(body);
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
@@ -49,49 +78,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Sahnedeki ya da sırada bekleyen şarkı ikinci kez eklenmez
-  const { data: existing } = await supabaseAdmin
-    .from("queue")
-    .select("status")
-    .eq("venue_id", session.venue_id)
-    .eq("song_id", songRow.id)
-    .in("status", ["queued", "playing"])
-    .limit(1)
-    .maybeSingle();
+  // Zaten sırada olması engel DEĞİL: mekan aynı şarkıyı bilerek tekrar sıraya
+  // alabilir, o zaman iki kez çalar. (Müşteri tarafındaki "zaten sırada" kuralı
+  // duruyor — bkz. request_song, 0005.)
 
-  if (existing) {
-    return NextResponse.json(
-      { error: existing.status === "playing" ? "Bu şarkı şu an çalıyor" : "Bu şarkı zaten sırada" },
-      { status: 409 }
-    );
-  }
-
-  // Otomatik bloğun sonuna eklenir; admin sonrasında sürükleyerek öne alabilir
-  const { data: lastAuto } = await supabaseAdmin
-    .from("queue")
-    .select("position")
-    .eq("venue_id", session.venue_id)
-    .eq("status", "queued")
-    .is("user_id", null)
-    .order("position", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const position = Math.max(lastAuto?.position ?? AUTO_POSITION_BASE, AUTO_POSITION_BASE) + 1;
-
-  const { error } = await supabaseAdmin.from("queue").insert({
-    venue_id: session.venue_id,
-    song_id: songRow.id,
-    user_id: null,
-    added_by: ADMIN_ADDED_BY,
-    tokens_spent: 0,
-    priority: false,
-    position,
-    status: "queued",
-  });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  // Elle sıra bloğunun sonuna: çalan şarkıdan sonra, çalan listenin önünde
+  const added = await enqueueManual(session.venue_id, [songRow.id], null);
+  if (added === 0) {
+    return NextResponse.json({ error: "Sıra dolu — önce sırayı temizleyin" }, { status: 409 });
   }
   return NextResponse.json({ ok: true, song_id: songRow.id });
 }
@@ -103,6 +97,17 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null);
+
+  // "Sırayı temizle": yalnızca elle sıraya eklenenler düşer. Çalan listenin
+  // şarkıları ve müşterinin jetonla aldığı sıra olduğu gibi kalır.
+  if (body?.clear === "manual") {
+    const playlistId = typeof body?.playlist_id === "string" ? body.playlist_id : undefined;
+    await clearManualQueue(session.venue_id, playlistId);
+    // Boşalan yeri çalan liste kapatsın — dolum (onlarca DB turu) yanıttan sonra.
+    after(fillQueue(session.venue_id).catch(() => {}));
+    return NextResponse.json({ ok: true });
+  }
+
   const queueId = typeof body?.queue_id === "string" ? body.queue_id : "";
   if (!queueId || body?.status !== "removed") {
     return NextResponse.json({ error: "Eksik veya geçersiz alan" }, { status: 400 });

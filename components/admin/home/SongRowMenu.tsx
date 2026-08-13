@@ -22,7 +22,7 @@ export default function SongRowMenu({
   lib: Library;
   playback: Playback;
 }) {
-  const { playlists, memberships, viewId, selectedList, toggleInList, removeSongFrom, addSongToPlaylist } = lib;
+  const { playlists, memberships, viewId, selectedList, currentList, toggleInList, removeSongFrom, addSongToPlaylist } = lib;
 
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -80,6 +80,8 @@ export default function SongRowMenu({
   };
 
   const memberOf = memberships[song.id] ?? [];
+  // Şarkının zaten kuyrukta olması engel değil: mekan bilerek tekrar sıraya
+  // alabilir. Rozet yalnızca bilgi verir.
   const inQueue = playback.queuedVideoIds.has(song.youtube_video_id);
   // Şarkının halihazırda üyesi OLMADIĞI listeler — "başka listeye ekle" için
   const addableLists = playlists.filter((p) => !memberOf.includes(p.id));
@@ -142,12 +144,13 @@ export default function SongRowMenu({
                     })
                   )
                 }
-                disabled={inQueue || busy !== null}
+                disabled={busy !== null}
                 className={itemClass}
                 style={{ color: "#f9a8d4" }}
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 6h11M3 12h11M3 18h7M18 9v9m0 0a2 2 0 1 1-2-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-                {inQueue ? "Zaten sırada" : busy === "queue" ? "Ekleniyor..." : "Sıraya ekle"}
+                {busy === "queue" ? "Ekleniyor..." : "Sıraya ekle"}
+                {inQueue && <span className="ml-auto text-[10px] text-[#6b7280]">zaten sırada</span>}
               </button>
 
               <button
@@ -200,8 +203,8 @@ export default function SongRowMenu({
                   >
                     <span
                       className="w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{ background: p.queue_position !== null ? "#22c55e" : "rgba(255,255,255,0.25)" }}
-                      title={p.queue_position !== null ? "Çalma sırasında" : "Sırada değil"}
+                      style={{ background: currentList?.id === p.id ? "#22c55e" : "rgba(255,255,255,0.25)" }}
+                      title={currentList?.id === p.id ? "Şu an çalan liste" : "Çalmıyor"}
                     />
                     <span className="truncate">{p.name}</span>
                     {busy === `add-${p.id}` && <span className="ml-auto text-[11px]">...</span>}

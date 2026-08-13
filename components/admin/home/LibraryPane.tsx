@@ -115,7 +115,7 @@ export default function LibraryPane({
     selectedSource,
     coversByList,
     catalogCovers,
-    turnByList,
+    queuedByList,
     currentList,
     consumed,
     countFor,
@@ -133,7 +133,6 @@ export default function LibraryPane({
     moveSong,
     setQueued,
     playNow,
-    setPlayOnce,
     setShuffle,
     setCustomerVisible,
     syncNow,
@@ -161,20 +160,18 @@ export default function LibraryPane({
     virtual
   );
 
-  const queued = selectedList ? selectedList.queue_position !== null : false;
   const isPlaying = !!selectedList && currentList?.id === selectedList.id;
-  // Kuyruk döngüsel: çalan listeden sonra sıradakiler, sonuncu bitince başa
-  // dönülür. "Sırada kaçıncı" çalan listeden itibaren sayılır — rayla aynı
-  // kaynaktan (turnByList) okunur ki iki yer birbirinden ayrışmasın.
-  const turnsAway = !selectedList || !queued || isPlaying ? 0 : turnByList[selectedList.id] ?? 0;
+  // "Sırada" artık listenin bir bayrağı değil, KUYRUKTAKİ gerçek satırlar: elle
+  // sıraya eklenmiş ve hâlâ bekleyen şarkı sayısı (rayla aynı kaynak).
+  const queuedSongs = selectedList ? queuedByList[selectedList.id] ?? 0 : 0;
 
   const statusLine = !selectedList
     ? "Mekanın tüm şarkıları — müşteriler hangi liste sırada olursa olsun bu havuzun tamamından seçebilir"
-    : !queued
-      ? "Sırada değil — şarkıları müşteri yine de seçebilir, otomatik çalmaz"
-      : isPlaying
-        ? `Şu an çalıyor — bu turda ${consumed[selectedList.id] ?? 0}/${countFor(selectedList.id)} şarkı çalındı`
-        : `Sırada — kendinden önceki ${turnsAway === 1 ? "liste" : `${turnsAway} liste`} bitince başlar`;
+    : isPlaying
+      ? `Şu an çalıyor — bu turda ${consumed[selectedList.id] ?? 0}/${countFor(selectedList.id)} şarkı çalındı`
+      : queuedSongs > 0
+        ? `Sırada ${queuedSongs} şarkı — çalan şarkıdan sonra bu liste çalacak, bitince eski liste kaldığı yerden devam eder`
+        : "Sırada değil — şarkıları müşteri yine de seçebilir, otomatik çalmaz";
 
   return (
     <div className="flex flex-col min-h-0 h-full">
@@ -273,20 +270,27 @@ export default function LibraryPane({
                   )}
                 </button>
 
+                {/* Sıraya ekle: liste tek blok halinde çalan şarkıdan HEMEN
+                    SONRAYA girer (Spotify gibi). Çalan liste kesilmez, blok
+                    bitince kaldığı yerden devam eder. Zaten sıradaysa düğme
+                    "çıkar"a döner. */}
                 <button
-                  onClick={() => setQueued(selectedList, !queued)}
+                  onClick={async () => {
+                    const res = await setQueued(selectedList, queuedSongs === 0);
+                    if (!res.ok) setPlayNote(res.error);
+                  }}
                   className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
                   style={{
-                    background: queued ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.08)",
-                    color: queued ? "#22c55e" : "#9ca3af",
+                    background: queuedSongs > 0 ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.08)",
+                    color: queuedSongs > 0 ? "#22c55e" : "#9ca3af",
                   }}
                   title={
-                    queued
-                      ? "Çalma sırasında — sırası gelince kendiliğinden çalar. Çıkarmak için tıklayın"
-                      : "Sırada değil — müşteri yine seçebilir, otomatik çalmaz. Sıraya almak için tıklayın"
+                    queuedSongs > 0
+                      ? `Sırada ${queuedSongs} şarkısı var — sıradan çıkarmak için tıklayın`
+                      : "Sıraya ekle — çalan şarkı bitince bu liste çalar, sonra eski liste kaldığı yerden devam eder"
                   }
                 >
-                  {queued ? "Sırada" : "Sıraya Ekle"}
+                  {queuedSongs > 0 ? "Sıradan çıkar" : "Sıraya Ekle"}
                 </button>
 
                 {/* Müşteri aktifliği (0040): kapalıyken listenin şarkıları müşteri
@@ -309,32 +313,9 @@ export default function LibraryPane({
                   {selectedList.customer_visible ? "Müşteriye açık" : "Müşteriye kapalı"}
                 </button>
 
-                {/* Tek seferlik: liste bir turunu bitirince kuyruktan düşer.
-                    Kapalıyken (varsayılan) kuyruk sonsuza dek döner. */}
-                <button
-                  onClick={() => setPlayOnce(selectedList, !selectedList.play_once)}
-                  aria-pressed={selectedList.play_once}
-                  className="relative w-8 h-8 flex items-center justify-center rounded-lg transition-all"
-                  style={{ background: selectedList.play_once ? "rgba(233,30,140,0.18)" : "rgba(255,255,255,0.08)" }}
-                  title={
-                    selectedList.play_once
-                      ? "Tek seferlik — liste bir kez baştan sona çalınca sıradan düşer"
-                      : "Tekrar açık — liste bitince sıra döner, bu liste tekrar çalar"
-                  }
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M17 2l4 4-4 4M3 11V9a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"
-                      stroke={selectedList.play_once ? "#f9a8d4" : "#9ca3af"}
-                      strokeWidth="1.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    {selectedList.play_once && (
-                      <path d="M11 9.5h1.5V15" stroke="#f9a8d4" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
-                    )}
-                  </svg>
-                </button>
+                {/* "Tek seferlik" düğmesi kalktı: artık kural her listede aynı —
+                    turunu bitiren liste kuyruktan düşer, kuyrukta kalan son liste
+                    ise baştan çalmaya devam eder. */}
                 {/* Liste İÇİNDEKİ şarkıların sırası: kapalıyken aşağıdaki sıra,
                     açıkken rastgele. Tek düğme — açıkken renklenir, altındaki
                     nokta uzaktan bakınca da durumu belli eder. */}

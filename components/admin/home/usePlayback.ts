@@ -62,6 +62,11 @@ const SEEK_GUARD_MS = 2_000;
 // eklenen şarkılardır (user_id null). Sunucu tarafı da aynı kuralı uygular.
 export const isMovable = (item: QueueItem) => item.user_id === null;
 
+// Elle sıraya eklenen satır ("Sıraya ekle"): çalan şarkıdan hemen sonra çalar ve
+// "Sırayı temizle" yalnızca bunları siler. Otomatik dolumdan gelen satırlar
+// added_by='auto'dur, müşteri satırlarında kullanıcı adı yazar.
+export const isManualRow = (item: QueueItem) => item.user_id === null && item.added_by === "admin";
+
 export function formatTime(ms: number) {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -154,6 +159,7 @@ export function usePlayback(venueDbId: string) {
   useEffect(() => {
     if (!venueDbId) return;
     let cancelled = false;
+    let queueReloadTimer: ReturnType<typeof setTimeout> | null = null;
     const channels: ReturnType<typeof supabase.channel>[] = [];
 
     // Şu an çalan: YouTube'a sormak yerine now_playing tablosu Realtime ile izlenir
@@ -204,8 +210,15 @@ export function usePlayback(venueDbId: string) {
       }
     };
 
+    // Kuyruk artık liste sonuna kadar uzuyor: tek dolum yüzlerce satır yazıyor ve
+    // Realtime her satır için ayrı olay yolluyor. Ham haliyle bu, yüzlerce tam
+    // kuyruk sorgusu demekti — olaylar 250 ms'lik pencerede birleştirilir.
     const reloadQueue = () => {
-      if (!cancelled) fetchQueue(venueDbId);
+      if (cancelled) return;
+      if (queueReloadTimer) clearTimeout(queueReloadTimer);
+      queueReloadTimer = setTimeout(() => {
+        if (!cancelled) fetchQueue(venueDbId);
+      }, 250);
     };
 
     fetchNowPlaying();
@@ -291,6 +304,7 @@ export function usePlayback(venueDbId: string) {
       cancelled = true;
       busRef.current = null;
       supabase.removeChannel(bus);
+      if (queueReloadTimer) clearTimeout(queueReloadTimer);
       clearInterval(poll);
       document.removeEventListener("visibilitychange", onWake);
       window.removeEventListener("online", onWake);
@@ -630,12 +644,49 @@ export function usePlayback(venueDbId: string) {
   // Fiilen çalınan liste: sahnedeki satırın kaynağı, o yoksa (müşteri şarkısı
   // çalıyorsa) kuyrukta bekleyen ilk playlist satırının kaynağı. Rotasyon imleci
   // bunun yerine geçemez — imleç "bir sonraki dolum nereden yapılacak"tır ve
-  // kuyruk 10 şarkı ileriyi tuttuğu için çalan listenin şarkıları hâlâ sırada
-  // beklerken çoktan sıradaki listeye kaymış olabilir.
+  // kuyruk listenin sonuna kadar dolu olduğu için çalan listenin şarkıları hâlâ
+  // sırada beklerken imleç çoktan sıradaki listeye kaymış olabilir.
   const playingListId = useMemo(() => {
     if (playingRow?.source_playlist_id) return playingRow.source_playlist_id;
     return queue.find((q) => q.source_playlist_id)?.source_playlist_id ?? null;
   }, [playingRow, queue]);
+
+  // Liste başına kuyrukta BEKLEYEN şarkı sayısı. Kuyruk artık listenin sonuna
+  // kadar dolduğu için "bu listeden kaç şarkı çaldı" ancak bununla bulunur:
+  // tüketilen (kuyruğa yazılan) eksi hâlâ bekleyen (bkz. useLibrary.consumed).
+  const pendingByList = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of queue) {
+      if (!item.source_playlist_id || item.added_by !== "auto") continue;
+      map[item.source_playlist_id] = (map[item.source_playlist_id] ?? 0) + 1;
+    }
+    return map;
+  }, [queue]);
+
+  // Elle sıraya eklenmiş satırlar: liste başına sayı (rayda "12 şarkı sırada")
+  // ve toplam (kuyruktaki "Sırayı temizle" düğmesi).
+  const manualByList = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of queue) {
+      if (!isManualRow(item) || !item.source_playlist_id) continue;
+      map[item.source_playlist_id] = (map[item.source_playlist_id] ?? 0) + 1;
+    }
+    return map;
+  }, [queue]);
+
+  const manualCount = useMemo(() => queue.filter(isManualRow).length, [queue]);
+
+  // "Sırayı temizle": yalnızca elle eklenenler düşer. Çalan listenin şarkıları ve
+  // müşterinin jetonla aldığı sıra olduğu gibi kalır.
+  const clearManualQueue = async () => {
+    setQueue((prev) => prev.filter((q) => !isManualRow(q)));
+    const res = await fetch("/api/admin/queue", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clear: "manual" }),
+    });
+    if (!res.ok && venueDbId) await fetchQueue(venueDbId);
+  };
 
   const queuedVideoIds = useMemo(
     () => new Set(queue.map((q) => q.songs?.youtube_video_id).filter(Boolean)),
@@ -654,6 +705,10 @@ export function usePlayback(venueDbId: string) {
     queue,
     queuedVideoIds,
     playingListId,
+    pendingByList,
+    manualByList,
+    manualCount,
+    clearManualQueue,
     nowPlaying,
     progress,
     progressPct,

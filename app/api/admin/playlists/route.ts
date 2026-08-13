@@ -4,11 +4,13 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import {
   clearAutoQueue,
-  fillQueueToTen,
+  clearManualQueue,
+  enqueueManual,
+  fillQueue,
   jumpPlaylistCursorTo,
-  nextQueuePosition,
   pickPlaylistOpener,
   playPlaylistNow,
+  playlistSongsForQueue,
   resetAutoQueue,
 } from "@/lib/queue-fill";
 import { playSongNow } from "@/lib/queue";
@@ -53,7 +55,7 @@ export async function POST(req: NextRequest) {
       is_active: false,
       sort_order: (last?.sort_order ?? -1) + 1,
     })
-    .select("id, name, sort_order, shuffle, queue_position, play_once, customer_visible")
+    .select("id, name, sort_order, shuffle, queue_position, customer_visible")
     .single();
 
   if (error || !data) {
@@ -107,6 +109,12 @@ export async function PATCH(req: NextRequest) {
     if (failed?.error) {
       return NextResponse.json({ error: failed.error.message }, { status: 500 });
     }
+
+    // Kuyruk artık listelerin sonuna kadar YAZILI olduğu için sıra değişikliği
+    // tek başına yetmez: bekleyen otomatik satırlar yeni sıraya göre yeniden
+    // kurulur. Sahnedeki şarkıya, müşteri isteklerine ve adminin elle
+    // eklediklerine dokunulmaz; çalınmış şarkılar çalınmış kalır.
+    after(resetAutoQueue(session.venue_id).catch(() => {}));
     return NextResponse.json({ ok: true });
   }
 
@@ -233,7 +241,6 @@ export async function PATCH(req: NextRequest) {
   const playlistId = typeof body?.playlist_id === "string" ? body.playlist_id : "";
   const hasName = body?.name !== undefined;
   const hasQueued = typeof body?.queued === "boolean";
-  const hasPlayOnce = typeof body?.play_once === "boolean";
   const isPlay = body?.play === true;
   const hasShuffle = typeof body?.shuffle === "boolean";
   // Müşteriye aktiflik (0040): yalnızca müşterinin görüp çaldırabileceğini
@@ -241,7 +248,7 @@ export async function PATCH(req: NextRequest) {
   const hasCustomerVisible = typeof body?.customer_visible === "boolean";
   if (
     !playlistId ||
-    (!hasName && !hasQueued && !hasPlayOnce && !isPlay && !hasShuffle && !hasCustomerVisible)
+    (!hasName && !hasQueued && !isPlay && !hasShuffle && !hasCustomerVisible)
   ) {
     return NextResponse.json({ error: "Eksik alan" }, { status: 400 });
   }
@@ -327,7 +334,7 @@ export async function PATCH(req: NextRequest) {
       await playPlaylistNow(session.venue_id, playlistId, { refillQueue: false });
       await clearAutoQueue(session.venue_id);
       if (openerReachedStage) await jumpPlaylistCursorTo(session.venue_id, playlistId, opener);
-      await fillQueueToTen(session.venue_id);
+      await fillQueue(session.venue_id);
     };
 
     // Sahneyi müşteri şarkısı devralıyor: sahnedeki jetonsuz şarkı kapanır,
@@ -364,38 +371,49 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true, video_id: played.ok ? played.video_id : undefined });
   }
 
-  // Kuyruğa alma / kuyruktan çıkarma. Sıraya eklemek çalanı değiştirmez: liste
-  // kuyruğun sonuna girer ve sırası gelince çalar.
+  // "Sıraya ekle" / "Sıradan çıkar" (Spotify mantığı): liste tek blok halinde
+  // ÇALAN ŞARKIDAN HEMEN SONRAYA girer. Çalan liste kesilmez, sadece bekler ve
+  // blok bitince kaldığı yerden devam eder — rotasyona (queue_position)
+  // dokunulmaz, listenin ilerlemesi tüketilmiş sayılmaz.
   if (hasQueued) {
-    const position = body.queued ? await nextQueuePosition(session.venue_id) : null;
-
-    const { data, error } = await supabaseAdmin
+    const { data: playlist } = await supabaseAdmin
       .from("playlists")
-      .update({ queue_position: position })
+      .select("id, queue_position")
       .eq("id", playlistId)
       .eq("venue_id", session.venue_id)
-      .select("id")
       .maybeSingle();
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    if (!data) {
+    if (!playlist) {
       return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
     }
 
-    // Kuyruktan çıkarmada bekleyen otomatik şarkılar tazelenir: o listenin
-    // sıradaki şarkıları düşer, kuyruk kalan listelerden (ya da katalogdan) dolar.
-    // Kuyruğa eklemede çalan hiçbir şey değişmez — TEK istisna kuyruğun boş
-    // olduğu hal: o ana kadar katalogdan rastgele çalınıyordu, artık liste var.
-    // Yanıttan SONRA: düğme dolumu beklemez.
-    if (!body.queued || position === 1) {
+    if (body.queued) {
+      const songIds = await playlistSongsForQueue(session.venue_id, playlistId);
+      if (songIds.length === 0) {
+        return NextResponse.json({ error: "Bu listede çalınabilir şarkı yok" }, { status: 409 });
+      }
+      const added = await enqueueManual(session.venue_id, songIds, playlistId);
+      return NextResponse.json({ ok: true, added });
+    }
+
+    // Sıradan çıkarma: bu listeden elle eklenmiş satırlar düşer. Liste aynı
+    // zamanda ÇALAN liste ise (queue_position dolu) otomatik çalması da durur —
+    // "bu listeyi tamamen sıradan çıkar" beklentisi budur.
+    await clearManualQueue(session.venue_id, playlistId);
+    if (playlist.queue_position !== null) {
+      await supabaseAdmin
+        .from("playlists")
+        .update({ queue_position: null })
+        .eq("id", playlistId)
+        .eq("venue_id", session.venue_id);
       after(resetAutoQueue(session.venue_id).catch(() => {}));
+    } else {
+      after(fillQueue(session.venue_id).catch(() => {}));
     }
     return NextResponse.json({ ok: true });
   }
 
-  const patch: { name?: string; play_once?: boolean; shuffle?: boolean; customer_visible?: boolean } = {};
+  const patch: { name?: string; shuffle?: boolean; customer_visible?: boolean } = {};
   if (hasName) {
     const name = parseName(body.name);
     if (!name) {
@@ -403,7 +421,6 @@ export async function PATCH(req: NextRequest) {
     }
     patch.name = name;
   }
-  if (hasPlayOnce) patch.play_once = body.play_once;
   if (hasShuffle) patch.shuffle = body.shuffle;
   if (hasCustomerVisible) patch.customer_visible = body.customer_visible;
 
@@ -432,8 +449,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   // Liste içi sıra düzeni değişti: bekleyen otomatik şarkılar yeni düzene göre
-  // yeniden seçilsin (tüketim de geri alınır, bkz. resetAutoQueue). play_once
-  // yalnızca liste bitince devreye girer, kuyruğu şimdi tazelemeye gerek yok.
+  // yeniden seçilsin (tüketim de geri alınır, bkz. resetAutoQueue).
   if (hasShuffle) {
     after(resetAutoQueue(session.venue_id).catch(() => {}));
   }

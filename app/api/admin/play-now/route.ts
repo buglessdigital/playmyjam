@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { playSongNow } from "@/lib/queue";
-import { clearAutoQueue, fillQueueToTen, jumpPlaylistCursorTo } from "@/lib/queue-fill";
+import { clearAutoQueue, fillQueue, jumpPlaylistCursorTo } from "@/lib/queue-fill";
 
 // Panelden "şimdi çal": sahnedeki şarkı yarıda kesilir, seçilen şarkı başlar.
 //
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
         await clearAutoQueue(session.venue_id);
         await jumpPlaylistCursorTo(session.venue_id, targetList, playedSongId);
       }
-      await fillQueueToTen(session.venue_id);
+      await fillQueue(session.venue_id);
     })().catch(() => {})
   );
 

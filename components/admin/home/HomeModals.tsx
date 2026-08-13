@@ -886,11 +886,11 @@ function SearchModal({
               </div>
               <button
                 onClick={() => add(track)}
-                disabled={already || addingId === track.youtube_video_id || (!toQueue && !targetId)}
+                disabled={addingId === track.youtube_video_id || (!toQueue && !targetId)}
                 className="px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 disabled:opacity-40"
                 style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}
               >
-                {already ? "Sırada" : addingId === track.youtube_video_id ? "..." : "Ekle"}
+                {addingId === track.youtube_video_id ? "..." : already ? "Yine ekle" : "Ekle"}
               </button>
             </div>
           );

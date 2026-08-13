@@ -24,7 +24,8 @@ export default function PlaylistRowMenu({
   orderable: boolean;
   onRename: () => void;
 }) {
-  const { railLists, moveListTo, setQueued, playNow, deleteList, reordering, setSelectedId } = lib;
+  const { railLists, moveListTo, setQueued, queuedByList, currentList, playNow, deleteList, reordering, setSelectedId } = lib;
+  const [note, setNote] = useState("");
 
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -67,12 +68,14 @@ export default function PlaylistRowMenu({
   // aramayla süzülmüş görünüme değil, gerçek sıraya göre çalışır. Taşıma listenin
   // kendi grubu içinde olur: kuyruktakiler çalma sırasını, sıradışılar yalnızca
   // raydaki görünüm sırasını değiştirir.
+  // "Sırada" artık listenin bayrağı değil, kuyruktaki gerçek satırlar: elle
+  // sıraya eklenmiş ve hâlâ bekleyen şarkı sayısı.
+  const queuedSongs = queuedByList[playlist.id] ?? 0;
   const queued = playlist.queue_position !== null;
   const ordered = railLists.filter((p) => (p.queue_position !== null) === queued);
   const index = ordered.findIndex((p) => p.id === playlist.id);
-  // Kuyrukta ilk sıra çalan listenindir ve sabittir: ne o taşınır ne de üstüne
-  // bir liste geçebilir. Sıradışı listelerde böyle bir çıpa yok.
-  const pinned = queued && index === 0;
+  // Çalan liste rayda en üstte sabittir: ne taşınır ne de üstüne bir liste geçer.
+  const pinned = currentList?.id === playlist.id;
   const top = queued ? 1 : 0;
   const first = index <= top;
   const last = index === ordered.length - 1;
@@ -120,8 +123,8 @@ export default function PlaylistRowMenu({
               <p className="text-[#6b7280] text-[11px]">
                 {pinned
                   ? "Şu an çalıyor"
-                  : queued
-                    ? `Çalma sırası: ${index}/${ordered.length - 1}`
+                  : queuedSongs > 0
+                    ? `Sırada ${queuedSongs} şarkı`
                     : "Sırada değil"}
               </p>
             </div>
@@ -139,23 +142,37 @@ export default function PlaylistRowMenu({
                 Şimdi çal
               </button>
 
+              {/* Sıraya ekle: liste tek blok halinde çalan şarkıdan HEMEN
+                  SONRAYA girer. Çalan liste kesilmez, blok bitince kaldığı
+                  yerden devam eder (bkz. lib/queue-fill.ts elle sıra). */}
               <button
-                onClick={() => {
-                  void setQueued(playlist, !queued);
+                onClick={async () => {
+                  const wasQueued = queuedSongs > 0 || queued;
+                  const res = await setQueued(playlist, !wasQueued);
+                  if (!res.ok) {
+                    setNote(res.error);
+                    return;
+                  }
                   setOpen(false);
                 }}
                 className={itemClass}
-                style={{ color: queued ? "#9ca3af" : "#e5e7eb" }}
+                style={{ color: queuedSongs > 0 ? "#9ca3af" : "#e5e7eb" }}
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                  {queued ? (
+                  {queuedSongs > 0 ? (
                     <path d="M4 6h11M4 12h11M4 18h7M17 9l6 6M23 9l-6 6" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
                   ) : (
                     <path d="M4 6h11M4 12h11M4 18h7M20 10v8m-4-4h8" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
                   )}
                 </svg>
-                {queued ? "Sıradan çıkar" : "Sıraya ekle"}
+                {queuedSongs > 0 ? "Sıradan çıkar" : "Sıraya ekle"}
               </button>
+
+              {note && (
+                <p className="px-3 py-2 text-[11px]" style={{ color: "#f87171" }}>
+                  {note}
+                </p>
+              )}
 
               {/* Müşteri aktifliği (0040) menüde değil, satırın sağındaki göz
                   düğmesinde — bkz. PlaylistRail. */}

@@ -4,7 +4,7 @@ import {
   AUTO_ADDED_BY,
   AUTO_POSITION_BASE,
   clearAutoQueue,
-  fillQueueToTen,
+  fillQueue,
   jumpPlaylistCursorTo,
 } from "@/lib/queue-fill";
 import { sendPushToUser } from "@/lib/push";
@@ -57,7 +57,7 @@ export async function playNextFromQueue(
     // Sıra boş yakalandıysa dolumu bekleyip bir kez daha dene — mekan listesinde
     // şarkı olduğu sürece "kuyruk boş" dönmemeli, çalma hiç durmamalı
     if (retryAfterFill) {
-      await fillQueueToTen(venueId).catch(() => {});
+      await fillQueue(venueId).catch(() => {});
       return playNextFromQueue(venueId, false, skips);
     }
     await supabaseAdmin
@@ -68,7 +68,7 @@ export async function playNextFromQueue(
   }
 
   // Replenish queue after consuming a song — fire-and-forget
-  fillQueueToTen(venueId).catch(() => {});
+  fillQueue(venueId).catch(() => {});
 
   type SongInfo = {
     youtube_video_id: string;
@@ -322,7 +322,7 @@ export async function playSongNow(
 
   // Boşalan yer (ve playlist atlamasında tamamen boşaltılan otomatik blok)
   // doldurulur: imleç yeni yerinde olduğu için liste kaldığı noktadan devam eder.
-  if (!options?.deferQueueWork) await fillQueueToTen(venueId).catch(() => {});
+  if (!options?.deferQueueWork) await fillQueue(venueId).catch(() => {});
 
   notifySongOwner(venueId, rowUserId, song);
 
@@ -445,7 +445,7 @@ export async function syncPlayingVideo(
   }
 
   await supabaseAdmin.from("now_playing").update(npPatch).eq("venue_id", venueId);
-  fillQueueToTen(venueId).catch(() => {});
+  fillQueue(venueId).catch(() => {});
   return { ok: true, matched: !!row };
 }
 

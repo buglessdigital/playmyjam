@@ -26,8 +26,10 @@ type QueueItem = {
 };
 
 const QUEUE_SELECT = "id, priority, songs(title, artist, album_cover_url, duration_ms)";
-// Müşteri kuyruk ekranıyla aynı: sıradaki 10 şarkı
-const QUEUE_LIMIT = 10;
+// Kuyruk artık listeler bitip başa saracağı noktaya kadar dolu (bkz.
+// lib/queue-fill.ts QUEUE_CAP): ekran da tamamını gösterir, kesip "10 şarkı"
+// demez. Liste kaydırılabilir; sayı başlıktaki rozette yazar.
+const QUEUE_LIMIT = 500;
 
 function formatTime(ms: number) {
   const s = Math.floor(ms / 1000);
@@ -68,6 +70,7 @@ function PlayerPageContent({ params }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    let queueReloadTimer: ReturnType<typeof setTimeout> | null = null;
     const channels: ReturnType<typeof supabase.channel>[] = [];
 
     const load = async () => {
@@ -129,7 +132,12 @@ function PlayerPageContent({ params }: Props) {
           .subscribe(),
         supabase
           .channel(`player-page-queue:${venue.id}`)
-          .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venue.id}` }, fetchQueue)
+          // Tek dolum yüzlerce satır yazıyor: olaylar 250 ms'de birleştirilir,
+          // yoksa her satır için ayrı bir tam kuyruk sorgusu giderdi.
+          .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venue.id}` }, () => {
+            if (queueReloadTimer) clearTimeout(queueReloadTimer);
+            queueReloadTimer = setTimeout(fetchQueue, 250);
+          })
           .subscribe()
       );
     };
@@ -137,6 +145,7 @@ function PlayerPageContent({ params }: Props) {
 
     return () => {
       cancelled = true;
+      if (queueReloadTimer) clearTimeout(queueReloadTimer);
       channels.forEach((c) => supabase.removeChannel(c));
     };
   }, [venueId, supabase]);

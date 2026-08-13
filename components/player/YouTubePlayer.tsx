@@ -2422,7 +2422,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   // sıradaki artık başka bir şarkıdır; eskisini tamponda tutmak kesintisiz
   // geçiş avantajını boşa harcardı. Burada yalnızca işaretleriz — asıl peek'i
   // playbackTick yapar ve preloadNext'teki 10 sn'lik kapı, otomatik dolumun
-  // tek seferde 10 satır eklediği durumda bile istek seline izin vermez.
+  // tek seferde yüzlerce satır eklediği durumda bile istek seline izin vermez.
   useEffect(() => {
     if (!started || blocked) return;
     const channel = supabase

@@ -629,25 +629,23 @@ export function useLibrary(
     const previousRotation = rotation;
     const previousConsumed = consumed;
 
-    const playing = queueLists.find((p) => p.id === rotation?.playlist_id) ?? queueLists[0] ?? null;
-    const dropId = playing && playing.id !== playlist.id ? playing.id : null;
-    const remaining = queueLists.filter((p) => p.id !== dropId);
-    if (!remaining.some((p) => p.id === playlist.id)) remaining.push(playlist);
-    const positionById = new Map(remaining.map((p, i) => [p.id, i + 1]));
+    // Çalan liste TEKTİR: bu liste devralır, o ana kadar çalan(lar) rotasyondan
+    // çıkar. Sunucudaki makeSolePlayingPlaylist ile birebir aynı kural.
+    const dropped = queueLists.filter((p) => p.id !== playlist.id).map((p) => p.id);
 
     setPlaylists((prev) =>
       prev.map((p) =>
-        p.id === dropId
-          ? { ...p, queue_position: null }
-          : positionById.has(p.id)
-            ? { ...p, queue_position: positionById.get(p.id)! }
+        p.id === playlist.id
+          ? { ...p, queue_position: 1 }
+          : p.queue_position !== null
+            ? { ...p, queue_position: null }
             : p
       )
     );
     setRotation({ playlist_id: playlist.id, cycle: rotation?.cycle ?? 1 });
     setConsumed((prev) => {
       const next = { ...prev, [playlist.id]: 0 };
-      if (dropId) delete next[dropId];
+      for (const id of dropped) delete next[id];
       return next;
     });
 

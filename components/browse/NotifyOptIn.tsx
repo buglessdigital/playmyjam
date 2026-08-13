@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   CUSTOMER_PUSH_ENDPOINT,
   getPermission,
   isPushSupported,
   subscribeToPush,
 } from "@/lib/notifications";
+import {
+  installPromptReady,
+  runInstallPrompt,
+  subscribeInstallPrompt,
+} from "@/lib/install-prompt";
 import { useT } from "@/lib/i18n";
 
 // Talep gönderildikten sonraki isteğe bağlı adım: onay bildirimi için izin.
@@ -24,11 +29,6 @@ import { useT } from "@/lib/i18n";
 // düğme yine görünür ve tek dokunuşla kayıt tamamlanır.
 
 type PushState = "checking" | "idle" | "on" | "hidden" | "ios" | "denied" | "failed";
-
-type InstallPrompt = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
 
 function isStandalone(): boolean {
   return (
@@ -73,8 +73,10 @@ export default function NotifyOptIn() {
   // Kurulum aşaması: cihazda kurulu değilse önce bu gösterilir
   const [homeScreen, setHomeScreen] = useState(false);
   const [installed, setInstalled] = useState(true);
-  const [prompt, setPrompt] = useState<InstallPrompt | null>(null);
   const [skippedInstall, setSkippedInstall] = useState(false);
+  // Kurulum istemi sayfa açılışında yakalanıp saklanır (lib/install-prompt):
+  // bu kart talep gönderildikten SONRA doğduğu için olayı kendisi dinleyemez.
+  const prompt = useSyncExternalStore(subscribeInstallPrompt, installPromptReady, () => false);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,37 +106,22 @@ export default function NotifyOptIn() {
       if (!cancelled) setState(ok ? "on" : "idle");
     })();
 
-    const onPrompt = (event: Event) => {
-      event.preventDefault();
-      setPrompt(event as InstallPrompt);
-    };
-    const onInstalled = () => {
-      setPrompt(null);
-      setInstalled(true);
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
+    const onInstalled = () => setInstalled(true);
     window.addEventListener("appinstalled", onInstalled);
 
     return () => {
       cancelled = true;
-      window.removeEventListener("beforeinstallprompt", onPrompt);
       window.removeEventListener("appinstalled", onInstalled);
     };
   }, []);
 
   const install = async () => {
-    if (!prompt) return;
     setBusy(true);
-    try {
-      await prompt.prompt();
-      await prompt.userChoice;
-    } finally {
-      // Kullanılan istem tekrar açılamaz; kurulum kabul edildiyse appinstalled
-      // olayı aşamayı ilerletir, reddedildiyse bildirim adımına geçilir.
-      setPrompt(null);
-      setSkippedInstall(true);
-      setBusy(false);
-    }
+    const outcome = await runInstallPrompt();
+    setBusy(false);
+    // Kurulum kabul edildiyse appinstalled olayı aşamayı ilerletir; reddedildiyse
+    // ısrar etmeden bildirim adımına geçilir.
+    if (outcome !== "accepted") setSkippedInstall(true);
   };
 
   const enable = async () => {

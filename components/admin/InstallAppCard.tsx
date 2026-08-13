@@ -1,20 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
+import {
+  installPromptReady,
+  runInstallPrompt,
+  subscribeInstallPrompt,
+} from "@/lib/install-prompt";
 
 // Paneli cihaza uygulama olarak kurdurur. Kurulum mekana özel manifest'i
 // kullandığı için (app/admin/[venueId]/manifest.webmanifest) ikon adminin kendi
 // mekanının adı/logosuyla iner ve doğrudan kendi paneline açılır.
 //
 // Tarayıcı farkları:
-// - Chrome/Edge (Android + masaüstü): beforeinstallprompt yakalanır, tek tık.
+// - Chrome/Edge (Android + masaüstü): kurulum istemi yakalanır, tek tık.
 // - iOS Safari: kurulum API'si YOK, elle "Paylaş → Ana Ekrana Ekle" gerekir.
 // - Firefox/masaüstü Safari: kurulum yok, yönerge gösterilir.
-
-type Prompt = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
 
 type Env = "checking" | "installed" | "ios" | "manual";
 
@@ -51,42 +51,19 @@ function readEnv(): Env {
 
 export default function InstallAppCard() {
   const env = useSyncExternalStore(subscribeEnv, readEnv, () => "checking" as Env);
-  const [prompt, setPrompt] = useState<Prompt | null>(null);
+  // Kurulum istemi sayfa açılışında yakalanıp saklanır (lib/install-prompt):
+  // bu kart Ayarlar'a geçildiğinde doğduğu için olayı kendisi dinleyemez.
+  const promptReady = useSyncExternalStore(subscribeInstallPrompt, installPromptReady, () => false);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    // beforeinstallprompt sayfa yüklendikten kısa süre sonra gelir; o gelene
-    // kadar elle kurulum yönergesi gösterilir, gelince düğmeye dönüşür.
-    const onPrompt = (event: Event) => {
-      event.preventDefault();
-      setPrompt(event as Prompt);
-    };
-    const onInstalled = () => setPrompt(null);
-
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
+  const install = useCallback(async () => {
+    setBusy(true);
+    await runInstallPrompt();
+    setBusy(false);
   }, []);
 
-  const install = useCallback(async () => {
-    if (!prompt) return;
-    setBusy(true);
-    try {
-      await prompt.prompt();
-      await prompt.userChoice;
-    } finally {
-      // Kullanılan istem tekrar açılamaz; kabul edildiyse "kurulu" durumuna
-      // appinstalled olayı geçirir, reddedildiyse elle kurulum yönergesi kalır.
-      setPrompt(null);
-      setBusy(false);
-    }
-  }, [prompt]);
-
   if (env === "checking") return null;
-  const state = env !== "installed" && prompt ? "ready" : env;
+  const state = env !== "installed" && promptReady ? "ready" : env;
 
   return (
     <div

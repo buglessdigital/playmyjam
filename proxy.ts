@@ -78,6 +78,13 @@ export async function proxy(req: NextRequest) {
       return NextResponse.next();
     }
 
+    // PWA kurulum varlıkları oturum arkasında olamaz: tarayıcı manifest'i
+    // çerezsiz (credentials: omit) ister, korunsaydı login'e düşer ve kurulum
+    // hiç açılmazdı. İçerikleri zaten herkese açık (mekan adı + logosu).
+    if (subPath === "/manifest.webmanifest" || subPath.startsWith("/app-icon/")) {
+      return NextResponse.next();
+    }
+
     // Session imzalı, iptal edilmemiş ve bu venue'ya ait olmalı.
     // Beklemedeki oturum da burada görülmeli: sahibini login'e değil, bağlama
     // ekranına göndereceğiz.

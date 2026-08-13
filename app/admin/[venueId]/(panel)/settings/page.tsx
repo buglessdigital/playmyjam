@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import GoogleAccountCard, { type AdminAccount } from "@/components/admin/GoogleAccountCard";
+import InstallAppCard from "@/components/admin/InstallAppCard";
 import VenueLogoUploader from "@/components/admin/VenueLogoUploader";
 
 const ACCENT = "#e91e8c";
@@ -466,6 +467,8 @@ export default function AdminSettingsPage() {
           {saved ? "Kaydedildi!" : saving ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
         </button>
       </form>
+
+      <InstallAppCard />
 
       <Suspense fallback={null}>
         <GoogleAccountCard account={account} loading={accountLoading} />

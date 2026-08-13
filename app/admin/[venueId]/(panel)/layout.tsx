@@ -1,8 +1,35 @@
-"use client";
+import type { Metadata } from "next";
+import AdminPanelShell from "@/components/admin/AdminPanelShell";
+import { getVenueBranding } from "@/lib/venue-cache";
 
-import { Suspense, use } from "react";
-import AdminSidebar from "@/components/admin/AdminSidebar";
-import GoogleLinkBanner from "@/components/admin/GoogleLinkBanner";
+// Kabuğun kendisi istemcide (AdminPanelShell); bu dosya sunucuda kalıyor ki
+// panelin metadata'sı mekana göre üretilebilsin: kök manifest yerine mekanın
+// kendi manifest'i bağlanır, böylece "yükle" denince cihaza bu mekanın paneli
+// ayrı bir uygulama olarak kurulur.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ venueId: string }>;
+}): Promise<Metadata> {
+  const { venueId } = await params;
+  const venue = await getVenueBranding(venueId);
+  const name = venue?.name ?? "PlayMyJam";
+  const base = `/admin/${venueId}`;
+
+  return {
+    title: `${name} · Panel`,
+    manifest: `${base}/manifest.webmanifest`,
+    // iOS manifest'teki ikon/adı kullanmaz; ana ekrana eklerken bu ikiliye bakar.
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "black-translucent",
+      title: name,
+    },
+    icons: {
+      apple: [{ url: `${base}/app-icon/192.png`, sizes: "192x192" }],
+    },
+  };
+}
 
 export default function AdminPanelLayout({
   children,
@@ -11,29 +38,7 @@ export default function AdminPanelLayout({
   children: React.ReactNode;
   params: Promise<{ venueId: string }>;
 }) {
-  return (
-    // Ana ekran kendi içinde kaydığı için sayfanın tamamı ekran boyunda sabit;
-    // kaydırma alt panolara bırakılır (alt bar hep görünür kalsın diye).
-    <div className="flex flex-col md:flex-row h-dvh overflow-hidden" style={{ background: "#0f0a18" }}>
-      <Suspense fallback={null}>
-        <AdminSidebarResolved params={params} />
-      </Suspense>
-      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        <Suspense fallback={null}>
-          <GoogleLinkBannerResolved params={params} />
-        </Suspense>
-        <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
-      </main>
-    </div>
-  );
-}
-
-function AdminSidebarResolved({ params }: { params: Promise<{ venueId: string }> }) {
-  const { venueId } = use(params);
-  return <AdminSidebar venueId={venueId} />;
-}
-
-function GoogleLinkBannerResolved({ params }: { params: Promise<{ venueId: string }> }) {
-  const { venueId } = use(params);
-  return <GoogleLinkBanner venueId={venueId} />;
+  // params bilerek çözülmüyor: kabuk statik kalsın, mekan kimliğini istemci
+  // tarafındaki Suspense sınırları çözsün.
+  return <AdminPanelShell params={params}>{children}</AdminPanelShell>;
 }

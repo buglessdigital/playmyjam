@@ -35,6 +35,24 @@ export async function getVenueBySlug(slug: string): Promise<VenueRow | null> {
   return data ?? null;
 }
 
+export type VenueBranding = { name: string; logo_url: string | null };
+
+// Mekanın kurulabilir panel uygulaması (PWA) için adı ve logosu. Manifest ve
+// ikon route'ları her istekte veritabanına gitmesin diye ayrı tutulur; logo
+// yüklenince "venue-<slug>" tag'i zaten revalidate ediliyor (api/admin/logo).
+export async function getVenueBranding(slug: string): Promise<VenueBranding | null> {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag(`venue-${slug}`);
+
+  const { data } = await supabaseAdmin
+    .from("venues")
+    .select("name, logo_url")
+    .eq("slug", slug)
+    .single();
+  return data ?? null;
+}
+
 export type VenueCatalogSong = {
   id: string;
   youtube_video_id: string;

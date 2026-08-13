@@ -1,6 +1,7 @@
 import { venueIconResponse } from "@/lib/venue-app-icon";
 
-// Mekanın kurulu panel uygulaması için ikon (üretim: lib/venue-app-icon.tsx).
+// Müşterinin kurduğu mekan uygulamasının ikonu (üretim: lib/venue-app-icon.tsx).
+// Panel ikonuyla aynı görsel: mekanın logosu, marka zemininde.
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ venueId: string; size: string }> }

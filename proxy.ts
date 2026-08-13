@@ -120,6 +120,13 @@ export async function proxy(req: NextRequest) {
   if (venueMatch) {
     const venueId = venueMatch[1];
     const subPath = venueMatch[2] ?? "";
+
+    // PWA kurulum varlıkları: tarayıcı manifest'i çerezsiz ister, oturum
+    // kontrolünden geçirilemez (bkz. admin tarafındaki aynı muafiyet).
+    if (subPath === "/manifest.webmanifest" || subPath.startsWith("/app-icon/")) {
+      return NextResponse.next();
+    }
+
     const isRoot = !subPath || subPath === "/";
     const isLoginPage = subPath === "/login" || subPath.startsWith("/login/");
     const isPublicPage = isLoginPage || PUBLIC_VENUE_SEGMENTS.some(

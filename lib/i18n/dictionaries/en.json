@@ -316,6 +316,18 @@
     "notifyTest": "Test",
     "notifyFailed": "Notification setup could not be completed. Check your connection and try again."
   },
+  "pushPrompt": {
+    "title": "Last step: allow notifications",
+    "desc": "You've installed the app. Without notifications you'll miss these:",
+    "why1": "We'll tell you the moment your request is approved — you'll only have 10 minutes to play the song.",
+    "why2": "We'll let you know when your song hits the stage.",
+    "why3": "You'll hear when the song you suggested is added to the venue's list.",
+    "cta": "Allow Notifications",
+    "busy": "Turning on...",
+    "later": "Not now",
+    "denied": "Notifications are blocked on this device. You can allow them for this app in your device settings.",
+    "failed": "Notification setup could not be completed. Check your connection and try again."
+  },
   "favoritesPage": {
     "title": "My Favorites",
     "empty": "No favorites added yet"

@@ -4,6 +4,7 @@ import { Suspense, use } from "react";
 import { usePathname } from "next/navigation";
 import BottomNav from "@/components/ui/BottomNav";
 import LegalFooter from "@/components/ui/LegalFooter";
+import EnablePushPrompt from "@/components/notifications/EnablePushPrompt";
 import NotificationWatcher from "@/components/notifications/NotificationWatcher";
 import VibeIntroModal from "@/components/ui/VibeIntroModal";
 
@@ -42,6 +43,8 @@ function VenueLayoutContent({ children, params }: Props) {
           <NotificationWatcher venueId={venueId} />
           <BottomNav venueId={venueId} />
           <VibeIntroModal venueId={venueId} />
+          {/* Uygulama kipinde açılışta bildirim izni ister (tarayıcı sekmesinde çıkmaz) */}
+          <EnablePushPrompt />
         </>
       )}
     </>

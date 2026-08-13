@@ -570,5 +570,15 @@
   "requestsPage.decisionWindow": "Karar için {t} kaldı",
   "suggest.notifyOn": "Bildirimler açık",
   "suggest.notifyTest": "Sına",
-  "suggest.notifyFailed": "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene."
+  "suggest.notifyFailed": "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene.",
+  "pushPrompt.title": "Son adım: bildirimlere izin ver",
+  "pushPrompt.desc": "Uygulamayı kurdun. Bildirim açık olmazsa aşağıdakileri kaçırırsın:",
+  "pushPrompt.why1": "Talebin onaylandığında haber veririz — şarkıyı çaldırmak için yalnızca 10 dakikan olur.",
+  "pushPrompt.why2": "Sıradaki şarkın sahneye çıkınca bildiririz.",
+  "pushPrompt.why3": "Önerdiğin şarkı mekanın listesine eklenince haberin olur.",
+  "pushPrompt.cta": "Bildirimlere İzin Ver",
+  "pushPrompt.busy": "Açılıyor...",
+  "pushPrompt.later": "Şimdi değil",
+  "pushPrompt.denied": "Bildirim izni bu cihazda engellenmiş. Cihaz ayarlarından bu uygulamaya bildirim izni verebilirsin.",
+  "pushPrompt.failed": "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene."
 }

@@ -316,6 +316,18 @@
     "notifyTest": "Sına",
     "notifyFailed": "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene."
   },
+  "pushPrompt": {
+    "title": "Son adım: bildirimlere izin ver",
+    "desc": "Uygulamayı kurdun. Bildirim açık olmazsa aşağıdakileri kaçırırsın:",
+    "why1": "Talebin onaylandığında haber veririz — şarkıyı çaldırmak için yalnızca 10 dakikan olur.",
+    "why2": "Sıradaki şarkın sahneye çıkınca bildiririz.",
+    "why3": "Önerdiğin şarkı mekanın listesine eklenince haberin olur.",
+    "cta": "Bildirimlere İzin Ver",
+    "busy": "Açılıyor...",
+    "later": "Şimdi değil",
+    "denied": "Bildirim izni bu cihazda engellenmiş. Cihaz ayarlarından bu uygulamaya bildirim izni verebilirsin.",
+    "failed": "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene."
+  },
   "favoritesPage": {
     "title": "Favorilerim",
     "empty": "Henüz favori eklenmedi"

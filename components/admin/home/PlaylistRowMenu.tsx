@@ -132,6 +132,8 @@ export default function PlaylistRowMenu({
             <div className="max-h-[60vh] overflow-y-auto py-1">
               <button
                 onClick={() => {
+                  // Rayın ▶ tuşuyla aynı: çalmaya başlayan liste orta panoya da gelir.
+                  setSelectedId(playlist.id);
                   void playNow(playlist);
                   setOpen(false);
                 }}

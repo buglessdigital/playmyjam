@@ -125,12 +125,16 @@ export default function PlaylistRail({
                       tabIndex={0}
                       onClick={(e) => {
                         e.stopPropagation();
+                        // Çalmaya başlayan liste orta panoya da gelsin —
+                        // rozet ve şarkı listesi aynı listeyi göstersin.
+                        setSelectedId(p.id);
                         void playNow(p);
                       }}
                       onKeyDown={(e) => {
                         if (e.key !== "Enter" && e.key !== " ") return;
                         e.preventDefault();
                         e.stopPropagation();
+                        setSelectedId(p.id);
                         void playNow(p);
                       }}
                       title={`"${p.name}" listesini şimdi çal`}

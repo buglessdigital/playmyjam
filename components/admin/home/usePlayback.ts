@@ -842,6 +842,20 @@ export function usePlayback(venueDbId: string) {
     persistOrder([...queue.filter((q) => !isMovable(q)), ...reordered]);
   };
 
+  // "En üste taşı": taşınabilir bloğun başına alır. Müşteri satırları her zaman
+  // önde kaldığı için gerçek 1. sıra olmayabilir — sunucudaki pozisyon bantları
+  // aynen korunur.
+  const moveToTop = (id: string) => {
+    const movable = queue.filter(isMovable);
+    const from = movable.findIndex((q) => q.id === id);
+    if (from <= 0) return;
+
+    const reordered = [...movable];
+    const [moved] = reordered.splice(from, 1);
+    reordered.unshift(moved);
+    persistOrder([...queue.filter((q) => !isMovable(q)), ...reordered]);
+  };
+
   // Katalogdan ya da aramadan kuyruğa doğrudan ekleme (jeton harcanmaz)
   const addToQueue = async (track: {
     youtube_video_id: string;
@@ -944,6 +958,7 @@ export function usePlayback(venueDbId: string) {
     toggleMute,
     removeFromQueue,
     moveWithinAuto,
+    moveToTop,
     addToQueue,
     playNow,
     stageTakeover,

@@ -118,6 +118,115 @@ function useQueueWindow(headerFlags: boolean[], enabled: boolean) {
   };
 }
 
+type MenuAction = {
+  label: string;
+  onSelect: () => void;
+  disabled?: boolean;
+  title?: string;
+  danger?: boolean;
+  icon: React.ReactNode;
+};
+
+// Satır menüsü kuyruk kutusunun İÇİNDE açılamaz: kutu overflow-y:auto olduğu
+// için yanlara taşan her şey kırpılır. Bu yüzden menü sabit konumlu çizilir ve
+// yeri düğmenin ekrandaki dikdörtgeninden hesaplanır; kaydırınca kapanır
+// (kaydırma sırasında konumu izlemek pencerelemeyle birlikte pahalı olurdu).
+function RowMenu({ actions, label }: { actions: MenuAction[]; label: string }) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  const close = useCallback(() => setPos(null), []);
+
+  useEffect(() => {
+    if (!pos) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (menuRef.current?.contains(target) || btnRef.current?.contains(target)) return;
+      close();
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    // capture: kuyruk kutusunun kendi kaydırması da yakalansın
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [pos, close]);
+
+  const MENU_WIDTH = 188;
+  const open = () => {
+    const rect = btnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const height = actions.length * 38 + 10;
+    const below = rect.bottom + 6;
+    setPos({
+      top: below + height > window.innerHeight ? Math.max(8, rect.top - 6 - height) : below,
+      left: Math.max(8, Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8)),
+    });
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={() => (pos ? close() : open())}
+        aria-haspopup="menu"
+        aria-expanded={pos !== null}
+        aria-label={`${label} — seçenekler`}
+        title="Seçenekler"
+        className="w-7 h-7 flex items-center justify-center rounded-lg shrink-0 transition-colors hover:bg-white/10 text-[#9ca3af]"
+        style={{ background: pos ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.04)" }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="12" cy="5" r="1.7" />
+          <circle cx="12" cy="12" r="1.7" />
+          <circle cx="12" cy="19" r="1.7" />
+        </svg>
+      </button>
+
+      {pos && (
+        <div
+          ref={menuRef}
+          role="menu"
+          className="fixed z-50 py-1 rounded-xl overflow-hidden"
+          style={{
+            top: pos.top,
+            left: pos.left,
+            width: MENU_WIDTH,
+            background: "#16121f",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 14px 34px rgba(0,0,0,0.55)",
+          }}
+        >
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              role="menuitem"
+              disabled={action.disabled}
+              title={action.title}
+              onClick={() => {
+                close();
+                action.onSelect();
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] font-medium text-left transition-colors enabled:hover:bg-white/[0.07] disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ color: action.danger ? "#f87171" : "#e5e7eb" }}
+            >
+              <span className="shrink-0 flex items-center">{action.icon}</span>
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 // Kuyruk Spotify'daki gibi BLOKLARA ayrılır ve başlık yalnızca blok değişince
 // çizilir. Elle sıra iki şerittir: önce tekli eklenenler, sonra sıraya eklenen
 // listeler — her liste kendi başlığıyla (bkz. lib/queue-fill.ts pozisyon
@@ -145,7 +254,7 @@ export default function QueuePane({
   playlistNames?: Record<string, string>;
 }) {
   const {
-    queue, queueError, reordering, movableCount, moveWithinAuto, removeFromQueue,
+    queue, queueError, reordering, movableCount, moveWithinAuto, moveToTop, removeFromQueue,
     nowPlaying, isPlaying, playerOffline,
     playNow, currentIsCustomer, manualCount, clearManualQueue,
   } = playback;
@@ -185,6 +294,19 @@ export default function QueuePane({
   const [playError, setPlayError] = useState("");
   const [playingId, setPlayingId] = useState<string | null>(null);
   const current = nowPlaying?.songs ?? null;
+  // "En üste taşı" taşınabilir bloğun başına alır; blok zaten oradaysa kapalı
+  const firstMovableId = useMemo(() => queue.find(isMovable)?.id ?? null, [queue]);
+
+  const startPlayNow = useCallback(
+    async (item: (typeof queue)[number]) => {
+      setPlayError("");
+      setPlayingId(item.id);
+      const res = await playNow({ queue_id: item.id }, item.songs);
+      setPlayingId(null);
+      if (!res.ok) setPlayError(res.error);
+    },
+    [playNow],
+  );
 
   return (
     <div className="flex flex-col min-h-0 h-full">
@@ -377,13 +499,7 @@ export default function QueuePane({
                     <Image src={item.songs.album_cover_url} alt="" width={36} height={36} className="w-full h-full object-cover" />
                   )}
                   <button
-                    onClick={async () => {
-                      setPlayError("");
-                      setPlayingId(item.id);
-                      const res = await playNow({ queue_id: item.id }, item.songs);
-                      setPlayingId(null);
-                      if (!res.ok) setPlayError(res.error);
-                    }}
+                    onClick={() => void startPlayNow(item)}
                     disabled={currentIsCustomer || playingId !== null}
                     className={
                       currentIsCustomer || playingId !== null
@@ -429,14 +545,41 @@ export default function QueuePane({
                   </span>
                 )}
 
-                <button
-                  onClick={() => removeFromQueue(item.id)}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg shrink-0 transition-all hover:bg-red-500/20"
-                  style={{ background: "rgba(239,68,68,0.1)" }}
-                  title="Kuyruktan çıkar"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" /></svg>
-                </button>
+                <RowMenu
+                  label={item.songs.title}
+                  actions={[
+                    {
+                      label: "Şimdi çal",
+                      onSelect: () => void startPlayNow(item),
+                      disabled: currentIsCustomer || playingId !== null,
+                      title: currentIsCustomer
+                        ? "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez"
+                        : "Çalan şarkı kesilir",
+                      icon: (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5L8 5.5z" /></svg>
+                      ),
+                    },
+                    {
+                      label: "En üste taşı",
+                      onSelect: () => moveToTop(item.id),
+                      disabled: !movable || reordering || item.id === firstMovableId,
+                      title: movable
+                        ? "Taşınabilir şarkıların başına alınır — müşteri sıraları önde kalır"
+                        : "Jetonla alınan sıra taşınamaz",
+                      icon: (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 19V6M5 12l7-7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      ),
+                    },
+                    {
+                      label: "Sıradan kaldır",
+                      onSelect: () => void removeFromQueue(item.id),
+                      danger: true,
+                      icon: (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                      ),
+                    },
+                  ]}
+                />
               </div>
               </div>
             );

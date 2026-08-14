@@ -544,29 +544,9 @@ export default function LibraryPane({
                       : undefined,
               }}
             >
-              {/* Liste içi sıra: sürükle-bırak ya da oklar */}
+              {/* Liste içi sıra: sürükle-bırak ya da satır menüsü */}
               {orderable && (
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="flex flex-col gap-1">
-                    <button
-                      onClick={() => moveSong(i, i - 1)}
-                      disabled={i === 0}
-                      className="w-5 h-5 flex items-center justify-center rounded disabled:opacity-25"
-                      style={{ background: "rgba(255,255,255,0.06)" }}
-                      title="Yukarı taşı"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 15l6-6 6 6" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </button>
-                    <button
-                      onClick={() => moveSong(i, i + 1)}
-                      disabled={i === visibleSongs.length - 1}
-                      className="w-5 h-5 flex items-center justify-center rounded disabled:opacity-25"
-                      style={{ background: "rgba(255,255,255,0.06)" }}
-                      title="Aşağı taşı"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </button>
-                  </div>
+                <div className="flex items-center shrink-0">
                   <span className="text-[#4b5563] text-xs tabular-nums w-6 text-right">{i + 1}</span>
                 </div>
               )}

@@ -145,16 +145,10 @@ export default function QueuePane({
   playlistNames?: Record<string, string>;
 }) {
   const {
-    queue, queueError, reordering, movableCount, moveWithinAuto, nudge, removeFromQueue,
+    queue, queueError, reordering, movableCount, moveWithinAuto, removeFromQueue,
     nowPlaying, isPlaying, playerOffline,
     playNow, currentIsCustomer, manualCount, clearManualQueue,
   } = playback;
-  const movableIndexById = useMemo(() => {
-    const map = new Map<string, number>();
-    let n = 0;
-    for (const item of queue) if (isMovable(item)) map.set(item.id, n++);
-    return map;
-  }, [queue]);
 
   // Satır başına değişmeyen her şey (blok, başlık gösterilecek mi, kümülatif
   // yükseklik) tek geçişte hazırlanır: hem pencereleme buradan beslenir hem de
@@ -305,10 +299,6 @@ export default function QueuePane({
           {rows.slice(start, end).map(({ item, group, key, showHeader }, offset) => {
             const i = start + offset;
             const movable = isMovable(item);
-            // Kuyruk liste sonuna kadar uzayabiliyor: sıra numarası satır başına
-            // yeniden taranırsa (filter+findIndex) 500 satırda kare karmaşıklık
-            // olur. Tek geçişte hazırlanan haritadan okunur.
-            const movableIndex = movable ? movableIndexById.get(item.id) ?? -1 : -1;
             const isAdminAdded = isManualRow(item);
             // Jetonla eklenenler renkle ayrışsın: öncelikli = pembe, normal = mor,
             // elle sıraya eklenen = yeşil (rayla aynı renk), otomatik = renksiz.
@@ -433,28 +423,7 @@ export default function QueuePane({
                   </p>
                 </div>
 
-                {movable ? (
-                  <div className="flex flex-col gap-1 shrink-0">
-                    <button
-                      onClick={() => nudge(item.id, -1)}
-                      disabled={reordering || movableIndex <= 0}
-                      title="Yukarı taşı"
-                      className="w-5 h-5 flex items-center justify-center rounded disabled:opacity-25"
-                      style={{ background: "rgba(255,255,255,0.06)" }}
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 15l6-6 6 6" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </button>
-                    <button
-                      onClick={() => nudge(item.id, 1)}
-                      disabled={reordering || movableIndex < 0 || movableIndex >= movableCount - 1}
-                      title="Aşağı taşı"
-                      className="w-5 h-5 flex items-center justify-center rounded disabled:opacity-25"
-                      style={{ background: "rgba(255,255,255,0.06)" }}
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </button>
-                  </div>
-                ) : (
+                {!movable && (
                   <span className="text-[#6b7280] shrink-0" title="Jetonla alınan sıra — taşınamaz">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M8 11V7a4 4 0 018 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
                   </span>

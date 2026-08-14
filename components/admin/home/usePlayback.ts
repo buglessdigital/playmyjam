@@ -842,14 +842,6 @@ export function usePlayback(venueDbId: string) {
     persistOrder([...queue.filter((q) => !isMovable(q)), ...reordered]);
   };
 
-  const nudge = (id: string, delta: -1 | 1) => {
-    const movable = queue.filter(isMovable);
-    const index = movable.findIndex((q) => q.id === id);
-    const target = index + delta;
-    if (index < 0 || target < 0 || target >= movable.length) return;
-    moveWithinAuto(id, movable[target].id);
-  };
-
   // Katalogdan ya da aramadan kuyruğa doğrudan ekleme (jeton harcanmaz)
   const addToQueue = async (track: {
     youtube_video_id: string;
@@ -952,7 +944,6 @@ export function usePlayback(venueDbId: string) {
     toggleMute,
     removeFromQueue,
     moveWithinAuto,
-    nudge,
     addToQueue,
     playNow,
     stageTakeover,

@@ -77,6 +77,11 @@ const PAUSE_ECHO_GRACE_MS = 8_000;
 const LOCAL_INTENT_GRACE_MS = 3_000;
 // loadVideoById sonrası oynatmanın gerçekten başladığı bu aralıklarla doğrulanır
 const PLAY_WATCHDOG_DELAYS_MS = [2_500, 6_000];
+// Yükleme sonrasında bu süre içinde gelen PAUSED, yüklemenin kendi ara adımıdır
+// (eski video sökülürken yayınlanır) — "geri aç" bekçisi burada susar, yoksa
+// eski şarkı bir saniyeliğine geri gelir. İlk gerçek denetim 2,5 sn'de olduğu
+// için bu pencere bekçisiz kalmaz.
+const LOAD_PAUSE_IGNORE_MS = 2_000;
 const PLAY_NUDGE_MS = 3_000;
 // Dış kaynaklı duraklatma (YouTube'un atalet duraklatması, reklam/ara geçiş, ağ
 // kopması, medya tuşu, işletim sisteminin sesi başka uygulamaya vermesi) ile
@@ -1975,6 +1980,18 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               onTrackChange?.({ videoId: currentVideoRef.current, isPlaying: true });
               sendHeartbeat();
             } else if (e.data === YT.PlayerState.PAUSED) {
+              // ÖNCE: bu duraklatma yüklemenin kendisi mi? loadVideoById çalan
+              // videoyu söküp yenisini getirirken YouTube arada PAUSED yayınlar —
+              // ve bu olay ESKİ videoya aittir. Aşağıdaki "dış kaynaklı" dalı onu
+              // toparlanacak bir aksilik sanıp playVideo() diyordu: yeni video
+              // henüz hazır olmadığı için eski şarkı bir saniyeliğine geri gelip
+              // çalıyor, sonra yeni şarkı onu kesiyordu (panelden "şimdi çal" ve
+              // atlama tuşunda duyulan çift kesinti). Yükleme gerçekten başarısız
+              // olduysa zaten PLAY_WATCHDOG_DELAYS_MS bekçisi devrede.
+              if (Date.now() - lastLoadAtRef.current < LOAD_PAUSE_IGNORE_MS) {
+                plog("duraklatma YÜKLEME geçişinin kendisi — yok sayıldı");
+                return;
+              }
               // Duraklatmanın kaynağı belirleyicidir. Panel komutu ya da videoya
               // yapılan tıklama ise niyet söner ve müzik durur. Aksi halde bu
               // duraklatma DIŞ KAYNAKLIDIR (YouTube'un atalet duraklatması,

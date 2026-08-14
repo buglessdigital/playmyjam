@@ -55,7 +55,10 @@ export default function PlayerBar({
             <path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <p className="text-[11px]" style={{ color: "#fbbf24" }}>
-            Oynatıcı çevrimdışı görünüyor. Mekan ekranındaki cihazda <span className="font-bold">Player sayfasını</span> açık tutun; müzik oradan çalar.
+            Oynatıcı çevrimdışı görünüyor. Müziği çalacak cihazda, sağdaki{" "}
+            <span className="font-bold">ŞU AN ÇALIYOR</span> kartındaki{" "}
+            <span className="font-bold">Başlat</span> düğmesine bir kez dokunun; müzik bu
+            panelden çalar.
           </p>
         </div>
       )}
@@ -110,7 +113,7 @@ export default function PlayerBar({
               onClick={() => playerAction("previous")}
               disabled={playerLoading !== null || playerOffline || !song}
               className="absolute right-full mr-3 w-10 h-10 flex items-center justify-center rounded-full transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-              title={playerOffline ? "Player kapalı — önce Player sayfasını açın" : "Önceki şarkı"}
+              title={playerOffline ? "Player henüz başlamadı — kuyruk kartındaki Başlat düğmesine dokunun" : "Önceki şarkı"}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M18 6l-8.5 6L18 18V6zm-2.5 6L10 8.5v7L15.5 12zM8 6H6v12h2z" /></svg>
             </button>
@@ -122,7 +125,7 @@ export default function PlayerBar({
               disabled={playerOffline}
               className="w-12 h-12 flex items-center justify-center rounded-full transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ background: "#e91e8c" }}
-              title={playerOffline ? "Player kapalı — önce Player sayfasını açın" : isPlaying ? "Duraklat" : "Oynat"}
+              title={playerOffline ? "Player henüz başlamadı — kuyruk kartındaki Başlat düğmesine dokunun" : isPlaying ? "Duraklat" : "Oynat"}
             >
               {isPlaying ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
@@ -134,7 +137,7 @@ export default function PlayerBar({
               onClick={() => playerAction("next")}
               disabled={playerLoading !== null || playerOffline}
               className="absolute left-full ml-3 w-10 h-10 flex items-center justify-center rounded-full transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-              title={playerOffline ? "Player kapalı — önce Player sayfasını açın" : "Sonraki şarkı"}
+              title={playerOffline ? "Player henüz başlamadı — kuyruk kartındaki Başlat düğmesine dokunun" : "Sonraki şarkı"}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6 18l8.5-6L6 6v12zm2.5-6 5.5 3.5v-7L8.5 12zM16 6h2v12h-2z" /></svg>
             </button>
@@ -191,18 +194,23 @@ export default function PlayerBar({
             <span className="text-[#9ca3af] text-[11px] font-semibold tabular-nums w-8 text-right shrink-0">%{volume}</span>
           </div>
 
-          {/* Adlandırılmış pencere: tekrar tıklamak yeni sekme açmaz, aynı player'a
-              döner. rel="noopener" YOK: noopener verilince tarayıcı pencere adını
-              yok sayar, her tıklama yeni sekme açardı. Aynı köken olduğu için
-              noopener'ın güvenlik faydası da yok. */}
+          {/* Videoyu TV'ye yansıtan mekanlar için tam ekran sayfa duruyor.
+              Adlandırılmış pencere: tekrar tıklamak yeni sekme açmaz, aynı
+              player'a döner. rel="noopener" YOK: noopener verilince tarayıcı
+              pencere adını yok sayar, her tıklama yeni sekme açardı. Aynı köken
+              olduğu için noopener'ın güvenlik faydası da yok.
+
+              Panel oynatıcısı kapanmaz; TV açılınca sahiplik oraya geçer ve
+              panelde "çalmayı buraya al" ekranı belirir. */}
           <a
             href={`/admin/${venueId}/player`}
             target={`pmj-player-${venueId}`}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0"
-            style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}
+            title="Videoyu TV'ye yansıtmak için tam ekran aç — müzik oraya taşınır"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-colors"
+            style={{ background: "rgba(255,255,255,0.06)", color: "#9ca3af" }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M10 9l4 2.5-4 2.5V9z" fill="currentColor" /></svg>
-            Player&apos;ı Aç
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M8 21h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+            TV modu
           </a>
 
           {volumeError && <p className="text-[11px] w-full text-right" style={{ color: "#f87171" }}>{volumeError}</p>}

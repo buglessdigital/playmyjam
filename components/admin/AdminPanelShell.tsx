@@ -3,6 +3,7 @@
 import { Suspense, use } from "react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import GoogleLinkBanner from "@/components/admin/GoogleLinkBanner";
+import MiniPlayer from "@/components/admin/MiniPlayer";
 
 export default function AdminPanelShell({
   children,
@@ -24,8 +25,20 @@ export default function AdminPanelShell({
         </Suspense>
         <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
       </main>
+
+      {/* Müzik buradan çalar. Kabukta durması şart: sayfa bileşenine konsaydı
+          Ayarlar/İstatistik'e geçmek oynatıcıyı unmount eder, müzik kesilirdi.
+          Ekranda kuyruk panosundaki yuvaya kenetlenir, kimsenin üstüne binmez. */}
+      <Suspense fallback={null}>
+        <MiniPlayerResolved params={params} />
+      </Suspense>
     </div>
   );
+}
+
+function MiniPlayerResolved({ params }: { params: Promise<{ venueId: string }> }) {
+  const { venueId } = use(params);
+  return <MiniPlayer venueId={venueId} />;
 }
 
 function AdminSidebarResolved({ params }: { params: Promise<{ venueId: string }> }) {

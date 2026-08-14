@@ -8,6 +8,8 @@ import {
   playerBusChannel,
   type PlayerCommand,
   type PlayerStateBeat,
+  onLocalCommand,
+  sendLocalState,
 } from "@/lib/player-bus";
 
 // YouTube IFrame API'nin kullandığımız alt kümesi (resmi @types paketi olmadan)
@@ -59,6 +61,11 @@ declare global {
 // Panelin ilerleme çubuğu bu sinyalin taşıdığı çapaya (started_at) yaslanır:
 // aralık uzadıkça panel player'dan sapar, o yüzden 5 sn.
 const HEARTBEAT_MS = 5_000;
+// Panelin alt barına giden hızlı durum sinyali. DB'ye dokunmadığı (yalnızca
+// Realtime broadcast) için sık gönderilebilir: panel ilerlemeyi kendi saatiyle
+// sürdürüp her saniye player'ın gerçek konumuyla eşitlenir, çubuk sesle saniye
+// saniye örtüşür.
+const STATE_BEAT_MS = 1_000;
 // Durum denetimleri (dürtme/uzlaştırma) daha seyrek — okuma maliyeti taşırlar
 const RECONCILE_MS = 15_000;
 // Kuyruk boş kaldığında sıradakini yeniden isteme aralığı. Sessizlik ne kadar
@@ -570,9 +577,15 @@ interface Props {
   loginHref?: string;
   // Şu an çalan şarkının başlık bilgisi ekranda video DIŞINDA gösterilir (overlay yasak)
   onTrackChange?: (info: { videoId: string | null; isPlaying: boolean }) => void;
+  /**
+   * Panel içindeki küçük oynatıcı için sıkışık yerleşim: bilgi ekranlarının
+   * yazı/düğme ölçüleri küçülür, açıklama satırları gizlenir. Normal ölçüler
+   * 144 px genişliğindeki kutuya sığmıyor, düğme kutunun dışına taşıyordu.
+   */
+  compact?: boolean;
 }
 
-export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: Props) {
+export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, compact }: Props) {
   const supabase = useMemo(() => createClient(), []);
 
   // İki deck: crossfade sırasında çıkan ve giren şarkı aynı anda çalar. Aktif
@@ -997,7 +1010,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     try {
       channel.send({ type: "broadcast", event: STATE_EVENT, payload: beat });
     } catch {}
-  }, [activePlayer]);
+    // Aynı sekmedeki panele doğrudan: Realtime kendi mesajımızı geri vermez
+    sendLocalState(venueDbId, beat);
+  }, [activePlayer, venueDbId]);
 
   // İlerleme + sağlık sinyali — admin paneli bununla "oynatıcı çevrimdışı" uyarısı verir
   const sendHeartbeat = useCallback(() => {
@@ -2315,6 +2330,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     return () => clearInterval(interval);
   }, [started, blocked, sendHeartbeat, syncOfflineFallback]);
 
+  // Hızlı durum hattı: yalnızca broadcast, veritabanına yazmaz. Heartbeat 5 sn'de
+  // bir olduğu için alt bar iki sinyal arasında kendi saatiyle ilerliyor ve
+  // tamponlama/atlama sonrası sesin önüne geçebiliyordu; saniyelik sinyal panelin
+  // çapasını sürekli gerçek konuma çekiyor.
+  useEffect(() => {
+    if (!started || blocked) return;
+    const interval = setInterval(() => broadcastState(), STATE_BEAT_MS);
+    return () => clearInterval(interval);
+  }, [started, blocked, broadcastState]);
+
   // Bekçi: idle'da takılı kalma (kuyruk-boş yarışı, ağ hatası vb.) — periyodik
   // olarak sıradakini iste; sunucu tarafı dolum yaptığı için çalma kendi toparlanır
   useEffect(() => {
@@ -2420,12 +2445,13 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   useEffect(() => {
     if (!started || blocked === "claim") return;
 
-    const channel = playerBusChannel(supabase, venueDbId);
-    channel
-      .on("broadcast", { event: CMD_EVENT }, ({ payload }: { payload: PlayerCommand }) => {
-        if (blockedRef.current === "claim") return;
-        const cmd = payload;
-        if (!cmd?.type) return;
+    // Aynı işleyici iki hattan da beslenir: sayfa içi (aynı sekmedeki panel) ve
+    // Realtime (uzak panel / TV modu). Aynı sekmede çift teslim olmaz, çünkü
+    // Realtime kendi mesajımızı bize geri vermiyor (self: false).
+    const applyCommand = (cmd: PlayerCommand) => {
+      if (blockedRef.current === "claim") return;
+      if (!cmd?.type) return;
+      {
         switch (cmd.type) {
           case "play": {
             setDesiredPlaying(true);
@@ -2511,12 +2537,21 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
             break;
           }
         }
+      }
+    };
+
+    const channel = playerBusChannel(supabase, venueDbId);
+    channel
+      .on("broadcast", { event: CMD_EVENT }, ({ payload }: { payload: PlayerCommand }) => {
+        applyCommand(payload);
       })
       .subscribe();
     busRef.current = channel;
+    const offLocal = onLocalCommand(venueDbId, applyCommand);
 
     return () => {
       busRef.current = null;
+      offLocal();
       supabase.removeChannel(channel);
     };
   }, [
@@ -2796,8 +2831,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   const deckStyle = (key: DeckKey): React.CSSProperties => ({
     opacity: visibleDeck === key ? 1 : 0,
     transition: `opacity ${fading ? fadeMs : 200}ms linear`,
-    // Görünmeyen deck tıklamaları yutmasın (YouTube kendi kontrollerini gösterir)
-    pointerEvents: visibleDeck === key ? "auto" : "none",
+    // Görünmeyen deck tıklamaları yutmasın (YouTube kendi kontrollerini gösterir).
+    // Panel içindeki küçük oynatıcıda İKİSİ DE tıklanamaz: orası yalnızca
+    // "müzik çalıyor" göstergesi, kumanda alt barda. Üstüne gelince YouTube'un
+    // kendi başlık/duraklat katmanı açılmasın, kazara tıklayınca müzik durmasın.
+    pointerEvents: compact || visibleDeck !== key ? "none" : "auto",
     // Deck 256x144 kurulur (bkz. VIDEO_W) ve sahneyi dolduracak kadar büyütülür.
     // transform iframe'in KENDİ görüntü alanını değiştirmez: YouTube içeride hâlâ
     // 256x144 görür ve en düşük kaliteyi gönderir.
@@ -2812,7 +2850,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       {/* YouTube kuralı: video görünür kalmalı, üzerine hiçbir şey bindirilemez */}
       <div
         ref={stageRef}
-        className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black [&_iframe]:h-full [&_iframe]:w-full"
+        // compact: kural hem sahneye hem doğrudan iframe'e yazılır. Yalnızca
+        // sahneye yazmak yetmiyordu — deck'lerin kendi satır içi pointerEvents
+        // değeri araya girebiliyor ve YouTube'un üste gelince açılan
+        // duraklat/logo katmanı yine görünüyordu.
+        className={`relative aspect-video w-full overflow-hidden bg-black [&_iframe]:h-full [&_iframe]:w-full ${
+          compact
+            ? "pointer-events-none select-none rounded-lg [&_iframe]:pointer-events-none"
+            : "rounded-2xl"
+        }`}
       >
         <div ref={deckAHostRef} className="absolute left-1/2 top-1/2" style={deckStyle("a")} />
         <div ref={deckBHostRef} className="absolute left-1/2 top-1/2" style={deckStyle("b")} />
@@ -2877,7 +2923,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       {/* Tarayıcı, arkada kalan pencerede yeni şarkıyı başlatmıyor. Mekan
           ekrana döndüğünde müzik zaten çalmaya başlamış olur; bu şerit sebebi
           söyler ki bir daha aynı sessizlik yaşanmasın. */}
-      {backgroundBlocked && (
+      {backgroundBlocked && !compact && (
         <p className="mt-2 rounded-xl border border-[#fbbf24]/40 bg-[#fbbf24]/10 px-3 py-2 text-center text-xs text-[#fbbf24]">
           Player penceresi arkada kaldığı için tarayıcı yeni şarkıyı başlatmadı.
           Bu pencereyi her zaman en önde/açık bırakın — kuyruk korundu, hiçbir şarkı atlanmadı.
@@ -2886,7 +2932,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
 
       {/* Cihaz ses komutunu kabul etmiyorsa (mobil tarayıcılarda ses donanımdan
           yönetilir) mekan bunu ekranda görsün — panelde boşuna uğraşmasın */}
-      {volumeIgnored && (
+      {volumeIgnored && !compact && (
         <p className="mt-2 text-center text-xs text-[#fbbf24]">
           Bu cihaz uzaktan ses ayarını kabul etmiyor — sesi cihazın kendi düğmelerinden
           ayarlayın. Uzaktan kontrol ve çapraz geçiş için player&apos;ı bilgisayarda açın.
@@ -2895,16 +2941,18 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
 
       {/* Oturum düştü — eskiden bu durumda "kuyruk boş" yazıyor, mekan nedenini anlayamıyordu */}
       {blocked === "auth" ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-[#1a0e2a] px-6 text-center">
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          <p className="text-sm font-bold text-white">Mekan oturumu düştü — müzik durdu</p>
-          <p className="text-xs text-[#9ca3af]">
-            Tekrar giriş yapıldığı anda çalma kaldığı yerden devam eder.
-          </p>
+        <div className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl bg-[#1a0e2a] text-center ${compact ? "gap-1 px-2" : "gap-3 px-6"}`}>
+          {!compact && <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+          <p className={`font-bold text-white ${compact ? "text-[11px] leading-tight" : "text-sm"}`}>Mekan oturumu düştü — müzik durdu</p>
+          {!compact && (
+            <p className="text-xs text-[#9ca3af]">
+              Tekrar giriş yapıldığı anda çalma kaldığı yerden devam eder.
+            </p>
+          )}
           {loginHref && (
             <a
               href={loginHref}
-              className="mt-1 rounded-2xl px-6 py-3 text-sm font-bold text-white"
+              className={`font-bold text-white ${compact ? "rounded-lg px-2.5 py-1 text-[10px]" : "mt-1 rounded-2xl px-6 py-3 text-sm"}`}
               style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
             >
               Tekrar Giriş Yap
@@ -2912,54 +2960,58 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
           )}
         </div>
       ) : blocked === "claim" ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-[#1a0e2a] px-6 text-center">
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="14" rx="2" stroke="#9ca3af" strokeWidth="2" /><path d="M8 21h8" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
-          <p className="text-sm font-bold text-white">Çalma başka bir cihaza geçti</p>
-          <p className="text-xs text-[#9ca3af]">
-            Çift ses olmasın diye bu ekran susturuldu. Müzik diğer cihazdan çalıyor.
-          </p>
+        <div className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl bg-[#1a0e2a] text-center ${compact ? "gap-1 px-2" : "gap-3 px-6"}`}>
+          {!compact && <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="14" rx="2" stroke="#9ca3af" strokeWidth="2" /><path d="M8 21h8" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>}
+          <p className={`font-bold text-white ${compact ? "text-[11px] leading-tight" : "text-sm"}`}>Çalma başka bir cihaza geçti</p>
+          {!compact && (
+            <p className="text-xs text-[#9ca3af]">
+              Çift ses olmasın diye bu ekran susturuldu. Müzik diğer cihazdan çalıyor.
+            </p>
+          )}
           <button
             onClick={takeOver}
-            className="mt-1 rounded-2xl px-6 py-3 text-sm font-bold text-white"
+            className={`font-bold text-white ${compact ? "rounded-lg px-2.5 py-1 text-[10px]" : "mt-1 rounded-2xl px-6 py-3 text-sm"}`}
             style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
           >
             Çalmayı Buraya Al
           </button>
         </div>
       ) : claimTaken ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-[#1a0e2a] px-6 text-center">
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="14" rx="2" stroke="#9ca3af" strokeWidth="2" /><path d="M8 21h8" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
-          <p className="text-sm font-bold text-white">Player başka bir cihazda/sekmede açık</p>
-          <p className="text-xs text-[#9ca3af]">
-            Buradan da başlatırsan iki ses üst üste biner. Müzik zaten diğer ekrandan çalıyor.
-          </p>
+        <div className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl bg-[#1a0e2a] text-center ${compact ? "gap-1 px-2" : "gap-3 px-6"}`}>
+          {!compact && <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="14" rx="2" stroke="#9ca3af" strokeWidth="2" /><path d="M8 21h8" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>}
+          <p className={`font-bold text-white ${compact ? "text-[11px] leading-tight" : "text-sm"}`}>Player başka bir cihazda/sekmede açık</p>
+          {!compact && (
+            <p className="text-xs text-[#9ca3af]">
+              Buradan da başlatırsan iki ses üst üste biner. Müzik zaten diğer ekrandan çalıyor.
+            </p>
+          )}
           <button
             onClick={() => start(true)}
-            className="mt-1 rounded-2xl px-6 py-3 text-sm font-bold text-white"
+            className={`font-bold text-white ${compact ? "rounded-lg px-2.5 py-1 text-[10px]" : "mt-1 rounded-2xl px-6 py-3 text-sm"}`}
             style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
           >
             Yine de Buradan Çal
           </button>
         </div>
       ) : !started ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-2xl bg-[#1a0e2a]">
+        <div className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl bg-[#1a0e2a] ${compact ? "gap-1.5" : "gap-4"}`}>
           <button
             onClick={() => start()}
-            className="flex items-center gap-3 rounded-2xl px-8 py-4 text-lg font-bold text-white transition-transform active:scale-95"
+            className={`flex items-center font-bold text-white transition-transform active:scale-95 ${compact ? "gap-1.5 rounded-xl px-3 py-1.5 text-xs" : "gap-3 rounded-2xl px-8 py-4 text-lg"}`}
             style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z" /></svg>
+            <svg width={compact ? 14 : 24} height={compact ? 14 : 24} viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z" /></svg>
             Başlat
           </button>
-          <p className="px-6 text-center text-xs text-[#6b7280]">
-            Tarayıcı politikası gereği ilk oynatma için bir kez dokunmanız gerekir
+          <p className={`text-center text-[#6b7280] ${compact ? "px-2 text-[9px] leading-tight" : "px-6 text-xs"}`}>
+            {compact ? "Tarayıcı ilk oynatma için bir dokunuş ister" : "Tarayıcı politikası gereği ilk oynatma için bir kez dokunmanız gerekir"}
           </p>
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className={compact ? "text-[10px] text-red-400" : "text-sm text-red-400"}>{error}</p>}
         </div>
       ) : idle ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-[#1a0e2a]">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="2" /><circle cx="18" cy="16" r="3" stroke="#6b7280" strokeWidth="2" /></svg>
-          <p className="text-sm text-[#9ca3af]">Kuyruk boş — sıradaki şarkı otomatik denenecek</p>
+          <svg width={compact ? 20 : 36} height={compact ? 20 : 36} viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="2" /><circle cx="18" cy="16" r="3" stroke="#6b7280" strokeWidth="2" /></svg>
+          <p className={`text-center text-[#9ca3af] ${compact ? "px-2 text-[10px] leading-tight" : "text-sm"}`}>Kuyruk boş — sıradaki şarkı otomatik denenecek</p>
         </div>
       ) : null}
     </div>

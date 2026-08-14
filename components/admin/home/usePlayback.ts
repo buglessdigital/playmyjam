@@ -8,6 +8,8 @@ import {
   playerBusChannel,
   type PlayerCommand,
   type PlayerStateBeat,
+  onLocalState,
+  sendLocalCommand,
 } from "@/lib/player-bus";
 
 export type QueueItem = {
@@ -54,6 +56,20 @@ const QUEUE_SELECT =
 const OFFLINE_AFTER_MS = 45_000;
 // İlerleme çubuğu tick aralığı
 const TICK_MS = 250;
+/**
+ * Hızlı hattan gelen konumla yereldeki konum bu kadar ayrışırsa çubuk oraya
+ * çekilir; altında kalan farklar ağ gecikmesinin salınımıdır ve düzeltilirse
+ * saniye yazısı ileri geri oynar.
+ */
+const SNAP_MS = 400;
+/**
+ * Hızlı hattan (broadcast) son sinyalin üstünden bu kadar geçmediyse ilerleme
+ * ORADAN gelir; veritabanı satırının erken çapası yok sayılır. Player saniyede
+ * bir sinyal yolluyor, yani bu pencere ancak player gerçekten susarsa kapanır.
+ */
+const BEAT_TRUST_MS = 12_000;
+/** Oynat/duraklat niyetinin, çelişen sinyallere karşı korunduğu süre. */
+const INTENT_HOLD_MS = 2_000;
 // Sarma sonrası koruma penceresi: bu süre boyunca dışarıdan gelen ilerleme
 // değerleri yok sayılır (yoldaki heartbeat'ler henüz eski konumu taşıyor).
 const SEEK_GUARD_MS = 2_000;
@@ -144,6 +160,17 @@ export function usePlayback(venueDbId: string) {
   // (henüz yazılmamış satır ya da yoldaki bayat heartbeat) ekrandaki iyimser
   // durumu ezmesin — düğme basılır basılmaz geri sıçrıyordu.
   const localActionAtRef = useRef(0);
+  // Hızlı hattan (broadcast) son durum ne zaman geldi. Bu hat canlıyken
+  // ilerleme YALNIZCA oradan hesaplanır: veritabanı satırındaki started_at
+  // şarkının değil İSTEĞİN anıdır ve heartbeat onu düzeltmez, yani tamponlama
+  // süresi kadar erkendir. Her DB olayında o çapayı uygulamak çubuğu sesin
+  // saniyelerce önüne atıyordu.
+  const lastBeatAtRef = useRef(0);
+  // Az önce basılan oynat/duraklat niyeti. Hızlı hat saniyede bir sinyal
+  // yolladığı için, komut player'a ulaşmadan önce yola çıkmış bir sinyal
+  // düğmeyi eski durumuna geri çevirebiliyordu; niyetle çelişen sinyaller kısa
+  // bir süre yok sayılır.
+  const intentRef = useRef<{ playing: boolean; at: number } | null>(null);
   // Player'ın broadcast ettiği canlı durum: DB turunu beklemeden uygulanır
   const busRef = useRef<ReturnType<typeof playerBusChannel> | null>(null);
   // --- Sarma (alt bardaki ilerleme çubuğu) ---
@@ -243,11 +270,15 @@ export function usePlayback(venueDbId: string) {
       // Sarma da "az önce elle dokunuldu" sayılır: sunucudaki satır henüz eski
       // konumu taşıyor, ekrandaki taze niyeti ezmemeli.
       const fresh = Date.now() - localActionAtRef.current < 2_500 || scrubIgnores();
-      setNowPlaying((prev) =>
-        fresh && prev
-          ? { ...raw, songs, is_playing: prev.is_playing, started_at: prev.started_at }
-          : { ...raw, songs }
-      );
+      // Hızlı hat canlı mı? Canlıysa satırdaki çapa değil, elimizdeki (player'ın
+      // gerçek konumundan kurulmuş) çapa geçerlidir.
+      const beatFresh = Date.now() - lastBeatAtRef.current < BEAT_TRUST_MS;
+      setNowPlaying((prev) => {
+        if (!prev) return { ...raw, songs };
+        if (fresh) return { ...raw, songs, is_playing: prev.is_playing, started_at: prev.started_at };
+        if (beatFresh) return { ...raw, songs, started_at: prev.started_at ?? raw.started_at };
+        return { ...raw, songs };
+      });
       if (fresh) return;
       // Kaydırıcıyı sunucudan tazele — ama kullanıcı az önce oynadıysa dokunma,
       // yoksa henüz yazılmamış değer parmağın altından geri sıçrar
@@ -263,6 +294,8 @@ export function usePlayback(venueDbId: string) {
       // started_at şarkının değil İSTEĞİN anıdır, aradaki tamponlama süresi
       // çubuğu olduğu gibi ileri atardı.
       if (!playbackStartedRef.current) return;
+      // İlerleme hızlı hattan geliyor: satırın erken çapasıyla üstüne yazma
+      if (beatFresh) return;
       if (online && raw.is_playing && raw.started_at) {
         setProgress(Math.max(Date.now() - Date.parse(raw.started_at), 0));
       } else {
@@ -321,9 +354,10 @@ export function usePlayback(venueDbId: string) {
     // Düşük gecikmeli hat: player kendi durumunu (ilerleme/çalıyor mu/hangi video)
     // doğrudan buraya yollar. DB → WAL → Realtime turu beklenmediği için alt bar
     // player'la aynı anda tepki verir. Kalıcı değil; yukarıdaki DB yolu duruyor.
-    const bus = playerBusChannel(supabase, venueDbId);
-    bus
-      .on("broadcast", { event: STATE_EVENT }, ({ payload }: { payload: PlayerStateBeat }) => {
+    // Aynı işleyici iki hattan da beslenir: sayfa içi (aynı sekmedeki oynatıcı)
+    // ve Realtime (TV modundaki uzak oynatıcı). Realtime kendi mesajımızı bize
+    // geri vermediği için aynı sekmede çift teslim olmaz.
+    const applyBeat = (payload: PlayerStateBeat) => {
         const beat = payload;
         if (cancelled || !beat || typeof beat.progress_ms !== "number") return;
         // Broadcast'in kendisi "player ayakta" kanıtıdır: heartbeat tazeliğini
@@ -332,7 +366,15 @@ export function usePlayback(venueDbId: string) {
         const current = nowPlayingRef.current;
         // Eski player sürümünde alan yok: yokluğu "akıyor" sayılır, yoksa çubuk
         // hiç ilerlemezdi.
+        // Komut henüz uygulanmadan yola çıkmış sinyal düğmeyi geri çevirmesin
+        const intent = intentRef.current;
+        if (intent) {
+          if (Date.now() - intent.at > INTENT_HOLD_MS) intentRef.current = null;
+          else if (beat.is_playing !== intent.playing) return;
+          else intentRef.current = null;
+        }
         playbackStartedRef.current = beat.started !== false;
+        lastBeatAtRef.current = Date.now();
         // Şarkı değişti. Yeni şarkının satırı ZATEN ELİMİZDE: sıradaydı, şimdi
         // sahneye çıktı. Alt bar ve kuyruk panosu bu yüzden veritabanı turunu
         // beklemeden değişir — eskiden yalnızca "tazele" denip sunucudan
@@ -365,32 +407,49 @@ export function usePlayback(venueDbId: string) {
           return;
         }
         // Sarma sürerken (ya da az önce bırakıldıysa) yoldaki değer bayattır
-        if (!scrubIgnores()) setProgress(beat.progress_ms);
-        setNowPlaying((prev) =>
-          prev
-            ? {
-                ...prev,
-                is_playing: beat.is_playing,
-                progress_ms: scrubIgnores() ? prev.progress_ms : beat.progress_ms,
-                // Sarmada çapa yerelde tazelendi; bayat çapayı geri yazmak
-                // pencere kapanır kapanmaz çubuğu eski konuma sıçratırdı
-                started_at:
-                  beat.is_playing && !scrubIgnores()
-                    ? new Date(Date.now() - beat.progress_ms).toISOString()
-                    : prev.started_at,
-                last_heartbeat_at: seenAt,
-              }
-            : prev
-        );
+        if (!scrubIgnores() && Math.abs(beat.progress_ms - progressRef.current) > SNAP_MS) {
+          setProgress(beat.progress_ms);
+        }
+        setNowPlaying((prev) => {
+          if (!prev) return prev;
+          let anchor = prev.started_at;
+          if (beat.is_playing && !scrubIgnores()) {
+            const localMs = anchor ? Date.now() - Date.parse(anchor) : NaN;
+            // Çapayı HER sinyalde tazelemek, ağ gecikmesi oynadıkça saniye
+            // yazısını ileri geri oynatıyordu. Yalnızca gerçek bir kayma varsa
+            // (ya da çapa yoksa) yeniden kurulur; arada panel kendi saatiyle
+            // pürüzsüz ilerler.
+            if (!Number.isFinite(localMs) || Math.abs(localMs - beat.progress_ms) > SNAP_MS) {
+              anchor = new Date(Date.now() - beat.progress_ms).toISOString();
+            }
+          }
+          return {
+            ...prev,
+            is_playing: beat.is_playing,
+            progress_ms: scrubIgnores() ? prev.progress_ms : beat.progress_ms,
+            // Sarmada çapa yerelde tazelendi; bayat çapayı geri yazmak
+            // pencere kapanır kapanmaz çubuğu eski konuma sıçratırdı
+            started_at: anchor,
+            last_heartbeat_at: seenAt,
+          };
+        });
         // Player'ın raporladığı durum artık iyimser tahminin yerini alır
         localActionAtRef.current = 0;
+    };
+
+    const bus = playerBusChannel(supabase, venueDbId);
+    bus
+      .on("broadcast", { event: STATE_EVENT }, ({ payload }: { payload: PlayerStateBeat }) => {
+        applyBeat(payload);
       })
       .subscribe();
     busRef.current = bus;
+    const offLocal = onLocalState(venueDbId, applyBeat);
 
     return () => {
       cancelled = true;
       busRef.current = null;
+      offLocal();
       supabase.removeChannel(bus);
       if (queueReloadTimer) clearTimeout(queueReloadTimer);
       clearInterval(poll);
@@ -460,6 +519,9 @@ export function usePlayback(venueDbId: string) {
     try {
       busRef.current?.send({ type: "broadcast", event: CMD_EVENT, payload: command });
     } catch {}
+    // Aynı sekmedeki oynatıcıya doğrudan: Realtime kendi mesajımızı geri vermez,
+    // yani panel içi player'a komut YALNIZCA bu hattan ulaşır.
+    if (venueDbId) sendLocalCommand(venueDbId, command);
   };
 
   const playerAction = async (action: "play" | "pause" | "next" | "previous") => {
@@ -471,6 +533,7 @@ export function usePlayback(venueDbId: string) {
     if (action === "play" || action === "pause") {
       sendCommand({ type: action });
       const playing = action === "play";
+      intentRef.current = { playing, at: Date.now() };
       setNowPlaying((prev) =>
         prev
           ? {

@@ -62,3 +62,59 @@ export function playerBusChannel(supabase: Supabase, venueDbId: string) {
     config: { broadcast: { self: false, ack: false } },
   });
 }
+
+/**
+ * SAYFA İÇİ hat.
+ *
+ * Oynatıcı artık panelin içinde (bkz. components/admin/MiniPlayer.tsx), yani
+ * gönderen ve alan çoğu zaman AYNI sekmede. Realtime yukarıdaki `self: false`
+ * yüzünden bir istemcinin kendi mesajını ona geri vermez: aynı sekmedeyken ne
+ * komut player'a ulaşıyordu ne de durum sinyali panele. Sarma (tek hattı
+ * broadcast olan komut) bu yüzden hiç çalışmıyordu; alt bar da durum sinyali
+ * alamadığı için ilerlemeyi veritabanının erken çapasından hesaplamak zorunda
+ * kalıyor ve sesin önüne geçiyordu.
+ *
+ * Bu hat mesajı ağa hiç çıkarmadan doğrudan teslim eder. Realtime yolu duruyor:
+ * TV modundaki uzak oynatıcı yalnızca oradan haber alır. Aynı sekmede çift
+ * teslim olmaz, çünkü `self: false` uzak kopyayı zaten geri vermiyor.
+ */
+type LocalHandler<T> = (payload: T) => void;
+
+const localCmd = new Map<string, Set<LocalHandler<PlayerCommand>>>();
+const localState = new Map<string, Set<LocalHandler<PlayerStateBeat>>>();
+
+function subscribeLocal<T>(map: Map<string, Set<LocalHandler<T>>>, key: string, cb: LocalHandler<T>) {
+  let set = map.get(key);
+  if (!set) {
+    set = new Set();
+    map.set(key, set);
+  }
+  set.add(cb);
+  return () => {
+    set!.delete(cb);
+    if (set!.size === 0) map.delete(key);
+  };
+}
+
+function emitLocal<T>(map: Map<string, Set<LocalHandler<T>>>, key: string, payload: T) {
+  const set = map.get(key);
+  if (!set) return;
+  // Kopya üstünde gezilir: bir dinleyici kendini çıkarırsa tur bozulmasın
+  for (const cb of [...set]) {
+    try {
+      cb(payload);
+    } catch {}
+  }
+}
+
+export const sendLocalCommand = (venueDbId: string, cmd: PlayerCommand) =>
+  emitLocal(localCmd, venueDbId, cmd);
+
+export const onLocalCommand = (venueDbId: string, cb: LocalHandler<PlayerCommand>) =>
+  subscribeLocal(localCmd, venueDbId, cb);
+
+export const sendLocalState = (venueDbId: string, beat: PlayerStateBeat) =>
+  emitLocal(localState, venueDbId, beat);
+
+export const onLocalState = (venueDbId: string, cb: LocalHandler<PlayerStateBeat>) =>
+  subscribeLocal(localState, venueDbId, cb);

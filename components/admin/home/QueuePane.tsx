@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import MiniPlayerSlot from "@/components/admin/MiniPlayerSlot";
 import { formatTime, isManualRow, isMovable, useProgress, type Playback } from "./usePlayback";
 
 // Sahnedeki şarkının çubuğu + süreleri: saniyede dört kez tazelenen tek parça.
@@ -263,11 +264,10 @@ export default function QueuePane({
         {current ? (
           <>
             <div className="flex items-center gap-3 mt-2">
-              {current.album_cover_url ? (
-                <Image src={current.album_cover_url} alt="" width={48} height={48} className="w-12 h-12 rounded-lg object-cover shrink-0" />
-              ) : (
-                <div className="w-12 h-12 rounded-lg bg-white/10 shrink-0" />
-              )}
+              {/* Video albüm kapağının yerini alır: kart zaten "şu an çalıyor"
+                  diyor, panele ikinci bir kutu eklemeye gerek yok. Yuva boş
+                  durur, videoyu kabuktaki MiniPlayer hizalar. */}
+              <MiniPlayerSlot />
               <div className="flex-1 min-w-0">
                 <p className="text-white text-sm font-semibold truncate">{current.title}</p>
                 <p className="text-[#6b7280] text-[11px] truncate">{current.artist}</p>
@@ -287,7 +287,10 @@ export default function QueuePane({
             )}
           </>
         ) : (
-          <p className="mt-2 text-[#6b7280] text-xs">Şu an bir şarkı çalmıyor</p>
+          <div className="flex items-center gap-3 mt-2">
+            <MiniPlayerSlot />
+            <p className="text-[#6b7280] text-xs">Şu an bir şarkı çalmıyor</p>
+          </div>
         )}
       </div>
 

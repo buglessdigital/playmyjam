@@ -2458,6 +2458,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             try {
               activePlayer()?.playVideo();
             } catch {}
+            // Duraklatmada olduğu gibi durumu ANINDA bildir. Yoksa panel yeni
+            // durumu ancak saniyelik sinyal turunda öğreniyordu: duraklat anında,
+            // başlat gecikmeli görünüyor ve ikisi eş zamanlı hissettirmiyordu.
+            // (started alanı hâlâ deck'in gerçek durumundan geliyor: ses akmaya
+            // başlamadan ilerleme çubuğu saymaz.)
+            broadcastState({ is_playing: true });
             // Arka plan sekmesinde engellenirse bekçi toparlasın
             scheduleNudges([PLAY_NUDGE_MS]);
             break;

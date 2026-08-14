@@ -546,31 +546,49 @@ export function usePlayback(venueDbId: string) {
             }
           : prev
       );
-    } else {
-      // Atlamada hangi videonun çalacağını sunucu söyler; player'a "hazırlan"
-      // deyip yanıtı bekliyoruz. Panel bu arada sıradaki şarkıyı iyimser gösterir.
-      sendCommand({ type: "seeking" });
-      setProgress(0);
-      if (action === "next") {
-        const upcoming = queueRef.current[0];
-        if (upcoming?.songs) {
-          expectedVideoRef.current = { id: upcoming.songs.youtube_video_id, at: Date.now() };
-          playbackStartedRef.current = false;
-          setNowPlaying((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  video_id: upcoming.songs.youtube_video_id,
-                  songs: upcoming.songs,
-                  is_playing: true,
-                  progress_ms: 0,
-                  started_at: new Date().toISOString(),
-                }
-              : prev
-          );
-          // Kuyruktan da düşür — gerçek satır Realtime ile birazdan doğrular
-          setQueue((prev) => prev.slice(1));
-        }
+      // play/pause sunucuya yalnızca KAYDEDİLMEK için gider; ses zaten yukarıdaki
+      // komutla değişti. playerLoading'e dokunmuyoruz: o state panelin tamamını
+      // yeniden çizdiriyor (atlama düğmelerini kilitlemek için var) ve her
+      // duraklat/başlat dokunuşunda iki gereksiz tam render demekti — simge sesin
+      // arkasında kalıyordu.
+      void fetch(`/api/player/${venueDbId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      }).catch(() => {});
+      return;
+    }
+
+    // Atlama. Sunucu turunu BEKLEMEYİZ: sıradaki şarkıyı zaten biliyoruz, komut
+    // player'a şimdi gider (bkz. playNow — aynı desen). Eskiden önce /api/player
+    // yanıtı bekleniyordu ve ses ancak o turdan (~0,5-1 sn) sonra değişiyordu.
+    sendCommand({ type: "seeking" });
+    setProgress(0);
+    // Sunucu başka bir videoda karar kılarsa ya da isteği reddederse geri
+    // dönebilmek için sahnedeki video
+    const previousVideoId = nowPlayingRef.current?.video_id ?? null;
+    let optimisticVideoId: string | null = null;
+    if (action === "next") {
+      const upcoming = queueRef.current[0];
+      if (upcoming?.songs) {
+        optimisticVideoId = upcoming.songs.youtube_video_id;
+        expectedVideoRef.current = { id: optimisticVideoId, at: Date.now() };
+        playbackStartedRef.current = false;
+        sendCommand({ type: "load", video_id: optimisticVideoId });
+        setNowPlaying((prev) =>
+          prev
+            ? {
+                ...prev,
+                video_id: upcoming.songs.youtube_video_id,
+                songs: upcoming.songs,
+                is_playing: true,
+                progress_ms: 0,
+                started_at: new Date().toISOString(),
+              }
+            : prev
+        );
+        // Kuyruktan da düşür — gerçek satır Realtime ile birazdan doğrular
+        setQueue((prev) => prev.slice(1));
       }
     }
 
@@ -582,12 +600,23 @@ export function usePlayback(venueDbId: string) {
         body: JSON.stringify({ action }),
       });
       // Yanıttaki video kimliğini player'a anında ilet: aksi halde player aynı
-      // bilgiyi DB → Realtime turundan öğrenecek ve şarkı ~1 sn geç başlayacaktı
-      if ((action === "next" || action === "previous") && res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data?.started && typeof data.video_id === "string") {
+      // bilgiyi DB → Realtime turundan öğrenecek ve şarkı ~1 sn geç başlayacaktı.
+      // İyimser yüklediğimiz videoyla aynıysa komut TEKRARLANMAZ — ikinci bir
+      // loadVideoById şarkıyı baştan başlatırdı.
+      const data = res.ok ? await res.json().catch(() => null) : null;
+      if (data?.started && typeof data.video_id === "string") {
+        if (data.video_id !== optimisticVideoId) {
+          expectedVideoRef.current = { id: data.video_id, at: Date.now() };
           sendCommand({ type: "load", video_id: data.video_id });
         }
+      } else if (optimisticVideoId && previousVideoId && previousVideoId !== optimisticVideoId) {
+        // Sunucu atlamayı yapmadı (kuyruk değişmiş ya da istek reddedilmiş):
+        // iyimser başlattığımız şarkı sahnede kalmasın
+        expectedVideoRef.current = null;
+        // Sunucudan gelen gerçek satır iyimser tahmini ezebilsin
+        localActionAtRef.current = 0;
+        sendCommand({ type: "load", video_id: previousVideoId });
+        await fetchQueue(venueDbId);
       }
     } finally {
       setPlayerLoading(null);

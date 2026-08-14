@@ -451,6 +451,11 @@ const TRANSIENT_ERROR_LIMIT = 3;
 // Sessiz deck şarkının başında döner: hem tampon hep sıcak kalır hem de video
 // sonuna varıp durmaz (durursa yeniden başlatmak gerekirdi — yasak olan fiil).
 const WARM_LOOP_SEC = 25;
+// Sıcak tampon "cue edildi" değil "GERÇEKTEN ÇALIYOR" olduğunda hazırdır. Cue
+// tutup çalmaya hiç başlamayan deck geçişte ölü çıkıyor ve gizli pencerede
+// yeniden başlatılamıyor: mekan kaydında tam olarak bu görüldü (52 dakika
+// sessizlik). Bu süre boyunca PLAYING gelmediyse tampon baştan kurulur.
+const WARM_START_TIMEOUT_MS = 20_000;
 // Ses rampasının adım aralığı: 60 ms'de bir setVolume — kulakta sürekli duyulur,
 // iframe'e de aşırı çağrı gitmez
 const FADE_STEP_MS = 60;
@@ -625,6 +630,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   const transientErrorsRef = useRef<Map<string, number>>(new Map());
   // Sessizce çalar halde bekleyen tampon deck (bkz. WARM_LOOP_SEC)
   const warmDeckRef = useRef<{ deck: DeckKey; videoId: string } | null>(null);
+  // Tampon deck ÇALMAYA başladı mı, ve ne zamandan beri bekliyor? Cue etmek
+  // hazır olmak değildir (bkz. WARM_START_TIMEOUT_MS)
+  const warmPlayingRef = useRef(false);
+  const warmSinceRef = useRef(0);
   // Bekçinin en son çalıştığı an — arada uzun boşluk varsa sekme dondurulmuştu
   const lastTickAtRef = useRef(0);
   // Geçişin duvar saatiyle başlangıcı ve süresi (rampa asılırsa zorla bitirmek için)
@@ -928,6 +937,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     // Duraklattığımız deck artık sıcak tampon değil; sıradaki şarkı için
     // preloadNext yeniden ısıtacak
     warmDeckRef.current = null;
+    warmPlayingRef.current = false;
+    warmSinceRef.current = 0;
     if (wasFading) setFading(false);
     setVisibleDeck(activeDeckRef.current);
     pushVolume();
@@ -1272,10 +1283,34 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     if (!anchor) return;
     // Geçiş sırasında boştaki deck çıkan şarkıyı çalıyor — üstüne cue atma
     if (fadeBusy() || advanceBusy()) return;
-    // Bu şarkı için tampon zaten hazır
-    if (preloadedVideoRef.current && preloadedForRef.current === anchor) return;
+    // Bu şarkı için tampon zaten hazır. AMA "cue edildi" hazır DEĞİLDİR: gizli
+    // pencerede deck çoğu zaman TAMPON'da asılı kalıp hiç çalmaya başlamıyor ve
+    // eski kod bunu hazır sayıp bir daha hiç denemiyordu — geçiş anında ölü deck
+    // çıkıyor, müzik susuyordu. Çalmayan tampon süresi dolunca baştan kurulur.
+    // Ölçüm YALNIZCA ortada bekleyen bir tampon varken anlamlıdır: tampon deck
+    // aktife devredildiğinde sayaç eskir ve ilk turda sahte "179 sn başlamadı"
+    // alarmı verirdi (mekan kaydında görüldü).
+    const warmDead =
+      canCrossfadeRef.current &&
+      warmDeckRef.current !== null &&
+      warmDeckRef.current.deck !== activeDeckRef.current &&
+      !warmPlayingRef.current &&
+      warmSinceRef.current > 0 &&
+      Date.now() - warmSinceRef.current > WARM_START_TIMEOUT_MS;
+    if (preloadedVideoRef.current && preloadedForRef.current === anchor && !warmDead) return;
     // Başarısız denemeden sonra hemen tekrar deneme
     if (Date.now() < preloadRetryAtRef.current) return;
+    if (warmDead) {
+      plog(
+        `sıcak tampon ${Math.round(
+          (Date.now() - warmSinceRef.current) / 1000
+        )} sn çalmaya başlamadı — baştan kuruluyor`
+      );
+      preloadedVideoRef.current = null;
+      warmDeckRef.current = null;
+      warmPlayingRef.current = false;
+      warmSinceRef.current = 0;
+    }
     preloadRetryAtRef.current = Date.now() + PRELOAD_RETRY_MS;
     preloadedForRef.current = anchor;
 
@@ -1312,6 +1347,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       if (canCrossfadeRef.current) {
         player.playVideo();
         warmDeckRef.current = { deck, videoId };
+        // Sayaç burada başlar: PLAYING gelmezse WARM_START_TIMEOUT_MS sonunda
+        // bu tampon ölü sayılıp yeniden kurulur
+        warmPlayingRef.current = false;
+        warmSinceRef.current = Date.now();
       }
     } catch {}
   }, [api, fadeBusy, advanceBusy]);
@@ -1326,6 +1365,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     // Devredilmiş deck artık sıcak tampon değildir
     if (warm.deck === activeDeckRef.current) {
       warmDeckRef.current = null;
+      warmPlayingRef.current = false;
+      warmSinceRef.current = 0;
       return;
     }
     const player = decksRef.current[warm.deck];
@@ -1336,7 +1377,14 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       player.setVolume(0);
       player.mute?.();
       const state = player.getPlayerState();
-      if (YT && (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED)) {
+      // UNSTARTED de dürtülür: gizli pencerede cue'lanan deck çoğu zaman tam
+      // burada, hiç başlamadan bekliyor ve eski kod ona hiç dokunmuyordu
+      if (
+        YT &&
+        (state === YT.PlayerState.PAUSED ||
+          state === YT.PlayerState.CUED ||
+          state === -1) /* UNSTARTED */
+      ) {
         player.playVideo();
         return;
       }
@@ -1852,6 +1900,33 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     } catch {
       return false;
     }
+    // İKİNCİ DECK DE AYNI DOKUNUŞLA UYANDIRILIR. Sebep kayıtla doğrulandı:
+    // hayatında hiç çalmamış bir deck, pencere arkadayken ilk kez BAŞLAYAMIYOR —
+    // TAMPON'da konum 0.0'da asılı kalıyor. Pencere şarkı başladıktan bir saniye
+    // sonra arkaya düştüğünde ikinci deck bakir kalıyor, sıradaki şarkı hiç
+    // hazırlanamıyor ve geçişte mekan susuyordu. Bir kez çalmış deck'e sonradan
+    // gelen komutlar (cue + play) arka planda da kabul ediliyor: çalışan
+    // oturumlarda tampon hep böyle kurulmuştu. Ses çıkmaz — sessiz ve 0 sesle.
+    // Mobilde YAPILMAZ: orada ikinci medya öğesi çalanı durdurur.
+    if (canCrossfadeRef.current) {
+      const idleKey = otherDeck(key);
+      const idle = decksRef.current[idleKey];
+      if (idle && deckReadyRef.current[idleKey]) {
+        try {
+          idle.setVolume(0);
+          idle.mute?.();
+          idle.cueVideoById(videoId);
+          forceLowQuality(idle);
+          idle.playVideo();
+          // preloadNext birazdan gerçek sıradaki şarkıyı buraya cue'layacak;
+          // o ana kadar deck sessizce çalar durumda tutulur (uyanık kalsın)
+          warmDeckRef.current = { deck: idleKey, videoId };
+          warmPlayingRef.current = false;
+          warmSinceRef.current = Date.now();
+          plog(`ikinci deck de dokunuşla uyandırıldı → deck ${idleKey}`);
+        } catch {}
+      }
+    }
     // loadVideo'nun yaptığı defter tutma, yükleme adımı olmadan: video zaten
     // deck'te duruyor. Bunlar olmadan heartbeat ve panel yanlış şarkı görürdü.
     currentVideoRef.current = videoId;
@@ -1868,8 +1943,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
   const abortUnlock = useCallback(() => {
     desiredPlayingRef.current = false;
     currentVideoRef.current = null;
+    warmDeckRef.current = null;
+    warmPlayingRef.current = false;
+    warmSinceRef.current = 0;
     try {
-      decksRef.current[activeDeckRef.current]?.pauseVideo();
+      decksRef.current.a?.pauseVideo();
+      decksRef.current.b?.pauseVideo();
     } catch {}
   }, []);
 
@@ -1950,6 +2029,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
               // kanıtıdır — kayda tek satır düşürülür.
               const warm = warmDeckRef.current;
               if (warm?.deck === key && e.data === YT.PlayerState.PLAYING) {
+                // Tampon ancak BURADA hazır sayılır — geçişte yapılacak iş artık
+                // "sesi aç"tır, gizli pencerede yasak olan "videoyu başlat" değil
+                warmPlayingRef.current = true;
                 plog(
                   `sıcak tampon HAZIR (sessiz çalıyor, pencere ${
                     typeof document !== "undefined" ? document.visibilityState : "?"

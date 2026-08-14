@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { playSongNow } from "@/lib/queue";
-import { clearAutoQueue, fillQueue, jumpPlaylistCursorTo } from "@/lib/queue-fill";
+import { fillQueue, startPlaylistFrom } from "@/lib/queue-fill";
 
 // Panelden "şimdi çal": sahnedeki şarkı yarıda kesilir, seçilen şarkı başlar.
 //
@@ -51,9 +51,11 @@ export async function POST(req: NextRequest) {
   const playedSongId = result.song_id;
   after(
     (async () => {
+      // Kısa yol: listeyi devret + imleci taşı + kuyruğun başını yaz (iki DB
+      // turu), gerisi arkadan gelsin. Panelde sıra saniyeler sonra değil hemen
+      // güncellensin diye.
       if (targetList && playedSongId) {
-        await clearAutoQueue(session.venue_id);
-        await jumpPlaylistCursorTo(session.venue_id, targetList, playedSongId);
+        await startPlaylistFrom(session.venue_id, targetList, playedSongId);
       }
       await fillQueue(session.venue_id);
     })().catch(() => {})

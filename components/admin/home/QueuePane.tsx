@@ -1,8 +1,121 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
-import { formatTime, isManualRow, isMovable, type Playback } from "./usePlayback";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { formatTime, isManualRow, isMovable, useProgress, type Playback } from "./usePlayback";
+
+// Sahnedeki şarkının çubuğu + süreleri: saniyede dört kez tazelenen tek parça.
+// Ayrı bileşen olması şart — aynı dosyada kalsaydı 500 satırlık kuyruk da her
+// tick'te yeniden çizilirdi (bkz. usePlayback → useProgress).
+function NowPlayingProgress({ playback }: { playback: Playback }) {
+  const progress = useProgress(playback.progressStore);
+  const duration = playback.duration;
+  const pct = Math.min((progress / duration) * 100, 100);
+
+  return (
+    <>
+      <div className="mt-2.5 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "#e91e8c" }} />
+      </div>
+      <div className="flex items-center justify-between mt-1 text-[10px] text-[#6b7280] tabular-nums">
+        <span>{formatTime(progress)}</span>
+        <span>{formatTime(duration)}</span>
+      </div>
+    </>
+  );
+}
+
+// Kuyruk liste sonuna kadar uzayabiliyor (tavan 500) ve her satırda kapak
+// görseli, sürükleme kancaları, üç düğme var. Tamamını DOM'da tutmak kuyruk her
+// değiştiğinde gözle görülür bir donma yaratıyordu; artık yalnızca ekrandaki
+// pencere + tampon çiziliyor.
+//
+// Satır yükseklikleri eşit DEĞİL: blok başlığı taşıyan satırlar daha uzun. Bu
+// yüzden sabit yükseklik yerine kümülatif ofset dizisi tutulur, pencere ikili
+// aramayla bulunur — başlıklar kaydırma çubuğunu kaydırmaz.
+const ROW_HEIGHT = 57;
+const HEADER_HEIGHT = 30;
+const OVERSCAN_PX = 400;
+// Bu sayının altında pencereleme hem gereksiz hem de sürükle-bırakta risk
+const VIRTUAL_THRESHOLD = 60;
+
+function useQueueWindow(headerFlags: boolean[], enabled: boolean) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState({ top: 0, height: 0 });
+  // Yükseklikler ekrandaki gerçek satırdan okunur: yazı tipi ya da dolgu
+  // değişirse sabit sayı listeyi kaydırır. Kaydırma sırasında ÖLÇÜLMEZ —
+  // her karede offsetHeight okumak tarayıcıyı yeniden yerleşime zorlar.
+  const [sizes, setSizes] = useState({ row: ROW_HEIGHT, header: HEADER_HEIGHT });
+
+  const measureView = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const top = scroller.scrollTop;
+    const height = scroller.clientHeight;
+    setView((prev) => (prev.top === top && prev.height === height ? prev : { top, height }));
+  }, []);
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!enabled || !scroller) return;
+    measureView();
+    // passive: kaydırma sırasında tarayıcı beklemesin
+    scroller.addEventListener("scroll", measureView, { passive: true });
+    window.addEventListener("resize", measureView);
+    return () => {
+      scroller.removeEventListener("scroll", measureView);
+      window.removeEventListener("resize", measureView);
+    };
+  }, [enabled, measureView]);
+
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current;
+    if (!enabled || !scroller) return;
+    const row = scroller.querySelector<HTMLElement>("[data-queue-row]");
+    const header = scroller.querySelector<HTMLElement>("[data-queue-header]");
+    const next = {
+      row: row?.offsetHeight || ROW_HEIGHT,
+      header: header?.offsetHeight || HEADER_HEIGHT,
+    };
+    setSizes((prev) => (prev.row === next.row && prev.header === next.header ? prev : next));
+  }, [enabled, headerFlags, view.height]);
+
+  // offsets[i] = i. satırın üst kenarı; son eleman toplam yükseklik
+  const offsets = useMemo(() => {
+    const all = [0];
+    for (const hasHeader of headerFlags) {
+      all.push(all[all.length - 1] + sizes.row + (hasHeader ? sizes.header : 0));
+    }
+    return all;
+  }, [headerFlags, sizes]);
+
+  const count = offsets.length - 1;
+  if (!enabled || count <= 0) {
+    return { scrollRef, start: 0, end: Math.max(count, 0), padTop: 0, padBottom: 0 };
+  }
+
+  const find = (y: number) => {
+    let lo = 0;
+    let hi = count;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (offsets[mid + 1] <= y) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+
+  const start = find(Math.max(0, view.top - OVERSCAN_PX));
+  const end = Math.min(count, find(view.top + view.height + OVERSCAN_PX) + 1);
+
+  return {
+    scrollRef,
+    start,
+    end,
+    padTop: offsets[start],
+    padBottom: offsets[count] - offsets[end],
+  };
+}
 
 // Kuyruk Spotify'daki gibi BLOKLARA ayrılır ve başlık yalnızca blok değişince
 // çizilir. Elle sıra iki şerittir: önce tekli eklenenler, sonra sıraya eklenen
@@ -32,7 +145,7 @@ export default function QueuePane({
 }) {
   const {
     queue, queueError, reordering, movableCount, moveWithinAuto, nudge, removeFromQueue,
-    nowPlaying, progress, progressPct, duration, isPlaying, playerOffline,
+    nowPlaying, isPlaying, playerOffline,
     playNow, currentIsCustomer, manualCount, clearManualQueue,
   } = playback;
   const movableIndexById = useMemo(() => {
@@ -41,25 +154,37 @@ export default function QueuePane({
     for (const item of queue) if (isMovable(item)) map.set(item.id, n++);
     return map;
   }, [queue]);
-  const groupOf = (item: (typeof queue)[number]): QueueGroup => {
-    if (item.user_id !== null) return { kind: "customer" };
-    if (!isManualRow(item)) return { kind: "auto" };
-    return item.source_playlist_id
-      ? { kind: "manual-list", playlistId: item.source_playlist_id }
-      : { kind: "manual-single" };
-  };
 
-  // Blok başlığındaki sayı: satır başına yeniden saymak 500 satırda kare
-  // karmaşıklık olurdu (bkz. movableIndexById).
-  const countByGroup = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const item of queue) {
-      const key = groupKey(groupOf(item));
-      map.set(key, (map.get(key) ?? 0) + 1);
-    }
-    return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Satır başına değişmeyen her şey (blok, başlık gösterilecek mi, kümülatif
+  // yükseklik) tek geçişte hazırlanır: hem pencereleme buradan beslenir hem de
+  // çizim sırasında komşu satıra bakmak gerekmez.
+  const { rows, countByGroup, headerFlags } = useMemo(() => {
+    const groupOf = (item: (typeof queue)[number]): QueueGroup => {
+      if (item.user_id !== null) return { kind: "customer" };
+      if (!isManualRow(item)) return { kind: "auto" };
+      return item.source_playlist_id
+        ? { kind: "manual-list", playlistId: item.source_playlist_id }
+        : { kind: "manual-single" };
+    };
+
+    const counts = new Map<string, number>();
+    const prepared = queue.map((item, i) => {
+      const group = groupOf(item);
+      const key = groupKey(group);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      const showHeader = i === 0 || groupKey(groupOf(queue[i - 1])) !== key;
+      return { item, group, key, showHeader };
+    });
+
+    return {
+      rows: prepared,
+      countByGroup: counts,
+      headerFlags: prepared.map((row) => row.showHeader),
+    };
   }, [queue]);
+
+  const virtual = queue.length > VIRTUAL_THRESHOLD;
+  const { scrollRef, start, end, padTop, padBottom } = useQueueWindow(headerFlags, virtual);
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [playError, setPlayError] = useState("");
@@ -158,15 +283,7 @@ export default function QueuePane({
             {playerOffline ? (
               <p className="mt-2 text-[11px]" style={{ color: "#fbbf24" }}>Player kapalı — süreler gizlendi</p>
             ) : (
-              <>
-                <div className="mt-2.5 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
-                  <div className="h-full rounded-full" style={{ width: `${progressPct}%`, background: "#e91e8c" }} />
-                </div>
-                <div className="flex items-center justify-between mt-1 text-[10px] text-[#6b7280] tabular-nums">
-                  <span>{formatTime(progress)}</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-              </>
+              <NowPlayingProgress playback={playback} />
             )}
           </>
         ) : (
@@ -174,13 +291,16 @@ export default function QueuePane({
         )}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
         {queue.length === 0 ? (
           <div className="px-4 py-8 text-center text-[#6b7280] text-sm">
             Kuyruk boş — sıra boşaldıkça aktif listelerden otomatik doldurulur
           </div>
         ) : (
-          queue.map((item, i) => {
+          <>
+          {padTop > 0 && <div style={{ height: padTop }} />}
+          {rows.slice(start, end).map(({ item, group, key, showHeader }, offset) => {
+            const i = start + offset;
             const movable = isMovable(item);
             // Kuyruk liste sonuna kadar uzayabiliyor: sıra numarası satır başına
             // yeniden taranırsa (filter+findIndex) 500 satırda kare karmaşıklık
@@ -194,9 +314,6 @@ export default function QueuePane({
               item.tokens_spent > 0 ? (item.priority ? "rgba(233,30,140,0.08)" : "rgba(139,92,246,0.08)") : undefined;
             const stripe = accent ?? (isAdminAdded ? "#22c55e" : null);
 
-            const group = groupOf(item);
-            const key = groupKey(group);
-            const showHeader = i === 0 || groupKey(groupOf(queue[i - 1])) !== key;
             const groupCount = countByGroup.get(key) ?? 0;
             const listName = group.kind === "manual-list" ? playlistNames?.[group.playlistId] : null;
             const headerLabel =
@@ -212,6 +329,7 @@ export default function QueuePane({
               <div key={item.id}>
                 {showHeader && (
                   <div
+                    data-queue-header
                     className="flex items-center gap-2 px-3 pt-3 pb-1.5"
                     style={{ borderTop: i > 0 ? "1px solid rgba(255,255,255,0.08)" : undefined }}
                   >
@@ -233,6 +351,7 @@ export default function QueuePane({
                   </div>
                 )}
               <div
+                data-queue-row
                 draggable={movable && !reordering}
                 onDragStart={() => movable && setDragId(item.id)}
                 onDragEnd={() => setDragId(null)}
@@ -349,7 +468,9 @@ export default function QueuePane({
               </div>
               </div>
             );
-          })
+          })}
+          {padBottom > 0 && <div style={{ height: padBottom }} />}
+          </>
         )}
 
       </div>

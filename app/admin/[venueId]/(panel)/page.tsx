@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, use, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Suspense, use, useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { useVenueDbId } from "@/lib/venue-db-id";
 import HomeModals, { type ModalKind } from "@/components/admin/home/HomeModals";
 import LibraryPane from "@/components/admin/home/LibraryPane";
 import PaneResizer from "@/components/admin/home/PaneResizer";
@@ -77,26 +77,15 @@ function AdminDashboardContent({ params }: Props) {
   // kendiliğinden açılır: kullanıcı hesabı bağlamak için oradan çıkmıştı.
   const youtubeReturn = searchParams.get("youtube") ?? searchParams.get("youtube_error");
 
-  const [venueDbId, setVenueDbId] = useState("");
+  // Kimlik paylaşımlı çözücüden gelir: kenar çubuğu da aynı sonucu kullanır,
+  // sayfalar arası gezinmede yeniden sorulmaz (bkz. lib/venue-db-id.ts).
+  const venueDbId = useVenueDbId(venueId);
   const [modal, setModal] = useState<ModalKind>(youtubeReturn ? "import" : null);
   // Dar ekranda üç sütun sığmaz: aynı anda tek pano gösterilir
   const [pane, setPane] = useState<Pane>("songs");
   const railWidth = useSyncExternalStore(subscribeRail, readRailWidth, () => RAIL_DEFAULT);
   const setRailWidth = useCallback((w: number) => writeRailWidth(w), []);
   const resetRailWidth = useCallback(() => writeRailWidth(RAIL_DEFAULT), []);
-
-  const supabase = useMemo(() => createClient(), []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase.from("venues").select("id").eq("slug", venueId).single();
-      if (!cancelled && data) setVenueDbId(data.id);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [venueId, supabase]);
 
   // Sıra önemli: "hangi liste çalıyor" kuyruktan okunur, rayın rozeti de onu
   // gösterir — bu yüzden playback önce kurulur.

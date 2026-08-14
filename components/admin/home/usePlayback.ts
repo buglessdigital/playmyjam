@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   CMD_EVENT,
@@ -73,6 +73,26 @@ export function formatTime(ms: number) {
 }
 
 /**
+ * İlerleme (çalan şarkının kaçıncı saniyesi) React state'inde TUTULMAZ.
+ *
+ * Saniyede dört kez tazelenen bir sayı state olduğunda ana ekranın tamamı —
+ * playlist rayı, şarkı panosu, 500 satıra kadar uzayabilen kuyruk — saniyede
+ * dört kez yeniden çiziliyordu. Oysa sayıyı yalnızca iki küçük parça gösteriyor:
+ * alt bardaki sarma çubuğu ve kuyruk panosundaki mini çubuk.
+ *
+ * Bu yüzden değer abone olunabilir bir kutuda duruyor: yalnızca `useProgress`
+ * çağıran bileşen tazelenir, panelin geri kalanı kıpırdamaz.
+ */
+export type ProgressStore = {
+  subscribe: (cb: () => void) => () => void;
+  get: () => number;
+};
+
+export function useProgress(store: ProgressStore): number {
+  return useSyncExternalStore(store.subscribe, store.get, () => 0);
+}
+
+/**
  * Ana ekranın alt barı ve kuyruk paneli: şu an çalan, ilerleme, ses ve kuyruk.
  * Mekanın veritabanı id'si dışarıdan gelir — sayfa slug'ı bir kez çözer.
  */
@@ -86,13 +106,34 @@ export function usePlayback(venueDbId: string) {
     { user_id: string | null; added_by: string; source_playlist_id: string | null } | null
   >(null);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
-  const [progress, setProgress] = useState(0);
   const [playerLoading, setPlayerLoading] = useState<string | null>(null);
   const [volume, setVolume] = useState(100);
   const [volumeError, setVolumeError] = useState("");
   const [queueError, setQueueError] = useState("");
   const [reordering, setReordering] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  // Player susmuş mu: 5 sn'de bir bakılır ve yalnızca DEĞİŞTİĞİNDE yazılır.
+  // Eskiden bu bilgi için saniyede dört kez tazelenen bir saat state'i vardı.
+  const [playerOffline, setPlayerOffline] = useState(false);
+
+  // --- İlerleme kutusu (bkz. useProgress) ---
+  const progressRef = useRef(0);
+  const progressListenersRef = useRef<Set<() => void>>(new Set());
+  const setProgress = useCallback((next: number | ((prev: number) => number)) => {
+    const value = typeof next === "function" ? next(progressRef.current) : next;
+    if (value === progressRef.current) return;
+    progressRef.current = value;
+    for (const cb of progressListenersRef.current) cb();
+  }, []);
+  const progressStore = useMemo<ProgressStore>(
+    () => ({
+      subscribe: (cb) => {
+        progressListenersRef.current.add(cb);
+        return () => progressListenersRef.current.delete(cb);
+      },
+      get: () => progressRef.current,
+    }),
+    []
+  );
 
   // Sessize alma eski seviyeyi hatırlar (ayrı bir mute kolonu yok — bkz. 0036)
   const lastAudibleVolumeRef = useRef(100);
@@ -118,6 +159,13 @@ export function usePlayback(venueDbId: string) {
   );
   const nowPlayingRef = useRef<NowPlaying | null>(null);
   const queueRef = useRef<QueueItem[]>([]);
+  // Sahnede olmasını beklediğimiz video: panel yeni şarkıyı sunucudan önce
+  // gösterdiğinde, yoldaki bayat now_playing satırı onu geri almasın diye.
+  const expectedVideoRef = useRef<{ id: string; at: number } | null>(null);
+  // Ses fiilen akıyor mu (player'ın bildirdiği son durum). Şarkı değişiminde
+  // YouTube videoyu birkaç saniye tamponluyor; bu sırada çubuk SAYMAZ, yoksa
+  // sesin önüne geçip ilk gerçek ölçümde geri sıçrıyordu.
+  const playbackStartedRef = useRef(true);
   useEffect(() => {
     nowPlayingRef.current = nowPlaying;
   }, [nowPlaying]);
@@ -181,6 +229,14 @@ export function usePlayback(venueDbId: string) {
         songs: NowPlaying["songs"] | NowPlaying["songs"][];
       };
       const songs = Array.isArray(raw.songs) ? raw.songs[0] ?? null : raw.songs;
+      // Sahnedeki şarkının BAYAT satırı gelmiş olabilir: player yeni şarkıya
+      // geçtiğini yayınladı ama sunucu satırı henüz yazmadı. Bu satır uygulanırsa
+      // alt bar bir önceki şarkıya geri döner — beklediğimiz video gelene kadar
+      // (ya da beklenti bayatlayana kadar) yok sayılır. Doğru satır zaten
+      // now_playing aboneliğiyle birazdan gelir.
+      const expected = expectedVideoRef.current;
+      if (expected && Date.now() - expected.at < 5_000 && raw.video_id !== expected.id) return;
+      if (expected && raw.video_id === expected.id) expectedVideoRef.current = null;
       // Az önce düğmeye basıldıysa çalma durumunu sunucudan geri alma: satır
       // henüz yazılmamış ya da yoldaki heartbeat bayat olabilir. Şarkı/kapak
       // bilgisi yine tazelenir, yalnızca oynat/duraklat ekseni korunur.
@@ -203,6 +259,10 @@ export function usePlayback(venueDbId: string) {
       // Player kapalıysa çapa geçersiz (kimse çalmıyor): son yazılan değerde donar.
       const beat = raw.last_heartbeat_at ? Date.parse(raw.last_heartbeat_at) : NaN;
       const online = Number.isFinite(beat) && Date.now() - beat <= OFFLINE_AFTER_MS;
+      // Ses henüz akmıyorsa (video tamponlanıyor) satırdaki çapa yanıltıcıdır:
+      // started_at şarkının değil İSTEĞİN anıdır, aradaki tamponlama süresi
+      // çubuğu olduğu gibi ileri atardı.
+      if (!playbackStartedRef.current) return;
       if (online && raw.is_playing && raw.started_at) {
         setProgress(Math.max(Date.now() - Date.parse(raw.started_at), 0));
       } else {
@@ -270,9 +330,37 @@ export function usePlayback(venueDbId: string) {
         // de burada güncelleriz, "çevrimdışı" uyarısı boşuna çıkmasın.
         const seenAt = new Date().toISOString();
         const current = nowPlayingRef.current;
-        // Şarkı değişmiş: satırın tamamı (başlık/kapak/süre) lazım, hemen tazele
+        // Eski player sürümünde alan yok: yokluğu "akıyor" sayılır, yoksa çubuk
+        // hiç ilerlemezdi.
+        playbackStartedRef.current = beat.started !== false;
+        // Şarkı değişti. Yeni şarkının satırı ZATEN ELİMİZDE: sıradaydı, şimdi
+        // sahneye çıktı. Alt bar ve kuyruk panosu bu yüzden veritabanı turunu
+        // beklemeden değişir — eskiden yalnızca "tazele" denip sunucudan
+        // dönmesi bekleniyordu ve alt bar şarkıdan gözle görülür biçimde geç
+        // kalıyordu (üstelik dönen satır çoğu kez henüz eski şarkıyı taşıyordu).
         if (current?.video_id != null && beat.video_id !== current.video_id) {
-          setNowPlaying({ ...current, last_heartbeat_at: seenAt });
+          const known = beat.video_id
+            ? queueRef.current.find((q) => q.songs?.youtube_video_id === beat.video_id)
+            : undefined;
+          if (known?.songs && beat.video_id) {
+            expectedVideoRef.current = { id: beat.video_id, at: Date.now() };
+            setNowPlaying({
+              ...current,
+              video_id: beat.video_id,
+              songs: known.songs,
+              is_playing: beat.is_playing,
+              progress_ms: beat.progress_ms,
+              started_at: beat.is_playing
+                ? new Date(Date.now() - beat.progress_ms).toISOString()
+                : current.started_at,
+              last_heartbeat_at: seenAt,
+            });
+            setProgress(beat.progress_ms);
+            // Sahneye çıkan satır sıradan düşer; gerçeği fetchQueue doğrular
+            setQueue((prev) => prev.filter((q) => q.id !== known.id));
+          } else {
+            setNowPlaying({ ...current, last_heartbeat_at: seenAt });
+          }
           fetchNowPlaying();
           return;
         }
@@ -310,21 +398,26 @@ export function usePlayback(venueDbId: string) {
       window.removeEventListener("online", onWake);
       channels.forEach((c) => supabase.removeChannel(c));
     };
-  }, [venueDbId, supabase, fetchQueue, scrubIgnores]);
+  }, [venueDbId, supabase, fetchQueue, scrubIgnores, setProgress]);
 
-  // Progress + heartbeat tazeliği için tick. 250 ms: çubuk player'a takılmadan
-  // ilerlesin, saniye yazısı gecikmeli görünmesin.
+  // İlerleme tick'i. 250 ms: çubuk player'a takılmadan ilersin, saniye yazısı
+  // gecikmeli görünmesin. Artık React state'i DEĞİL, ilerleme kutusu yazılıyor —
+  // yani bu tick yalnızca sarma çubuğunu ve kuyruktaki mini çubuğu tazeler,
+  // panelin geri kalanını değil.
   useEffect(() => {
     if (!nowPlaying) return;
     const interval = setInterval(() => {
       const tick = Date.now();
-      setNow(tick);
       // Player kapalıyken ilerlemeyi ilerletme: veri donmuş durumda ve saatten
       // hesaplanan çubuk "çalıyor" yalanı söyler (bkz. lib/player-status.ts).
       const beat = nowPlaying.last_heartbeat_at ? Date.parse(nowPlaying.last_heartbeat_at) : NaN;
       if (!Number.isFinite(beat) || tick - beat > OFFLINE_AFTER_MS) return;
       // Parmak çubuğun üstünde: imleci kullanıcı sürüyor, saat değil
       if (scrubbingRef.current) return;
+      // Şarkı değişti ama ses henüz akmıyor (video tamponlanıyor): çubuk
+      // beklemeli. Saymaya devam etseydi sesin önüne geçer, player ilk gerçek
+      // konumu bildirdiğinde de geri sıçrardı.
+      if (!playbackStartedRef.current) return;
       if (nowPlaying.is_playing) {
         const dur = nowPlaying.songs?.duration_ms ?? 0;
         if (nowPlaying.started_at) {
@@ -335,7 +428,24 @@ export function usePlayback(venueDbId: string) {
       }
     }, TICK_MS);
     return () => clearInterval(interval);
-  }, [nowPlaying]);
+  }, [nowPlaying, setProgress]);
+
+
+  // Player sekmesi hiç açılmadıysa ya da heartbeat kesildiyse uyar. Tazelik
+  // sorusu saniyede dört kez değil 5 sn'de bir sorulur ve yalnızca cevap
+  // DEĞİŞTİĞİNDE render tetiklenir (uyarı bandı 45 sn'lik eşikle çalışıyor,
+  // saniyelik keskinliğe ihtiyacı yok).
+  useEffect(() => {
+    const check = () => {
+      const stamp = nowPlaying?.last_heartbeat_at;
+      const beat = stamp ? Date.parse(stamp) : NaN;
+      const offline = !Number.isFinite(beat) || Date.now() - beat > OFFLINE_AFTER_MS;
+      setPlayerOffline((prev) => (prev === offline ? prev : offline));
+    };
+    check();
+    const interval = setInterval(check, 5_000);
+    return () => clearInterval(interval);
+  }, [nowPlaying?.last_heartbeat_at]);
 
   useEffect(
     () => () => {
@@ -367,7 +477,9 @@ export function usePlayback(venueDbId: string) {
               ...prev,
               is_playing: playing,
               // Çalmaya devam çapası şimdiden kaydırılır ki çubuk geri sıçramasın
-              started_at: playing ? new Date(Date.now() - progress).toISOString() : prev.started_at,
+              started_at: playing
+                ? new Date(Date.now() - progressRef.current).toISOString()
+                : prev.started_at,
             }
           : prev
       );
@@ -379,6 +491,8 @@ export function usePlayback(venueDbId: string) {
       if (action === "next") {
         const upcoming = queueRef.current[0];
         if (upcoming?.songs) {
+          expectedVideoRef.current = { id: upcoming.songs.youtube_video_id, at: Date.now() };
+          playbackStartedRef.current = false;
           setNowPlaying((prev) =>
             prev
               ? {
@@ -471,15 +585,21 @@ export function usePlayback(venueDbId: string) {
   // /api/admin/playlists yanıtında video_id döner). Player DB → Realtime turunu
   // beklemeden videoyu yükler; alt bardaki şarkı bilgisi birazdan now_playing
   // aboneliğiyle gelir.
-  const stageTakeover = (videoId: string) => {
+  const stageTakeover = (videoId: string, options?: { refreshQueue?: boolean }) => {
     localActionAtRef.current = Date.now();
+    expectedVideoRef.current = { id: videoId, at: Date.now() };
+    playbackStartedRef.current = false;
     setProgress(0);
     sendCommand({ type: "seeking" });
     sendCommand({ type: "load", video_id: videoId });
     // nowPlaying'e elle dokunulmaz: video_id'yi burada yazsaydık player'ın
     // yayınladığı yeni durum "değişmemiş" görünür ve alt bar eski şarkının
     // adını/kapağını taşımaya devam ederdi. Satır now_playing aboneliğiyle gelir.
-    if (venueDbId) void fetchQueue(venueDbId);
+    //
+    // refreshQueue=false: sunucuya istek daha YOLA ÇIKMADAN sahne devralınıyor
+    // (bkz. useLibrary.playNow). Kuyruk henüz değişmedi, boşuna çekilmesin —
+    // yanıt gelince zaten tazelenecek.
+    if (venueDbId && options?.refreshQueue !== false) void fetchQueue(venueDbId);
   };
 
   // "Şimdi çal": seçilen şarkı sahneye çıkar, çalan şarkı yarıda kesilir.
@@ -499,7 +619,16 @@ export function usePlayback(venueDbId: string) {
     localActionAtRef.current = Date.now();
     sendCommand({ type: "seeking" });
     setProgress(0);
+    // Sunucudan önce çalan videonun kimliği: geri dönmek gerekirse (istek
+    // reddedilirse) player eski şarkısına döndürülür.
+    const previousVideoId = nowPlayingRef.current?.video_id ?? null;
     if (song) {
+      // HANGİ VİDEONUN ÇALACAĞINI ZATEN BİLİYORUZ: player'a şimdi söylenir,
+      // sunucu turu beklenmez. Eskiden komut ancak yanıt döndükten sonra
+      // gidiyordu ve şarkı gözle görülür biçimde geç başlıyordu.
+      sendCommand({ type: "load", video_id: song.youtube_video_id });
+      expectedVideoRef.current = { id: song.youtube_video_id, at: Date.now() };
+      playbackStartedRef.current = false;
       setNowPlaying((prev) =>
         prev
           ? {
@@ -524,11 +653,18 @@ export function usePlayback(venueDbId: string) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         localActionAtRef.current = 0;
+        // İyimser başlattığımız şarkı sunucuda kabul edilmedi: player eski
+        // videosuna geri döner, yoksa panelde reddedilen şarkı çalmaya devam ederdi.
+        if (song && previousVideoId && previousVideoId !== song.youtube_video_id) {
+          sendCommand({ type: "load", video_id: previousVideoId });
+        }
         await fetchQueue(venueDbId);
         return { ok: false as const, error: (data.error as string) ?? "Çalınamadı" };
       }
-      // Video kimliğini player'a anında ilet: DB → Realtime turu beklenmesin
-      if (typeof data.video_id === "string") sendCommand({ type: "load", video_id: data.video_id });
+      // Sunucu başka bir videoda karar kıldıysa düzelt; aynıysa komut tekrarlanmaz
+      if (typeof data.video_id === "string" && data.video_id !== song?.youtube_video_id) {
+        sendCommand({ type: "load", video_id: data.video_id });
+      }
       await fetchQueue(venueDbId);
       return { ok: true as const };
     } catch {
@@ -694,12 +830,6 @@ export function usePlayback(venueDbId: string) {
   );
 
   const duration = nowPlaying?.songs?.duration_ms ?? 1;
-  const progressPct = Math.min((progress / duration) * 100, 100);
-
-  // Player sekmesi hiç açılmadıysa ya da heartbeat kesildiyse uyar
-  const heartbeatAge = nowPlaying?.last_heartbeat_at
-    ? now - Date.parse(nowPlaying.last_heartbeat_at)
-    : Infinity;
 
   return {
     queue,
@@ -710,11 +840,12 @@ export function usePlayback(venueDbId: string) {
     manualCount,
     clearManualQueue,
     nowPlaying,
-    progress,
-    progressPct,
+    // İlerleme sayısı bilerek burada YOK: abone olunabilir kutudan okunur
+    // (bkz. useProgress), yoksa saniyede dört kez tüm panel yeniden çizilir.
+    progressStore,
     duration,
     isPlaying: nowPlaying?.is_playing ?? false,
-    playerOffline: heartbeatAge > OFFLINE_AFTER_MS,
+    playerOffline,
     playerLoading,
     volume,
     volumeError,

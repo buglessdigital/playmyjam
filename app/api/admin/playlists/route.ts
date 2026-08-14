@@ -3,15 +3,14 @@ import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import {
-  clearAutoQueue,
   clearManualQueue,
   enqueueManual,
   fillQueue,
-  jumpPlaylistCursorTo,
   pickPlaylistOpener,
-  playPlaylistNow,
   playlistSongsForQueue,
   resetAutoQueue,
+  startPlaylistFrom,
+  verifyPlaylistOpener,
 } from "@/lib/queue-fill";
 import { playSongNow } from "@/lib/queue";
 
@@ -87,7 +86,7 @@ export async function PATCH(req: NextRequest) {
 
     const { data: owned } = await supabaseAdmin
       .from("playlists")
-      .select("id")
+      .select("id, queue_position")
       .eq("venue_id", session.venue_id)
       .in("id", order);
 
@@ -95,14 +94,20 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
     }
 
+    // Yalnızca yeri değişenler yazılır: bir listeyi bir sıra yukarı almak iki
+    // satır eder, tüm rayı baştan yazmak değil.
+    const currentPos = new Map((owned ?? []).map((p) => [p.id, p.queue_position]));
     const results = await Promise.all(
-      order.map((id: string, i: number) =>
-        supabaseAdmin
-          .from("playlists")
-          .update({ queue_position: i + 1 })
-          .eq("id", id)
-          .eq("venue_id", session.venue_id)
-      )
+      order
+        .map((id: string, i: number): { id: string; position: number } => ({ id, position: i + 1 }))
+        .filter(({ id, position }: { id: string; position: number }) => currentPos.get(id) !== position)
+        .map(({ id, position }: { id: string; position: number }) =>
+          supabaseAdmin
+            .from("playlists")
+            .update({ queue_position: position })
+            .eq("id", id)
+            .eq("venue_id", session.venue_id)
+        )
     );
 
     const failed = results.find((r) => r.error);
@@ -127,7 +132,7 @@ export async function PATCH(req: NextRequest) {
 
     const { data: owned } = await supabaseAdmin
       .from("playlists")
-      .select("id")
+      .select("id, sort_order")
       .eq("venue_id", session.venue_id)
       .in("id", order);
 
@@ -136,14 +141,18 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
     }
 
+    const currentOrder = new Map((owned ?? []).map((p) => [p.id, p.sort_order]));
     const results = await Promise.all(
-      order.map((id: string, i: number) =>
-        supabaseAdmin
-          .from("playlists")
-          .update({ sort_order: i })
-          .eq("id", id)
-          .eq("venue_id", session.venue_id)
-      )
+      order
+        .map((id: string, i: number): { id: string; sortOrder: number } => ({ id, sortOrder: i }))
+        .filter(({ id, sortOrder }: { id: string; sortOrder: number }) => currentOrder.get(id) !== sortOrder)
+        .map(({ id, sortOrder }: { id: string; sortOrder: number }) =>
+          supabaseAdmin
+            .from("playlists")
+            .update({ sort_order: sortOrder })
+            .eq("id", id)
+            .eq("venue_id", session.venue_id)
+        )
     );
 
     const failed = results.find((r) => r.error);
@@ -203,28 +212,25 @@ export async function PATCH(req: NextRequest) {
 
     // Yalnızca yeri değişen satırlar yazılır: tek adımlık taşımada iki satır eder.
     // Uzak bir noktaya sürüklemede aradaki tüm satırlar kayar — 500 şarkılık
-    // listede başa çekmek 500 satır demek. Öbekler ARDIŞIK yazılırsa bu 20 tur
-    // eder ve saniyeler sürer; öbekler paralel gider, yalnızca aynı anda uçan
-    // istek sayısı sınırlanır (veritabanı bağlantı havuzu boğulmasın).
+    // listede başa çekmek 500 satır demek. Bunlar eskiden satır başına AYRI birer
+    // UPDATE isteğiydi (100'lük öbekler halinde); tek upsert'e indirildi, yani
+    // kaç satır kayarsa kaysın veritabanına tek tur gidiliyor.
     const changed = songOrder
-      .map((songId, i) => ({ row: byId.get(songId)!, position: i + 1 }))
-      .filter(({ row, position }) => row.position !== position)
-      .map(({ row, position }) => ({ id: row.id, position }));
+      .map((songId, i) => ({ songId, position: i + 1 }))
+      .filter(({ songId, position }) => byId.get(songId)!.position !== position);
 
-    const WRITE_CONCURRENCY = 100;
-    for (let i = 0; i < changed.length; i += WRITE_CONCURRENCY) {
-      const results = await Promise.all(
-        changed.slice(i, i + WRITE_CONCURRENCY).map(({ id, position }) =>
-          supabaseAdmin
-            .from("playlist_songs")
-            .update({ position })
-            .eq("id", id)
-            .eq("venue_id", session.venue_id)
-        )
+    if (changed.length > 0) {
+      const { error: writeErr } = await supabaseAdmin.from("playlist_songs").upsert(
+        changed.map(({ songId, position }) => ({
+          venue_id: session.venue_id,
+          playlist_id: listId,
+          song_id: songId,
+          position,
+        })),
+        { onConflict: "playlist_id,song_id" }
       );
-      const failed = results.find((r) => r.error);
-      if (failed?.error) {
-        return NextResponse.json({ error: failed.error.message }, { status: 500 });
+      if (writeErr) {
+        return NextResponse.json({ error: writeErr.message }, { status: 500 });
       }
     }
 
@@ -272,7 +278,13 @@ export async function PATCH(req: NextRequest) {
     //
     // Sahiplik, açılış şarkısı, sahnedeki satır ve sıradaki müşteri şarkısı
     // birbirine bağlı değil: hepsi aynı anda sorulur.
-    const [{ data: playlist }, opener, { data: playingRows }, { data: nextCustomerRow }] =
+    // Panel hangi şarkının açacağını biliyor (listenin sırası ekranında duruyor)
+    // ve bunu ipucu olarak yollar: doğrulaması iki ucuz sorgu, listenin tamamını
+    // çekip elemekten belirgin biçimde hızlı. Panel bu ipucuyla aynı anda
+    // player'a "bu videoyu yükle" dediği için ses sunucu turunu beklemez.
+    const openerHint = typeof body?.opener_song_id === "string" ? body.opener_song_id : null;
+
+    const [{ data: playlist }, hintedOpener, { data: playingRows }, { data: nextCustomerRow }] =
       await Promise.all([
         supabaseAdmin
           .from("playlists")
@@ -280,7 +292,9 @@ export async function PATCH(req: NextRequest) {
           .eq("id", playlistId)
           .eq("venue_id", session.venue_id)
           .maybeSingle(),
-        pickPlaylistOpener(session.venue_id, playlistId),
+        openerHint
+          ? verifyPlaylistOpener(session.venue_id, playlistId, openerHint)
+          : pickPlaylistOpener(session.venue_id, playlistId),
         supabaseAdmin
           .from("queue")
           .select("song_id, user_id")
@@ -306,6 +320,11 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
     }
 
+    // İpucu tutmadıysa (şarkı listeden çıkmış, çalınamaz işaretlenmiş ya da
+    // panelin görünümü bayat) normal seçime düşülür.
+    const opener =
+      hintedOpener ?? (openerHint ? await pickPlaylistOpener(session.venue_id, playlistId) : null);
+
     // Açılış şarkısı yoksa listede çalınabilir şarkı da yok
     if (!opener) {
       return NextResponse.json({ error: "Bu listede çalınabilir şarkı yok" }, { status: 400 });
@@ -330,10 +349,11 @@ export async function PATCH(req: NextRequest) {
     // müşteri şarkısı tuttuğu için çıkamadıysa işaretlenmez, yoksa liste sırası
     // geldiğinde ilk şarkısını atlardı.
     const openerReachedStage = !customerOnStage && !promoteId;
+    // Kuyruk işi İKİ AŞAMADA: önce kısa yol (listeyi devret + kuyruğun başını
+    // yaz — iki DB turu), sonra geri kalanı. Eskiden bu iş otuza yakın ardışık
+    // tur ediyor ve panelde sıra 8-9 saniye sonra beliriyordu.
     const queueWork = async () => {
-      await playPlaylistNow(session.venue_id, playlistId, { refillQueue: false });
-      await clearAutoQueue(session.venue_id);
-      if (openerReachedStage) await jumpPlaylistCursorTo(session.venue_id, playlistId, opener);
+      await startPlaylistFrom(session.venue_id, playlistId, openerReachedStage ? opener : null);
       await fillQueue(session.venue_id);
     };
 

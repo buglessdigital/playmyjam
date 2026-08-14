@@ -35,6 +35,19 @@ export type PlayerStateBeat = {
   duration_ms: number | null;
   /** Gönderen cihazın saati — panel gecikmeyi telafi etmek için kullanır */
   at: number;
+  /**
+   * Ses FİİLEN akıyor mu (deck PLAYING). is_playing bunu söyleyemez: tamponlama
+   * ve dış kaynaklı duraklatmalar boyunca bilerek true kalır, yoksa panelde
+   * oynat/duraklat simgesi sürekli titrerdi.
+   *
+   * Panel ilerleme çubuğunu kendi saatiyle ilerletiyor; şarkı değişiminde
+   * YouTube videoyu birkaç saniye tamponladığı için çubuk sesin önüne geçiyor,
+   * sonra ilk gerçek ölçümde geri sıçrıyordu. Bu bayrak false iken panel saymaz:
+   * çubuk sesin başlamasını bekler.
+   *
+   * Eski player sürümlerinde alan yoktur; panel yokluğunu "akıyor" sayar.
+   */
+  started?: boolean;
 };
 
 export const PLAYER_BUS_TOPIC = (venueDbId: string) => `player-bus:${venueDbId}`;

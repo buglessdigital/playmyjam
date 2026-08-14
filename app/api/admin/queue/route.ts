@@ -146,7 +146,7 @@ export async function PUT(req: NextRequest) {
 
   const { data: autoRows, error: readErr } = await supabaseAdmin
     .from("queue")
-    .select("id")
+    .select("id, position")
     .eq("venue_id", session.venue_id)
     .eq("status", "queued")
     .is("user_id", null);
@@ -163,14 +163,23 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Kuyruk değişti, sayfayı tazeleyin" }, { status: 409 });
   }
 
+  // Yalnızca yeri DEĞİŞEN satırlar yazılır. Bir şarkıyı bir sıra aşağı almak iki
+  // satır eder; eskiden kuyruğun tamamı (500 satıra kadar) her taşımada yeniden
+  // yazılıyordu. Kuyruk satırlarında status/started_at gibi oynatıcının anlık
+  // güncellediği alanlar olduğu için toplu upsert yerine hedefli UPDATE: yoldaki
+  // bir satırı yanlışlıkla "queued"a geri çevirmeyelim.
+  const currentPos = new Map((autoRows ?? []).map((r) => [r.id, r.position]));
   const results = await Promise.all(
-    ids.map((id, i) =>
-      supabaseAdmin
-        .from("queue")
-        .update({ position: AUTO_POSITION_BASE + 1 + i })
-        .eq("id", id)
-        .eq("venue_id", session.venue_id)
-    )
+    ids
+      .map((id, i) => ({ id, position: AUTO_POSITION_BASE + 1 + i }))
+      .filter(({ id, position }) => currentPos.get(id) !== position)
+      .map(({ id, position }) =>
+        supabaseAdmin
+          .from("queue")
+          .update({ position })
+          .eq("id", id)
+          .eq("venue_id", session.venue_id)
+      )
   );
 
   const failed = results.find((r) => r.error);

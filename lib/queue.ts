@@ -187,17 +187,6 @@ export async function playSongNow(
   target: PlayNowTarget,
   options?: { deferQueueWork?: boolean }
 ): Promise<PlayNowResult> {
-  const { data: playingRows } = await supabaseAdmin
-    .from("queue")
-    .select("id, song_id, user_id")
-    .eq("venue_id", venueId)
-    .eq("status", "playing");
-
-  const playing = playingRows ?? [];
-  if (playing.some((row) => row.user_id !== null)) {
-    return { ok: false, error: "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez" };
-  }
-
   type SongInfo = {
     id: string;
     youtube_video_id: string | null;
@@ -207,34 +196,80 @@ export async function playSongNow(
     album_cover_url: string | null;
   };
 
+  // ÜÇ OKUMA DA BİRBİRİNDEN BAĞIMSIZ, tek turda gider: sahnedeki satır(lar),
+  // hedefin kendisi ve (katalog yolunda) şarkının kuyrukta bekleyen satırı.
+  // Ardışık yapıldığında düğme üç ağ turu bekliyordu ve şarkı gözle görülür
+  // biçimde geç başlıyordu.
+  const [{ data: playingRows }, targetRow, existingRow] = await Promise.all([
+    supabaseAdmin
+      .from("queue")
+      .select("id, song_id, user_id")
+      .eq("venue_id", venueId)
+      .eq("status", "playing"),
+    target.queueId
+      ? supabaseAdmin
+          .from("queue")
+          .select(
+            "id, song_id, user_id, status, songs(id, youtube_video_id, embeddable, title, artist, album_cover_url)"
+          )
+          .eq("id", target.queueId)
+          .eq("venue_id", venueId)
+          .maybeSingle()
+      : target.songId
+        ? supabaseAdmin
+            .from("songs")
+            .select("id, youtube_video_id, embeddable, title, artist, album_cover_url")
+            .eq("id", target.songId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    // Katalog/playlist yolunda şarkı kuyrukta zaten bekliyor olabilir — ikinci
+    // kez çalmasın diye o satır sahneye alınır (yenisi açılmaz).
+    target.queueId || !target.songId
+      ? Promise.resolve({ data: null })
+      : supabaseAdmin
+          .from("queue")
+          .select("id, user_id")
+          .eq("venue_id", venueId)
+          .eq("song_id", target.songId)
+          .eq("status", "queued")
+          .order("priority", { ascending: false })
+          .order("position", { ascending: true })
+          .order("added_at", { ascending: true })
+          .order("id", { ascending: true })
+          .limit(1)
+          .maybeSingle(),
+  ]);
+
+  const playing = playingRows ?? [];
+  if (playing.some((row) => row.user_id !== null)) {
+    return { ok: false, error: "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez" };
+  }
+
   // Hedefi çöz: ya kuyruktaki satır ya da katalogdaki şarkı
   let rowId: string | null = null;
   let rowUserId: string | null = null;
   let song: SongInfo | null = null;
 
   if (target.queueId) {
-    const { data: row } = await supabaseAdmin
-      .from("queue")
-      .select("id, song_id, user_id, status, songs(id, youtube_video_id, embeddable, title, artist, album_cover_url)")
-      .eq("id", target.queueId)
-      .eq("venue_id", venueId)
-      .maybeSingle();
+    const row = targetRow.data as
+      | { id: string; song_id: string; user_id: string | null; status: string; songs: unknown }
+      | null;
 
     if (!row) return { ok: false, error: "Şarkı kuyrukta bulunamadı" };
     if (row.status === "playing") return { ok: false, error: "Bu şarkı zaten çalıyor" };
     if (row.status !== "queued") return { ok: false, error: "Bu şarkı artık sırada değil" };
 
-    const rel = row.songs as unknown as SongInfo | SongInfo[] | null;
+    const rel = row.songs as SongInfo | SongInfo[] | null;
     song = Array.isArray(rel) ? rel[0] ?? null : rel;
     rowId = row.id;
     rowUserId = row.user_id;
   } else if (target.songId) {
-    const { data } = await supabaseAdmin
-      .from("songs")
-      .select("id, youtube_video_id, embeddable, title, artist, album_cover_url")
-      .eq("id", target.songId)
-      .maybeSingle();
-    song = (data as SongInfo | null) ?? null;
+    song = (targetRow.data as SongInfo | null) ?? null;
+    const existing = existingRow.data as { id: string; user_id: string | null } | null;
+    if (existing) {
+      rowId = existing.id;
+      rowUserId = existing.user_id;
+    }
   }
 
   if (!song) return { ok: false, error: "Şarkı bulunamadı" };
@@ -254,71 +289,50 @@ export async function playSongNow(
     await jumpPlaylistCursorTo(venueId, target.playlistId, song.id);
   }
 
-  // Katalog/playlist yolunda şarkı kuyrukta zaten bekliyor olabilir — ikinci kez
-  // çalmasın diye o satır sahneye alınır (yenisi açılmaz).
-  if (!rowId) {
-    const { data: existing } = await supabaseAdmin
-      .from("queue")
-      .select("id, user_id")
-      .eq("venue_id", venueId)
-      .eq("song_id", song.id)
-      .eq("status", "queued")
-      .order("priority", { ascending: false })
-      .order("position", { ascending: true })
-      .order("added_at", { ascending: true })
-      .order("id", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (existing) {
-      rowId = existing.id;
-      rowUserId = existing.user_id;
-    }
-  }
-
   const now = new Date().toISOString();
 
-  // Kesilen şarkı kapanır. started_at'e dokunulmaz: 30 dk kilidinin çapası
-  // şarkının fiilen başladığı andır (0025).
-  if (playing.length > 0) {
-    await supabaseAdmin
-      .from("queue")
-      .update({ status: "played", played_at: now })
-      .in("id", playing.map((row) => row.id));
-  }
-
-  if (rowId) {
-    await supabaseAdmin
-      .from("queue")
-      .update({ status: "playing", started_at: now, played_at: null })
-      .eq("id", rowId);
-  } else {
-    // Kuyrukta yoktu: doğrudan sahneye çıkan yeni satır. Otomatik sınıfta
-    // (user_id null) — jeton harcanmaz, 30 dk kilidi doğurmaz.
-    await supabaseAdmin.from("queue").insert({
-      venue_id: venueId,
-      song_id: song.id,
-      user_id: null,
-      added_by: target.playlistId ? AUTO_ADDED_BY : ADMIN_ADDED_BY,
-      tokens_spent: 0,
-      priority: false,
-      position: AUTO_POSITION_BASE,
-      status: "playing",
-      started_at: now,
-      source_playlist_id: target.playlistId ?? null,
-    });
-  }
-
-  await supabaseAdmin
-    .from("now_playing")
-    .update({
-      song_id: song.id,
-      video_id: song.youtube_video_id,
-      is_playing: true,
-      progress_ms: 0,
-      started_at: now,
-    })
-    .eq("venue_id", venueId);
+  // ÜÇ YAZMA DA BİRBİRİNDEN BAĞIMSIZ (farklı satırlar), tek turda gider:
+  //  1) kesilen şarkı kapanır — started_at'e dokunulmaz, 30 dk kilidinin çapası
+  //     şarkının fiilen başladığı andır (0025),
+  //  2) hedef satır sahneye çıkar (yoksa yeni satır açılır),
+  //  3) now_playing yeni videoyu gösterir.
+  await Promise.all([
+    playing.length > 0
+      ? supabaseAdmin
+          .from("queue")
+          .update({ status: "played", played_at: now })
+          .in("id", playing.map((row) => row.id))
+      : Promise.resolve(null),
+    rowId
+      ? supabaseAdmin
+          .from("queue")
+          .update({ status: "playing", started_at: now, played_at: null })
+          .eq("id", rowId)
+      : // Kuyrukta yoktu: doğrudan sahneye çıkan yeni satır. Otomatik sınıfta
+        // (user_id null) — jeton harcanmaz, 30 dk kilidi doğurmaz.
+        supabaseAdmin.from("queue").insert({
+          venue_id: venueId,
+          song_id: song.id,
+          user_id: null,
+          added_by: target.playlistId ? AUTO_ADDED_BY : ADMIN_ADDED_BY,
+          tokens_spent: 0,
+          priority: false,
+          position: AUTO_POSITION_BASE,
+          status: "playing",
+          started_at: now,
+          source_playlist_id: target.playlistId ?? null,
+        }),
+    supabaseAdmin
+      .from("now_playing")
+      .update({
+        song_id: song.id,
+        video_id: song.youtube_video_id,
+        is_playing: true,
+        progress_ms: 0,
+        started_at: now,
+      })
+      .eq("venue_id", venueId),
+  ]);
 
   // Boşalan yer (ve playlist atlamasında tamamen boşaltılan otomatik blok)
   // doldurulur: imleç yeni yerinde olduğu için liste kaldığı noktadan devam eder.

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, use, Suspense, useCallback } from "react"
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { resolveVenueDbId } from "@/lib/venue-db-id";
 import AdminPushBanner from "@/components/admin/AdminPushBanner";
 
 interface Props {
@@ -83,35 +84,38 @@ function RequestsPageContent({ params }: Props) {
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
+    // İki sorgu birbirine bağlı değil — sırayla değil birlikte gider
     const fetchRequests = async (venueDbId: string) => {
-      const { data: p } = await supabase
-        .from("song_requests")
-        .select(SELECT)
-        .eq("venue_id", venueDbId)
-        .eq("status", "pending")
-        .order("requested_at", { ascending: false });
-      if (!cancelled && p) setPending(p as unknown as Request[]);
-
-      const { data: h } = await supabase
-        .from("song_requests")
-        .select(SELECT)
-        .eq("venue_id", venueDbId)
-        .neq("status", "pending")
-        .order("resolved_at", { ascending: false })
-        .limit(30);
-      if (!cancelled && h) setHistory(h as unknown as Request[]);
+      const [{ data: p }, { data: h }] = await Promise.all([
+        supabase
+          .from("song_requests")
+          .select(SELECT)
+          .eq("venue_id", venueDbId)
+          .eq("status", "pending")
+          .order("requested_at", { ascending: false }),
+        supabase
+          .from("song_requests")
+          .select(SELECT)
+          .eq("venue_id", venueDbId)
+          .neq("status", "pending")
+          .order("resolved_at", { ascending: false })
+          .limit(30),
+      ]);
+      if (cancelled) return;
+      if (p) setPending(p as unknown as Request[]);
+      if (h) setHistory(h as unknown as Request[]);
     };
 
     const load = async () => {
-      const { data: venue } = await supabase.from("venues").select("id").eq("slug", venueId).single();
-      if (cancelled || !venue) return;
+      const venueDbId = await resolveVenueDbId(venueId);
+      if (cancelled || !venueDbId) return;
 
-      await fetchRequests(venue.id);
+      await fetchRequests(venueDbId);
 
       channel = supabase
-        .channel(`song_requests:${venue.id}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "song_requests", filter: `venue_id=eq.${venue.id}` }, () => {
-          fetchRequests(venue.id);
+        .channel(`song_requests:${venueDbId}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "song_requests", filter: `venue_id=eq.${venueDbId}` }, () => {
+          fetchRequests(venueDbId);
         })
         .subscribe();
     };

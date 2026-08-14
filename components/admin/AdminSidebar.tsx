@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { resolveVenueDbId } from "@/lib/venue-db-id";
 
 type NavItem = {
   href: string;
@@ -111,17 +112,18 @@ function usePendingRequestCount(venueId: string) {
     };
 
     const load = async () => {
-      const { data: venue } = await supabase.from("venues").select("id").eq("slug", venueId).single();
-      if (cancelled || !venue) return;
+      // Ana ekranla aynı çözücü: mekan kimliği sekme başına bir kez sorulur
+      const venueDbId = await resolveVenueDbId(venueId);
+      if (cancelled || !venueDbId) return;
 
-      await refresh(venue.id);
+      await refresh(venueDbId);
 
       channel = supabase
-        .channel(`sidebar_requests:${venue.id}`)
+        .channel(`sidebar_requests:${venueDbId}`)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "song_requests", filter: `venue_id=eq.${venue.id}` },
-          () => refresh(venue.id),
+          { event: "*", schema: "public", table: "song_requests", filter: `venue_id=eq.${venueDbId}` },
+          () => refresh(venueDbId),
         )
         .subscribe();
     };

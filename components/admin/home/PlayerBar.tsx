@@ -2,7 +2,25 @@
 
 import Image from "next/image";
 import SeekBar from "./SeekBar";
-import { type Playback } from "./usePlayback";
+import { useProgress, type Playback } from "./usePlayback";
+
+// Saniyede dört kez tazelenen tek parça bu: ilerleme sayısı panelin ortak
+// state'inde tutulsaydı her tick'te playlist rayı ve kuyruk da yeniden
+// çizilirdi (bkz. usePlayback → useProgress).
+function LiveSeekBar({ playback }: { playback: Playback }) {
+  const progress = useProgress(playback.progressStore);
+  return (
+    <SeekBar
+      progress={progress}
+      // duration === 1: süre henüz bilinmiyor (bkz. usePlayback) — sarma kapalı
+      duration={playback.duration === 1 ? 0 : playback.duration}
+      onBegin={playback.beginSeek}
+      onPreview={playback.previewSeek}
+      onCommit={playback.commitSeek}
+      onCancel={playback.cancelSeek}
+    />
+  );
+}
 
 /** Ana ekranın alt barı: şu an çalan, oynat/duraklat/geç ve ses seviyesi. */
 export default function PlayerBar({
@@ -17,16 +35,10 @@ export default function PlayerBar({
 }) {
   const {
     nowPlaying,
-    progress,
-    duration,
     isPlaying,
     playerOffline,
     playerLoading,
     playerAction,
-    beginSeek,
-    previewSeek,
-    commitSeek,
-    cancelSeek,
     volume,
     volumeError,
     changeVolume,
@@ -134,17 +146,7 @@ export default function PlayerBar({
             </p>
           )}
 
-          {song && !playerOffline && (
-            <SeekBar
-              progress={progress}
-              // duration === 1: süre henüz bilinmiyor (bkz. usePlayback) — sarma kapalı
-              duration={duration === 1 ? 0 : duration}
-              onBegin={beginSeek}
-              onPreview={previewSeek}
-              onCommit={commitSeek}
-              onCancel={cancelSeek}
-            />
-          )}
+          {song && !playerOffline && <LiveSeekBar playback={playback} />}
         </div>
 
         {/* Sağ: ses + player bağlantısı */}

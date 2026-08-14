@@ -68,7 +68,13 @@ export function useLibrary(
     playingListId: string | null;
     pendingByList: Record<string, number>;
     manualByList: Record<string, number>;
-    stageTakeover: (videoId: string) => void;
+    stageTakeover: (videoId: string, options?: { refreshQueue?: boolean }) => void;
+    // Play tuşunun sahneyi devralıp almayacağını sunucudan ÖNCE kestirmek için
+    // (bkz. playNow): müşteri şarkısı sahnedeyse ya da sırada bekliyorsa liste
+    // sahneyi alamaz.
+    currentIsCustomer: boolean;
+    queue: { user_id: string | null }[];
+    nowPlaying: { video_id?: string | null } | null;
   }
 ) {
   const supabase = useMemo(() => createClient(), []);
@@ -620,6 +626,25 @@ export function useLibrary(
   //
   // Sahnedeki şarkı müşterinin ise kesilmez (sunucudaki kilit): liste sahneyi
   // devralmaz, müşteri istekleri bitince baştan çalmaya başlar.
+  // Listenin açılış şarkısı, PANELDEKİ veriden: sıralı listede ilk sıradaki,
+  // karıştırmalı listede rastgele biri. Sunucudaki pickPlaylistOpener ile aynı
+  // kural — bu yüzden panel şarkıyı sunucuya danışmadan başlatabiliyor ve
+  // seçimini ipucu olarak yollayıp ikisinin ayrışmasını önlüyor.
+  const localOpener = useCallback(
+    (playlistId: string, shuffle: boolean): Song | null => {
+      const order = positions[playlistId] ?? {};
+      const members = songs.filter(
+        (s) => (memberships[s.id] ?? []).includes(playlistId) && s.youtube_video_id
+      );
+      if (members.length === 0) return null;
+      if (shuffle) return members[Math.floor(Math.random() * members.length)];
+      return members.reduce((first, s) =>
+        (order[s.id] ?? Infinity) < (order[first.id] ?? Infinity) ? s : first
+      );
+    },
+    [songs, memberships, positions]
+  );
+
   const playNow = async (playlist: Playlist) => {
     // Ekran sunucuyu beklemeden değişir: "Çalıyor" rozeti bu listeye geçer,
     // ilerleme sıfırlanır, o ana kadar çalan liste kuyruktan düşer. Sunucudaki
@@ -649,23 +674,51 @@ export function useLibrary(
       return next;
     });
 
+    // Açılış şarkısını panel de biliyor: sunucu turunu beklemeden player'a
+    // "bu videoyu yükle" denir ve aynı şarkı ipucu olarak yollanır. Sahneyi
+    // devralmayacağımız üç hal sunucudakiyle birebir aynı kuralla elenir —
+    // müşteri şarkısı sahnedeyse ya da sırada bekliyorsa liste sahneyi almaz,
+    // açılış şarkısı zaten çalıyorsa da baştan başlatılmaz.
+    const opener = localOpener(playlist.id, playlist.shuffle);
+    const customerWaiting = (playback?.queue ?? []).some((q) => q.user_id !== null);
+    const takeover =
+      !!opener &&
+      !playback?.currentIsCustomer &&
+      !customerWaiting &&
+      playback?.nowPlaying?.video_id !== opener.youtube_video_id;
+
+    if (takeover && opener) playback?.stageTakeover(opener.youtube_video_id, { refreshQueue: false });
+
     const res = await fetch("/api/admin/playlists", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ playlist_id: playlist.id, play: true }),
+      body: JSON.stringify({
+        playlist_id: playlist.id,
+        play: true,
+        ...(opener ? { opener_song_id: opener.id } : {}),
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setPlaylists(previousPlaylists);
       setRotation(previousRotation);
       setConsumed(previousConsumed);
+      // İyimser başlattığımız şarkıyı geri al
+      if (takeover && playback?.nowPlaying?.video_id) {
+        playback.stageTakeover(playback.nowPlaying.video_id, { refreshQueue: false });
+      }
       return { ok: false as const, error: (data.error as string) ?? "Çalınamadı" };
     }
-    // Sahne değiştiyse video kimliği döner: player DB → Realtime turunu
-    // beklemeden yeni şarkıya geçer. Dönen şarkı listenin ilki olmayabilir —
-    // sırada müşteri şarkısı bekliyorsa sahneyi o alır, liste altından başlar.
-    // Hiç dönmediyse sahnede müşteri şarkısı çalıyordur, liste sırasını bekler.
-    if (typeof data.video_id === "string") playback?.stageTakeover(data.video_id);
+    // Sahne değiştiyse video kimliği döner. Bizim başlattığımızla aynıysa komut
+    // tekrarlanmaz; farklıysa (sırada müşteri şarkısı varmış, liste onun altından
+    // başlar) sunucunun dediği çalar.
+    if (typeof data.video_id === "string") {
+      if (data.video_id !== opener?.youtube_video_id) playback?.stageTakeover(data.video_id);
+    } else if (takeover && playback?.nowPlaying?.video_id) {
+      // Sunucu sahneye HİÇ dokunmadı (araya bir müşteri isteği girmiş olabilir):
+      // iyimser başlattığımız şarkı geri alınır, sahnedeki şarkı devam eder.
+      playback.stageTakeover(playback.nowPlaying.video_id);
+    }
     return { ok: true as const };
   };
 

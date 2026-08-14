@@ -381,6 +381,12 @@ async function pickFromRotation(
   return picks;
 }
 
+// Play tuşuna basıldığında kuyruğun İLK turda yazılacak satır sayısı: panel ve
+// player "sıradaki"leri hemen görsün diye baş taraf önce yazılır, listenin geri
+// kalanı (yüzlerce satır) arkadan gelir. Tek turda yazıldığında sıra panelde
+// ancak bütün liste işlendikten sonra beliriyordu.
+const HEAD_FILL = 20;
+
 export async function fillQueue(venueId: string): Promise<void> {
   // Dolumun okumaları birbirine bağlı değil — hepsi tek turda gider. Ardışık
   // yapıldığında beş tur ediyordu ve "play'e bastım, sıra geç güncellendi"
@@ -690,6 +696,14 @@ export async function playlistSongsForQueue(
   venueId: string,
   playlistId: string
 ): Promise<string[]> {
+  return (await orderedEligibleSongs(venueId, playlistId)).ids;
+}
+
+/** playlistSongsForQueue'nun içi; karıştırma bayrağı da lazım olan çağıranlar için. */
+async function orderedEligibleSongs(
+  venueId: string,
+  playlistId: string
+): Promise<{ shuffle: boolean; ids: string[] }> {
   const [{ data: playlist }, members] = await Promise.all([
     supabaseAdmin
       .from("playlists")
@@ -710,9 +724,9 @@ export async function playlistSongsForQueue(
     ),
   ]);
 
-  if (!playlist) return [];
+  if (!playlist) return { shuffle: false, ids: [] };
   const memberIds = (members.data ?? []).map((m) => m.song_id);
-  if (memberIds.length === 0) return [];
+  if (memberIds.length === 0) return { shuffle: playlist.shuffle, ids: [] };
 
   // Uygunluk yalnızca listenin şarkıları için sorulur; parçalar aynı anda gider
   const results = await Promise.all(
@@ -730,7 +744,152 @@ export async function playlistSongsForQueue(
 
   const eligible = new Set(results.flatMap((r) => (r.data ?? []).map((vs) => vs.song_id)));
   const ordered = memberIds.filter((id) => eligible.has(id));
-  return playlist.shuffle ? shuffleInPlace(ordered) : ordered;
+  return {
+    shuffle: playlist.shuffle,
+    ids: playlist.shuffle ? shuffleInPlace(ordered) : ordered,
+  };
+}
+
+/**
+ * PLAY TUŞUNUN KISA YOLU. "Bu liste baştan çalsın" (ya da "listenin şu
+ * şarkısından devam etsin") dendiğinde yapılması gereken her şeyi iki turda
+ * yapar ve kuyruğun BAŞINI hemen yazar.
+ *
+ * Neden ayrı bir yol: genel akış (playPlaylistNow → clearAutoQueue →
+ * jumpPlaylistCursorTo → fillQueue) aynı işi üç kez yapıyordu — listenin
+ * sahipliği iki kez kuruluyor, rotasyon üç kez okunuyor, tüketim önce geri
+ * alınıp hemen ardından siliniyordu. Otuza yakın ARDIŞIK veritabanı turu ediyor
+ * ve panelde sıra 8-9 saniye sonra beliriyordu. Burada hepsi iki tura iniyor.
+ *
+ * Bıraktığı durum genel akışınkiyle birebir aynıdır: liste tek çalan listedir,
+ * ilerlemesi sıfırdır (fromSongId verilmişse ona kadarı çalınmış sayılır),
+ * kuyruktaki otomatik satırlar düşmüştür. Kuyruğun geri kalanını çağıran taraf
+ * normal fillQueue ile tamamlar.
+ */
+export async function startPlaylistFrom(
+  venueId: string,
+  playlistId: string,
+  // Sahneye çıkan şarkı: bu ve (sıralı listede) öncesi çalınmış sayılır. null
+  // ise liste sahneyi devralamamıştır, baştan sıraya girer.
+  fromSongId: string | null
+): Promise<void> {
+  const cutoff = Date.now() - COOLDOWN_MS;
+
+  // --- 1. TUR: okumalar ve "listeyi devret" yazmaları hep birlikte ----------
+  // Yazmalar okumalardan bağımsız: silinecek otomatik satırlar zaten kuyruktan
+  // düşüyor, kalanları (müşteri + elle eklenen) ayrıca okuyoruz.
+  const [ordered, { data: keptRows }, { data: recentUserPlays }, { data: state }] =
+    await Promise.all([
+      orderedEligibleSongs(venueId, playlistId),
+      supabaseAdmin
+        .from("queue")
+        .select("song_id")
+        .eq("venue_id", venueId)
+        .eq("status", "queued")
+        .neq("added_by", AUTO_ADDED_BY),
+      supabaseAdmin
+        .from("queue")
+        .select("song_id, started_at, played_at")
+        .eq("venue_id", venueId)
+        .eq("status", "played")
+        .not("user_id", "is", null)
+        .gte("played_at", new Date(cutoff).toISOString()),
+      supabaseAdmin.from("playlist_rotation").select("cycle").eq("venue_id", venueId).maybeSingle(),
+      // Liste tek çalan liste olur; ötekiler kuyruktan düşer
+      supabaseAdmin
+        .from("playlists")
+        .update({ queue_position: 1 })
+        .eq("venue_id", venueId)
+        .eq("id", playlistId),
+      supabaseAdmin
+        .from("playlists")
+        .update({ queue_position: null })
+        .eq("venue_id", venueId)
+        .neq("id", playlistId)
+        .not("queue_position", "is", null),
+      // Bütün ilerlemeler silinir: bu liste baştan çalacak, ötekiler kuyruktan
+      // düştüğü için sonradan geri alınırlarsa baştan çalmalılar. Tüketimi
+      // tek tek geri almaya (unconsumeRows) gerek yok — hepsi gidiyor.
+      supabaseAdmin.from("playlist_rotation_consumed").delete().eq("venue_id", venueId),
+      // Bekleyen otomatik satırlar düşer; müşteri ve elle eklenenler kalır
+      supabaseAdmin
+        .from("queue")
+        .update({ status: "removed" })
+        .eq("venue_id", venueId)
+        .eq("status", "queued")
+        .is("user_id", null)
+        .eq("added_by", AUTO_ADDED_BY),
+    ]);
+
+  const cycle = state?.cycle ?? 1;
+  const kept = keptRows ?? [];
+  const exclude = new Set(kept.map((r) => r.song_id));
+  const cooldownIds = new Set(
+    (recentUserPlays ?? [])
+      .filter((r) => new Date(r.started_at ?? r.played_at).getTime() >= cutoff)
+      .map((r) => r.song_id)
+  );
+
+  // Sahneye çıkan şarkı ve (sıralı listede) öncesi çalınmış sayılır. Karıştırmalı
+  // listede "öncesi" diye bir şey yok — yalnızca o şarkı işaretlenir
+  // (jumpPlaylistCursorTo ile aynı kural).
+  const fromIndex = fromSongId ? ordered.ids.indexOf(fromSongId) : -1;
+  const consumed =
+    fromSongId === null
+      ? []
+      : ordered.shuffle || fromIndex < 0
+        ? [fromSongId]
+        : ordered.ids.slice(0, fromIndex + 1);
+  const consumedSet = new Set(consumed);
+
+  // --- Kuyruğun başı: listenin devamından ilk HEAD_FILL şarkı ---------------
+  // Kuyruk müşteri istekleriyle tavana dayanmışsa daha az (ya da hiç) yazılır;
+  // tavanı aşan satırları zaten sonraki dolum buduyor.
+  const head = Math.min(HEAD_FILL, Math.max(0, QUEUE_CAP - kept.length));
+  const picks: string[] = [];
+  for (const id of ordered.ids) {
+    if (picks.length >= head) break;
+    if (consumedSet.has(id) || exclude.has(id)) continue;
+    // 30 dk kilidi yalnızca YAKIN sıraya uygulanır (bkz. pickFromRotation)
+    if (kept.length + picks.length < QUEUE_FLOOR && cooldownIds.has(id)) continue;
+    picks.push(id);
+  }
+
+  const allConsumed = [...consumed, ...picks];
+
+  // --- 2. TUR: kuyruğun başı, tüketim ve imleç -----------------------------
+  await Promise.all([
+    picks.length > 0
+      ? supabaseAdmin.from("queue").insert(
+          picks.map((songId, i) => ({
+            venue_id: venueId,
+            song_id: songId,
+            user_id: null,
+            added_by: AUTO_ADDED_BY,
+            tokens_spent: 0,
+            priority: false,
+            position: AUTO_POSITION_BASE + 1 + i,
+            status: "queued",
+            source_playlist_id: playlistId,
+          }))
+        )
+      : Promise.resolve(null),
+    ...chunk(allConsumed, 500).map((ids) =>
+      supabaseAdmin.from("playlist_rotation_consumed").upsert(
+        ids.map((songId) => ({
+          venue_id: venueId,
+          playlist_id: playlistId,
+          song_id: songId,
+          cycle,
+        })),
+        { onConflict: "venue_id,playlist_id,cycle,song_id", ignoreDuplicates: true }
+      )
+    ),
+    supabaseAdmin.from("playlist_rotation").upsert(
+      { venue_id: venueId, playlist_id: playlistId, cycle, updated_at: new Date().toISOString() },
+      { onConflict: "venue_id" }
+    ),
+  ]);
 }
 
 // ÇALAN PLAYLIST TEKTİR. Kuyruğun otomatik bloğu her zaman tek bir listeye
@@ -897,6 +1056,40 @@ export async function pickPlaylistOpener(
   return playlist.shuffle
     ? candidates[Math.floor(Math.random() * candidates.length)]
     : candidates[0];
+}
+
+/**
+ * Panelin önerdiği açılış şarkısını UCUZA doğrular: listenin üyesi mi ve şu an
+ * çalınabilir mi. Panel listenin sırasını zaten ekranında tutuyor, yani hangi
+ * şarkının açacağını biliyor — bunu söylediğinde sunucunun listenin tamamını
+ * çekip elemesine (pickPlaylistOpener) gerek kalmaz ve düğme birkaç yüz ms
+ * erken tepki verir. Doğrulama başarısızsa çağıran taraf tam seçime düşer.
+ */
+export async function verifyPlaylistOpener(
+  venueId: string,
+  playlistId: string,
+  songId: string
+): Promise<string | null> {
+  const [{ data: member }, { data: playable }] = await Promise.all([
+    supabaseAdmin
+      .from("playlist_songs")
+      .select("song_id")
+      .eq("venue_id", venueId)
+      .eq("playlist_id", playlistId)
+      .eq("song_id", songId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("venue_songs")
+      .select("song_id, songs!inner(embeddable, youtube_video_id)")
+      .eq("venue_id", venueId)
+      .eq("song_id", songId)
+      .eq("in_venue_list", true)
+      .eq("songs.embeddable", true)
+      .not("songs.youtube_video_id", "is", null)
+      .maybeSingle(),
+  ]);
+
+  return member && playable ? songId : null;
 }
 
 // "Listenin 4. şarkısını şimdi çal" dendiğinde rotasyon imlecini o noktaya

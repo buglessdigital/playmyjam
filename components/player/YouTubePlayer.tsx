@@ -948,12 +948,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
     let progress = 0;
     let duration: number | null = null;
     let playing = false;
+    // Ses fiilen akıyor mu: yalnızca PLAYING. Panel ilerleme çubuğunu buna göre
+    // ilerletir (tamponlama boyunca çubuk beklemeli — bkz. PlayerStateBeat.started).
+    let started = false;
     if (player && currentVideoRef.current) {
       try {
         progress = Math.floor(player.getCurrentTime() * 1000);
         const secs = player.getDuration();
         duration = Number.isFinite(secs) && secs > 0 ? Math.floor(secs * 1000) : null;
         const state = player.getPlayerState();
+        started = state === window.YT?.PlayerState.PLAYING;
         // Niyet "çal" iken anlık durum duraklamış olabilir (dış kaynaklı
         // duraklatma, tamponlama, autoplay engeli): bunlar birkaç saniye içinde
         // bekçi tarafından geri açılır, panele "durdu" diye bildirilmez.
@@ -969,6 +973,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       progress_ms: Math.max(progress, 0),
       duration_ms: duration,
       at: Date.now(),
+      started,
       // Yeni video yüklenirken getCurrentTime bir süre ESKİ şarkıyı raporlar;
       // çağıran taraf doğru değeri biliyorsa üstüne yazar
       ...override,
@@ -1103,8 +1108,16 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
         pendingVideoRef.current = videoId;
       }
       onTrackChange?.({ videoId, isPlaying: true });
-      // Panel yeni şarkıyı DB turunu beklemeden görsün; süre henüz bilinmiyor
-      broadcastState({ video_id: videoId, is_playing: true, progress_ms: 0, duration_ms: null });
+      // Panel yeni şarkıyı DB turunu beklemeden görsün; süre henüz bilinmiyor.
+      // started:false — video daha tamponlanıyor, panelin çubuğu saymamalı
+      // (deck hâlâ ESKİ şarkıyı PLAYING raporlayabilir, o yüzden elle veriyoruz).
+      broadcastState({
+        video_id: videoId,
+        is_playing: true,
+        progress_ms: 0,
+        duration_ms: null,
+        started: false,
+      });
     },
     [
       onTrackChange,
@@ -1156,7 +1169,13 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange }: P
       setIdle(false);
       pendingVideoRef.current = null;
       onTrackChange?.({ videoId, isPlaying: true });
-      broadcastState({ video_id: videoId, is_playing: true, progress_ms: 0, duration_ms: null });
+      broadcastState({
+        video_id: videoId,
+        is_playing: true,
+        progress_ms: 0,
+        duration_ms: null,
+        started: false,
+      });
       scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
       return true;
     },

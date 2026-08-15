@@ -100,6 +100,13 @@ const LOAD_SETTLE_MS = 1_200;
 // başlamazsa mekan eski şarkıyla sonsuza kadar kalmasın diye üst sınır: bu süre
 // dolduğunda çıkan deck yine susturulur, gerisini takılma bekçisi toparlar.
 const HANDOFF_MAX_MS = 3_000;
+// Yerel şarkı değişiminden sonra bu süre içinde gelen "video değişti" satırları
+// çapalarına bakılarak elenir: kendi yazımızdan eski çapa taşıyan satır, yolda
+// kalmış bir yankıdır. Gerçek uzak değişiklikler taze çapayla gelir, elenmez.
+const STALE_ROW_GRACE_MS = 10_000;
+// Saat farkı payı: sunucunun yazdığı çapa ile bizim yükleme anımız arasında
+// birkaç yüz ms sapma normaldir (istek gidiş-dönüşü).
+const STALE_ROW_SLACK_MS = 1_500;
 const PLAY_NUDGE_MS = 3_000;
 // Dış kaynaklı duraklatma (YouTube'un atalet duraklatması, reklam/ara geçiş, ağ
 // kopması, medya tuşu, işletim sisteminin sesi başka uygulamaya vermesi) ile
@@ -488,6 +495,9 @@ type NowPlayingRow = {
   video_id: string | null;
   song_id: string | null;
   is_playing: boolean;
+  // Şarkının çalmaya başladığı an. Realtime yankısının bayat olup olmadığını
+  // ayırt etmenin tek güvenilir yolu (bkz. STALE_ROW_GRACE_MS).
+  started_at?: string | null;
   progress_ms?: number | null;
   volume?: number | null;
   crossfade_ms?: number | null;
@@ -2809,6 +2819,29 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             }
           }
           if (np.video_id && np.video_id !== currentVideoRef.current) {
+            // BAYAT SATIR YANKISI. Atlamanın hemen ÖNCESİNDE yola çıkmış bir
+            // heartbeat yazımı, satırda henüz ESKİ video dururken yapılır ve
+            // yankısı bize atlamadan sonra ulaşır. Eski kod bunu "dışarıdan
+            // şarkı değişti" sanıp yeni başlayan şarkının üstüne eskisini geri
+            // yüklüyordu: mekan "kesildi – eski şarkı yarım saniye – yeni şarkı"
+            // duyuyordu (mekan kaydıyla doğrulandı).
+            //
+            // Ayırt edici: satırın KENDİ çapası. Gerçek bir şarkı değişiminde
+            // started_at sunucu tarafından o an yazılır; bayat yankıda ise çalan
+            // şarkının başlangıcını taşır, yani bizim yüklememizden eskidir.
+            const rowAt = np.started_at ? Date.parse(np.started_at) : NaN;
+            const sinceLoad = Date.now() - lastLoadAtRef.current;
+            if (
+              sinceLoad < STALE_ROW_GRACE_MS &&
+              (!Number.isFinite(rowAt) || rowAt < lastLoadAtRef.current - STALE_ROW_SLACK_MS)
+            ) {
+              plog(
+                `bayat satır yankısı yok sayıldı: ${np.video_id} (yüklemeden ${Math.round(
+                  sinceLoad / 1000
+                )} sn sonra geldi)`
+              );
+              return;
+            }
             // Hızlı hat kaçtıysa geçiş buradan yürür — aynı deck değiştiren
             // yolla, ki uzak panelden atlamada da ses kesilmesin
             switchToVideo(np.video_id);

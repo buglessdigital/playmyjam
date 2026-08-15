@@ -32,6 +32,10 @@ import {
   type VenueSong,
 } from "@/components/browse/browse-types";
 
+// Gözat sayfasındaki ana listenin en az bu kadar şarkı göstermesi hedeflenir —
+// mekanın müşteriye açık şarkısı yetmiyorsa doğal olarak daha az olur.
+const MIN_LIST_SONGS = 20;
+
 type ArtistEntry = {
   key: string;
   name: string;
@@ -95,12 +99,18 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     });
   }, [supabase]);
 
+  // Müşteri katalogu = YALNIZCA çaldırılabilir şarkılar. Müşteriye kapalı olanlar
+  // (admin tek tek gizlemiş ya da bulunduğu listelerin hepsi pasif — bkz. 0040)
+  // gözat sayfasında hiç görünmez; "İstek" rozetiyle bile listelenmez. Listede
+  // olmayan bir şarkı için müşteri aramadan serbest metin öneri gönderir.
+  //
   // Tek seferlik haklar katalogun ÜSTÜNE biner: arama, sanatçı listesi ve
   // "şansına bırak" hepsi tek liste üzerinden çalıştığı için tek yerde birleşir.
   const catalogSongs = useMemo(() => {
-    if (oneTimeSongs.length === 0) return venueSongs;
+    const playable = venueSongs.filter((s) => s.in_venue_list);
+    if (oneTimeSongs.length === 0) return playable;
     const oneTimeIds = new Set(oneTimeSongs.map((s) => s.id));
-    return [...oneTimeSongs, ...venueSongs.filter((s) => !oneTimeIds.has(s.id))];
+    return [...oneTimeSongs, ...playable.filter((s) => !oneTimeIds.has(s.id))];
   }, [venueSongs, oneTimeSongs]);
 
   const venueSongMap = useMemo(() => {
@@ -332,16 +342,46 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     return result;
   }, [recentPlays, playingSongId, songById]);
 
-  const nowPlayingSong = playingSongId ? songById.get(playingSongId) : undefined;
+  // Sahnedeki şarkı müşteriye kapalı bir listeden geliyor olabilir (otomatik çalma
+  // bu kuraldan etkilenmez). Banner yalnızca bilgi gösterir — eklenemez — bu yüzden
+  // katalog dışına, mekanın tüm şarkılarına da bakılır.
+  const nowPlayingSong = useMemo(() => {
+    if (!playingSongId) return undefined;
+    return songById.get(playingSongId) ?? venueSongs.find((s) => s.id === playingSongId);
+  }, [playingSongId, songById, venueSongs]);
 
-  // Sanatçı seçiliyken onun şarkıları; değilse mekanın en çok çalınan 10 şarkısı
+  // Gözat listesi hiçbir zaman kısacık kalmasın: en çok çalınanlar 20'yi
+  // doldurmuyorsa (yeni mekanda hiç çalma verisi yok) kalanı müşteriye AÇIK diğer
+  // şarkılarla tamamlanır. Kaynak zaten süzülmüş: kapalı şarkı buraya da girmez.
+  // Sıra kararlı tutulur (katalog sırası) — rastgele seçim SSR/hydration'ı bozar.
+  const defaultListSongs = useMemo(() => {
+    const playable = venueSongs.filter((s) => s.in_venue_list);
+    const list = playable
+      .filter((s) => s.play_count > 0)
+      .sort((a, b) => b.play_count - a.play_count)
+      .slice(0, MIN_LIST_SONGS);
+    if (list.length < MIN_LIST_SONGS) {
+      const seen = new Set(list.map((s) => s.id));
+      for (const s of playable) {
+        if (list.length >= MIN_LIST_SONGS) break;
+        if (seen.has(s.id)) continue;
+        list.push(s);
+      }
+    }
+    return list;
+  }, [venueSongs]);
+
+  // Liste hiç çalınmamış şarkılarla dolduysa "En Çok Çalınanlar" başlığı yalan olur
+  const listAllPlayed = useMemo(() => defaultListSongs.every((s) => s.play_count > 0), [defaultListSongs]);
+
+  // Sanatçı seçiliyken onun şarkıları; değilse mekanın gözat listesi
   const listSongs = useMemo(() => {
-    if (!selectedArtist) return topSongs;
+    if (!selectedArtist) return defaultListSongs;
     const result = catalogSongs.filter((s) => artistKey(s.artist) === selectedArtist);
     if (sortBy === "az") result.sort((a, b) => a.title.localeCompare(b.title, "tr"));
     else if (sortBy === "plays") result.sort((a, b) => b.play_count - a.play_count);
     return result;
-  }, [catalogSongs, selectedArtist, sortBy, topSongs]);
+  }, [catalogSongs, selectedArtist, sortBy, defaultListSongs]);
 
   const selectedArtistName = selectedArtist
     ? artists.find((a) => a.key === selectedArtist)?.name ??
@@ -803,7 +843,9 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
                 </button>
               </div>
             ) : (
-              <h2 className="text-base font-bold text-white">{t.browse.mostPlayed}</h2>
+              <h2 className="text-base font-bold text-white">
+                {listAllPlayed ? t.browse.mostPlayed : t.browse.songs}
+              </h2>
             )}
             {selectedArtist && (
               <div className="relative">
@@ -838,7 +880,9 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
           {listSongs.length === 0 && (
             <p className="mt-10 text-center text-[#6b7280]">
-              {selectedArtist ? t.browse.noSongsFound : t.browse.nothingPlayedYet}
+              {/* Liste artık çalma verisine bağlı değil: boşsa mekanın müşteriye
+                  açık hiç şarkısı yok demektir */}
+              {t.browse.noSongsFound}
             </p>
           )}
           {listSongs.map((song) => (

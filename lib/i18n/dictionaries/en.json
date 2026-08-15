@@ -221,6 +221,7 @@
     "artists": "Artists",
     "recentlyPlayed": "Recently Played",
     "mostPlayed": "Most Played",
+    "songs": "Songs",
     "songCount": "{n} songs",
     "clearArtistAria": "Remove artist filter",
     "sortAria": "Sort",

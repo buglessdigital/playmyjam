@@ -89,6 +89,12 @@ const PLAY_WATCHDOG_DELAYS_MS = [2_500, 6_000];
 // eski şarkı bir saniyeliğine geri gelir. İlk gerçek denetim 2,5 sn'de olduğu
 // için bu pencere bekçisiz kalmaz.
 const LOAD_PAUSE_IGNORE_MS = 2_000;
+// Yükleme daha oturmadan bekçiler playVideo() DEMEZ. loadVideoById çağrıldıktan
+// sonra iframe kısa bir süre hâlâ ESKİ videoyu tutuyor; tam o aralığa denk gelen
+// periyodik dürtme eski şarkıyı yarım saniyeliğine geri başlatıyor, sonra yeni
+// video onu kesiyordu (atlama tuşundaki "kes–geri gel–kes"). PAUSED'ı yok sayan
+// pencerenin aksine burada playVideo çağrısının kendisi susturulur.
+const LOAD_SETTLE_MS = 1_200;
 const PLAY_NUDGE_MS = 3_000;
 // Dış kaynaklı duraklatma (YouTube'un atalet duraklatması, reklam/ara geçiş, ağ
 // kopması, medya tuşu, işletim sisteminin sesi başka uygulamaya vermesi) ile
@@ -1079,6 +1085,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     const player = activePlayer();
     const YT = window.YT;
     if (!player || !YT || !desiredPlayingRef.current || !currentVideoRef.current) return;
+    // Yükleme yolda: deck hâlâ eski videoyu tutuyor olabilir, dürtme onu geri
+    // başlatırdı (bkz. LOAD_SETTLE_MS)
+    if (Date.now() - lastLoadAtRef.current < LOAD_SETTLE_MS) return;
     try {
       const state = player.getPlayerState();
       // Biten videoyu yeniden başlatma: sıradakine geçiş advance()'in işi
@@ -1596,6 +1605,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     // Geçiş sırasında iki deck kasten farklı durumlarda — rampaya karışma
     // (asılı kalmış geçişi fadeBusy zaten kapatır)
     if (fadeBusy() || advanceBusy()) return;
+    // Yükleme henüz oturmadı: bu turda ne dürtme ne takılma ölçümü yapılır.
+    // Aksi halde iframe eski videoyu tutarken playVideo() diyor ve kesilen şarkı
+    // yarım saniyeliğine geri geliyordu (bkz. LOAD_SETTLE_MS).
+    if (Date.now() - lastLoadAtRef.current < LOAD_SETTLE_MS) {
+      // Tur gerçekten döndü: ayraç tazelenmezse bir sonraki tur boşluğu "sekme
+      // dondu" sanırdı
+      lastTickAtRef.current = Date.now();
+      return;
+    }
 
     const now = Date.now();
     // İLK tur kıyaslanacak bir önceki tur yoktur: ayraç 0 olduğu için boşluk
@@ -2535,7 +2553,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             break;
           }
           case "load": {
-            if (cmd.video_id && cmd.video_id !== currentVideoRef.current) loadVideo(cmd.video_id);
+            if (!cmd.video_id || cmd.video_id === currentVideoRef.current) break;
+            // Sıradaki şarkı zaten boştaki deck'te tamponlanmış olabilir (şarkının
+            // 5. saniyesinden beri hazır bekler). Atlamada onu çalmak baştan
+            // yüklemeye göre ANINDA olur: aksi halde deck yeni videoyu tamponlarken
+            // mekan yarım saniye susuyordu.
+            if (!playPreloaded(cmd.video_id)) loadVideo(cmd.video_id);
             break;
           }
           case "volume": {
@@ -2570,6 +2593,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     scheduleNudges,
     endCrossfade,
     loadVideo,
+    playPreloaded,
     applyVolume,
     broadcastState,
     setDesiredPlaying,
@@ -2662,7 +2686,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             }
           }
           if (np.video_id && np.video_id !== currentVideoRef.current) {
-            loadVideo(np.video_id);
+            // Hızlı hat kaçtıysa geçiş buradan yürür; tampon hazırsa yine ondan
+            // çalınır ki uzak panelden atlamada da ses kesilmesin
+            if (!playPreloaded(np.video_id)) loadVideo(np.video_id);
             return;
           }
           if (!np.video_id && currentVideoRef.current) {
@@ -2730,6 +2756,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     supabase,
     venueDbId,
     loadVideo,
+    playPreloaded,
     onTrackChange,
     scheduleNudges,
     applyVolume,

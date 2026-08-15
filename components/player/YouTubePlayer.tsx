@@ -96,6 +96,10 @@ const LOAD_PAUSE_IGNORE_MS = 2_000;
 // video onu kesiyordu (atlama tuşundaki "kes–geri gel–kes"). PAUSED'ı yok sayan
 // pencerenin aksine burada playVideo çağrısının kendisi susturulur.
 const LOAD_SETTLE_MS = 1_200;
+// Atlamada çıkan deck, yeni deck çalmaya başlayınca susar. Yeni deck hiç
+// başlamazsa mekan eski şarkıyla sonsuza kadar kalmasın diye üst sınır: bu süre
+// dolduğunda çıkan deck yine susturulur, gerisini takılma bekçisi toparlar.
+const HANDOFF_MAX_MS = 3_000;
 const PLAY_NUDGE_MS = 3_000;
 // Dış kaynaklı duraklatma (YouTube'un atalet duraklatması, reklam/ara geçiş, ağ
 // kopması, medya tuşu, işletim sisteminin sesi başka uygulamaya vermesi) ile
@@ -815,6 +819,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
   const preloadedForRef = useRef<string | null>(null);
   const preloadRetryAtRef = useRef(0);
   const canCrossfadeRef = useRef(false);
+  // Atlama devir teslimi: yeni video boştaki deck'te yüklenirken ESKİ deck hâlâ
+  // çalıyor. Burası hangi deck'in susturulmayı beklediğini tutar.
+  const handoffFromRef = useRef<DeckKey | null>(null);
+  const handoffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Sunucuya ulaşılamadığı için önden bildiğimiz şarkıyı kendi kararımızla
   // çalıyoruz: now_playing satırı bu sırada bayattır, bağlantı dönünce
   // eşitlenir (bkz. syncOfflineFallback)
@@ -954,6 +962,13 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       idleDeck?.setVolume(0);
       idleDeck?.pauseVideo();
     } catch {}
+    // Devir teslim bekliyorsa çıkan deck zaten yukarıda sustu (boştaki deck
+    // odur): sayacı da kapat, sonradan gelen zamanlayıcı boşuna dönmesin.
+    if (handoffTimerRef.current) {
+      clearTimeout(handoffTimerRef.current);
+      handoffTimerRef.current = null;
+    }
+    handoffFromRef.current = null;
     // Duraklattığımız deck artık sıcak tampon değil; sıradaki şarkı için
     // preloadNext yeniden ısıtacak
     warmDeckRef.current = null;
@@ -1221,6 +1236,92 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       return true;
     },
     [onTrackChange, broadcastState, scheduleNudges, setDesiredPlaying, markProgress]
+  );
+
+  // Devir teslimi bitir: çıkan deck susar. Yeni deck gerçekten çalmaya başlayınca
+  // (onStateChange → PLAYING) ya da en geç emniyet süresi dolunca çağrılır.
+  const finishHandoff = useCallback(() => {
+    if (handoffTimerRef.current) {
+      clearTimeout(handoffTimerRef.current);
+      handoffTimerRef.current = null;
+    }
+    const from = handoffFromRef.current;
+    handoffFromRef.current = null;
+    if (!from || from === activeDeckRef.current) return;
+    try {
+      decksRef.current[from]?.setVolume(0);
+      decksRef.current[from]?.pauseVideo();
+    } catch {}
+    plog(`devir teslim bitti — deck ${from} sustu`);
+  }, []);
+
+  // ATLAMA GEÇİŞİ. Çalan deck'in üstüne loadVideoById YAPMAYIZ: YouTube eski
+  // videoyu söküp yenisini getirirken sesi bir an geri getiriyor ve mekanda
+  // "kesildi–geri geldi–kesildi" duyuluyor. Bunun yerine yeni video BOŞTAKİ
+  // deck'e yüklenir; eski deck yeni ses fiilen başlayana kadar çalmaya devam
+  // eder, o an susturulur. Sonuç: ne boşluk ne çift kesinti.
+  const switchToVideo = useCallback(
+    (videoId: string) => {
+      // Tampon zaten hazırsa en iyisi: hiç yükleme beklemeden geçer
+      if (playPreloaded(videoId)) return;
+      const from = activeDeckRef.current;
+      const to = otherDeck(from);
+      const incoming = decksRef.current[to];
+      // Tek medya öğesi çalabilen cihazlarda (mobil — çapraz geçiş de orada
+      // kapalı) ikinci deck çalanı durdurur: eski sert yükleme yolu kalır.
+      if (!canCrossfadeRef.current || !incoming || !deckReadyRef.current[to] || fadingRef.current) {
+        loadVideo(videoId);
+        return;
+      }
+      finishHandoff();
+      preloadedVideoRef.current = null;
+      preloadedForRef.current = null;
+      preloadRetryAtRef.current = 0;
+      warmDeckRef.current = null;
+      warmPlayingRef.current = false;
+      warmSinceRef.current = 0;
+      try {
+        incoming.unMute?.();
+        incoming.setVolume(volumeRef.current ?? 100);
+        incoming.loadVideoById(videoId);
+        forceLowQuality(incoming);
+      } catch {
+        loadVideo(videoId);
+        return;
+      }
+      activeDeckRef.current = to;
+      currentVideoRef.current = videoId;
+      setDesiredPlaying(true);
+      lastLoadAtRef.current = Date.now();
+      markProgress(videoId);
+      setVisibleDeck(to);
+      setIdle(false);
+      pendingVideoRef.current = null;
+      handoffFromRef.current = from;
+      plog(`atla ${videoId} → deck ${to} (deck ${from} yeni ses gelene kadar çalıyor)`);
+      // Emniyet: yeni deck başlamazsa eski ses sonsuza kadar çalmasın. Süre
+      // dolduğunda çalmayı bekçiler toparlar (yükle/atla merdiveni).
+      handoffTimerRef.current = setTimeout(finishHandoff, HANDOFF_MAX_MS);
+      onTrackChange?.({ videoId, isPlaying: true });
+      broadcastState({
+        video_id: videoId,
+        is_playing: true,
+        progress_ms: 0,
+        duration_ms: null,
+        started: false,
+      });
+      scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
+    },
+    [
+      playPreloaded,
+      loadVideo,
+      finishHandoff,
+      onTrackChange,
+      broadcastState,
+      scheduleNudges,
+      setDesiredPlaying,
+      markProgress,
+    ]
   );
 
   // Şarkı bitti / hata verdi → kuyruğu ilerlet, dönen videoyu yükle
@@ -2077,6 +2178,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             if (e.data === YT.PlayerState.ENDED) {
               advance({ action: "next" });
             } else if (e.data === YT.PlayerState.PLAYING) {
+              // Yeni şarkının sesi FİİLEN başladı: atlamada çalmaya devam eden
+              // eski deck tam bu anda susar. Erken sustursaydık boşluk, hiç
+              // susturmasaydık çift ses olurdu.
+              if (handoffFromRef.current) finishHandoff();
               // Kullanıcı videonun kendi oynat düğmesine bastıysa niyet BURADA
               // doğar; damga da düşer ki yoldaki "duraklatıldı" yankısı bunu
               // saniyesinde geri almasın (mekan "başlatamıyorum" diyordu).
@@ -2207,6 +2312,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     [
       advance,
       loadVideo,
+      finishHandoff,
       sendHeartbeat,
       onTrackChange,
       supabase,
@@ -2573,11 +2679,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           }
           case "load": {
             if (!cmd.video_id || cmd.video_id === currentVideoRef.current) break;
-            // Sıradaki şarkı zaten boştaki deck'te tamponlanmış olabilir (şarkının
-            // 5. saniyesinden beri hazır bekler). Atlamada onu çalmak baştan
-            // yüklemeye göre ANINDA olur: aksi halde deck yeni videoyu tamponlarken
-            // mekan yarım saniye susuyordu.
-            if (!playPreloaded(cmd.video_id)) loadVideo(cmd.video_id);
+            // Deck değiştirerek geç: tampon hazırsa anında, değilse yeni video
+            // boştaki deck'te yüklenirken eski şarkı çalmaya devam eder.
+            switchToVideo(cmd.video_id);
             break;
           }
           case "volume": {
@@ -2612,7 +2716,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     scheduleNudges,
     endCrossfade,
     loadVideo,
-    playPreloaded,
+    switchToVideo,
     applyVolume,
     broadcastState,
     setDesiredPlaying,
@@ -2705,9 +2809,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             }
           }
           if (np.video_id && np.video_id !== currentVideoRef.current) {
-            // Hızlı hat kaçtıysa geçiş buradan yürür; tampon hazırsa yine ondan
-            // çalınır ki uzak panelden atlamada da ses kesilmesin
-            if (!playPreloaded(np.video_id)) loadVideo(np.video_id);
+            // Hızlı hat kaçtıysa geçiş buradan yürür — aynı deck değiştiren
+            // yolla, ki uzak panelden atlamada da ses kesilmesin
+            switchToVideo(np.video_id);
             return;
           }
           if (!np.video_id && currentVideoRef.current) {
@@ -2775,7 +2879,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     supabase,
     venueDbId,
     loadVideo,
-    playPreloaded,
+    switchToVideo,
     onTrackChange,
     scheduleNudges,
     applyVolume,
@@ -2858,6 +2962,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     return () => {
       nudgeTimersRef.current.forEach(clearTimeout);
       if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
+      if (handoffTimerRef.current) clearTimeout(handoffTimerRef.current);
       const alive = keepAliveRef.current;
       keepAliveRef.current = null;
       if (alive) {

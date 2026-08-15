@@ -681,6 +681,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
   const intentAtRef = useRef(0);
   // Son loadVideo zamanı — pause yankısı grace penceresinin çapası
   const lastLoadAtRef = useRef(0);
+  // Az önce TERK ETTİĞİMİZ video ve terk anı. Sunucudan gelen satır bu videoyu
+  // gösteriyorsa yolda kalmış bir yankıdır — bkz. rowIsStaleEcho.
+  const leftVideoRef = useRef<{ id: string; at: number } | null>(null);
+
   // Son AÇIK duraklatma niyeti (panel komutu / DB'den gelen duraklat) zamanı
   const explicitPauseAtRef = useRef(0);
   // Pencere odağının video iframe'ine geçtiği an: kullanıcının YouTube'un kendi
@@ -713,10 +717,24 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
   // yazılır, bayat satırda ise çalmakta olan şarkının başlangıcını taşır, yani
   // bizim yüklememizden eskidir.
   const rowIsStaleEcho = useCallback((np: NowPlayingRow) => {
-    const sinceLoad = Date.now() - lastLoadAtRef.current;
+    const now = Date.now();
+    // KESİN ÖLÇÜT: satır, az önce kendi elimizle terk ettiğimiz videoyu
+    // gösteriyor. Hızlı arka arkaya atlamalarda çapa karşılaştırması yetmiyordu
+    // (eski şarkı da bir saniye önce başlamış oluyor), bu kural yetiyor. Gerçek
+    // "bir öncekine dön" komutu panelin hızlı hattından gelir, bu yoldan değil.
+    const left = leftVideoRef.current;
+    if (left && np.video_id === left.id && now - left.at < STALE_ROW_GRACE_MS) return true;
+    const sinceLoad = now - lastLoadAtRef.current;
     if (sinceLoad >= STALE_ROW_GRACE_MS) return false;
     const rowAt = np.started_at ? Date.parse(np.started_at) : NaN;
     return !Number.isFinite(rowAt) || rowAt < lastLoadAtRef.current - STALE_ROW_SLACK_MS;
+  }, []);
+
+  // Sahneyi bırakan videoyu damgala: her şarkı değişiminde çağrılır.
+  const markLeftVideo = useCallback((nextVideoId: string) => {
+    const current = currentVideoRef.current;
+    if (!current || current === nextVideoId) return;
+    leftVideoRef.current = { id: current, at: Date.now() };
   }, []);
 
   // Kuyruk ilerletme kilidi. Zaman damgalıdır: istek asılı kalır ya da sekme
@@ -1171,6 +1189,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       preloadedForRef.current = null;
       preloadRetryAtRef.current = 0;
 
+      markLeftVideo(videoId);
       currentVideoRef.current = videoId;
       setDesiredPlaying(true);
       lastLoadAtRef.current = Date.now();
@@ -1210,6 +1229,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       broadcastState,
       setDesiredPlaying,
       markProgress,
+      markLeftVideo,
     ]
   );
 
@@ -1239,6 +1259,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       } catch {}
 
       plog(`tampondan çal ${videoId} → deck ${to}`);
+      markLeftVideo(videoId);
       activeDeckRef.current = to;
       currentVideoRef.current = videoId;
       setDesiredPlaying(true);
@@ -1261,7 +1282,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
       return true;
     },
-    [onTrackChange, broadcastState, scheduleNudges, setDesiredPlaying, markProgress]
+    [onTrackChange, broadcastState, scheduleNudges, setDesiredPlaying, markProgress, markLeftVideo]
   );
 
   // Devir teslimi bitir: çıkan deck susar. Yeni deck gerçekten çalmaya başlayınca
@@ -1315,6 +1336,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
         loadVideo(videoId);
         return;
       }
+      markLeftVideo(videoId);
       activeDeckRef.current = to;
       currentVideoRef.current = videoId;
       setDesiredPlaying(true);
@@ -1347,6 +1369,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       scheduleNudges,
       setDesiredPlaying,
       markProgress,
+      markLeftVideo,
     ]
   );
 

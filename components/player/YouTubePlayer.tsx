@@ -2483,6 +2483,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     const applyCommand = (cmd: PlayerCommand) => {
       if (blockedRef.current === "claim") return;
       if (!cmd?.type) return;
+      // Panelden gelen her komut kayda düşer: kesinti şikâyetlerinde "sesi kim
+      // durdurdu/başlattı" sorusunun cevabı deck olaylarıyla yan yana okunur
+      plog(`panel komutu: ${cmd.type}${"video_id" in cmd ? ` ${cmd.video_id}` : ""}`);
       {
         switch (cmd.type) {
           case "play": {
@@ -2514,8 +2517,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           }
           case "seeking": {
             // Atlama isteği sunucuya gitti: sürmekte olan geçişi kes ki gelen
-            // şarkı yarım rampanın üstüne binmesin
-            endCrossfade();
+            // şarkı yarım rampanın üstüne binmesin. Geçiş YOKSA dokunmayız:
+            // endCrossfade sıcak tamponu da söndürüyor ve hemen ardından gelen
+            // atlama, hazır bekleyen deck yerine baştan yüklemeye düşüyordu.
+            if (fadingRef.current) endCrossfade();
             break;
           }
           case "seek": {

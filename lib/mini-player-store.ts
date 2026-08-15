@@ -49,3 +49,48 @@ export function useMiniSlot(): HTMLElement | null {
     () => null
   );
 }
+
+/**
+ * İlk dokunuş kapısı.
+ *
+ * Tarayıcı politikası gereği ilk oynatma bir kullanıcı dokunuşu ister. Eskiden
+ * bu dokunuş oynatıcının üstündeki ayrı bir "Başlat" düğmesiydi; mekan panelde
+ * iki farklı oynat düğmesi görüyordu. Artık dokunuşu alt bardaki normal oynat
+ * düğmesi veriyor: oynatıcı henüz başlamadıysa buraya başlatıcısını asar, alt
+ * bar da onu ÇAĞIRIR.
+ *
+ * Başlatıcı SENKRON çağrılır — dokunuş izni ilk await'te tükendiği için
+ * (bkz. YouTubePlayer.start) araya hiçbir bekleme girmemeli.
+ */
+let starter: (() => void) | null = null;
+const starterListeners = new Set<() => void>();
+
+export function setPlayerStarter(fn: (() => void) | null) {
+  if (starter === fn) return;
+  starter = fn;
+  starterListeners.forEach((cb) => cb());
+}
+
+/** Kendi başlatıcısını geri çeker; araya başkası girmişse dokunmaz. */
+export function clearPlayerStarter(fn: () => void) {
+  if (starter === fn) setPlayerStarter(null);
+}
+
+/** Oynatıcı ilk dokunuşu bekliyor mu (alt bardaki düğme "başlat" görevi görür). */
+export function usePlayerNeedsStart(): boolean {
+  return useSyncExternalStore(
+    useCallback((cb: () => void) => {
+      starterListeners.add(cb);
+      return () => starterListeners.delete(cb);
+    }, []),
+    () => starter !== null,
+    () => false
+  );
+}
+
+/** Bekleyen oynatıcıyı başlatır; başlatacak bir şey yoksa false döner. */
+export function requestPlayerStart(): boolean {
+  if (!starter) return false;
+  starter();
+  return true;
+}

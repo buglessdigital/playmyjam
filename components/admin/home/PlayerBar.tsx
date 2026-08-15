@@ -3,6 +3,7 @@
 import Image from "next/image";
 import SeekBar from "./SeekBar";
 import { useProgress, type Playback } from "./usePlayback";
+import { requestPlayerStart, usePlayerNeedsStart } from "@/lib/mini-player-store";
 
 // Saniyede dört kez tazelenen tek parça bu: ilerleme sayısı panelin ortak
 // state'inde tutulsaydı her tick'te playlist rayı ve kuyruk da yeniden
@@ -47,6 +48,19 @@ export default function PlayerBar({
 
   const song = nowPlaying?.songs ?? null;
 
+  // Oynatıcı ilk dokunuşu bekliyor: alt bardaki oynat düğmesi "başlat" görevi
+  // görür. Tarayıcı iznini kaybetmemek için start SENKRON çağrılır — komut
+  // yollamak (playerAction) araya girmez, oynatıcı sunucudaki durumdan devam eder.
+  const needsStart = usePlayerNeedsStart();
+  const offlineTitle = needsStart
+    ? "Müziği başlat — tarayıcı ilk oynatma için bir dokunuş ister"
+    : "Player henüz başlamadı — bu paneli müziği çalacak cihazda açın";
+
+  const handlePlayPause = () => {
+    if (needsStart && requestPlayerStart()) return;
+    playerAction(isPlaying ? "pause" : "play");
+  };
+
   return (
     <div className="shrink-0 border-t border-white/10" style={{ background: "#150e21" }}>
       {playerOffline && (
@@ -55,10 +69,18 @@ export default function PlayerBar({
             <path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <p className="text-[11px]" style={{ color: "#fbbf24" }}>
-            Oynatıcı çevrimdışı görünüyor. Müziği çalacak cihazda, sağdaki{" "}
-            <span className="font-bold">ŞU AN ÇALIYOR</span> kartındaki{" "}
-            <span className="font-bold">Başlat</span> düğmesine bir kez dokunun; müzik bu
-            panelden çalar.
+            {needsStart ? (
+              <>
+                Müzik henüz başlamadı. Müziği çalacak cihazda, aşağıdaki{" "}
+                <span className="font-bold">oynat</span> düğmesine bir kez dokunun; müzik
+                bu panelden çalar.
+              </>
+            ) : (
+              <>
+                Oynatıcı çevrimdışı görünüyor. Müziği çalacak cihazda bu paneli açın ve
+                aşağıdaki <span className="font-bold">oynat</span> düğmesine dokunun.
+              </>
+            )}
           </p>
         </div>
       )}
@@ -113,21 +135,23 @@ export default function PlayerBar({
               onClick={() => playerAction("previous")}
               disabled={playerLoading !== null || playerOffline || !song}
               className="absolute right-full mr-3 w-10 h-10 flex items-center justify-center rounded-full transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-              title={playerOffline ? "Player henüz başlamadı — kuyruk kartındaki Başlat düğmesine dokunun" : "Önceki şarkı"}
+              title={playerOffline ? offlineTitle : "Önceki şarkı"}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M18 6l-8.5 6L18 18V6zm-2.5 6L10 8.5v7L15.5 12zM8 6H6v12h2z" /></svg>
             </button>
             <button
-              onClick={() => playerAction(isPlaying ? "pause" : "play")}
+              onClick={handlePlayPause}
               // Oynat/duraklat komutu player'a anında (broadcast) gider; sunucu
               // yanıtı beklerken düğmeyi kilitlemek gereksiz gecikme hissi veriyordu.
               // Kilit yalnızca kuyruğu tüketen atlama düğmelerinde.
-              disabled={playerOffline}
+              // Oynatıcı ilk dokunuşu bekliyorken düğme AÇIK kalır: müziği
+              // başlatan dokunuş artık bu.
+              disabled={playerOffline && !needsStart}
               className="w-12 h-12 flex items-center justify-center rounded-full transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ background: "#e91e8c" }}
-              title={playerOffline ? "Player henüz başlamadı — kuyruk kartındaki Başlat düğmesine dokunun" : isPlaying ? "Duraklat" : "Oynat"}
+              title={playerOffline ? offlineTitle : isPlaying ? "Duraklat" : "Oynat"}
             >
-              {isPlaying ? (
+              {isPlaying && !needsStart ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
               ) : (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z" /></svg>
@@ -137,7 +161,7 @@ export default function PlayerBar({
               onClick={() => playerAction("next")}
               disabled={playerLoading !== null || playerOffline}
               className="absolute left-full ml-3 w-10 h-10 flex items-center justify-center rounded-full transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-              title={playerOffline ? "Player henüz başlamadı — kuyruk kartındaki Başlat düğmesine dokunun" : "Sonraki şarkı"}
+              title={playerOffline ? offlineTitle : "Sonraki şarkı"}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6 18l8.5-6L6 6v12zm2.5-6 5.5 3.5v-7L8.5 12zM16 6h2v12h-2z" /></svg>
             </button>

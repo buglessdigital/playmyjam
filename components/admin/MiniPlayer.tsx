@@ -11,8 +11,9 @@ import { MINI_CORNER_WIDTH, useMiniSlot } from "@/lib/mini-player-store";
  * Eskiden müzik ayrı bir sekmede (/admin/[venueId]/player) çalıyordu; mekan o
  * sekmeyi kapatınca ya da bulamayınca müzik susuyordu. Sonra panele aç/kapa
  * düğmesi konuldu, o da gereksiz bir adımdı: panel açıksa oynatıcı da açık
- * olmalı. Tek gereken, tarayıcı politikası yüzünden ilk açılışta bir kez
- * "Başlat"a dokunmak.
+ * olmalı. Tek gereken, tarayıcı politikası yüzünden ilk açılışta bir kez ALT
+ * BARDAKI OYNAT düğmesine dokunmak: oynatıcının üstünde ayrı bir "Başlat"
+ * düğmesi yok, dokunuşu oradan alıyor (bkz. mini-player-store → setPlayerStarter).
  *
  * Oynatıcı panel KABUĞUNA bağlı (bkz. AdminPanelShell), sayfaya değil —
  * Ayarlar/İstatistik/Talepler arasında gezinmek onu unmount etmez, müzik

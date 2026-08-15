@@ -11,6 +11,7 @@ import {
   onLocalCommand,
   sendLocalState,
 } from "@/lib/player-bus";
+import { clearPlayerStarter, setPlayerStarter } from "@/lib/mini-player-store";
 
 // YouTube IFrame API'nin kullandığımız alt kümesi (resmi @types paketi olmadan)
 type YTPlayer = {
@@ -2289,6 +2290,19 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     [api, createDeck, startKeepAlive, unlockPlayback, abortUnlock, resumeFromServer]
   );
 
+  // Panel içindeki oynatıcının (compact) ilk dokunuşu artık alt bardaki normal
+  // oynat düğmesinden gelir: kutunun üstünde ayrı bir "Başlat" düğmesi yok.
+  // Başlatıcı senkron çağrılır — dokunuş izni ilk await'te tükeniyor (bkz. start).
+  useEffect(() => {
+    if (!compact) return;
+    if (started || blocked || claimTaken) return;
+    const fn = () => {
+      void start();
+    };
+    setPlayerStarter(fn);
+    return () => clearPlayerStarter(fn);
+  }, [compact, started, blocked, claimTaken, start]);
+
   // --- Isınma: "Başlat" beklenmeden deck'leri kur, sıradaki videoyu cue'la ---
   // iOS Safari programatik playVideo()'yu ancak daha önce bir kullanıcı dokunuşu
   // oynatmayı başlatmışsa kabul eder — ve dokunuş anında iframe'in HAZIR, videonun
@@ -3028,16 +3042,26 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
         </div>
       ) : !started ? (
         <div className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl bg-[#1a0e2a] ${compact ? "gap-1.5" : "gap-4"}`}>
-          <button
-            onClick={() => start()}
-            className={`flex items-center font-bold text-white transition-transform active:scale-95 ${compact ? "gap-1.5 rounded-xl px-3 py-1.5 text-xs" : "gap-3 rounded-2xl px-8 py-4 text-lg"}`}
-            style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
-          >
-            <svg width={compact ? 14 : 24} height={compact ? 14 : 24} viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z" /></svg>
-            Başlat
-          </button>
+          {/* Panelde ayrı bir "Başlat" düğmesi YOK: dokunuşu alt bardaki oynat
+              düğmesi veriyor (bkz. mini-player-store → setPlayerStarter). TV
+              modunda alt bar olmadığı için düğme orada duruyor. */}
+          {compact ? (
+            <div className="flex items-center gap-1.5 text-[#9ca3af]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#e91e8c"><path d="M8 5v14l11-7z" /></svg>
+              <span className="text-[11px] font-semibold leading-tight">Oynat&apos;a basın</span>
+            </div>
+          ) : (
+            <button
+              onClick={() => start()}
+              className="flex items-center gap-3 rounded-2xl px-8 py-4 text-lg font-bold text-white transition-transform active:scale-95"
+              style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
+            >
+              <svg width={24} height={24} viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z" /></svg>
+              Başlat
+            </button>
+          )}
           <p className={`text-center text-[#6b7280] ${compact ? "px-2 text-[9px] leading-tight" : "px-6 text-xs"}`}>
-            {compact ? "Tarayıcı ilk oynatma için bir dokunuş ister" : "Tarayıcı politikası gereği ilk oynatma için bir kez dokunmanız gerekir"}
+            {compact ? "Alt bardaki oynat düğmesi müziği başlatır" : "Tarayıcı politikası gereği ilk oynatma için bir kez dokunmanız gerekir"}
           </p>
           {error && <p className={compact ? "text-[10px] text-red-400" : "text-sm text-red-400"}>{error}</p>}
         </div>

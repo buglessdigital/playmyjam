@@ -141,8 +141,11 @@ async function unconsumeRows(
 // birden gerekir: listede çalınmamış şarkı kalmayacak VE kuyrukta bekleyen
 // satırı olmayacak. Sahnede çalan listenin satırı bitene kadar düşmez.
 //
-// Tek istisna: kuyrukta kalan SON liste düşmez, ilerlemesi sıfırlanıp baştan
-// çalar. Yoksa tek listeli mekan sessizce katalog yedeğine kayardı.
+// Tek istisna: sıradaki listelerin hepsi turunu bitirdiğinde SON liste düşmez,
+// ilerlemesi sıfırlanıp baştan çalar. Yoksa tek listeli mekan sessizce katalog
+// yedeğine kayardı. Başa sarma, listenin kuyrukta bekleyen satırları erimeden —
+// yani "verecek yeni şarkısı kalmadığı" anda — yapılır: sonuna kadar beklenirse
+// kuyruk tabanın altına düşer ve araya katalogdan rastgele şarkılar girer.
 //
 // Dönüş null ise "kuyrukta liste yok" demektir; eksik dizi ise listelerden şu an
 // alınabilecek şarkı bu kadardır. Her iki durumda da çağıran taraf kuyruğu
@@ -219,23 +222,29 @@ async function pickFromRotation(
   }
 
   // --- 1) Bitmiş listeleri ayıkla -------------------------------------------
-  // Bir liste "bitti" sayılır: bu turda çalınmamış şarkısı kalmamış VE kuyrukta
-  // bekleyen satırı da kalmamıştır. Sahnedeki şarkı sayılmaz — o hâlâ çalıyor.
+  // İki ayrı kavram var:
+  //   TURU BİTTİ (exhausted) → bu turda kuyruğa yazılmamış şarkısı kalmadı,
+  //                            yani artık YENİ şarkı veremez.
+  //   KUYRUKTAN DÜŞER (isDone) → turu bitmiş VE kuyrukta bekleyen satırı da yok.
+  // Sahnedeki şarkı sayılmaz — o hâlâ çalıyor.
   const unconsumed = (playlistId: string) => {
     const seen = consumedByList.get(playlistId);
     return (songsByList.get(playlistId) ?? []).filter((id) => !seen?.has(id));
   };
-  const isDone = (playlistId: string) =>
-    unconsumed(playlistId).length === 0 && !ctx.pendingLists.has(playlistId);
+  const exhausted = (playlistId: string) => unconsumed(playlistId).length === 0;
+  const isDone = (playlistId: string) => exhausted(playlistId) && !ctx.pendingLists.has(playlistId);
 
-  const done = active.filter((p) => isDone(p.id));
   const dropped = new Set<string>();
   // Başa saran (ilerlemesi sıfırlanan) liste — kuyrukta kalan son liste
   let rewound: string | null = null;
 
-  if (done.length === active.length) {
-    // Kuyruktaki her şey tüketildi: son liste düşmez, baştan çalar. Sahnedeki
-    // şarkının listesi varsa o kalır (en son çalan odur), yoksa imleçteki.
+  if (active.every((p) => exhausted(p.id))) {
+    // Sıradaki listelerin HEPSİ turunu bitirdi: yeni şarkı verecek liste kalmadı.
+    // Bu noktada son liste düşmez, baştan çalar. Başa sarma listelerin kuyrukta
+    // bekleyen satırları TÜKENMEDEN yapılır: beklenirse kuyruk QUEUE_FLOOR'un
+    // altına iner ve liste başa sarmadan önce araya katalogdan rastgele şarkılar
+    // girerdi. Sahnedeki şarkının listesi varsa o kalır (en son çalan odur),
+    // yoksa imleçteki.
     const survivorId =
       (ctx.playingList && activeIds.includes(ctx.playingList) ? ctx.playingList : null) ??
       (state?.playlist_id && activeIds.includes(state.playlist_id) ? state.playlist_id : null) ??
@@ -243,14 +252,16 @@ async function pickFromRotation(
 
     rewound = survivorId;
     consumedByList.set(survivorId, new Set<string>());
+    // Öteki listeler yalnızca gerçekten tükendiyse (kuyrukta satırı kalmadıysa)
+    // düşer; hâlâ çalacak şarkısı olan liste panelde kuyrukta durmaya devam eder.
     for (const p of active) {
-      if (p.id !== survivorId && p.id !== ctx.playingList) dropped.add(p.id);
+      if (p.id !== survivorId && p.id !== ctx.playingList && isDone(p.id)) dropped.add(p.id);
     }
   } else {
     // Sırası gelmiş, çalmış ve kuyruktan da tükenmiş listeler düşer; sahnede
     // çalan liste son şarkısı bitene kadar kuyrukta kalır.
-    for (const p of done) {
-      if (p.id !== ctx.playingList) dropped.add(p.id);
+    for (const p of active) {
+      if (isDone(p.id) && p.id !== ctx.playingList) dropped.add(p.id);
     }
   }
 

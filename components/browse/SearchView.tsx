@@ -391,14 +391,21 @@ function SuggestBox({
     setError(result === "limit" ? t.suggest.limitError : t.suggest.sendError);
   };
 
+  const spacing = variant === "empty" ? "mt-8" : "mt-5";
+
   if (sent) {
     return (
-      <div className={`rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/10 p-4 ${variant === "empty" ? "mt-8" : "mt-5"}`}>
-        <div className="flex items-center gap-2">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      <div
+        className={`overflow-hidden rounded-2xl border border-[#22c55e]/25 p-4 ${spacing}`}
+        style={{ background: "linear-gradient(160deg, rgba(34,197,94,0.16), rgba(34,197,94,0.05) 60%, rgba(255,255,255,0.02))" }}
+      >
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#22c55e]/15 ring-1 ring-inset ring-[#22c55e]/30">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </span>
           <p className="text-sm font-semibold text-white">{t.suggest.sentTitle}</p>
         </div>
-        <p className="mt-1.5 text-xs text-[#9ca3af]">
+        <p className="mt-2 text-xs leading-relaxed text-[#9ca3af]">
           {t.suggest.sentDesc}
         </p>
         {/* Onay bildirimi kaçmasın: talep zaten gitti, bu adım isteğe bağlı */}
@@ -407,30 +414,43 @@ function SuggestBox({
     );
   }
 
+  const inputClass =
+    "w-full rounded-xl border border-white/10 bg-[#150b23]/80 px-3.5 py-3 text-sm text-white outline-none transition-colors placeholder:text-[#6b7280] focus:border-[#e91e8c]/60 focus:bg-[#1a0e2a] focus:ring-2 focus:ring-[#e91e8c]/20";
+
   return (
-    <div className={`rounded-2xl border border-[#e91e8c]/25 bg-[#e91e8c]/[0.07] p-4 ${variant === "empty" ? "mt-8" : "mt-5"}`}>
+    <div
+      className={`overflow-hidden rounded-2xl border border-[#e91e8c]/25 p-4 shadow-[0_10px_30px_-18px_rgba(233,30,140,0.8)] ${spacing}`}
+      style={{ background: "linear-gradient(160deg, rgba(233,30,140,0.14), rgba(139,92,246,0.08) 55%, rgba(255,255,255,0.02))" }}
+    >
       {variant === "empty" ? (
         <>
-          <div className="flex items-center gap-2">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#e91e8c" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" /></svg>
-            <p className="text-sm font-bold text-white">{t.suggest.emptyTitle}</p>
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e91e8c]/15 ring-1 ring-inset ring-[#e91e8c]/30">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#e91e8c" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" /></svg>
+            </span>
+            <p className="text-sm font-bold leading-snug text-white">{t.suggest.emptyTitle}</p>
           </div>
-          <p className="mt-1.5 text-xs text-[#9ca3af]">
+          <p className="mt-2 text-xs leading-relaxed text-[#9ca3af]">
             {t.suggest.emptyDesc}
           </p>
         </>
       ) : (
-        <p className="text-sm font-bold text-white">{t.suggest.inlineTitle}</p>
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e91e8c]/15 ring-1 ring-inset ring-[#e91e8c]/30">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" /></svg>
+          </span>
+          <p className="text-sm font-bold leading-snug text-white">{t.suggest.inlineTitle}</p>
+        </div>
       )}
 
-      <div className="mt-3 space-y-2">
+      <div className="mt-4 space-y-2.5">
         <input
           type="text"
           value={titleValue}
           onChange={(e) => { setTouchedTitle(true); setTitle(e.target.value); }}
           maxLength={120}
           placeholder={t.suggest.titlePlaceholder}
-          className="w-full rounded-xl border border-white/10 bg-[#1a0e2a] px-3.5 py-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
+          className={inputClass}
         />
         <input
           type="text"
@@ -438,21 +458,40 @@ function SuggestBox({
           onChange={(e) => setArtist(e.target.value)}
           maxLength={120}
           placeholder={t.suggest.artistPlaceholder}
-          className="w-full rounded-xl border border-white/10 bg-[#1a0e2a] px-3.5 py-3 text-sm text-white outline-none placeholder:text-[#6b7280]"
+          className={inputClass}
         />
       </div>
 
-      {error && <p className="mt-2 text-xs text-[#ef4444]">{error}</p>}
+      {error && <p className="mt-2.5 text-xs text-[#ef4444]">{error}</p>}
 
       <button
         onClick={submit}
         disabled={!canSend}
-        className="mt-3 flex h-11 w-full items-center justify-center rounded-xl text-sm font-bold text-white transition-transform active:scale-[0.98] disabled:opacity-40"
+        className="mt-3.5 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold text-white shadow-[0_8px_24px_-10px_rgba(233,30,140,0.9)] transition-all active:scale-[0.98] disabled:scale-100 disabled:opacity-30 disabled:shadow-none"
         style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
       >
-        {sending ? t.suggest.sending : t.suggest.submit}
+        {sending ? (
+          <>
+            <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5" />
+              <path d="M21 12a9 9 0 0 0-9-9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+            {t.suggest.sending}
+          </>
+        ) : (
+          <>
+            {t.suggest.submit}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </>
+        )}
       </button>
-      <p className="mt-2 text-center text-[11px] text-[#6b7280]">{t.suggest.freeNote}</p>
+
+      <div className="mt-3 flex justify-center">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1 text-[11px] text-[#9ca3af] ring-1 ring-inset ring-white/10">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#9ca3af" strokeWidth="2" /><path d="M12 8v5" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /><circle cx="12" cy="16.5" r="1" fill="#9ca3af" /></svg>
+          {t.suggest.freeNote}
+        </span>
+      </div>
     </div>
   );
 }

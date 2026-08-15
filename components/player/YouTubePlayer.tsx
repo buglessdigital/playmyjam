@@ -507,9 +507,9 @@ type NowPlayingRow = {
 // select komple düşerdi — ilk hatada anlaşılıp bir alt sürüme dönülür (bkz.
 // route.ts'teki claimSupported ile aynı yaklaşım)
 const NP_SELECTS = [
-  "video_id, song_id, is_playing, volume, crossfade_ms",
-  "video_id, song_id, is_playing, volume",
-  "video_id, song_id, is_playing",
+  "video_id, song_id, is_playing, started_at, volume, crossfade_ms",
+  "video_id, song_id, is_playing, started_at, volume",
+  "video_id, song_id, is_playing, started_at",
 ];
 let npSelectLevel = 0;
 
@@ -702,6 +702,22 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     () => Date.now() - intentAtRef.current > LOCAL_INTENT_GRACE_MS,
     []
   );
+
+  // BAYAT SATIR MI? Şarkıyı YERELDE az önce değiştirdik (panel atlaması hızlı
+  // hattan geldi, sunucu turu daha bitmedi). Bu pencerede hem Realtime yankısı
+  // hem de mutabakat okuması satırda HÂLÂ eski videoyu görebilir; ikisi de onu
+  // "dışarıdan şarkı değişti" sanıp yeni başlayan şarkının üstüne eskisini geri
+  // yüklüyordu — mekanda "kesildi – eski şarkı yarım saniye – yeni şarkı".
+  //
+  // Ayırt edici satırın KENDİ çapası: gerçek şarkı değişiminde started_at o an
+  // yazılır, bayat satırda ise çalmakta olan şarkının başlangıcını taşır, yani
+  // bizim yüklememizden eskidir.
+  const rowIsStaleEcho = useCallback((np: NowPlayingRow) => {
+    const sinceLoad = Date.now() - lastLoadAtRef.current;
+    if (sinceLoad >= STALE_ROW_GRACE_MS) return false;
+    const rowAt = np.started_at ? Date.parse(np.started_at) : NaN;
+    return !Number.isFinite(rowAt) || rowAt < lastLoadAtRef.current - STALE_ROW_SLACK_MS;
+  }, []);
 
   // Kuyruk ilerletme kilidi. Zaman damgalıdır: istek asılı kalır ya da sekme
   // isteğin ortasında dondurulursa kilit sonsuza dek kapalı kalıyordu ve
@@ -1918,6 +1934,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     if (np.volume !== volumeRef.current) applyVolume(np.volume);
     applyCrossfade(np.crossfade_ms);
     if (np.video_id && np.video_id !== currentVideoRef.current) {
+      // Yerel değişimimiz sunucuya daha ulaşmadıysa satır eski videoyu taşır:
+      // burada yüklemek yeni başlayan şarkının üstüne eskisini geri getirirdi.
+      if (rowIsStaleEcho(np)) {
+        plog(`mutabakat: bayat satır (${np.video_id}) yok sayıldı`);
+        return;
+      }
       loadVideo(np.video_id);
       return;
     }
@@ -1955,6 +1977,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     activePlayer,
     syncOfflineFallback,
     dbStateIsFresh,
+    rowIsStaleEcho,
     setDesiredPlaying,
     advanceBusy,
     fadeBusy,
@@ -2829,17 +2852,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             // Ayırt edici: satırın KENDİ çapası. Gerçek bir şarkı değişiminde
             // started_at sunucu tarafından o an yazılır; bayat yankıda ise çalan
             // şarkının başlangıcını taşır, yani bizim yüklememizden eskidir.
-            const rowAt = np.started_at ? Date.parse(np.started_at) : NaN;
-            const sinceLoad = Date.now() - lastLoadAtRef.current;
-            if (
-              sinceLoad < STALE_ROW_GRACE_MS &&
-              (!Number.isFinite(rowAt) || rowAt < lastLoadAtRef.current - STALE_ROW_SLACK_MS)
-            ) {
-              plog(
-                `bayat satır yankısı yok sayıldı: ${np.video_id} (yüklemeden ${Math.round(
-                  sinceLoad / 1000
-                )} sn sonra geldi)`
-              );
+            if (rowIsStaleEcho(np)) {
+              plog(`bayat satır yankısı yok sayıldı: ${np.video_id}`);
               return;
             }
             // Hızlı hat kaçtıysa geçiş buradan yürür — aynı deck değiştiren
@@ -2920,6 +2934,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     endCrossfade,
     activePlayer,
     dbStateIsFresh,
+    rowIsStaleEcho,
     setDesiredPlaying,
   ]);
 

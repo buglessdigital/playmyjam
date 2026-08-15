@@ -129,6 +129,8 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       songs: Omit<VenueSong, "play_count" | "in_venue_list"> | null;
     };
 
+    let subscribedOnce = false;
+
     const fetchVenueSongs = async () => {
       // Sayfalı: 1000'i aşan kataloglarda müşteri şarkıların tamamını göremiyordu
       const { data: vSongs } = await fetchAllRows<VenueSongRow>((from, to) =>
@@ -156,10 +158,24 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       }
     };
 
+    // Kabuk cache'li (lib/venue-cache.ts, cacheLife "minutes") ve realtime yalnızca
+    // AÇIK sekmeye olayı iletir. İkisi birden ıskalanabildiği için — telefon uykuya
+    // gitmiş, PWA arka planda, socket kopmuş — açılışta ve her (yeniden) bağlanışta
+    // katalog kaynaktan bir kez okunur. Aksi halde müşteri, mekanın müşteriye
+    // kapattığı bir listenin şarkısını sıralı sanmaya devam ediyordu.
+    fetchVenueSongs();
+
     const channel = supabase
       .channel(`browse-venue-songs:${venueDbId}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "venue_songs", filter: `venue_id=eq.${venueDbId}` }, fetchVenueSongs)
-      .subscribe();
+      .subscribe((status: string) => {
+        // İlk SUBSCRIBED yukarıdaki okumayla aynı ana denk gelir; yalnızca kopup
+        // dönen bağlantılarda (aradaki olaylar kayıp) tazeleme yapılır.
+        if (status === "SUBSCRIBED") {
+          if (subscribedOnce) fetchVenueSongs();
+          subscribedOnce = true;
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);

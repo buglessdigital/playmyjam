@@ -152,6 +152,8 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
   };
 
   const hasQuery = query.trim().length > 0;
+  // Sonuç bulunamadığında zaten tam ekran öneri kutusu çıkıyor — ipucu orada tekrar edilmez
+  const showRequestHint = !(hasQuery && !artistFilter && results.length === 0);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0f0a18]">
@@ -177,7 +179,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
                 inputRef.current?.blur();
               }
             }}
-            className="w-full rounded-2xl border border-white/10 bg-[#1a0e2a] py-3.5 pl-4 pr-10 text-sm text-white outline-none placeholder:text-[#6b7280]"
+            className="w-full rounded-2xl border border-[#e91e8c]/40 bg-[#1a0e2a] py-3.5 pl-4 pr-10 text-sm text-white shadow-[0_0_16px_rgba(233,30,140,0.2)] outline-none placeholder:text-[#6b7280] focus:border-[#e91e8c]"
           />
           {query && (
             <button
@@ -190,6 +192,14 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
           )}
         </div>
       </div>
+
+      {/* Listede olmayan şarkının da çalınabildiği bilgisi arama boyunca ekranda kalır */}
+      {showRequestHint && (
+        <div className="mx-4 mb-3 flex items-start gap-2 rounded-xl border border-[#fbbf24]/25 bg-[#fbbf24]/[0.07] px-3 py-2.5">
+          <svg className="mt-0.5 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3l2.2 5.6L20 10l-5.8 1.4L12 17l-2.2-5.6L4 10l5.8-1.4L12 3z" fill="#fbbf24" /></svg>
+          <p className="min-w-0 flex-1 text-[11px] leading-snug text-[#d6c9a8]">{t.search.requestHint}</p>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-5 pb-10">
         {!hasQuery ? (
@@ -309,10 +319,13 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
             ) : (
               <button
                 onClick={() => setSuggestOpen(true)}
-                className="mt-5 w-full rounded-2xl border border-white/10 bg-[#1a0e2a] px-4 py-3.5 text-left"
+                className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-[#e91e8c]/30 bg-[#e91e8c]/[0.07] px-4 py-3.5 text-left"
               >
-                <p className="text-sm font-semibold text-white">{t.search.notFoundTitle}</p>
-                <p className="mt-0.5 text-xs text-[#9ca3af]">{t.search.notFoundDesc}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-white">{t.search.notFoundTitle}</p>
+                  <p className="mt-0.5 text-xs text-[#9ca3af]">{t.search.notFoundDesc}</p>
+                </div>
+                <svg className="shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
             )}
 

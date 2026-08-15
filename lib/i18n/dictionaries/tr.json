@@ -204,7 +204,7 @@
   "browse": {
     "title": "Gözat",
     "balanceAria": "Jeton bakiyen — jeton yükle",
-    "searchPlaceholder": "Mekan listesinde ara...",
+    "searchPlaceholder": "Şarkı veya sanatçı ara",
     "luckyAria": "Rastgele şarkı öner",
     "favorites": "Favorilerin",
     "seeAll": "Tümü",
@@ -220,7 +220,8 @@
     "sortAz": "A'dan Z'ye",
     "sortPlays": "En Çok Çalınan",
     "noSongsFound": "Şarkı bulunamadı",
-    "nothingPlayedYet": "Henüz şarkı çalınmadı"
+    "nothingPlayedYet": "Henüz şarkı çalınmadı",
+    "searchHint": "Listede olmayan şarkıyı da iste — mekan onaylarsa çalabilirsin"
   },
   "songAction": {
     "playing": "Çalıyor",
@@ -279,19 +280,20 @@
   "search": {
     "exitArtistAria": "Sanatçıdan çık",
     "closeAria": "Aramayı kapat",
-    "placeholder": "Mekan listesinde ara...",
+    "placeholder": "Şarkı veya sanatçı ara",
     "clearAria": "Temizle",
     "recentTitle": "Son Aramalar",
     "clear": "Temizle",
     "removeRecentAria": "\"{term}\" aramasını sil",
-    "emptyHint": "Mekanın listesinde şarkı veya sanatçı ara",
+    "emptyHint": "Mekanın listesinde şarkı veya sanatçı ara — listede yoksa mekandan iste",
     "artistSongsSuffix": "şarkıları",
     "artists": "Sanatçılar",
     "venueList": "Mekan Listesi",
     "notFoundTitle": "Aradığın şarkı listede yok mu?",
-    "notFoundDesc": "Mekana öner — eklerlerse haber vereceğiz",
+    "notFoundDesc": "Talep gönder — mekan onaylarsa şarkıyı çaldırabilirsin",
     "youtubePrefix": "Şarkı bilgileri ve kapaklar",
-    "youtubeSuffix": "tarafından sağlanır"
+    "youtubeSuffix": "tarafından sağlanır",
+    "requestHint": "Aradığın şarkı mekan listesinde yoksa talep gönder; mekan onaylarsa şarkıyı jetonunla çaldırabilirsin."
   },
   "suggest": {
     "limitError": "Çok fazla talep gönderdin, biraz sonra tekrar dene.",
@@ -299,7 +301,7 @@
     "sentTitle": "Talebin mekana iletildi",
     "sentDesc": "Mekan 10 dakika içinde karar verecek. Onaylanırsa şarkıyı 10 dakika boyunca jetonunla sıraya ekleyebilirsin.",
     "emptyTitle": "Bu şarkı mekanın listesinde yok",
-    "emptyDesc": "Sanatçı ve şarkı adını yaz, mekana talep olarak iletelim.",
+    "emptyDesc": "Sanatçı ve şarkı adını yaz, mekana talep olarak iletelim. Onaylarsa şarkıyı çaldırabilirsin.",
     "inlineTitle": "Mekandan şarkı iste",
     "titlePlaceholder": "Şarkı adı",
     "artistPlaceholder": "Sanatçı adı",

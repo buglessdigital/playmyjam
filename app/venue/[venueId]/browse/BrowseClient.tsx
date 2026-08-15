@@ -631,23 +631,38 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           )}
           </div>
         </div>
+        {/* Arama sayfanın ana eylemi: gradyan çerçeve + parıltı ile öne çıkarılır.
+            Arama tamamen mekanın kendi listesinde (YouTube'a çıkmaz), misafire de açık —
+            listede olmayan şarkı için altındaki ipucu talep akışına işaret eder. */}
         <div className="flex gap-2">
-          {/* Arama artık tamamen mekanın kendi listesinde (YouTube'a çıkmaz) — misafire de açık */}
-          <button
-            onClick={() => setSearchOpen(true)}
-            className="flex h-12 min-w-0 flex-1 items-center gap-3 rounded-2xl border border-white/10 bg-[#1a0e2a] px-4 text-left transition-transform active:scale-[0.98]"
+          <div
+            className="min-w-0 flex-1 rounded-2xl p-[1.5px] shadow-[0_0_20px_rgba(233,30,140,0.28)]"
+            style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#6b7280" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
-            <span className="text-sm text-[#6b7280]">{t.browse.searchPlaceholder}</span>
-          </button>
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="flex h-[45px] w-full items-center gap-3 rounded-[14px] bg-[#1a0e2a] px-4 text-left transition-transform active:scale-[0.98]"
+            >
+              <svg className="shrink-0" width="19" height="19" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#e91e8c" strokeWidth="2.2" /><path d="M20 20l-3-3" stroke="#e91e8c" strokeWidth="2.2" strokeLinecap="round" /></svg>
+              <span className="truncate text-sm font-semibold text-white">{t.browse.searchPlaceholder}</span>
+            </button>
+          </div>
           <button
             onClick={luckyPick}
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-[#1a0e2a] transition-transform active:scale-95"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#e91e8c]/30 bg-[#1a0e2a] transition-transform active:scale-95"
             aria-label={t.browse.luckyAria}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
         </div>
+        {/* Listede olmayan şarkının da çalınabildiği en görünür yerde söylenir */}
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="mt-2 flex w-full items-center gap-1.5 text-left"
+        >
+          <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 3l2.2 5.6L20 10l-5.8 1.4L12 17l-2.2-5.6L4 10l5.8-1.4L12 3z" fill="#fbbf24" /></svg>
+          <span className="min-w-0 flex-1 text-[11px] leading-snug text-[#c4b5d4]">{t.browse.searchHint}</span>
+        </button>
       </div>
 
       <div className="pt-4">

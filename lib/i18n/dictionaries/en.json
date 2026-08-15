@@ -213,7 +213,7 @@
   "browse": {
     "title": "Browse",
     "balanceAria": "Your token balance — top up tokens",
-    "searchPlaceholder": "Search the venue's list...",
+    "searchPlaceholder": "Search songs or artists",
     "luckyAria": "Suggest a random song",
     "favorites": "Your Favorites",
     "seeAll": "See all",
@@ -229,7 +229,8 @@
     "sortAz": "A to Z",
     "sortPlays": "Most Played",
     "noSongsFound": "No songs found",
-    "nothingPlayedYet": "No songs played yet"
+    "nothingPlayedYet": "No songs played yet",
+    "searchHint": "Not on the list? Request it — you can play it once the venue approves"
   },
   "songAction": {
     "playing": "Playing",
@@ -279,19 +280,20 @@
   "search": {
     "exitArtistAria": "Exit artist",
     "closeAria": "Close search",
-    "placeholder": "Search in the list of venues...",
+    "placeholder": "Search songs or artists",
     "clearAria": "Clear",
     "recentTitle": "Recent Searches",
     "clear": "Clear",
     "removeRecentAria": "Delete search \"{term}\"",
-    "emptyHint": "Search for a song or artist in the venue's list",
+    "emptyHint": "Search for a song or artist in the venue's list — request it if it's not there",
     "artistSongsSuffix": "songs",
     "artists": "Artists",
     "venueList": "Venue List",
     "notFoundTitle": "Is the song you're looking for not on the list?",
-    "notFoundDesc": "Suggest it to the venue — we'll let you know if they add it",
+    "notFoundDesc": "Send a request — you can play it if the venue approves",
     "youtubePrefix": "Song information and covers provided by",
-    "youtubeSuffix": "provided by"
+    "youtubeSuffix": "provided by",
+    "requestHint": "If the song you want isn't on the venue's list, send a request; if the venue approves it, you can play it with your tokens."
   },
   "suggest": {
     "limitError": "You’ve sent too many requests; try again later.",
@@ -299,7 +301,7 @@
     "sentTitle": "Your request was sent to the venue",
     "sentDesc": "The venue will decide within 10 minutes. If approved, you can add the song to the queue with your tokens for 10 minutes.",
     "emptyTitle": "This song isn't in the venue's list",
-    "emptyDesc": "Write the artist and song title and we’ll pass it to the venue as a request.",
+    "emptyDesc": "Type the artist and song name and we'll send it to the venue as a request. If they approve, you can play it.",
     "inlineTitle": "Request a song from the venue",
     "titlePlaceholder": "Song title",
     "artistPlaceholder": "Artist name",

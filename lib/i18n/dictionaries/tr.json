@@ -190,17 +190,6 @@
     "tokenBadge": "Normal",
     "addSong": "Şarkı Ekle"
   },
-  "vibeIntro": {
-    "title": "3 adımda müzik senden",
-    "desc": "Mekanlar kendi vibe'ına uyan şarkıları çalar. Aradığın şarkı listede yoksa aramadan mekana ücretsiz öneri gönderebilirsin.",
-    "cta": "Anladım, başlayalım",
-    "step1Title": "Şarkını bul",
-    "step1Desc": "ŞARKI SEÇ sekmesindeki aramadan mekanın listesine bak.",
-    "step2Title": "Jeton al",
-    "step2Desc": "Alttaki JETON AL sekmesinden bakiyeni yükle.",
-    "step3Title": "Sıraya ekle",
-    "step3Desc": "Şarkıya dokun, normal ya da öncelikli sırayı seç — gerisi mekanda çalar."
-  },
   "playerOffline": {
     "badge": "Oynatıcı kapalı",
     "short": "Kapalı",

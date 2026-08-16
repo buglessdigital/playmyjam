@@ -23,6 +23,10 @@ interface Props {
   favoriteIds: Set<string>;
   actionFor: (song: DisplaySong) => SongActionState;
   recentKey: string;
+  /** Arama kutusu boşken gösterilecek sanatçılar (gözat sayfasının şeridiyle aynı) */
+  suggestedArtists: SearchArtist[];
+  /** Arama kutusu boşken gösterilecek şarkılar (gözat sayfasının ana listesi) */
+  suggestedSongs: DisplaySong[];
   onOpen: (song: DisplaySong) => void;
   onToggleFavorite: (song: DisplaySong) => void;
   onAdd: (song: DisplaySong) => void;
@@ -34,7 +38,12 @@ interface Props {
 // Arama tamamen mekanın kendi listesi üzerinde çalışır (YouTube'a çıkılmaz).
 // Aranan şarkı listede yoksa müşteri sanatçı + şarkı adını yazıp mekana öneri
 // gönderir; öneri mekanın istekler bölümüne düşer.
-export default function SearchView({ venueSongMap, favoriteIds, actionFor, recentKey, onOpen, onToggleFavorite, onAdd, onRequest, onSuggest, onClose }: Props) {
+//
+// Ekran hiçbir zaman boş kalmaz: kutuya bir şey yazılmadan da mekanın müşteriye
+// AÇIK sanatçı ve şarkıları listelenir. Yeni gelen aramaya ilk ziyarette
+// kendiliğinden düştüğü için (bkz. lib/first-visit.ts) aklında bir şarkı yoksa
+// bile dokunacak bir şey bulur.
+export default function SearchView({ venueSongMap, favoriteIds, actionFor, recentKey, suggestedArtists, suggestedSongs, onOpen, onToggleFavorite, onAdd, onRequest, onSuggest, onClose }: Props) {
   const t = useT();
   const [query, setQuery] = useState("");
   const [artistFilter, setArtistFilter] = useState<{ key: string; name: string } | null>(null);
@@ -202,38 +211,9 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
       )}
 
       <div className="flex-1 overflow-y-auto px-5 pb-10">
-        {!hasQuery ? (
-          recent.length > 0 ? (
-            <>
-              <div className="mb-1 flex items-center justify-between pt-2">
-                <h2 className="text-sm font-bold text-white">{t.search.recentTitle}</h2>
-                <button onClick={() => persistRecent([])} className="text-xs font-medium text-[#9ca3af]">
-                  {t.search.clear}
-                </button>
-              </div>
-              {recent.map((term) => (
-                <div key={term} className="flex items-center gap-3 border-b border-white/5">
-                  <button onClick={() => submitQuery(term)} className="flex min-w-0 flex-1 items-center gap-3 py-3.5 text-left">
-                    <svg className="shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#6b7280" strokeWidth="2" /><path d="M12 7v5l3 3" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
-                    <span className="truncate text-sm text-white">{term}</span>
-                  </button>
-                  <button
-                    onClick={() => removeRecent(term)}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                    aria-label={fmt(t.search.removeRecentAria, { term })}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
-                  </button>
-                </div>
-              ))}
-            </>
-          ) : (
-            <div className="flex flex-col items-center pt-16 text-center">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#3d3450" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#3d3450" strokeWidth="2" strokeLinecap="round" /></svg>
-              <p className="mt-3 text-sm text-[#6b7280]">{t.search.emptyHint}</p>
-            </div>
-          )
-        ) : artistFilter ? (
+        {/* Sanatçı görünümü en başta: sanatçı, arama kutusu boşken de (öneri
+            şeridinden) seçilebiliyor */}
+        {artistFilter ? (
           <>
             <div className="flex items-center gap-2 pt-2">
               <h2 className="min-w-0 truncate text-sm font-bold text-white">{artistFilter.name}</h2>
@@ -268,35 +248,74 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
               onSuggest={onSuggest}
             />
           </>
+        ) : !hasQuery ? (
+          /* Kutu boş: son aramalar + mekanın müşteriye açık sanatçı ve şarkıları.
+             Aynı veriler gözat sayfasının şeridi/listesiyle birebir aynı — burada
+             ikinci kez hesaplanmaz, hazır gelir. */
+          <>
+            {recent.length > 0 && (
+              <>
+                <div className="mb-1 flex items-center justify-between pt-2">
+                  <h2 className="text-sm font-bold text-white">{t.search.recentTitle}</h2>
+                  <button onClick={() => persistRecent([])} className="text-xs font-medium text-[#9ca3af]">
+                    {t.search.clear}
+                  </button>
+                </div>
+                {recent.map((term) => (
+                  <div key={term} className="flex items-center gap-3 border-b border-white/5">
+                    <button onClick={() => submitQuery(term)} className="flex min-w-0 flex-1 items-center gap-3 py-3.5 text-left">
+                      <svg className="shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#6b7280" strokeWidth="2" /><path d="M12 7v5l3 3" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
+                      <span className="truncate text-sm text-white">{term}</span>
+                    </button>
+                    <button
+                      onClick={() => removeRecent(term)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                      aria-label={fmt(t.search.removeRecentAria, { term })}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {suggestedArtists.length >= 2 && (
+              <ArtistStrip artists={suggestedArtists} onSelect={selectArtist} />
+            )}
+
+            {suggestedSongs.length > 0 ? (
+              <>
+                <h2 className="pt-2 text-sm font-bold text-white">{t.search.venueList}</h2>
+                {suggestedSongs.map((song) => (
+                  <SongRow
+                    key={song.youtube_video_id}
+                    song={song}
+                    action={actionFor(song)}
+                    isFav={song.id ? favoriteIds.has(song.id) : false}
+                    onOpen={onOpen}
+                    onToggleFavorite={onToggleFavorite}
+                    onAdd={onAdd}
+                    onRequest={onRequest}
+                  />
+                ))}
+              </>
+            ) : (
+              /* Mekanın müşteriye açık hiç şarkısı yok — tek kalan yol talep */
+              recent.length === 0 && (
+                <div className="flex flex-col items-center pt-16 text-center">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#3d3450" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#3d3450" strokeWidth="2" strokeLinecap="round" /></svg>
+                  <p className="mt-3 text-sm text-[#6b7280]">{t.search.emptyHint}</p>
+                </div>
+              )
+            )}
+          </>
         ) : results.length === 0 ? (
           /* Mekan listesinde karşılığı yok — doğrudan öneri kutusu */
           <SuggestBox variant="empty" defaultTitle={query.trim()} defaultArtist="" onSuggest={onSuggest} />
         ) : (
           <>
             {searchArtists.length > 1 && (
-              <>
-                <h2 className="pt-2 text-sm font-bold text-white">{t.search.artists}</h2>
-                <div className="flex gap-4 overflow-x-auto py-3">
-                  {searchArtists.map((a) => (
-                    <button
-                      key={a.key}
-                      onClick={() => selectArtist(a)}
-                      className="flex w-16 shrink-0 flex-col items-center gap-1.5 transition-transform active:scale-95"
-                    >
-                      <div className="h-16 w-16 overflow-hidden rounded-full ring-1 ring-white/10">
-                        {a.coverUrl ? (
-                          <Image src={a.coverUrl} alt={a.name} width={64} height={64} sizes="64px" className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-[#1a0e2a]">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#6b7280" strokeWidth="2" /><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
-                          </div>
-                        )}
-                      </div>
-                      <span className="w-full truncate text-center text-[11px] text-[#9ca3af]">{a.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
+              <ArtistStrip artists={searchArtists} onSelect={selectArtist} />
             )}
 
             <h2 className="pt-2 text-sm font-bold text-white">{t.search.venueList}</h2>
@@ -341,6 +360,37 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
         )}
       </div>
     </div>
+  );
+}
+
+// Yuvarlak kapaklı sanatçı şeridi: hem arama sonuçlarının üstünde hem de kutu
+// boşken gösterilen öneri listesinde aynı görünür
+function ArtistStrip({ artists, onSelect }: { artists: SearchArtist[]; onSelect: (artist: SearchArtist) => void }) {
+  const t = useT();
+  return (
+    <>
+      <h2 className="pt-2 text-sm font-bold text-white">{t.search.artists}</h2>
+      <div className="flex gap-4 overflow-x-auto py-3">
+        {artists.map((a) => (
+          <button
+            key={a.key}
+            onClick={() => onSelect(a)}
+            className="flex w-16 shrink-0 flex-col items-center gap-1.5 transition-transform active:scale-95"
+          >
+            <div className="h-16 w-16 overflow-hidden rounded-full ring-1 ring-white/10">
+              {a.coverUrl ? (
+                <Image src={a.coverUrl} alt={a.name} width={64} height={64} sizes="64px" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-[#1a0e2a]">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#6b7280" strokeWidth="2" /><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
+                </div>
+              )}
+            </div>
+            <span className="w-full truncate text-center text-[11px] text-[#9ca3af]">{a.name}</span>
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 

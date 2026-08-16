@@ -22,7 +22,8 @@ import SongCard from "@/components/browse/SongCard";
 import SongRow from "@/components/browse/SongRow";
 import NotifyOptIn from "@/components/browse/NotifyOptIn";
 import { savePendingSuggestion, takePendingSuggestion } from "@/lib/pending-suggestion";
-import { takePendingAdd } from "@/lib/pending-add";
+import { savePendingAdd, takePendingAdd } from "@/lib/pending-add";
+import { takeFirstVisit } from "@/lib/first-visit";
 import { refreshPushSubscription } from "@/lib/notifications";
 import {
   artistKey,
@@ -421,11 +422,17 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   // Şansına bırak: cooldown'da/kuyrukta olmayan listeden rastgele bir şarkıyla sheet'i aç
   const luckyPick = useCallback(() => {
     if (playerOffline) return;
-    if (!requireAccount()) return;
     const eligible = catalogSongs.filter((s) => s.in_venue_list && actionFor(s).kind === "add");
     if (eligible.length === 0) return;
-    setSelectedSong(eligible[Math.floor(Math.random() * eligible.length)]);
-  }, [catalogSongs, actionFor, requireAccount, playerOffline]);
+    // Şarkı girişten ÖNCE seçilir: misafir giriş yapıp döndüğünde eli boş
+    // kalmasın, aynı şarkının kartı kendiliğinden açılsın
+    const pick = eligible[Math.floor(Math.random() * eligible.length)];
+    if (!requireAccount()) {
+      savePendingAdd(venueId, pick.youtube_video_id);
+      return;
+    }
+    setSelectedSong(pick);
+  }, [catalogSongs, actionFor, requireAccount, playerOffline, venueId]);
 
   const openSong = useCallback(
     (song: DisplaySong) => router.push(`/venue/${venueId}/song/${song.youtube_video_id}`),
@@ -438,11 +445,30 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       // Oynatıcı kapalıyken sheet hiç açılmaz: eklenen şarkı çalmayacağı için
       // jeton boşa gider (aynı kural sunucuda /api/queue içinde)
       if (playerOffline) return;
-      if (!requireAccount()) return;
+      // Misafir giriş ekranına gider; hangi şarkı için gittiği saklanır. Dönüşte
+      // ekleme kartı kendiliğinden açılır — yeni kullanıcı şarkısını girişten
+      // sonra baştan aramak zorunda kalmasın (bkz. lib/pending-add.ts).
+      if (!requireAccount()) {
+        savePendingAdd(venueId, song.youtube_video_id);
+        return;
+      }
       setSelectedSong(song);
     },
-    [requireAccount, playerOffline]
+    [requireAccount, playerOffline, venueId]
   );
+
+  // İLK ZİYARET: mekana yeni giren kişiye anlatım metni okutulmaz, doğrudan işin
+  // başına oturtulur — arama kendiliğinden açılır. Aradığı şarkı listedeyse
+  // ekleme kartına, listede yoksa aynı ekrandaki talep kutusuna düşer; jeton
+  // adımı ancak ondan sonra (ekleme kartındaki yükleme çağrısıyla) gelir.
+  // İkinci açılışta artık çıkmaz (bkz. lib/first-visit.ts).
+  // İşaret localStorage'da: sunucu render'ında bilinemez, bu yüzden karar ancak
+  // bağlandıktan sonra verilebilir (state'i başlangıç değerinden okumak
+  // hidrasyon uyuşmazlığı olurdu).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- tek seferlik açılış kararı
+    if (takeFirstVisit(venueId)) setSearchOpen(true);
+  }, [venueId]);
 
   // Jeton almaya gidip dönen müşteri şarkıyı baştan aramasın: gidilirken saklanan
   // şarkının ekleme kartı bir kez kendiliğinden açılır (bkz. lib/pending-add.ts).
@@ -964,6 +990,10 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           favoriteIds={favoriteIds}
           actionFor={actionFor}
           recentKey={`pmj:recent-searches:${venueId}`}
+          /* Kutu boşken arama ekranı boş kalmasın: gözat sayfasının zaten
+             hesapladığı sanatçı şeridi ve şarkı listesi olduğu gibi verilir */
+          suggestedArtists={artists}
+          suggestedSongs={defaultListSongs}
           onOpen={openSong}
           onToggleFavorite={toggleFavorite}
           onAdd={openSheet}

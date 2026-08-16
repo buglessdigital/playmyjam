@@ -6,7 +6,6 @@ import BottomNav from "@/components/ui/BottomNav";
 import LegalFooter from "@/components/ui/LegalFooter";
 import EnablePushPrompt from "@/components/notifications/EnablePushPrompt";
 import NotificationWatcher from "@/components/notifications/NotificationWatcher";
-import VibeIntroModal from "@/components/ui/VibeIntroModal";
 
 interface Props {
   children: React.ReactNode;
@@ -42,7 +41,8 @@ function VenueLayoutContent({ children, params }: Props) {
         <>
           <NotificationWatcher venueId={venueId} />
           <BottomNav venueId={venueId} />
-          <VibeIntroModal venueId={venueId} />
+          {/* İlk ziyaret anlatımı kaldırıldı: yeni gelen artık modal okumak yerine
+              doğrudan aramada başlar (bkz. BrowseClient + lib/first-visit.ts) */}
           {/* Uygulama kipinde açılışta bildirim izni ister (tarayıcı sekmesinde çıkmaz) */}
           <EnablePushPrompt />
         </>

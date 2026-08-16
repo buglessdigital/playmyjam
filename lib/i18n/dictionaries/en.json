@@ -190,17 +190,6 @@
     "tokenBadge": "Normal",
     "addSong": "Add Song"
   },
-  "vibeIntro": {
-    "title": "Your music in 3 steps",
-    "desc": "Venues play songs that match their own vibe. If yours isn't on the list, you can suggest it to the venue for free from the search.",
-    "cta": "Got it, let's go",
-    "step1Title": "Find your song",
-    "step1Desc": "Search the venue's list from the PICK A SONG tab.",
-    "step2Title": "Buy tokens",
-    "step2Desc": "Top up your balance from the BUY TOKENS tab below.",
-    "step3Title": "Add to queue",
-    "step3Desc": "Tap the song, pick normal or priority — the venue plays the rest."
-  },
   "playerOffline": {
     "badge": "Player offline",
     "short": "Offline",

@@ -490,7 +490,7 @@ function AuthPageContent({ params }: Props) {
           </button>
 
           <Link
-            href={`/venue/${venueId}/queue`}
+            href={`/venue/${venueId}/browse`}
             className="block w-full text-center py-2 text-sm font-semibold text-[#9ca3af]"
           >
             {t.login.justLooking}

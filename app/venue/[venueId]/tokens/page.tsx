@@ -7,9 +7,14 @@ import TokensLoading from "./loading";
 // Kabukta cache'li paket listesi — geçişte anında görünür; bakiye client'ta tek sorgu.
 // runtime prefetch: kabuk mekan bazında istek anında üretilip prefetch'e servis edilir;
 // samples yalnızca build doğrulaması için örnek değerdir.
+// ?tab=1 alt gezinmedeki JETON AL sekmesinden gelir (geri oku gizlenir); iki
+// örnek de doğrulanır: sekmeden gelen ve doğrudan/akış içinden gelen.
 export const unstable_instant = {
   prefetch: "runtime",
-  samples: [{ params: { venueId: "ecem-s-house" } }],
+  samples: [
+    { params: { venueId: "ecem-s-house" }, searchParams: { tab: null } },
+    { params: { venueId: "ecem-s-house" }, searchParams: { tab: "1" } },
+  ],
 };
 
 interface Props {

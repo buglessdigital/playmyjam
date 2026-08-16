@@ -7,7 +7,9 @@ import { useAnimatedNumber } from "@/lib/use-animated-number";
 import { useVenueGate } from "@/lib/venue-gate";
 import { AVATARS, AvatarMark, isAvatarId } from "@/lib/avatars";
 import Coin from "@/components/ui/Coin";
+import LangToggle from "@/components/ui/LangToggle";
 import { useT } from "@/lib/i18n";
+import { publishTokenBalance } from "@/lib/token-balance-store";
 
 type ProfileState = {
   username: string | null;
@@ -103,10 +105,15 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
   const handleLogout = async () => {
     await fetch(`/api/venue/${venueId}/auth`, { method: "DELETE" });
     await supabase.auth.signOut();
-    // Çıkıştan sonra da mekan gezilebilir — kuyruğa dön, giriş ekranına değil.
+    // Çıkıştan sonra da mekan gezilebilir — gözat ekranına dön, giriş ekranına değil.
     // Tam gezinme: client router cache'inde hesaplıyken üretilmiş kayıtlar kalıyor.
-    window.location.replace(`/venue/${venueId}/queue`);
+    window.location.replace(`/venue/${venueId}/browse`);
   };
+
+  // Alt gezinmedeki jeton rozeti bu sayfanın bakiyesini kullanır (ayrı sorgu yok)
+  useEffect(() => {
+    if (loaded) publishTokenBalance(tokenBalance);
+  }, [loaded, tokenBalance]);
 
   const initial = username.charAt(0).toUpperCase() || "?";
   const animRequests = useAnimatedNumber(requestCount);
@@ -253,6 +260,16 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
         </div>
 
         {/* Menü */}
+        {/* Dil anahtarı buraya taşındı: kuyruk/gözat başlıkları üç düğmeyle
+            kalabalıklaşmasın. Misafirde hâlâ başlıkta duruyor (profil hesaba bağlı). */}
+        <div
+          className="mb-6 flex items-center justify-between rounded-2xl px-4 py-3"
+          style={{ background: "#1a0e2a", border: "1px solid rgba(255,255,255,0.07)" }}
+        >
+          <span className="text-sm font-semibold text-white">{t.profile.language}</span>
+          <LangToggle />
+        </div>
+
         <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.profile.account}</p>
         <div className="overflow-hidden rounded-2xl" style={{ background: "#1a0e2a", border: "1px solid rgba(255,255,255,0.07)" }}>
           {menu.map((item, i) => (

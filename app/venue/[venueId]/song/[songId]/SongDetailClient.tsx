@@ -16,6 +16,8 @@ import { normalQueuedCount, priorityCostFor } from "@/lib/pricing";
 import { usePlayerOnline } from "@/lib/use-player-online";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { fmt, useT } from "@/lib/i18n";
+import { publishTokenBalance } from "@/lib/token-balance-store";
+import { clearPendingAdd, peekPendingAdd } from "@/lib/pending-add";
 
 type QueueEntry = { song_id: string; priority: boolean; duration_ms: number };
 type NowPlayingInfo = {
@@ -442,6 +444,32 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
   let centerDisabled = false;
   let centerAction: () => void = () => {};
   let centerBg = "white";
+
+  // Alt gezinmedeki jeton rozeti bu sayfanın bakiyesini kullanır (ayrı sorgu yok)
+  useEffect(() => {
+    if (loaded) publishTokenBalance(tokenBalance);
+  }, [loaded, tokenBalance]);
+
+  // Jeton almaya bu sayfadan gidildiyse dönüşte ekleme kartı kendiliğinden açılır.
+  // Kayıt başka bir şarkıya aitse dokunulmaz — gözat sayfası onu kendi açar.
+  const pendingAddCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!loaded || pendingAddCheckedRef.current || !track || !dbSongId || playerOffline) return;
+    pendingAddCheckedRef.current = true;
+    if (peekPendingAdd(venueId) !== track.youtube_video_id) return;
+    clearPendingAdd(venueId);
+    if (cooldown.remainingMs > 0) return;
+    setSheetTarget({
+      songId: dbSongId,
+      song: {
+        youtube_video_id: track.youtube_video_id,
+        title: track.title,
+        artist: track.artist,
+        album_cover_url: track.album_cover_url,
+      },
+      cooldown,
+    });
+  }, [loaded, track, dbSongId, playerOffline, cooldown, venueId]);
 
   if (!loaded) {
     // Kullanıcı durumu henüz gelmedi (~100-150 ms) — yanlış durum göstermemek için nötr

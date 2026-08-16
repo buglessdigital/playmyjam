@@ -8,6 +8,7 @@ import { useAnimatedNumber } from "@/lib/use-animated-number";
 import Coin from "@/components/ui/Coin";
 import type { TokenPackage } from "@/lib/pricing-cache";
 import { currentDict, fmt, useI18n } from "@/lib/i18n";
+import { publishTokenBalance } from "@/lib/token-balance-store";
 
 type WalletTx = {
   id: string;
@@ -117,6 +118,8 @@ function Radio({ selected }: { selected: boolean }) {
 export default function TokensClient({ venueId, initialPackages, initialSelectedId, unitPrice, requestCost }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Alt gezinmedeki JETON AL sekmesi ?tab=1 ile açar (bkz. BottomNav)
+  const fromTab = searchParams.get("tab") === "1";
   const supabase = useMemo(() => createClient(), []);
   const { lang, t } = useI18n();
   // Tek jeton satırı listenin başında; super admin 1'lik paket tanımlamışsa
@@ -191,6 +194,11 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
       cancelled = true;
     };
   }, [supabase, loadTxs]);
+
+  // Alt gezinmedeki jeton rozeti anında güncellensin (satın alma sonrası dahil)
+  useEffect(() => {
+    if (balanceLoaded) publishTokenBalance(balance);
+  }, [balanceLoaded, balance]);
   const [purchasing, setPurchasing] = useState(false);
   const [paymentResult, setPaymentResult] = useState<"success" | "fail" | null>(null);
 
@@ -270,13 +278,17 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
 
       <div className="relative mx-auto w-full max-w-md">
         <div className="mb-6 flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            aria-label={t.common.back}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-transform active:scale-95"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </button>
+          {/* Sayfa alt gezinmedeki sekmeden açıldıysa (?tab=1) geri oku anlamsız:
+              sekmeler zaten altta duruyor. Bir şarkı/kuyruk akışından gelindiyse kalır. */}
+          {!fromTab && (
+            <button
+              onClick={() => router.back()}
+              aria-label={t.common.back}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-transform active:scale-95"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+          )}
           <h1 className="text-lg font-bold text-white">{t.tokens.title}</h1>
         </div>
 

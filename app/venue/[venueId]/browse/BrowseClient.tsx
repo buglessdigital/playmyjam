@@ -10,6 +10,8 @@ import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { useNowPlayingClock, waitMs } from "@/lib/wait-time";
 import { normalQueuedCount, priorityCostFor } from "@/lib/pricing";
 import LangToggle from "@/components/ui/LangToggle";
+import { publishTokenBalance } from "@/lib/token-balance-store";
+import ProfileChip from "@/components/ui/ProfileChip";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { usePlayerOnline } from "@/lib/use-player-online";
 import { fmt, useT } from "@/lib/i18n";
@@ -20,6 +22,7 @@ import SongCard from "@/components/browse/SongCard";
 import SongRow from "@/components/browse/SongRow";
 import NotifyOptIn from "@/components/browse/NotifyOptIn";
 import { savePendingSuggestion, takePendingSuggestion } from "@/lib/pending-suggestion";
+import { takePendingAdd } from "@/lib/pending-add";
 import { refreshPushSubscription } from "@/lib/notifications";
 import {
   artistKey,
@@ -441,6 +444,25 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     [requireAccount, playerOffline]
   );
 
+  // Jeton almaya gidip dönen müşteri şarkıyı baştan aramasın: gidilirken saklanan
+  // şarkının ekleme kartı bir kez kendiliğinden açılır (bkz. lib/pending-add.ts).
+  // Ekleme yapılmaz — son dokunuş yine müşteride.
+  const pendingAddCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!stateLoaded || pendingAddCheckedRef.current || playerOffline) return;
+    if (venueSongMap.size === 0) return;
+    pendingAddCheckedRef.current = true;
+    const videoId = takePendingAdd(venueId);
+    if (!videoId) return;
+    const song = venueSongMap.get(videoId);
+    if (song) setSelectedSong(song);
+  }, [stateLoaded, playerOffline, venueSongMap, venueId]);
+
+  // Alt gezinmedeki jeton rozeti bu sayfanın okuduğu bakiyeyi kullanır (ayrı sorgu yok)
+  useEffect(() => {
+    if (stateLoaded) publishTokenBalance(tokenBalance);
+  }, [stateLoaded, tokenBalance]);
+
   // Öncelikli ücret sıraya göre değişir: bekleyen her 3 normal şarkı için +1 jeton
   // (aynı formül sunucuda priority_cost_now içinde — bkz. lib/pricing.ts).
   // queueEntries realtime tazelendiği için gösterilen fiyat da canlı.
@@ -621,7 +643,9 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
         <div className="mb-3 flex items-center justify-between">
           <h1 className="text-xl font-bold text-white">{t.browse.title}</h1>
           <div className="flex items-center gap-2">
-          <LangToggle />
+          {/* Dil anahtarı yalnızca misafirde başlıkta: üye onu profil sayfasından
+              değiştirir, başlık üç düğmeyle kalabalıklaşmasın */}
+          {!isMember && <LangToggle />}
           {isMember ? (
             <Link
               href={`/venue/${venueId}/tokens`}
@@ -645,6 +669,8 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
               <span className="text-xs font-bold text-white">{t.queue.login}</span>
             </Link>
           )}
+          {/* Profil artık alt gezinmede değil — her sayfanın sağ üstünde */}
+          <ProfileChip venueId={venueId} />
           </div>
         </div>
         {/* Arama sayfanın ana eylemi: gradyan çerçeve + parıltı ile öne çıkarılır.

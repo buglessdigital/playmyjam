@@ -7,11 +7,14 @@ import LangToggle from "@/components/ui/LangToggle";
 const STORAGE_PREFIX = "pmj-vibe-intro:";
 
 /**
- * Mekana ilk kez giren ziyaretçiye "aradığın her şarkı bulunmayabilir" uyarısını
- * bir kez gösterir. Giriş yapmayan ziyaretçiyi de kapsaması gerektiği için işaret
- * hesapta değil localStorage'da tutulur; mekan bazlı, çünkü her mekanın kataloğu
- * ayrı. localStorage okunamıyorsa (gizli mod) modal hiç açılmaz — tekrar tekrar
- * çıkıp rahatsız etmesindense hiç çıkmasın.
+ * Mekana ilk kez giren ziyaretçiye paneli 3 adımda anlatır (şarkını bul →
+ * jeton al → sıraya ekle) ve "aradığın her şarkı bulunmayabilir" notunu verir.
+ * Yeni kullanıcının takıldığı yer tam olarak bu sıralamaydı.
+ *
+ * Bir kez gösterilir. Giriş yapmayan ziyaretçiyi de kapsaması gerektiği için
+ * işaret hesapta değil localStorage'da tutulur; mekan bazlı, çünkü her mekanın
+ * kataloğu ayrı. localStorage okunamıyorsa (gizli mod) modal hiç açılmaz —
+ * tekrar tekrar çıkıp rahatsız etmesindense hiç çıkmasın.
  */
 export default function VibeIntroModal({ venueId }: { venueId: string }) {
   const t = useT();
@@ -29,6 +32,44 @@ export default function VibeIntroModal({ venueId }: { venueId: string }) {
 
   if (!open) return null;
 
+  const steps = [
+    {
+      title: t.vibeIntro.step1Title,
+      desc: t.vibeIntro.step1Desc,
+      color: "#e91e8c",
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <circle cx="11" cy="11" r="7" stroke="#e91e8c" strokeWidth="2" />
+          <path d="M20 20l-3-3" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      title: t.vibeIntro.step2Title,
+      desc: t.vibeIntro.step2Desc,
+      color: "#fbbf24",
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="8" stroke="#fbbf24" strokeWidth="2" />
+          <circle cx="12" cy="12" r="3.5" stroke="#fbbf24" strokeWidth="1.6" />
+        </svg>
+      ),
+    },
+    {
+      title: t.vibeIntro.step3Title,
+      desc: t.vibeIntro.step3Desc,
+      color: "#8b5cf6",
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="6" width="13" height="2" rx="1" fill="#8b5cf6" />
+          <rect x="3" y="11" width="10" height="2" rx="1" fill="#8b5cf6" />
+          <rect x="3" y="16" width="7" height="2" rx="1" fill="#8b5cf6" />
+          <path d="M18 12v8M14 16h8" stroke="#8b5cf6" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+  ];
+
   return (
     <div
       className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center"
@@ -39,7 +80,7 @@ export default function VibeIntroModal({ venueId }: { venueId: string }) {
       aria-labelledby="vibe-intro-title"
     >
       <div
-        className="w-full max-w-sm rounded-t-3xl p-6 sm:rounded-3xl"
+        className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-t-3xl p-6 sm:rounded-3xl"
         style={{ background: "#1a0e2a" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -67,11 +108,36 @@ export default function VibeIntroModal({ venueId }: { venueId: string }) {
         <h2 id="vibe-intro-title" className="text-center text-lg font-bold text-white">
           {t.vibeIntro.title}
         </h2>
-        <p className="mt-2 text-center text-sm leading-relaxed text-[#9ca3af]">{t.vibeIntro.desc}</p>
+
+        <ol className="mt-5 space-y-3">
+          {steps.map((step, i) => (
+            <li
+              key={step.title}
+              className="flex items-start gap-3 rounded-2xl p-3"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+            >
+              <span
+                className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: `${step.color}1f`, border: `1px solid ${step.color}3d` }}
+              >
+                {step.icon}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white">
+                  <span style={{ color: step.color }}>{i + 1}.</span> {step.title}
+                </p>
+                <p className="mt-0.5 text-xs leading-relaxed text-[#9ca3af]">{step.desc}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        {/* Katalog kısıtı: adımların ardından, "bulamazsam ne olacak" sorusunun cevabı */}
+        <p className="mt-4 text-center text-xs leading-relaxed text-[#6b7280]">{t.vibeIntro.desc}</p>
 
         <button
           onClick={() => setOpen(false)}
-          className="mt-6 w-full rounded-xl py-3 text-sm font-semibold text-white transition-transform active:scale-[0.98]"
+          className="mt-5 w-full rounded-xl py-3 text-sm font-semibold text-white transition-transform active:scale-[0.98]"
           style={{ background: "#e91e8c" }}
         >
           {t.vibeIntro.cta}

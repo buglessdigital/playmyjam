@@ -177,7 +177,7 @@ function ResetPasswordContent() {
       await fetch(`/api/venue/${venueId}/auth`, { method: "POST" }).catch(() => null);
       // Tam gezinme: client router cache'inde giriş öncesinden kalan
       // "/queue → login" yönlendirmesi yumuşak geçişi sessizce yutabiliyor
-      window.location.replace(`/venue/${venueId}/queue`);
+      window.location.replace(`/venue/${venueId}/browse`);
       return;
     }
     setSaving(false);

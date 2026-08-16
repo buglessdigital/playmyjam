@@ -1,8 +1,15 @@
 "use client";
 
+import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { useVenueGate } from "@/lib/venue-gate";
+import {
+  hydrateTokenBalanceFromCache,
+  publishTokenBalance,
+  useTokenBalance,
+} from "@/lib/token-balance-store";
 import { useT } from "@/lib/i18n";
 
 interface BottomNavProps {
@@ -11,8 +18,37 @@ interface BottomNavProps {
 
 export default function BottomNav({ venueId }: BottomNavProps) {
   const pathname = usePathname();
-  const { requireAccount } = useVenueGate(venueId);
+  const { isMember, requireAccount } = useVenueGate(venueId);
+  const supabase = useMemo(() => createClient(), []);
+  const balance = useTokenBalance();
   const t = useT();
+
+  // Bakiyeyi normalde sayfalar yayınlar (kendi durum RPC'lerinden). Tam
+  // yenilemeden sonra hiçbiri konuşmamışsa rozet boş kalmasın diye tek satırlık
+  // cüzdan sorgusu burada bir kez yapılır.
+  useEffect(() => {
+    if (!isMember) return;
+    hydrateTokenBalanceFromCache();
+
+    let cancelled = false;
+    const load = async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
+      if (!user || cancelled) return;
+      const { data } = await supabase
+        .from("user_wallets")
+        .select("balance")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      publishTokenBalance(data.balance as number);
+    };
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMember, supabase]);
 
   const tabs = [
     {
@@ -41,15 +77,19 @@ export default function BottomNav({ venueId }: BottomNavProps) {
       ),
     },
     {
-      label: t.panelNav.profile,
-      segment: "profile",
-      href: `/venue/${venueId}/profile`,
-      // Profil hesaba bağlı — misafir önce giriş ekranına gider
+      // Yeni kullanıcının takıldığı yer jeton almaktı: profil menüsünün altından
+      // çıkarılıp alt gezinmeye alındı. Profil artık sayfa başlıklarının sağ üstünde.
+      // ?tab=1: jeton sayfası sekmeden açıldığını bilsin (geri okunu göstermez).
+      label: t.panelNav.tokens,
+      segment: "tokens",
+      href: `/venue/${venueId}/tokens?tab=1`,
+      // Satın alma hesaba bağlı — misafir önce giriş ekranına gider
       requiresAccount: true,
       icon: (active: boolean) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="8" r="4" stroke={active ? "#e91e8c" : "#6b7280"} strokeWidth="2" />
-          <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke={active ? "#e91e8c" : "#6b7280"} strokeWidth="2" strokeLinecap="round" />
+          <circle cx="12" cy="12" r="8" stroke={active ? "#fbbf24" : "#6b7280"} strokeWidth="2" />
+          <circle cx="12" cy="12" r="3.5" stroke={active ? "#fbbf24" : "#6b7280"} strokeWidth="1.6" />
+          <path d="M12 8.5v-3M12 18.5v-3" stroke={active ? "#fbbf24" : "#6b7280"} strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       ),
     },
@@ -62,6 +102,10 @@ export default function BottomNav({ venueId }: BottomNavProps) {
     >
       {tabs.map((tab) => {
         const active = pathname.includes(`/${tab.segment}`);
+        // Sayı yerine yalnızca "bakiyen bitti" noktası: rakam kalabalık duruyordu,
+        // asıl anlatılmak istenen zaten sıfır bakiye. Misafirde yok — onun
+        // cüzdanı değil, giriş adımı eksik.
+        const showBadge = tab.segment === "tokens" && isMember && balance === 0;
         return (
           <Link
             key={tab.href}
@@ -71,7 +115,16 @@ export default function BottomNav({ venueId }: BottomNavProps) {
             }}
             className="flex flex-col items-center justify-center gap-1 flex-1 h-full"
           >
-            {tab.icon(active)}
+            <span className="relative">
+              {tab.icon(active)}
+              {showBadge && (
+                <span
+                  aria-hidden
+                  className="absolute -right-1 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-[#0f0a18]"
+                  style={{ background: "#e91e8c" }}
+                />
+              )}
+            </span>
             <span
               className="text-[10px] font-semibold tracking-wider"
               style={{ color: active ? "#e91e8c" : "#6b7280" }}

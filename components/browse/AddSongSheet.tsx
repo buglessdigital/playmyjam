@@ -6,6 +6,7 @@ import Image from "next/image";
 import { formatWait } from "@/lib/wait-time";
 import type { Cooldown } from "./browse-types";
 import { fmt, useI18n } from "@/lib/i18n";
+import { savePendingAdd } from "@/lib/pending-add";
 
 interface Song {
   youtube_video_id: string;
@@ -74,7 +75,14 @@ export default function AddSongSheet({
   const canPriority = affordPriority && !inCooldown;
   // Jeton yetmediğinde seçenekler ölü buton gibi durmasın: tıklayınca yükleme
   // sayfasına götürsün ve altta ayrıca büyük bir yükleme çağrısı çıksın.
-  const goTokens = () => { onClose(); router.push(`/venue/${params.venueId}/tokens`); };
+  // Jeton yüklemeye giderken hangi şarkı için gidildiği saklanır: müşteri geri
+  // döndüğünde şarkıyı baştan aramak zorunda kalmasın, kart kendiliğinden açılsın.
+  // Şarkı otomatik eklenmez — jeton harcaması yine müşterinin dokunuşuyla olur.
+  const goTokens = () => {
+    savePendingAdd(params.venueId, song.youtube_video_id);
+    onClose();
+    router.push(`/venue/${params.venueId}/tokens`);
+  };
   const missingTokens = Math.max(0, (affordNormal ? priorityCost : normalCost) - tokenBalance);
   const showTopUpCta = !inCooldown && !affordPriority;
   // Sıra kalabalıklaştıkça öncelikli pahalılaşır: taban ücretin üstüne çıkıldığında

@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import SongDetailModal, { type SongDetail } from "@/components/queue/SongDetailModal";
 import LangToggle from "@/components/ui/LangToggle";
+import ProfileChip from "@/components/ui/ProfileChip";
+import { publishTokenBalance } from "@/lib/token-balance-store";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { usePlayerOnline } from "@/lib/use-player-online";
 import { fmt, useT } from "@/lib/i18n";
@@ -171,6 +173,11 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     };
   }, [isMember, supabase, queue.length]);
 
+  // Alt gezinmedeki jeton rozeti bu sayfanın bakiyesini kullanır (ayrı sorgu yok)
+  useEffect(() => {
+    if (tokenBalance !== null) publishTokenBalance(tokenBalance);
+  }, [tokenBalance]);
+
   // Sayfanın en üstünde tam genişlik kart; aşağı kaydırınca sağda yuvarlak butona daralır
   useEffect(() => {
     const onScroll = () => setFabCollapsed(window.scrollY > 40);
@@ -218,8 +225,9 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
       <div className="flex items-center justify-between px-5 pt-12 pb-4">
         <h1 className="min-w-0 truncate text-white font-bold text-lg">{venueName || venueId}</h1>
         <div className="flex shrink-0 items-center gap-2">
-          {/* Turist misafir mekanın panelini kendi dilinde açabilsin */}
-          <LangToggle />
+          {/* Dil anahtarı yalnızca misafirde başlıkta: üye onu profil sayfasından
+              değiştirir, başlık üç düğmeyle kalabalıklaşmasın */}
+          {!isMember && <LangToggle />}
           {/* Kuyruk artık mekanın giriş sayfası — misafire görünür bir giriş kapısı kalsın */}
           {isMember ? (
             <Link
@@ -243,6 +251,8 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
               {t.queue.login}
             </Link>
           )}
+          {/* Profil artık alt gezinmede değil — her sayfanın sağ üstünde */}
+          <ProfileChip venueId={venueId} />
         </div>
       </div>
 

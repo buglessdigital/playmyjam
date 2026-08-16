@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const nextPath =
     rawNext.startsWith(`/venue/${venueId}/`) && !rawNext.startsWith(`/venue/${venueId}/login`)
       ? rawNext
-      : `/venue/${venueId}/queue`;
+      : `/venue/${venueId}/browse`;
   const loginUrl = `/venue/${venueId}/login`;
 
   if (!code) {

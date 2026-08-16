@@ -166,7 +166,8 @@
   "panelNav": {
     "queue": "QUEUE",
     "browse": "BROWSE",
-    "profile": "PROFILE"
+    "tokens": "BUY TOKENS",
+    "profileAria": "My profile"
   },
   "wait": {
     "now": "Now",
@@ -190,9 +191,15 @@
     "addSong": "Add Song"
   },
   "vibeIntro": {
-    "title": "Not every song will be here",
-    "desc": "Venues play songs that match their own vibe. If yours isn't there, suggest it to the venue for free from the search in the BROWSE tab.",
-    "cta": "Got it"
+    "title": "Your music in 3 steps",
+    "desc": "Venues play songs that match their own vibe. If yours isn't on the list, you can suggest it to the venue for free from the search.",
+    "cta": "Got it, let's go",
+    "step1Title": "Find your song",
+    "step1Desc": "Search the venue's list from the BROWSE tab.",
+    "step2Title": "Buy tokens",
+    "step2Desc": "Top up your balance from the BUY TOKENS tab below.",
+    "step3Title": "Add to queue",
+    "step3Desc": "Tap the song, pick normal or priority — the venue plays the rest."
   },
   "playerOffline": {
     "badge": "Player offline",
@@ -400,7 +407,8 @@
     "logout": "Log Out",
     "logoutDesc": "Log out of your account",
     "pickAvatar": "Choose your avatar",
-    "removeAvatar": "Remove avatar, use my initial"
+    "removeAvatar": "Remove avatar, use my initial",
+    "language": "Language"
   },
   "tokens": {
     "title": "Buy Tokens",

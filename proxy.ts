@@ -155,11 +155,11 @@ export async function proxy(req: NextRequest) {
         const confirmUrl = new URL("/auth/confirm", req.url);
         params.forEach((value, key) => confirmUrl.searchParams.set(key, value));
         // Token'ı bir sonraki adrese taşımadan yalnızca hedef yolu geçir
-        confirmUrl.searchParams.set("next", isRoot ? `/venue/${venueId}/queue` : pathname);
+        confirmUrl.searchParams.set("next", isRoot ? `/venue/${venueId}/browse` : pathname);
         return redirectWithCookies(confirmUrl, response);
       }
       if (isRoot) {
-        return redirectWithCookies(new URL(`/venue/${venueId}/queue`, req.url), response);
+        return redirectWithCookies(new URL(`/venue/${venueId}/browse`, req.url), response);
       }
       if (isPublicPage) {
         return response;
@@ -174,7 +174,7 @@ export async function proxy(req: NextRequest) {
       const next = isLoginPage ? req.nextUrl.searchParams.get("next") : null;
       const target = next && next.startsWith(`/venue/${venueId}/`) && !next.startsWith(`/venue/${venueId}/login`)
         ? next
-        : `/venue/${venueId}/queue`;
+        : `/venue/${venueId}/browse`;
       return redirectWithCookies(new URL(target, req.url), response);
     }
 

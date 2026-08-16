@@ -19,7 +19,7 @@ export function venueLoginPath(venueId: string, next?: string) {
 // Login sonrası dönülecek yol: yalnızca aynı mekanın altındaki yollar kabul
 // edilir (açık yönlendirme ve mekanlar arası sızıntı olmasın)
 export function safeNextPath(next: string | null, venueId: string): string {
-  const fallback = `/venue/${venueId}/queue`;
+  const fallback = `/venue/${venueId}/browse`;
   if (!next || !next.startsWith(`/venue/${venueId}/`)) return fallback;
   if (next.startsWith(`/venue/${venueId}/login`)) return fallback;
   return next;

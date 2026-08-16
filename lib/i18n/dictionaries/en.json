@@ -165,7 +165,7 @@
   },
   "panelNav": {
     "queue": "QUEUE",
-    "browse": "BROWSE",
+    "browse": "PICK A SONG",
     "tokens": "BUY TOKENS",
     "profileAria": "My profile"
   },
@@ -195,7 +195,7 @@
     "desc": "Venues play songs that match their own vibe. If yours isn't on the list, you can suggest it to the venue for free from the search.",
     "cta": "Got it, let's go",
     "step1Title": "Find your song",
-    "step1Desc": "Search the venue's list from the BROWSE tab.",
+    "step1Desc": "Search the venue's list from the PICK A SONG tab.",
     "step2Title": "Buy tokens",
     "step2Desc": "Top up your balance from the BUY TOKENS tab below.",
     "step3Title": "Add to queue",
@@ -218,7 +218,7 @@
     "estimatedWait": "Estimated Wait"
   },
   "browse": {
-    "title": "Browse",
+    "title": "Pick a Song",
     "balanceAria": "Your token balance — top up tokens",
     "searchPlaceholder": "Search songs or artists",
     "luckyAria": "Suggest a random song",

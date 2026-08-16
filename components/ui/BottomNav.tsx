@@ -126,7 +126,7 @@ export default function BottomNav({ venueId }: BottomNavProps) {
               )}
             </span>
             <span
-              className="text-[10px] font-semibold tracking-wider"
+              className="whitespace-nowrap text-[10px] font-semibold tracking-wider"
               style={{ color: active ? "#e91e8c" : "#6b7280" }}
             >
               {tab.label}

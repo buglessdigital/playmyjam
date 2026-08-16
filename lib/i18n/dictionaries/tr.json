@@ -165,7 +165,7 @@
   },
   "panelNav": {
     "queue": "KUYRUK",
-    "browse": "GÖZAT",
+    "browse": "ŞARKI SEÇ",
     "tokens": "JETON AL",
     "profileAria": "Profilim"
   },
@@ -195,7 +195,7 @@
     "desc": "Mekanlar kendi vibe'ına uyan şarkıları çalar. Aradığın şarkı listede yoksa aramadan mekana ücretsiz öneri gönderebilirsin.",
     "cta": "Anladım, başlayalım",
     "step1Title": "Şarkını bul",
-    "step1Desc": "GÖZAT sekmesindeki aramadan mekanın listesine bak.",
+    "step1Desc": "ŞARKI SEÇ sekmesindeki aramadan mekanın listesine bak.",
     "step2Title": "Jeton al",
     "step2Desc": "Alttaki JETON AL sekmesinden bakiyeni yükle.",
     "step3Title": "Sıraya ekle",
@@ -209,7 +209,7 @@
     "cannotAdd": "Oynatıcı kapalıyken şarkı eklenemez"
   },
   "browse": {
-    "title": "Gözat",
+    "title": "Şarkı Seç",
     "balanceAria": "Jeton bakiyen — jeton yükle",
     "searchPlaceholder": "Şarkı veya sanatçı ara",
     "luckyAria": "Rastgele şarkı öner",

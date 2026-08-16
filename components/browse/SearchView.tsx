@@ -6,6 +6,7 @@ import SongRow from "./SongRow";
 import NotifyOptIn from "./NotifyOptIn";
 import { artistKey, primaryArtist, type DisplaySong, type SongActionState, type VenueSong } from "./browse-types";
 import { fmt, useT } from "@/lib/i18n";
+import LangToggle from "@/components/ui/LangToggle";
 
 const MAX_RECENT = 8;
 
@@ -200,6 +201,10 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
             </button>
           )}
         </div>
+        {/* Arama tam ekran açılıyor ve yeni gelen ilk ziyarette doğrudan buraya
+            düşüyor — dil anahtarı altta kalan başlıkta erişilemez olduğu için
+            burada da duruyor (üye/misafir ayrımı yok: bu satırda yer var) */}
+        <LangToggle />
       </div>
 
       {/* Listede olmayan şarkının da çalınabildiği bilgisi arama boyunca ekranda kalır */}

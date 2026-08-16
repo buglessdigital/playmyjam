@@ -9,6 +9,11 @@ import Coin from "@/components/ui/Coin";
 import type { TokenPackage } from "@/lib/pricing-cache";
 import { currentDict, fmt, useI18n } from "@/lib/i18n";
 import { publishTokenBalance } from "@/lib/token-balance-store";
+import { peekPendingAdd } from "@/lib/pending-add";
+
+// Ödeme sonrası bekleyen şarkıya dönüş gecikmesi — "ödeme başarılı" bilgisi
+// görülecek kadar uzun, akışı kesmeyecek kadar kısa
+const PAYMENT_REDIRECT_MS = 1500;
 
 type WalletTx = {
   id: string;
@@ -212,6 +217,8 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
 
   // iyzico'dan dönüş: ?payment=success|fail — bakiyeyi yenile, banner göster, URL'i temizle
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
     (async () => {
       const payment = searchParams.get("payment");
       if (payment !== "success" && payment !== "fail") return;
@@ -224,9 +231,26 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
           if (typeof w?.balance === "number") setBalance(w.balance);
           loadTxs();
         }
+
+        // Jeton, bir şarkıyı ekleyebilmek için alındıysa müşteri akışın kaldığı
+        // yere döner: şarkının sayfası ekleme kartını kendiliğinden açar
+        // (bkz. lib/pending-add.ts). Kayıt burada silinmez — silmek şarkı
+        // sayfasının işi, yoksa kart hiç açılmaz.
+        const pendingVideoId = peekPendingAdd(venueId);
+        if (pendingVideoId) {
+          // Kısa bekleme: "ödeme başarılı" bilgisi görülmeden ekran değişmesin
+          timer = setTimeout(() => {
+            router.replace(`/venue/${venueId}/song/${pendingVideoId}`);
+          }, PAYMENT_REDIRECT_MS);
+          return;
+        }
       }
       router.replace(`/venue/${venueId}/tokens`);
     })();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

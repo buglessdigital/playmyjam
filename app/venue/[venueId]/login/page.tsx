@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { safeNextPath } from "@/lib/venue-gate";
+import { useRedirectPending } from "@/lib/use-redirect-pending";
 import { currentDict, fmt, useT } from "@/lib/i18n";
 import ConsentChecks, { EMPTY_CONSENTS, consentsSatisfied } from "@/components/ui/ConsentChecks";
 
@@ -40,7 +41,8 @@ function AuthPageContent({ params }: Props) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
+  // Google'a gidip giriş yapmadan geri dönülürse düğme kilitli kalmasın
+  const [googleLoading, setGoogleLoading] = useRedirectPending();
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [showResend, setShowResend] = useState(false);

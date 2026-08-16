@@ -4,6 +4,7 @@ import { Suspense, use, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { GOOGLE_ERRORS, GoogleIcon } from "@/components/admin/GoogleAccountCard";
+import { useRedirectPending } from "@/lib/use-redirect-pending";
 
 // Yeni açılan mekanların ilk girişte gördüğü zorunlu ekran: kurtarma hesabı
 // bağlanana kadar panelin hiçbir yeri açılmıyor (kontrol proxy'de, bkz. 0038).
@@ -24,7 +25,8 @@ export default function AdminLinkGooglePage({ params }: Props) {
 function LinkGoogleScreen({ params }: Props) {
   const { venueId } = use(params);
   const searchParams = useSearchParams();
-  const [starting, setStarting] = useState(false);
+  // Google'a gidip bağlamadan geri dönülürse düğme kilitli kalmasın
+  const [starting, setStarting] = useRedirectPending();
   const [startError, setStartError] = useState("");
 
   const failure = searchParams.get("google_error");

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { useAnimatedNumber } from "@/lib/use-animated-number";
+import { useRedirectPending } from "@/lib/use-redirect-pending";
 import Coin from "@/components/ui/Coin";
 import type { TokenPackage } from "@/lib/pricing-cache";
 import { currentDict, fmt, useI18n } from "@/lib/i18n";
@@ -204,7 +205,9 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   useEffect(() => {
     if (balanceLoaded) publishTokenBalance(balance);
   }, [balanceLoaded, balance]);
-  const [purchasing, setPurchasing] = useState(false);
+  // Ödeme sayfasına gidildikten sonra ödemeden geri dönülürse düğme
+  // kilitli kalmasın (bkz. lib/use-redirect-pending.ts)
+  const [purchasing, setPurchasing] = useRedirectPending();
   const [paymentResult, setPaymentResult] = useState<"success" | "fail" | null>(null);
 
   useEffect(() => {

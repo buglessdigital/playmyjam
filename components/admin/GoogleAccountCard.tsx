@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useRedirectPending } from "@/lib/use-redirect-pending";
 
 // Mekan admininin kurtarma hesabı. Google'dan dönen adres doğrulanmış sayılır;
 // "şifremi unuttum" bağlantısı yalnızca buraya gider — bağlı hesap yoksa
@@ -42,7 +43,8 @@ export default function GoogleAccountCard({
   loading: boolean;
 }) {
   const searchParams = useSearchParams();
-  const [starting, setStarting] = useState(false);
+  // Google'a gidip bağlamadan geri dönülürse düğme kilitli kalmasın
+  const [starting, setStarting] = useRedirectPending();
   const [startError, setStartError] = useState("");
 
   // Callback sonucu sorgu parametresiyle dönüyor; tam sayfa gezinmesi olduğu

@@ -131,6 +131,65 @@ async function unconsumeRows(
   );
 }
 
+// Elle sıraya alınan şarkının, çalan listenin kuyrukta BEKLEYEN otomatik
+// satırını düşürür: şarkı bundan sonra yalnızca elle eklenmiş haliyle sırada
+// durur, liste o noktaya geldiğinde ikinci kez çalmaz. (Müşteri tarafındaki
+// aynı kural 0035'te SQL içinde.)
+//
+// Satır kuyruğa yazılırken zaten "tüketildi" işaretlenmişti; işaret GERİ
+// ALINMAZ — şarkı yine çalacak, sadece elle eklendiği yerde. Yine de emniyet
+// olsun diye tüketim tekrar yazılır: arada bir unconsumeRows geçmiş olabilir.
+async function consumeAutoDuplicates(
+  venueId: string,
+  queuedRows: {
+    song_id: string;
+    user_id: string | null;
+    added_by: string;
+    source_playlist_id: string | null;
+  }[],
+  picked: string[]
+): Promise<void> {
+  const wanted = new Set(picked);
+  const dupes = queuedRows.filter(
+    (r) => r.user_id === null && r.added_by === AUTO_ADDED_BY && wanted.has(r.song_id)
+  );
+  if (dupes.length === 0) return;
+
+  const { data: state } = await supabaseAdmin
+    .from("playlist_rotation")
+    .select("cycle")
+    .eq("venue_id", venueId)
+    .maybeSingle();
+  const cycle = state?.cycle ?? 1;
+
+  const consumed = dupes
+    .filter((r) => r.source_playlist_id)
+    .map((r) => ({
+      venue_id: venueId,
+      playlist_id: r.source_playlist_id!,
+      song_id: r.song_id,
+      cycle,
+    }));
+
+  await Promise.all([
+    ...chunk(dupes.map((r) => r.song_id)).map((ids) =>
+      supabaseAdmin
+        .from("queue")
+        .update({ status: "removed" })
+        .eq("venue_id", venueId)
+        .eq("status", "queued")
+        .is("user_id", null)
+        .eq("added_by", AUTO_ADDED_BY)
+        .in("song_id", ids)
+    ),
+    ...chunk(consumed, 500).map((rows) =>
+      supabaseAdmin
+        .from("playlist_rotation_consumed")
+        .upsert(rows, { onConflict: "venue_id,playlist_id,cycle,song_id", ignoreDuplicates: true })
+    ),
+  ]);
+}
+
 // Playlist kuyruğundan seçici (0037). Kuyruk = queue_position dolu listeler.
 // İmleçteki listeden başlayıp sırayla ilerler ve her listeden alınabilecek HER
 // ŞEYİ alır: kuyruk, sıradaki listeler bitip başa saracağı noktaya kadar uzar
@@ -570,7 +629,8 @@ const isManualRow = (row: { user_id: string | null; added_by: string }) =>
  * Şarkıları elle sıranın ilgili ŞERİDİNİN sonuna ekler: playlistId verilirse
  * "sıraya eklenen listeler" şeridine, verilmezse teklilerin şeridine. Tekliler
  * listelerin üstünde çalar, her şerit kendi içinde ekleme sırasını korur.
- * Zaten kuyrukta olan şarkı yeniden eklenebilir (admin bilerek ekliyor).
+ * Zaten kuyrukta olan şarkı yeniden eklenebilir (admin bilerek ekliyor); tek
+ * istisna çalan listenin otomatik satırıdır, o devralınır.
  * Dönen sayı gerçekten eklenen satır sayısıdır.
  *
  * playlistId yalnızca gösterim için taşınır (panelde "night · sırada"); rotasyon
@@ -592,7 +652,9 @@ export async function enqueueManual(
   // Tekrar ENGELLENMEZ: admin bilerek ekliyor. Zaten kuyrukta olan (hatta
   // sahnede çalan) bir şarkı da sıraya alınabilir — o zaman iki kez çalar.
   // Otomatik dolum kendi bloğuna aynı şarkıyı ikinci kez koymaz (excludeIds),
-  // bu kural yalnızca elle ekleme için gevşetilmiştir.
+  // bu kural yalnızca elle ekleme için gevşetilmiştir. TEK İSTİSNA: çalan
+  // listenin bekleyen otomatik satırı devralınır (bkz. consumeAutoDuplicates) —
+  // orada "iki kez çalsın" diyen bir irade yok, sadece dolumun kopyası var.
   const rows = existing ?? [];
 
   // Tavan: elle ekleme otomatik dolumdan ÖNCELİKLİDİR. Kuyruk tavana dayanmışsa
@@ -624,6 +686,16 @@ export async function enqueueManual(
     }
   }
   if (picked.length === 0) return 0;
+
+  // Elle eklenen şarkı, çalan listenin kuyrukta BEKLEYEN kopyasını devralır —
+  // 0035'in müşteri için yaptığının admin karşılığı. Yoksa şarkı bir kez elle
+  // eklendiği yerde, bir kez de liste o noktaya geldiğinde olmak üzere iki kez
+  // çalıyordu (elle ekleme rotasyon defterine hiç yazmadığı için).
+  //
+  // Sahnedeki satıra dokunulmaz, müşteri satırına ve daha önce elle eklenmiş
+  // satırlara da: admin aynı şarkıyı bilerek iki kez sıraya alabilir, kural
+  // yalnızca OTOMATİK dolumun kopyası için geçerli.
+  await consumeAutoDuplicates(venueId, queuedRows, picked);
 
   // Şerit seçimi: tekli eklemeler (playlistId yok) üst şeride, sıraya eklenen
   // listeler alt şeride girer. Yalnızca KENDİ şeridindeki satırlar sayılır —

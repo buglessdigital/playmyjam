@@ -516,17 +516,14 @@
     "switchToSignUp": "Register",
     "switchToSignIn": "Log In",
     "justLooking": "I'm just looking for now",
-    "consentKvkk": "I have read and understood the {link}.",
+    "consentNotice": "By signing up you confirm that you have read and accept the {kvkk}, {terms} and {privacy}.",
+    "consentNoticeContinue": "By continuing you confirm that you have read and accept the {kvkk}, {terms} and {privacy}.",
     "consentKvkkLink": "Personal Data Protection Notice",
-    "consentTerms": "I accept the {link}.",
     "consentTermsLink": "Terms of Use",
     "consentMarketing": "I would like to receive campaign and announcement emails under the {link}.",
     "consentMarketingLink": "commercial electronic message consent",
-    "consentRequired": "Required",
     "consentOptional": "Optional",
-    "errConsentRequired": "Please tick the required consent boxes to continue.",
-    "consentPrivacyLink": "Privacy Policy",
-    "consentAnd": "and"
+    "consentPrivacyLink": "Privacy Policy"
   },
   "lyrics": {
     "closeAria": "Close lyrics",

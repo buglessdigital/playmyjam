@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { safeNextPath } from "@/lib/venue-gate";
 import { useT } from "@/lib/i18n";
-import ConsentChecks, { EMPTY_CONSENTS, consentsSatisfied } from "@/components/ui/ConsentChecks";
+import ConsentChecks, { EMPTY_CONSENTS } from "@/components/ui/ConsentChecks";
 
 interface Props {
   params: Promise<{ venueId: string }>;
@@ -34,7 +34,7 @@ function ConsentPageContent({ params }: Props) {
   const nextPath = safeNextPath(searchParams.get("next"), venueId);
 
   const handleSubmit = async () => {
-    if (!consentsSatisfied(consents) || saving) return;
+    if (saving) return;
     setSaving(true);
     setError("");
     const supabase = createClient();
@@ -60,11 +60,11 @@ function ConsentPageContent({ params }: Props) {
         </div>
       )}
 
-      <ConsentChecks value={consents} onChange={setConsents} />
+      <ConsentChecks value={consents} onChange={setConsents} variant="continue" />
 
       <button
         onClick={handleSubmit}
-        disabled={saving || !consentsSatisfied(consents)}
+        disabled={saving}
         className="mt-6 block w-full text-center py-3.5 rounded-2xl font-bold text-white text-base transition-all active:scale-95 disabled:opacity-50"
         style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
       >

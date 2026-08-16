@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { safeNextPath } from "@/lib/venue-gate";
 import { useRedirectPending } from "@/lib/use-redirect-pending";
 import { currentDict, fmt, useT } from "@/lib/i18n";
-import ConsentChecks, { EMPTY_CONSENTS, consentsSatisfied } from "@/components/ui/ConsentChecks";
+import ConsentChecks, { EMPTY_CONSENTS } from "@/components/ui/ConsentChecks";
 
 function authErrorMessage(code: string): string {
   const d = currentDict().login;
@@ -52,8 +52,6 @@ function AuthPageContent({ params }: Props) {
   const [continueLoading, setContinueLoading] = useState(false);
   const [consents, setConsents] = useState(EMPTY_CONSENTS);
   const t = useT();
-  // Kayıt akışında zorunlu onaylar verilmeden hiçbir yol açılmaz
-  const consentBlocked = !isLogin && !consentsSatisfied(consents);
 
   // Hesap gerektiren bir eylem buraya yönlendirdiyse giriş sonrası oraya dönülür
   const nextPath = safeNextPath(searchParams.get("next"), venueId);
@@ -190,10 +188,6 @@ function AuthPageContent({ params }: Props) {
   };
 
   const handleSubmit = async () => {
-    if (consentBlocked) {
-      setError(t.login.errConsentRequired);
-      return;
-    }
     setLoading(true);
     setError("");
     setInfo("");
@@ -279,10 +273,6 @@ function AuthPageContent({ params }: Props) {
   };
 
   const handleGoogle = async () => {
-    if (consentBlocked) {
-      setError(t.login.errConsentRequired);
-      return;
-    }
     setGoogleLoading(true);
     setError("");
     setInfo("");
@@ -379,7 +369,7 @@ function AuthPageContent({ params }: Props) {
           </>
         )}
 
-        {/* Kayıt onayları: Google dahil tüm kayıt yollarının önünde durur */}
+        {/* Kayıt onayları: kayıt eylemiyle kabul edilir, sözleşmelere bağlantı verir */}
         {!isLogin && (
           <div className="mb-4">
             <ConsentChecks value={consents} onChange={setConsents} />
@@ -389,7 +379,7 @@ function AuthPageContent({ params }: Props) {
         {/* Google butonu */}
         <button
           onClick={handleGoogle}
-          disabled={googleLoading || loading || consentBlocked}
+          disabled={googleLoading || loading}
           className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl font-semibold text-white text-base border border-white/10 bg-white/5 hover:bg-white/10 transition-all active:scale-95 disabled:opacity-50 mb-4"
         >
           {googleLoading ? (
@@ -477,7 +467,7 @@ function AuthPageContent({ params }: Props) {
 
           <button
             onClick={handleSubmit}
-            disabled={loading || !email || !password || consentBlocked}
+            disabled={loading || !email || !password}
             className="block w-full text-center py-3.5 rounded-2xl font-bold text-white text-base mt-2 transition-all active:scale-95 disabled:opacity-50"
             style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
           >

@@ -516,17 +516,14 @@
     "switchToSignUp": "Kayıt Ol",
     "switchToSignIn": "Giriş Yap",
     "justLooking": "Şimdilik sadece bakmak istiyorum",
-    "consentKvkk": "{link} okudum ve anladım.",
+    "consentNotice": "Kayıt olarak {kvkk}, {terms} ve {privacy} okuduğunu ve kabul ettiğini onaylamış olursun.",
+    "consentNoticeContinue": "Devam ederek {kvkk}, {terms} ve {privacy} okuduğunu ve kabul ettiğini onaylamış olursun.",
     "consentKvkkLink": "KVKK Aydınlatma Metni'ni",
-    "consentTerms": "{link} kabul ediyorum.",
     "consentTermsLink": "Kullanım Şartları'nı",
     "consentMarketing": "{link} kapsamında kampanya ve duyurulardan e-posta ile haberdar olmak istiyorum.",
     "consentMarketingLink": "ticari elektronik ileti izni",
-    "consentRequired": "Zorunlu",
     "consentOptional": "İsteğe bağlı",
-    "errConsentRequired": "Devam etmek için zorunlu onay kutularını işaretlemelisin.",
-    "consentPrivacyLink": "Gizlilik Politikası'nı",
-    "consentAnd": "ve"
+    "consentPrivacyLink": "Gizlilik Politikası'nı"
   },
   "lyrics": {
     "closeAria": "Sözleri kapat",

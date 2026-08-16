@@ -7,17 +7,17 @@
 
 const TTL_MS = 30 * 60 * 1000;
 
-export type PendingSuggestion = { title: string; artist: string; savedAt: number };
+export type PendingSuggestion = { title: string; artist: string; cover?: string; savedAt: number };
 
 function key(venueId: string) {
   return `pmj_pending_suggestion_${venueId}`;
 }
 
-export function savePendingSuggestion(venueId: string, title: string, artist: string): void {
+export function savePendingSuggestion(venueId: string, title: string, artist: string, cover?: string): void {
   try {
     sessionStorage.setItem(
       key(venueId),
-      JSON.stringify({ title, artist, savedAt: Date.now() } satisfies PendingSuggestion)
+      JSON.stringify({ title, artist, cover, savedAt: Date.now() } satisfies PendingSuggestion)
     );
   } catch {
     // storage kapalı/dolu — talep kaybolur, kullanıcı tekrar yazar
@@ -36,7 +36,12 @@ export function takePendingSuggestion(venueId: string): PendingSuggestion | null
     // Bayat niyet: yarım saat önce vazgeçilmiş bir talep şimdi gönderilmemeli
     if (typeof parsed.savedAt !== "number" || Date.now() - parsed.savedAt > TTL_MS) return null;
 
-    return { title: parsed.title, artist: parsed.artist, savedAt: parsed.savedAt };
+    return {
+      title: parsed.title,
+      artist: parsed.artist,
+      cover: typeof parsed.cover === "string" ? parsed.cover : undefined,
+      savedAt: parsed.savedAt,
+    };
   } catch {
     return null;
   }

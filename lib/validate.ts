@@ -1,11 +1,31 @@
 export interface SuggestionInput {
   suggested_title: string;
   suggested_artist: string;
+  /** Dış katalogdan seçildiyse kapak görseli — yalnızca bildirimin ikonu olur */
+  suggested_cover_url?: string;
 }
 
 // Serbest metin öneri: müşteri mekan listesinde bulamadığı şarkıyı elle yazar.
 // Metin admin panelinde ham gösterildiği için sınırlar dar tutulur.
 const SUGGESTION_MAX = 120;
+
+// Kapak URL'i mekanın cihazında AÇILIR (bildirim ikonu). Serbest URL kabul
+// edilirse müşteri, adminin IP'sini toplayan bir piksel yerleştirebilir —
+// bu yüzden yalnızca dış katalog aramasının kendi CDN'leri geçerli.
+// (bkz. lib/discover.ts: iTunes → mzstatic, Deezer → dzcdn)
+const COVER_HOSTS = /^[a-z0-9-]+\.(mzstatic\.com|dzcdn\.net)$/;
+
+function cleanCoverUrl(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 300) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return undefined;
+    if (!COVER_HOSTS.test(url.hostname)) return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
 
 export function parseSuggestionInput(
   body: unknown
@@ -29,7 +49,11 @@ export function parseSuggestionInput(
     return { ok: false, error: `Sanatçı adı gerekli (en fazla ${SUGGESTION_MAX} karakter)` };
   }
 
-  return { ok: true, suggestion: { suggested_title, suggested_artist } };
+  // Geçersiz/yabancı kapak isteği düşürmez, sessizce elenir: talep asıl iş
+  return {
+    ok: true,
+    suggestion: { suggested_title, suggested_artist, suggested_cover_url: cleanCoverUrl(b.suggested_cover_url) },
+  };
 }
 
 export interface SongInput {

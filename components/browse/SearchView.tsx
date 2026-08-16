@@ -36,7 +36,7 @@ interface Props {
   onToggleFavorite: (song: DisplaySong) => void;
   onAdd: (song: DisplaySong) => void;
   onRequest: (song: DisplaySong) => void;
-  onSuggest: (title: string, artist: string) => Promise<SuggestResult>;
+  onSuggest: (title: string, artist: string, coverUrl?: string) => Promise<SuggestResult>;
   onClose: () => void;
 }
 
@@ -475,7 +475,7 @@ function DiscoverResults({
 }: {
   loading: boolean;
   tracks: DiscoverTrack[];
-  onSuggest: (title: string, artist: string) => Promise<SuggestResult>;
+  onSuggest: (title: string, artist: string, coverUrl?: string) => Promise<SuggestResult>;
   onInteract: () => void;
 }) {
   const t = useT();
@@ -526,7 +526,7 @@ function DiscoverRow({
   onInteract,
 }: {
   track: DiscoverTrack;
-  onSuggest: (title: string, artist: string) => Promise<SuggestResult>;
+  onSuggest: (title: string, artist: string, coverUrl?: string) => Promise<SuggestResult>;
   onInteract: () => void;
 }) {
   const t = useT();
@@ -536,7 +536,7 @@ function DiscoverRow({
     if (state === "sending" || state === "sent") return;
     onInteract();
     setState("sending");
-    const result = await onSuggest(track.title, track.artist);
+    const result = await onSuggest(track.title, track.artist, track.cover || undefined);
     if (result === "ok" || result === "duplicate") setState("sent");
     else if (result === "auth") setState("idle"); // giriş ekranına gidildi
     else setState("error");

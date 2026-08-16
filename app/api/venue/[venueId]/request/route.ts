@@ -187,6 +187,8 @@ async function handleSuggestion(
       title: parsed.suggestion.suggested_title,
       artist: parsed.suggestion.suggested_artist,
       requestedBy,
+      // Kapak yalnızca bildirimde yaşar — satıra yazılmıyor (kolon yok)
+      coverUrl: parsed.suggestion.suggested_cover_url,
     }).catch(() => {});
   });
 

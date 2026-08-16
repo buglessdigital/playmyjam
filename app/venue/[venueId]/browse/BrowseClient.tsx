@@ -560,12 +560,13 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   }, [venueDbId, venueId, requireAccount]);
 
   const sendSuggestion = useCallback(
-    async (title: string, artist: string): Promise<SuggestResult> => {
+    async (title: string, artist: string, cover?: string): Promise<SuggestResult> => {
       try {
         const res = await fetch(`/api/venue/${venueId}/request`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ suggested_title: title, suggested_artist: artist }),
+          // Kapak yalnızca mekana giden bildirimin ikonu olur, kayda yazılmaz
+          body: JSON.stringify({ suggested_title: title, suggested_artist: artist, suggested_cover_url: cover }),
         });
         if (res.ok) return "ok";
         if (res.status === 429) return "limit";
@@ -583,16 +584,16 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   //
   // Misafirse talep giriş öncesi saklanır: hesabına girip gözat sayfasına
   // döndüğünde kendiliğinden gönderilir, kullanıcı aramayı baştan yapmaz.
-  const handleSuggest = useCallback(async (title: string, artist: string): Promise<SuggestResult> => {
+  const handleSuggest = useCallback(async (title: string, artist: string, cover?: string): Promise<SuggestResult> => {
     if (!requireAccount(`/venue/${venueId}/browse`)) {
-      savePendingSuggestion(venueId, title, artist);
+      savePendingSuggestion(venueId, title, artist, cover);
       return "auth";
     }
 
-    const result = await sendSuggestion(title, artist);
+    const result = await sendSuggestion(title, artist, cover);
     if (result === "auth") {
       // Oturum bu arada düşmüş: talep saklanır, girişten sonra kendiliğinden gider
-      savePendingSuggestion(venueId, title, artist);
+      savePendingSuggestion(venueId, title, artist, cover);
       router.push(venueLoginPath(venueId, `/venue/${venueId}/browse`));
     }
     return result;
@@ -614,7 +615,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
     let cancelled = false;
     (async () => {
-      const result = await sendSuggestion(pending.title, pending.artist);
+      const result = await sendSuggestion(pending.title, pending.artist, pending.cover);
       if (cancelled) return;
       // 'auth' burada da gelirse çerez var ama sunucu kabul etmiyor demektir;
       // kullanıcıyı döngüye sokmamak için hata olarak gösterilir

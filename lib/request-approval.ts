@@ -234,6 +234,9 @@ export async function notifyAdminsOfRequest(params: {
   title: string;
   artist: string;
   requestedBy: string;
+  /** Dış katalogdan seçilen şarkının kapağı — bildirimde hangi şarkı olduğu
+   *  bir bakışta anlaşılsın diye. Yoksa uygulama ikonuna düşer. */
+  coverUrl?: string;
 }): Promise<void> {
   const token = signRequestActionToken(
     params.requestId,
@@ -246,6 +249,7 @@ export async function notifyAdminsOfRequest(params: {
     title: "Yeni şarkı talebi",
     body: `${params.title} — ${params.artist} (${params.requestedBy}). Onayla'ya bas ya da reddetmek için bildirime dokun. Karar için 10 dakikan var.`,
     url,
+    icon: params.coverUrl,
     tag: `req-${params.requestId}`,
     requireInteraction: true,
     // iOS bu alanı yok sayar; orada bildirime dokunmak yukarıdaki url'i açar

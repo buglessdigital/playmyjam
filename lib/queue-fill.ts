@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { orderFromResume } from "@/lib/rotation-order";
 
 // Kuyruk artık "10 şarkılık kayan pencere" DEĞİL: sıradaki listeler bitip başa
 // sarana kadarki şarkıların hepsi kuyruğa yazılır, panel ve player ne
@@ -45,6 +46,11 @@ type EligibilityContext = {
   pendingLists: Set<string>;
   // Sahnedeki şarkının listesi — çalarken kuyruktan düşürülmez
   playingList: string | null;
+  // Liste başına çalma geçmişi, YENİDEN ESKİYE: sıralı listenin bu turda nerede
+  // kaldığı buradan okunur (bkz. lib/rotation-order.ts). Kuyruk sıfırlansa da
+  // sıra bozulmasın diye sıralamanın çapası tüketim defteri değil, fiilen
+  // çalmış şarkılardır.
+  recentByList: Map<string, string[]>;
   // Kuyrukta şu an kaç şarkı var (30 dk kilidinin yalnızca yakın sıraya
   // uygulanması için)
   queuedNow: number;
@@ -347,7 +353,16 @@ async function pickFromRotation(
     const alreadyConsumed = consumedByList.get(playlist.id) ?? new Set<string>();
     consumedByList.set(playlist.id, alreadyConsumed);
 
-    const remaining = memberIds.filter((id) => !alreadyConsumed.has(id));
+    // DEĞİŞMEZ KURAL: sıralı liste, bu turda en son çalınan şarkısından İLERİ
+    // okunur; başa ancak sıra listenin sonuna gelince döner (rotation-order.ts).
+    // Tarama sırası tüketim defterinden BAĞIMSIZ hesaplandığı için, defter bir
+    // şekilde eksilse bile (kuyruk sıfırlama, elle müdahale) liste turun
+    // ortasında başa saramaz. Karıştırmalı listede sıra kavramı yok.
+    const scanOrder = playlist.shuffle
+      ? memberIds
+      : orderFromResume(memberIds, ctx.recentByList.get(playlist.id) ?? [], alreadyConsumed);
+
+    const remaining = scanOrder.filter((id) => !alreadyConsumed.has(id));
 
     // Kalıcı olarak çalınamaz olanlar (katalogdan düşmüş, gizlenmiş ya da embed'e
     // kapalı) listeyi kilitlemesin diye tüketilmiş sayılır.
@@ -468,8 +483,13 @@ export async function fillQueue(venueId: string): Promise<void> {
   // played_at hep started_at'ten sonra olduğu için played_at filtresi üst küme;
   // asıl çapa (başlangıç anı) aşağıda süzülür.
   const cutoff = Date.now() - COOLDOWN_MS;
-  const [{ data: queuedRows }, { data: playingNow }, { data: recentUserPlays }, { data: venueSongs }] =
-    await Promise.all([
+  const [
+    { data: queuedRows },
+    { data: playingNow },
+    { data: recentUserPlays },
+    { data: venueSongs },
+    { data: recentListPlays },
+  ] = await Promise.all([
       // Sayım da bu satırlardan çıkar: ayrı bir count sorgusu atılmaz
       supabaseAdmin
         .from("queue")
@@ -502,6 +522,18 @@ export async function fillQueue(venueId: string): Promise<void> {
           .order("song_id", { ascending: true })
           .range(from, to)
       ),
+      // Listelerin BU TURDA nerede kaldığı: sahnedeki + en son çalmış otomatik
+      // satırlar, yeniden eskiye. Sıralamanın çapası budur (rotation-order.ts).
+      // 200 satır uzun bir geceyi fazlasıyla kapsar; daha eskisi zaten başka bir
+      // turdur ve tüketim defterinde karşılığı kalmaz.
+      supabaseAdmin
+        .from("queue")
+        .select("song_id, source_playlist_id, started_at")
+        .eq("venue_id", venueId)
+        .in("status", ["playing", "played"])
+        .not("source_playlist_id", "is", null)
+        .order("started_at", { ascending: false, nullsFirst: false })
+        .limit(200),
     ]);
 
   const queued = queuedRows ?? [];
@@ -557,6 +589,14 @@ export async function fillQueue(venueId: string): Promise<void> {
       .map((r) => r.source_playlist_id)
       .filter((id): id is string => !!id)
   );
+  const recentByList = new Map<string, string[]>();
+  for (const row of recentListPlays ?? []) {
+    if (!row.source_playlist_id) continue;
+    const history = recentByList.get(row.source_playlist_id) ?? [];
+    history.push(row.song_id);
+    recentByList.set(row.source_playlist_id, history);
+  }
+
   const rotationPicks =
     (await pickFromRotation(venueId, capacity, {
       catalogEligible,
@@ -565,6 +605,7 @@ export async function fillQueue(venueId: string): Promise<void> {
       pendingLists,
       playingList: playingNow?.source_playlist_id ?? null,
       queuedNow: current,
+      recentByList,
     })) ?? [];
 
   const picks: { songId: string; playlistId: string | null }[] = [...rotationPicks];

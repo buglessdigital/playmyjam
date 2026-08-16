@@ -289,6 +289,13 @@
     "notFoundDesc": "Send a request — you can play it if the venue approves",
     "youtubePrefix": "Song information and covers provided by",
     "youtubeSuffix": "provided by",
+    "discoverLoading": "Searching other catalogues...",
+    "discoverTitle": "Not on the venue's list",
+    "discoverDesc": "Tap the song you want and we'll send the venue a request — if they approve it, you can play it.",
+    "discoverRequest": "Request",
+    "discoverSent": "Requested",
+    "discoverRetry": "Try again",
+    "discoverSource": "These results come from the Apple Music and Deezer catalogues",
     "requestHint": "If the song you want isn't on the venue's list, send a request; if the venue approves it, you can play it with your tokens."
   },
   "suggest": {

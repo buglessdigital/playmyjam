@@ -289,6 +289,13 @@
     "notFoundDesc": "Talep gönder — mekan onaylarsa şarkıyı çaldırabilirsin",
     "youtubePrefix": "Şarkı bilgileri ve kapaklar",
     "youtubeSuffix": "tarafından sağlanır",
+    "discoverLoading": "Diğer kataloglarda aranıyor...",
+    "discoverTitle": "Mekanın listesinde yok",
+    "discoverDesc": "İstediğin şarkıya dokun, mekana talep gitsin — onaylarsa çaldırabilirsin.",
+    "discoverRequest": "İste",
+    "discoverSent": "İstendi",
+    "discoverRetry": "Tekrar dene",
+    "discoverSource": "Bu sonuçlar Apple Music ve Deezer kataloglarından gelir",
     "requestHint": "Aradığın şarkı mekan listesinde yoksa talep gönder; mekan onaylarsa şarkıyı jetonunla çaldırabilirsin."
   },
   "suggest": {

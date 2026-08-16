@@ -7,8 +7,12 @@ import NotifyOptIn from "./NotifyOptIn";
 import { artistKey, primaryArtist, type DisplaySong, type SongActionState, type VenueSong } from "./browse-types";
 import { fmt, useT } from "@/lib/i18n";
 import LangToggle from "@/components/ui/LangToggle";
+import type { DiscoverTrack } from "@/lib/discover";
 
 const MAX_RECENT = 8;
+// Mekan listesi boş dönünce dış katalog aramasına gitmeden önceki bekleme:
+// her tuşta istek çıkmasın, kullanıcı yazmayı bıraksın
+const DISCOVER_DEBOUNCE_MS = 350;
 
 type SearchArtist = {
   key: string;
@@ -36,9 +40,16 @@ interface Props {
   onClose: () => void;
 }
 
-// Arama tamamen mekanın kendi listesi üzerinde çalışır (YouTube'a çıkılmaz).
-// Aranan şarkı listede yoksa müşteri sanatçı + şarkı adını yazıp mekana öneri
-// gönderir; öneri mekanın istekler bölümüne düşer.
+// Arama önce mekanın kendi listesi üzerinde çalışır (YouTube'a çıkılmaz).
+// Mekan listesinden hiç sonuç çıkmazsa arama dış kataloğa düşer
+// (bkz. /api/discover — Apple Music + Deezer, kotasız): müşteri aradığı şarkıyı
+// yine de listede görür ve tek dokunuşla ister. Seçim serbest metin talebe
+// dönüşür, mekanın istekler bölümüne düşer. Metin okumayan müşteri de
+// "listede yoksa isteyebiliyorum"u böyle anlıyor — yazıdan değil, sonuçtan.
+//
+// Dış sonuçlar ÇALINMAZ (video id yok); mekan onaylarsa şarkı o an YouTube'da
+// aranır. Elle yazma kutusu yerinde duruyor: dış katalogda da bulunmayan
+// (ya da servisler yanıt vermediğinde) şarkılar için tek yol o.
 //
 // Ekran hiçbir zaman boş kalmaz: kutuya bir şey yazılmadan da mekanın müşteriye
 // AÇIK sanatçı ve şarkıları listelenir. Yeni gelen aramaya ilk ziyarette
@@ -162,6 +173,43 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
   };
 
   const hasQuery = query.trim().length > 0;
+
+  // Dış katalog yalnızca mekan listesi boş döndüğünde devreye girer
+  const trimmedQuery = deferredQuery.trim();
+  const needsDiscover = !artistFilter && trimmedQuery.length >= 2 && results.length === 0;
+
+  // Sonuçlar ait oldukları sorguyla birlikte tutulur: "yükleniyor" ve "boşalt"
+  // ayrı state gerektirmeden buradan türetilir (effect içinde setState yok).
+  const [discoverState, setDiscoverState] = useState<{ query: string; tracks: DiscoverTrack[] } | null>(null);
+  const discoverReady = discoverState?.query === trimmedQuery;
+  const discover = needsDiscover && discoverReady ? discoverState.tracks : [];
+  const discoverLoading = needsDiscover && !discoverReady;
+
+  useEffect(() => {
+    if (!needsDiscover) return;
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      let tracks: DiscoverTrack[] = [];
+      try {
+        const res = await fetch(`/api/discover?q=${encodeURIComponent(trimmedQuery)}`, {
+          signal: controller.signal,
+        });
+        const data = res.ok ? await res.json() : null;
+        if (Array.isArray(data?.tracks)) tracks = data.tracks as DiscoverTrack[];
+      } catch {
+        // İptal ya da ağ hatası — elle yazma kutusu zaten altta duruyor
+      }
+      if (controller.signal.aborted) return;
+      setDiscoverState({ query: trimmedQuery, tracks });
+    }, DISCOVER_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [needsDiscover, trimmedQuery]);
+
   // Sonuç bulunamadığında zaten tam ekran öneri kutusu çıkıyor — ipucu orada tekrar edilmez
   const showRequestHint = !(hasQuery && !artistFilter && results.length === 0);
 
@@ -315,8 +363,25 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
             )}
           </>
         ) : results.length === 0 ? (
-          /* Mekan listesinde karşılığı yok — doğrudan öneri kutusu */
-          <SuggestBox variant="empty" defaultTitle={query.trim()} defaultArtist="" onSuggest={onSuggest} />
+          /* Mekan listesinde karşılığı yok — dış katalogdan istenebilir sonuçlar,
+             altında da her zaman elle yazma kutusu */
+          <>
+            <DiscoverResults
+              loading={discoverLoading}
+              tracks={discover}
+              onSuggest={onSuggest}
+              onInteract={() => saveRecent(query)}
+            />
+            {/* Arama sürerken kutu yanıp sönmesin — sonuç kesinleşince gelir */}
+            {!discoverLoading && (
+              <SuggestBox
+                variant={discover.length > 0 ? "inline" : "empty"}
+                defaultTitle={query.trim()}
+                defaultArtist=""
+                onSuggest={onSuggest}
+              />
+            )}
+          </>
         ) : (
           <>
             {searchArtists.length > 1 && (
@@ -396,6 +461,130 @@ function ArtistStrip({ artists, onSelect }: { artists: SearchArtist[]; onSelect:
         ))}
       </div>
     </>
+  );
+}
+
+// Mekan listesinden sonuç çıkmadığında gösterilen dış katalog sonuçları.
+// Satırlar mekan listesindekilerle aynı görünür — fark yalnızca aksiyonda:
+// "Ekle" yerine "İste". Müşterinin okuması gereken bir açıklama kalmıyor.
+function DiscoverResults({
+  loading,
+  tracks,
+  onSuggest,
+  onInteract,
+}: {
+  loading: boolean;
+  tracks: DiscoverTrack[];
+  onSuggest: (title: string, artist: string) => Promise<SuggestResult>;
+  onInteract: () => void;
+}) {
+  const t = useT();
+
+  if (loading) {
+    return (
+      <div className="pt-3">
+        <div className="flex items-center gap-2 pb-1">
+          <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.15)" strokeWidth="2.5" />
+            <path d="M21 12a9 9 0 0 0-9-9" stroke="#e91e8c" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+          <span className="text-xs text-[#9ca3af]">{t.search.discoverLoading}</span>
+        </div>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex items-center gap-3 border-b border-white/5 py-3.5">
+            <div className="h-14 w-14 shrink-0 animate-pulse rounded-xl bg-white/[0.06]" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-3 w-2/3 animate-pulse rounded bg-white/[0.06]" />
+              <div className="h-2.5 w-1/3 animate-pulse rounded bg-white/[0.04]" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (tracks.length === 0) return null;
+
+  return (
+    <>
+      <div className="pt-3">
+        <h2 className="text-sm font-bold text-white">{t.search.discoverTitle}</h2>
+        <p className="mt-0.5 text-xs text-[#9ca3af]">{t.search.discoverDesc}</p>
+      </div>
+      {tracks.map((track) => (
+        <DiscoverRow key={track.key} track={track} onSuggest={onSuggest} onInteract={onInteract} />
+      ))}
+      {/* Kaynak gösterimi: her iki servisin de kullanım şartı */}
+      <p className="pt-3 text-center text-[11px] text-[#6b7280]">{t.search.discoverSource}</p>
+    </>
+  );
+}
+
+function DiscoverRow({
+  track,
+  onSuggest,
+  onInteract,
+}: {
+  track: DiscoverTrack;
+  onSuggest: (title: string, artist: string) => Promise<SuggestResult>;
+  onInteract: () => void;
+}) {
+  const t = useT();
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const request = async () => {
+    if (state === "sending" || state === "sent") return;
+    onInteract();
+    setState("sending");
+    const result = await onSuggest(track.title, track.artist);
+    if (result === "ok" || result === "duplicate") setState("sent");
+    else if (result === "auth") setState("idle"); // giriş ekranına gidildi
+    else setState("error");
+  };
+
+  return (
+    <div className="border-b border-white/5 [content-visibility:auto] [contain-intrinsic-size:auto_85px]">
+      <div className="flex items-center gap-3 py-3.5">
+        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-[#1a0e2a]">
+          {track.cover && (
+            /* Dış kapaklar tek kullanımlık ve sayısız — next/image dönüşümüne
+               sokmaya değmez, doğrudan servisten gelir */
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={track.cover} alt={track.title} width={56} height={56} loading="lazy" className="block h-full w-full object-cover" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-white">{track.title}</p>
+          <p className="mt-0.5 truncate text-xs text-[#6b7280]">{track.artist}</p>
+        </div>
+        <button
+          onClick={request}
+          disabled={state === "sending" || state === "sent"}
+          className={`flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-4 text-xs font-bold transition-all active:scale-95 ${
+            state === "sent"
+              ? "bg-[#22c55e]/15 text-[#22c55e] ring-1 ring-inset ring-[#22c55e]/30"
+              : "text-white shadow-[0_6px_18px_-8px_rgba(233,30,140,0.9)]"
+          }`}
+          style={state === "sent" ? undefined : { background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
+        >
+          {state === "sending" ? (
+            <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5" />
+              <path d="M21 12a9 9 0 0 0-9-9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+          ) : state === "sent" ? (
+            <>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              {t.search.discoverSent}
+            </>
+          ) : state === "error" ? (
+            t.search.discoverRetry
+          ) : (
+            t.search.discoverRequest
+          )}
+        </button>
+      </div>
+    </div>
   );
 }
 

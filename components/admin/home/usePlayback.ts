@@ -303,6 +303,27 @@ export function usePlayback(venueDbId: string) {
       }
     };
 
+    // Sahnedeki satırın SAHİBİ ("müşteri şarkısı mı") eskiden yalnızca kuyruk
+    // Realtime olayıyla tazeleniyordu. O kanal sessizce düşerse (uyuyan sekme,
+    // wifi kesintisi, Supabase yeniden bağlanması — bkz. aşağıdaki yoklama
+    // gerekçesi) bu bilgi DONAR. Müşteri şarkısı çalarken donduysa panelde
+    // bütün "şimdi çal" düğmeleri kapalı kalıyor, admin şarkıyı değiştiremiyor
+    // ve tekrar tekrar bastığı halde hiçbir şey olmuyordu. Tek satırlık ucuz
+    // sorgu; now_playing yoklamasıyla aynı ritimde döner.
+    const fetchPlayingRow = async () => {
+      const { data } = await supabase
+        .from("queue")
+        .select("user_id, added_by, source_playlist_id")
+        .eq("venue_id", venueDbId)
+        .eq("status", "playing")
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      setPlayingRow(
+        (data as { user_id: string | null; added_by: string; source_playlist_id: string | null } | null) ?? null
+      );
+    };
+
     // Kuyruk artık liste sonuna kadar uzuyor: tek dolum yüzlerce satır yazıyor ve
     // Realtime her satır için ayrı olay yolluyor. Ham haliyle bu, yüzlerce tam
     // kuyruk sorgusu demekti — olaylar 250 ms'lik pencerede birleştirilir.
@@ -321,9 +342,18 @@ export function usePlayback(venueDbId: string) {
     // yeniden bağlanması) panel son heartbeat'i öğrenemez ve player açıkken bile
     // 45 sn sonra "çevrimdışı" der. Bu yüzden düzenli yoklama + sekme/ağ geri
     // gelince tazeleme: Realtime yalnız hızlandırıcı, tek kaynak değil.
-    const poll = setInterval(fetchNowPlaying, 15_000);
+    const poll = setInterval(() => {
+      fetchNowPlaying();
+      fetchPlayingRow();
+    }, 15_000);
     const onWake = () => {
-      if (document.visibilityState === "visible") fetchNowPlaying();
+      if (document.visibilityState !== "visible") return;
+      fetchNowPlaying();
+      // Sekme arkadayken kaçan kuyruk olayları: dönüşte hem sahnedeki satırın
+      // sahibi hem de sıranın kendisi tazelenir, yoksa panel bayat bir "müşteri
+      // şarkısı çalıyor" durumunda kilitli kalabiliyordu.
+      fetchPlayingRow();
+      reloadQueue();
     };
     document.addEventListener("visibilitychange", onWake);
     window.addEventListener("online", onWake);

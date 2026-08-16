@@ -138,7 +138,15 @@ export default function PlaylistRail({
                         void playNow(p);
                       }}
                       title={`"${p.name}" listesini şimdi çal`}
-                      className="absolute inset-0 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                      aria-label={`"${p.name}" listesini şimdi çal`}
+                      // GÖRÜNMEZ TUZAK DÜZELTMESİ: bu katman kapağın tamamını
+                      // kaplıyor ve dokunulduğunda listeyi çalmaya başlıyor. Fare
+                      // olmayan cihazda (mekandaki tablet/telefon) hover hiç
+                      // gerçekleşmediği için opacity-0'da kalıyor, yani admin
+                      // "listeyi seçeyim" diye kapağa dokunduğunda görünmeyen bir
+                      // düğmeye basıp çalan şarkıyı değiştiriyordu. Artık
+                      // dokunmatikte GÖRÜNÜR: kapak = çal, kartın gerisi = seç.
+                      className="absolute inset-0 rounded-lg flex items-center justify-center opacity-100 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                       style={{ background: "rgba(0,0,0,0.55)" }}
                     >
                       <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "#22c55e" }}>

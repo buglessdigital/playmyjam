@@ -299,13 +299,19 @@ export default function QueuePane({
 
   const startPlayNow = useCallback(
     async (item: (typeof queue)[number]) => {
+      // Kilit sebebi artık yalnızca fare imlecinin gördüğü title'da değil:
+      // dokunmatik panelde de yazıyla söylenir (bkz. LibraryPane).
+      if (currentIsCustomer) {
+        setPlayError("Müşterinin jetonla eklediği şarkı çalıyor — bitmeden başka şarkıya geçilemez.");
+        return;
+      }
       setPlayError("");
       setPlayingId(item.id);
       const res = await playNow({ queue_id: item.id }, item.songs);
       setPlayingId(null);
       if (!res.ok) setPlayError(res.error);
     },
-    [playNow],
+    [playNow, currentIsCustomer],
   );
 
   return (
@@ -500,12 +506,16 @@ export default function QueuePane({
                   )}
                   <button
                     onClick={() => void startPlayNow(item)}
-                    disabled={currentIsCustomer || playingId !== null}
+                    disabled={playingId !== null}
                     className={
-                      currentIsCustomer || playingId !== null
-                        ? // Kapalıyken hiç görünmesin: kapak da örtülmemiş olur
+                      playingId !== null
+                        ? // İstek yoldayken hiç görünmesin: kapak da örtülmemiş olur
                           "hidden"
-                        : "absolute inset-0 flex items-center justify-center transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                        : // Dokunmatikte hep görünür: Tailwind 4'te hover yalnızca
+                          // fareli cihazlarda çalıştığı için "md:opacity-0"
+                          // tablette düğmeyi GÖRÜNMEZ ama tıklanabilir bırakıyordu
+                          // (bkz. LibraryPane'deki aynı düzeltme).
+                          "absolute inset-0 flex items-center justify-center transition-opacity opacity-100 md:[@media(hover:hover)]:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                     }
                     style={{ background: "rgba(0,0,0,0.55)" }}
                     title={
@@ -514,9 +524,16 @@ export default function QueuePane({
                         : "Şimdi çal — çalan şarkı kesilir"
                     }
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="#22c55e">
-                      <path d="M8 5.5v13l11-6.5L8 5.5z" />
-                    </svg>
+                    {currentIsCustomer ? (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                        <rect x="5" y="11" width="14" height="10" rx="2" stroke="#9ca3af" strokeWidth="2" />
+                        <path d="M8 11V7a4 4 0 018 0v4" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    ) : (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#22c55e">
+                        <path d="M8 5.5v13l11-6.5L8 5.5z" />
+                      </svg>
+                    )}
                   </button>
                 </div>
 
@@ -551,7 +568,9 @@ export default function QueuePane({
                     {
                       label: "Şimdi çal",
                       onSelect: () => void startPlayNow(item),
-                      disabled: currentIsCustomer || playingId !== null,
+                      // Müşteri kilidinde madde kapatılmaz: seçilince sebebini
+                      // yazar. Kapalı madde dokunmatikte hiçbir şey söylemiyordu.
+                      disabled: playingId !== null,
                       title: currentIsCustomer
                         ? "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez"
                         : "Çalan şarkı kesilir",

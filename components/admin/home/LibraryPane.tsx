@@ -567,6 +567,13 @@ export default function LibraryPane({
                 )}
                 <button
                   onClick={async () => {
+                    // Kilitliyken düğme artık kaybolmuyor: sebebi SÖYLER.
+                    // Eskiden hiç çizilmiyordu ve admin boş kapağa üst üste
+                    // basıp "panel beni duymuyor" diyordu.
+                    if (playback.currentIsCustomer) {
+                      setPlayNote("Müşterinin jetonla eklediği şarkı çalıyor — bitmeden başka şarkıya geçilemez.");
+                      return;
+                    }
                     setPlayNote("");
                     setPlayingSongId(song.id);
                     const res = await playback.playNow(
@@ -586,12 +593,19 @@ export default function LibraryPane({
                     // yükleme değil, iki sorgusu olan rotasyon tazelemesi yeter.
                     else if (viewId !== ALL) lib.refreshRotation();
                   }}
-                  disabled={playback.currentIsCustomer || playingSongId !== null}
+                  disabled={playingSongId !== null}
                   className={
-                    playback.currentIsCustomer || playingSongId !== null
-                      ? // Kapalıyken hiç görünmesin: kapak da örtülmemiş olur
+                    playingSongId !== null
+                      ? // İstek yoldayken hiç görünmesin: kapak da örtülmemiş olur
                         "hidden"
-                      : "absolute inset-0 flex items-center justify-center transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                      : // DOKUNMATİKTE HEP GÖRÜNÜR. Eskiden "md:opacity-0" idi ve
+                        // Tailwind 4'te hover varyantları yalnızca gerçek fare
+                        // olan cihazlarda çalıştığı için mekandaki tablette
+                        // (>=768 px, dokunmatik) düğme SAKLANIYOR ama tıklanabilir
+                        // kalıyordu: kapağa dokunan admin görünmez düğmeye basıp
+                        // farkında olmadan şarkıyı değiştiriyordu. Artık gizleme
+                        // yalnızca fareli cihazlarda.
+                        "absolute inset-0 flex items-center justify-center transition-opacity opacity-100 md:[@media(hover:hover)]:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                   }
                   style={{ background: "rgba(0,0,0,0.55)" }}
                   title={
@@ -602,9 +616,16 @@ export default function LibraryPane({
                         : "Şimdi çal — çalan şarkı kesilir, liste buradan devam eder"
                   }
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#22c55e">
-                    <path d="M8 5.5v13l11-6.5L8 5.5z" />
-                  </svg>
+                  {playback.currentIsCustomer ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <rect x="5" y="11" width="14" height="10" rx="2" stroke="#9ca3af" strokeWidth="2" />
+                      <path d="M8 11V7a4 4 0 018 0v4" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#22c55e">
+                      <path d="M8 5.5v13l11-6.5L8 5.5z" />
+                    </svg>
+                  )}
                 </button>
               </div>
 

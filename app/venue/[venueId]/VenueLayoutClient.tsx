@@ -6,6 +6,7 @@ import BottomNav from "@/components/ui/BottomNav";
 import LegalFooter from "@/components/ui/LegalFooter";
 import EnablePushPrompt from "@/components/notifications/EnablePushPrompt";
 import NotificationWatcher from "@/components/notifications/NotificationWatcher";
+import RequestStatusBar from "@/components/venue/RequestStatusBar";
 
 interface Props {
   children: React.ReactNode;
@@ -40,6 +41,8 @@ function VenueLayoutContent({ children, params }: Props) {
       {!isLoginPage && (
         <>
           <NotificationWatcher venueId={venueId} />
+          {/* Talep onayı bildirime bakmadan da görülsün (bkz. RequestStatusBar) */}
+          <RequestStatusBar venueId={venueId} />
           <BottomNav venueId={venueId} />
           {/* İlk ziyaret anlatımı kaldırıldı: yeni gelen artık modal okumak yerine
               doğrudan aramada başlar (bkz. BrowseClient + lib/first-visit.ts) */}

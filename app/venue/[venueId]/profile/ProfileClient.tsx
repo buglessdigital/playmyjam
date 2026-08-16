@@ -148,6 +148,21 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
       ),
     },
     {
+      // İsteklerim sayfası panelde hiçbir yerden bağlantılı değildi: talebini
+      // takip etmek isteyen müşteri adresi elle yazmak zorundaydı
+      href: `/venue/${venueId}/requests`,
+      label: t.profile.myRequests,
+      desc: t.profile.myRequestsDesc,
+      tint: "rgba(34,197,94,0.1)",
+      border: "rgba(34,197,94,0.2)",
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M12 3l1.9 4.8L19 9l-5.1 1.2L12 15l-1.9-4.8L5 9l5.1-1.2L12 3z" stroke="#22c55e" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M5 19h14" stroke="#22c55e" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
       href: `/venue/${venueId}/history`,
       label: t.profile.history,
       desc: t.profile.historyDesc,

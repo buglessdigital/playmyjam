@@ -369,6 +369,13 @@
     "rights": "© 2026 PlayMyJam",
     "sslNote": " · All payments are secured with SSL."
   },
+  "requestBar": {
+    "pendingTitle": "Your request reached the venue",
+    "approvedTitle": "Your request was approved!",
+    "pendingCountdown": "The venue is deciding · {t}",
+    "approvedCountdown": "{t} left to play it",
+    "addCta": "Add to Queue"
+  },
   "requestsPage": {
     "title": "My Requests",
     "empty": "No requests yet",
@@ -396,6 +403,8 @@
     "buyTokensDesc": "Increase your balance",
     "favorites": "My Favorites",
     "favoritesDesc": "Songs you saved",
+    "myRequests": "My Requests",
+    "myRequestsDesc": "Songs you asked the venue for, and their status",
     "history": "Recently Played by You",
     "historyDesc": "Songs you played across all venues",
     "settings": "Settings",

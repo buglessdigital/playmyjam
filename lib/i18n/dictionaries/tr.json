@@ -369,6 +369,13 @@
     "rights": "© 2026 PlayMyJam",
     "sslNote": " · Tüm ödemeler SSL ile güvence altındadır."
   },
+  "requestBar": {
+    "pendingTitle": "Talebin mekana iletildi",
+    "approvedTitle": "Talebin onaylandı!",
+    "pendingCountdown": "Mekan karar veriyor · {t}",
+    "approvedCountdown": "Çaldırmak için {t} kaldı",
+    "addCta": "Sıraya Ekle"
+  },
   "requestsPage": {
     "title": "İsteklerim",
     "empty": "Henüz istek yapılmadı",
@@ -396,6 +403,8 @@
     "buyTokensDesc": "Bakiyeni artır",
     "favorites": "Favorilerim",
     "favoritesDesc": "Kaydettiğin şarkılar",
+    "myRequests": "İsteklerim",
+    "myRequestsDesc": "Mekandan istediğin şarkılar ve durumları",
     "history": "Son Çaldırılanlar",
     "historyDesc": "Tüm mekanlarda çaldırdığın şarkılar",
     "settings": "Ayarlar",

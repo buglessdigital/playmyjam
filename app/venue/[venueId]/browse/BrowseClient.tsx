@@ -568,7 +568,11 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           // Kapak yalnızca mekana giden bildirimin ikonu olur, kayda yazılmaz
           body: JSON.stringify({ suggested_title: title, suggested_artist: artist, suggested_cover_url: cover }),
         });
-        if (res.ok) return "ok";
+        if (res.ok) {
+          // Durum şeridi beklemeden belirsin (bkz. components/venue/RequestStatusBar)
+          window.dispatchEvent(new Event("pmj-suggestion-sent"));
+          return "ok";
+        }
         if (res.status === 429) return "limit";
         if (res.status === 401 || res.status === 403) return "auth";
         return "error";

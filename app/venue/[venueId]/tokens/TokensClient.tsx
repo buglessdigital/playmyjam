@@ -523,10 +523,10 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
         )}
       </div>
 
-      {/* Ödeme çubuğu: alt gezinmenin (h-16) hemen üstünde sabit */}
+      {/* Ödeme çubuğu: alt gezinmenin (h-16) ve varsa talep şeridinin üstünde sabit */}
       <div
-        className="fixed inset-x-0 bottom-16 z-30 border-t border-white/10 px-5 py-3 backdrop-blur-xl"
-        style={{ background: "rgba(15,10,24,0.9)" }}
+        className="fixed inset-x-0 z-30 border-t border-white/10 px-5 py-3 backdrop-blur-xl"
+        style={{ background: "rgba(15,10,24,0.9)", bottom: "calc(4rem + var(--pmj-request-bar, 0px))" }}
       >
         <div className="mx-auto flex w-full max-w-md items-center gap-3">
           <div className="min-w-0 shrink-0">

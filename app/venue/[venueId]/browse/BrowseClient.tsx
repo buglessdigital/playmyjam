@@ -22,7 +22,7 @@ import SongCard from "@/components/browse/SongCard";
 import SongRow from "@/components/browse/SongRow";
 import NotifyOptIn from "@/components/browse/NotifyOptIn";
 import { savePendingSuggestion, takePendingSuggestion } from "@/lib/pending-suggestion";
-import { savePendingAdd, takePendingAdd } from "@/lib/pending-add";
+import { clearPendingAdd, peekPendingAdd, savePendingAdd, takePendingAdd } from "@/lib/pending-add";
 import { takeFirstVisit } from "@/lib/first-visit";
 import { refreshPushSubscription } from "@/lib/notifications";
 import {
@@ -481,8 +481,31 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     const videoId = takePendingAdd(venueId);
     if (!videoId) return;
     const song = venueSongMap.get(videoId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- jeton dönüşündeki tek seferlik açılış
     if (song) setSelectedSong(song);
   }, [stateLoaded, playerOffline, venueSongMap, venueId]);
+
+  // Talep şeridi zaten gözat sayfasındayken "Sıraya Ekle"ye basıldığında sayfa
+  // yeniden mount olmaz — kart bu olayla açılır (bkz. RequestStatusBar).
+  const [addSignal, setAddSignal] = useState(0);
+  useEffect(() => {
+    const onSignal = () => setAddSignal(Date.now());
+    window.addEventListener("pmj-open-pending-add", onSignal);
+    return () => window.removeEventListener("pmj-open-pending-add", onSignal);
+  }, []);
+
+  useEffect(() => {
+    if (!addSignal || playerOffline) return;
+    const videoId = peekPendingAdd(venueId);
+    if (!videoId) return;
+    // Yeni onaylanan tek seferlik şarkı listeye realtime ile düşüyor; henüz
+    // gelmediyse kayıt DURUR, liste güncellenince bu efekt tekrar dener
+    const song = venueSongMap.get(videoId);
+    if (!song) return;
+    clearPendingAdd(venueId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- şeritten gelen tek seferlik açılış
+    setSelectedSong(song);
+  }, [addSignal, playerOffline, venueSongMap, venueId]);
 
   // Alt gezinmedeki jeton rozeti bu sayfanın okuduğu bakiyeyi kullanır (ayrı sorgu yok)
   useEffect(() => {

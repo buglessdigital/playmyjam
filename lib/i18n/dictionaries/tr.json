@@ -374,7 +374,9 @@
     "approvedTitle": "Talebin onaylandı!",
     "pendingCountdown": "Mekan karar veriyor · {t}",
     "approvedCountdown": "Çaldırmak için {t} kaldı",
-    "addCta": "Sıraya Ekle"
+    "addCta": "Sıraya Ekle",
+    "pendingHelp": "Mekan talebini henüz onaylamadı. Onaylanırsa bu şerit yeşile döner ve şarkıyı buradan sıraya ekleyebilirsin.",
+    "seeAll": "İsteklerim"
   },
   "requestsPage": {
     "title": "İsteklerim",

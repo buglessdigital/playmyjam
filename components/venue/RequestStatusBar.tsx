@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { resolveVenueDbId } from "@/lib/venue-db-id";
+import { savePendingAdd } from "@/lib/pending-add";
 import { fmt, useT } from "@/lib/i18n";
 
 // Talebin akıbetini müşteriye GİTMEDEN gösterir: panelin her sayfasında, alt
@@ -44,9 +46,12 @@ function clock(ms: number): string {
 export default function RequestStatusBar({ venueId }: { venueId: string }) {
   const t = useT();
   const pathname = usePathname();
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<ActiveRequest[]>([]);
   const [tick, setTick] = useState(() => Date.now());
+  // Onaylanmamış talepte şeridin altına açılan açıklama
+  const [expanded, setExpanded] = useState(false);
 
   // İsteklerim sayfası aynı bilgiyi zaten ayrıntılı gösteriyor — çift geri sayım olmasın
   const onRequestsPage = pathname === `/venue/${venueId}/requests`;
@@ -85,17 +90,16 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
       const user = sessionData.session?.user;
       if (!user || cancelled) return;
 
-      const { data: venue } = await supabase
-        .from("venues")
-        .select("id")
-        .or(`id.eq.${venueId},slug.eq.${venueId}`)
-        .single();
-      if (!venue || cancelled) return;
+      // Slug → id: ortak çözücü (sekme ömrü boyunca tek sorgu, önbellekli).
+      // Elle `or(id.eq.<slug>,...)` yazılırsa uuid kolonuna metin gider ve
+      // PostgREST 400 döner — şerit sessizce hiç görünmez.
+      const venueDbId = await resolveVenueDbId(venueId);
+      if (!venueDbId || cancelled) return;
 
-      await load(user.id, venue.id as string);
+      await load(user.id, venueDbId);
       if (cancelled) return;
 
-      const refresh = () => load(user.id, venue.id as string);
+      const refresh = () => load(user.id, venueDbId);
 
       channel = supabase
         .channel(`req_bar:${user.id}`)
@@ -144,8 +148,6 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
     };
   }, [hasRows]);
 
-  if (onRequestsPage) return null;
-
   // Onaylanan talep beklemedekinin önüne geçer: süresi işleyen ve aksiyon
   // isteyen tek durum o
   const approved = rows.find(
@@ -155,7 +157,7 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
     (r) => r.status === "pending" && (!r.expires_at || new Date(r.expires_at).getTime() > tick)
   );
   const row = approved ?? pending;
-  if (!row) return null;
+  if (onRequestsPage || !row) return null;
 
   const isApproved = row === approved;
   const deadline = isApproved ? row.play_deadline : row.expires_at;
@@ -164,19 +166,35 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
   const artist = row.songs?.artist ?? row.suggested_artist ?? "";
   const cover = row.songs?.album_cover_url;
 
-  // Onaylanan şarkının kendi sayfası: jeton seçimi ve ekleme orada
-  const href = isApproved && row.songs?.youtube_video_id
-    ? `/venue/${venueId}/song/${row.songs.youtube_video_id}`
-    : `/venue/${venueId}/requests`;
+  const videoId = row.songs?.youtube_video_id;
+
+  // Onaylı: şarkının ekleme kartı (jeton seçimi) açılsın. Kart gözat
+  // sayfasında yaşıyor — niyet pending-add ile saklanır, gözat sayfasındaysak
+  // olayla anında açılır, değilsek oraya gidilir ve orada açılır.
+  const openAddSheet = () => {
+    if (!videoId) return;
+    savePendingAdd(venueId, videoId);
+    if (pathname === `/venue/${venueId}/browse`) {
+      window.dispatchEvent(new Event("pmj-open-pending-add"));
+    } else {
+      router.push(`/venue/${venueId}/browse`);
+    }
+  };
+
+  const handleClick = () => {
+    if (isApproved && videoId) {
+      openAddSheet();
+      return;
+    }
+    // Henüz onaylanmadı: şarkı ortada yok, açılacak kart da yok — durumu
+    // şeridin kendi içinde anlat
+    setExpanded((v) => !v);
+  };
 
   return (
-    <Link
-      href={href}
-      // Alt gezinme 4rem; şerit onun hemen üstünde durur
-      className="fixed inset-x-0 bottom-16 z-40 block px-3 pb-2"
-    >
+    <BarShell>
       <div
-        className={`flex items-center gap-3 rounded-2xl border px-3 py-2.5 backdrop-blur-md ${
+        className={`overflow-hidden rounded-2xl border backdrop-blur-md ${
           isApproved
             ? "border-[#22c55e]/40 shadow-[0_10px_30px_-14px_rgba(34,197,94,0.9)]"
             : "border-[#fbbf24]/30"
@@ -187,6 +205,7 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
             : "linear-gradient(120deg, rgba(251,191,36,0.14), rgba(15,10,24,0.96) 65%)",
         }}
       >
+        <button type="button" onClick={handleClick} className="flex w-full items-center gap-3 px-3 py-2.5 text-left">
         <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-white/10">
           {cover ? (
             <Image src={cover} alt="" width={40} height={40} sizes="40px" className="h-full w-full object-cover" />
@@ -218,9 +237,66 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
             {t.requestBar.addCta}
           </span>
         ) : (
-          <svg className="shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <svg
+            className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
+            width="16" height="16" viewBox="0 0 24 24" fill="none"
+          >
+            <path d="M9 6l6 6-6 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+        </button>
+
+        {/* Onaylanmamış talep: neyi beklediğini ve ne kadar kaldığını burada söyler */}
+        {!isApproved && expanded && (
+          <div className="border-t border-white/10 px-3 py-2.5">
+            <p className="text-[11px] leading-relaxed text-[#d6c9a8]">{t.requestBar.pendingHelp}</p>
+            <Link
+              href={`/venue/${venueId}/requests`}
+              className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-[#fbbf24]"
+            >
+              {t.requestBar.seeAll}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </Link>
+          </div>
         )}
       </div>
-    </Link>
+    </BarShell>
+  );
+}
+
+/**
+ * Şeridi sabitler ve KAPLADIĞI YERİ sayfaya bildirir.
+ *
+ * Sabit konumlu şerit, kuyruk listesinin ilk satırının ya da sayfa sonundaki
+ * içeriğin üstüne biniyordu. Ölçülen boy --pmj-request-bar değişkenine yazılır;
+ * kabuk (VenueLayoutClient) alt boşluğu o kadar büyütür. Şerit kaybolduğunda
+ * değişken silinir, boşluk kendiliğinden kapanır.
+ */
+function BarShell({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    const root = document.documentElement;
+    if (!el) return;
+
+    const apply = () => root.style.setProperty("--pmj-request-bar", `${el.offsetHeight}px`);
+    apply();
+
+    // Açılan açıklama paneli ve uzun şarkı adları boyu değiştirir
+    const observer = new ResizeObserver(apply);
+    observer.observe(el);
+
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--pmj-request-bar");
+    };
+  }, []);
+
+  return (
+    // Alt gezinme 4rem; şerit onun hemen üstünde durur
+    <div ref={ref} className="fixed inset-x-0 bottom-16 z-40 px-3 pb-2">
+      {children}
+    </div>
   );
 }

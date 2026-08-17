@@ -34,7 +34,13 @@ function VenueLayoutContent({ children, params }: Props) {
 
   return (
     <>
-      <main className={`w-full ${isLoginPage ? "" : "pb-16"}`}>
+      {/* Alt boşluk: 4rem alt gezinme + varsa talep şeridinin ölçülen boyu.
+          Şerit sabit konumlu olduğu için yerini kendisi açamaz; boyunu
+          --pmj-request-bar'a yazar (bkz. components/venue/RequestStatusBar). */}
+      <main
+        className={`w-full ${isLoginPage ? "" : "pb-16"}`}
+        style={isLoginPage ? undefined : { paddingBottom: "calc(4rem + var(--pmj-request-bar, 0px))" }}
+      >
         {children}
         <LegalFooter hidePayment={isQueuePage} />
       </main>

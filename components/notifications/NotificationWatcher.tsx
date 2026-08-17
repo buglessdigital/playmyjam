@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { resolveVenueDbId } from "@/lib/venue-db-id";
 import { getNotifPref, notify, type NotifPref } from "@/lib/notifications";
 import { currentDict, fmt } from "@/lib/i18n";
 
@@ -53,8 +54,11 @@ export default function NotificationWatcher({ venueId }: { venueId: string }) {
     };
 
     const load = async () => {
-      const { data: venueRow } = await supabase.from("venues").select("id").or(`id.eq.${venueId},slug.eq.${venueId}`).single();
-      if (cancelled || !venueRow) return;
+      // `or(id.eq.<slug>,...)` uuid kolonuna metin gönderip 400 dönüyordu:
+      // sorgu hep boş kaldığı için bu izleyici hiç kurulmuyordu (sessiz hata).
+      const venueDbId = await resolveVenueDbId(venueId);
+      if (cancelled || !venueDbId) return;
+      const venueRow = { id: venueDbId };
 
       // getSession lokal cache'ten okur — ağ çağrısı yapmaz
       const { data: sessionData } = await supabase.auth.getSession();

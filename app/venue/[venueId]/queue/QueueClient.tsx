@@ -453,9 +453,14 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
 
       {/* Oynatıcı kapalıyken "Şarkı Ekle" butonu hiç çizilmez: eklenen şarkı çalmaz,
           jeton boşa gider. Gerekçe sayfanın başındaki uyarıda — sabit konumlu ikinci
-          bir şerit kuyruk satırlarının üstüne binip okunmaz hale geliyordu. */}
+          bir şerit kuyruk satırlarının üstüne binip okunmaz hale geliyordu.
+          Talep şeridi de aynı köşede duruyor — buton onun da üstüne çıkar
+          (bkz. components/venue/RequestStatusBar). */}
       {!playerOffline && (
-      <div className="fixed bottom-16 left-0 right-0 px-5 z-40 flex justify-end pointer-events-none">
+      <div
+        className="fixed left-0 right-0 px-5 z-40 flex justify-end pointer-events-none"
+        style={{ bottom: "calc(4rem + var(--pmj-request-bar, 0px))" }}
+      >
         <Link
           href={`/venue/${venueId}/browse`}
           aria-label={t.queue.addSong}

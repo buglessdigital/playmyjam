@@ -374,7 +374,9 @@
     "approvedTitle": "Your request was approved!",
     "pendingCountdown": "The venue is deciding · {t}",
     "approvedCountdown": "{t} left to play it",
-    "addCta": "Add to Queue"
+    "addCta": "Add to Queue",
+    "pendingHelp": "The venue hasn't approved your request yet. If they do, this bar turns green and you can add the song to the queue right here.",
+    "seeAll": "My requests"
   },
   "requestsPage": {
     "title": "My Requests",

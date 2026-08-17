@@ -270,6 +270,8 @@
   "requestBar.pendingCountdown": "Mekan karar veriyor · {t}",
   "requestBar.approvedCountdown": "Çaldırmak için {t} kaldı",
   "requestBar.addCta": "Sıraya Ekle",
+  "requestBar.pendingHelp": "Mekan talebini henüz onaylamadı. Onaylanırsa bu şerit yeşile döner ve şarkıyı buradan sıraya ekleyebilirsin.",
+  "requestBar.seeAll": "İsteklerim",
   "requestsPage.title": "İsteklerim",
   "requestsPage.empty": "Henüz istek yapılmadı",
   "requestsPage.suggestionsHeading": "Mekandan İstediklerin",

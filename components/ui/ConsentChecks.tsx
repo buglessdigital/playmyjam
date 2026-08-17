@@ -42,25 +42,7 @@ export default function ConsentChecks({
 
   return (
     <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-      <p className="text-xs leading-relaxed text-[#9ca3af]">
-        {withLinks(variant === "signup" ? t.login.consentNotice : t.login.consentNoticeContinue, {
-          kvkk: (
-            <Link href="/kvkk" target="_blank" className={linkClass}>
-              {t.login.consentKvkkLink}
-            </Link>
-          ),
-          terms: (
-            <Link href="/terms" target="_blank" className={linkClass}>
-              {t.login.consentTermsLink}
-            </Link>
-          ),
-          privacy: (
-            <Link href="/privacy" target="_blank" className={linkClass}>
-              {t.login.consentPrivacyLink}
-            </Link>
-          ),
-        })}
-      </p>
+      <ConsentNotice variant={variant} />
 
       <label className="flex gap-3 cursor-pointer select-none border-t border-white/10 pt-3">
         <input
@@ -83,5 +65,43 @@ export default function ConsentChecks({
         </span>
       </label>
     </div>
+  );
+}
+
+/**
+ * Zorunlu onayların metni: kutu yok, eylemin kendisiyle kabul edilir.
+ * Kayıt ekranının dışında da kullanılır — hesap açmadan devam eden misafir
+ * onayı ekleme kartındaki dokunuşuyla verir (bkz. lib/guest-session.ts).
+ */
+export function ConsentNotice({
+  variant = "signup",
+  className = "text-xs leading-relaxed text-[#9ca3af]",
+}: {
+  variant?: "signup" | "continue";
+  className?: string;
+}) {
+  const t = useT();
+  const linkClass = "font-semibold text-[#e91e8c] underline underline-offset-2";
+
+  return (
+    <p className={className}>
+      {withLinks(variant === "signup" ? t.login.consentNotice : t.login.consentNoticeContinue, {
+        kvkk: (
+          <Link href="/kvkk" target="_blank" className={linkClass}>
+            {t.login.consentKvkkLink}
+          </Link>
+        ),
+        terms: (
+          <Link href="/terms" target="_blank" className={linkClass}>
+            {t.login.consentTermsLink}
+          </Link>
+        ),
+        privacy: (
+          <Link href="/privacy" target="_blank" className={linkClass}>
+            {t.login.consentPrivacyLink}
+          </Link>
+        ),
+      })}
+    </p>
   );
 }

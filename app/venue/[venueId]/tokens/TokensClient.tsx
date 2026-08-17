@@ -236,14 +236,14 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
         }
 
         // Jeton, bir şarkıyı ekleyebilmek için alındıysa müşteri akışın kaldığı
-        // yere döner: şarkının sayfası ekleme kartını kendiliğinden açar
-        // (bkz. lib/pending-add.ts). Kayıt burada silinmez — silmek şarkı
-        // sayfasının işi, yoksa kart hiç açılmaz.
-        const pendingVideoId = peekPendingAdd(venueId);
-        if (pendingVideoId) {
+        // yere döner: şarkının sayfası ya kartı açar ya da jeton doğrudan o şarkı
+        // için alındıysa şarkıyı kendiliğinden sıraya koyar (bkz. lib/pending-add.ts).
+        // Kayıt burada silinmez — silmek şarkı sayfasının işi, yoksa hiçbiri olmaz.
+        const pending = peekPendingAdd(venueId);
+        if (pending) {
           // Kısa bekleme: "ödeme başarılı" bilgisi görülmeden ekran değişmesin
           timer = setTimeout(() => {
-            router.replace(`/venue/${venueId}/song/${pendingVideoId}`);
+            router.replace(`/venue/${venueId}/song/${pending.videoId}`);
           }, PAYMENT_REDIRECT_MS);
           return;
         }

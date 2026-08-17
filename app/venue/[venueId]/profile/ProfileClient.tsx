@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAnimatedNumber } from "@/lib/use-animated-number";
 import { useVenueGate } from "@/lib/venue-gate";
+import { isGuestAccount } from "@/lib/guest-session";
 import { AVATARS, AvatarMark, isAvatarId } from "@/lib/avatars";
 import Coin from "@/components/ui/Coin";
 import LangToggle from "@/components/ui/LangToggle";
@@ -27,6 +28,18 @@ interface Props {
 export default function ProfileClient({ venueId, venueDbId }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const { requireAccount } = useVenueGate(venueId);
+  // Misafir kimliğiyle gezen müşteri: jetonları bu cihazdaki hesaba bağlı.
+  // Başka cihazda da kullanabilmesi için e-posta/Google bağlaması gerekiyor.
+  const [isGuest, setIsGuest] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    isGuestAccount().then((guest) => {
+      if (!cancelled) setIsGuest(guest);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const t = useT();
 
   const [loaded, setLoaded] = useState(false);
@@ -74,8 +87,8 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
   }, [venueDbId, supabase]);
 
   // Misafir de bu sayfayı görebiliyor — avatar seçimi hesaba bağlı
-  const openPicker = () => {
-    if (!requireAccount()) return;
+  const openPicker = async () => {
+    if (!(await requireAccount())) return;
     setAvatarError("");
     setPickerOpen(true);
   };
@@ -241,8 +254,10 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
           <div className="mt-4 text-center">
             {loaded ? (
               <>
-                <h1 className="text-[22px] font-bold tracking-tight text-white">{username || email.split("@")[0]}</h1>
-                <p className="mt-1 text-[13px] text-[#6b7280]">{email}</p>
+                <h1 className="text-[22px] font-bold tracking-tight text-white">
+                  {username || email.split("@")[0] || t.profile.guestName}
+                </h1>
+                <p className="mt-1 text-[13px] text-[#6b7280]">{email || t.profile.guestEmail}</p>
               </>
             ) : (
               <>
@@ -284,6 +299,31 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
           <span className="text-sm font-semibold text-white">{t.profile.language}</span>
           <LangToggle />
         </div>
+
+        {isGuest && (
+          <Link
+            href={`/venue/${venueId}/login?next=${encodeURIComponent(`/venue/${venueId}/profile`)}`}
+            className="mb-6 flex items-center gap-3.5 rounded-2xl px-4 py-4 transition-all active:scale-[0.99]"
+            style={{ background: "rgba(233,30,140,0.08)", border: "1px solid rgba(233,30,140,0.3)" }}
+          >
+            <span
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+              style={{ background: "rgba(233,30,140,0.15)", border: "1px solid rgba(233,30,140,0.25)" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1 1" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />
+                <path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1-1" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span className="min-w-0 flex-1">
+              <p className="text-[15px] font-semibold text-white">{t.profile.linkAccountTitle}</p>
+              <p className="mt-0.5 text-xs text-[#9ca3af]">{t.profile.linkAccountDesc}</p>
+            </span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+        )}
 
         <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.profile.account}</p>
         <div className="overflow-hidden rounded-2xl" style={{ background: "#1a0e2a", border: "1px solid rgba(255,255,255,0.07)" }}>

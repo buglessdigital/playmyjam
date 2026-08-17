@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { safeNextPath } from "@/lib/venue-gate";
+import { isGuestAccount } from "@/lib/guest-session";
 import { useRedirectPending } from "@/lib/use-redirect-pending";
 import { currentDict, fmt, useT } from "@/lib/i18n";
 import ConsentChecks, { EMPTY_CONSENTS } from "@/components/ui/ConsentChecks";
@@ -218,6 +219,43 @@ function AuthPageContent({ params }: Props) {
         return;
       }
     } else {
+      // Misafir olarak başlamış biri kayıt oluyorsa YENİ hesap açılmaz, mevcut
+      // anonim hesap kalıcıya çevrilir (bkz. lib/guest-session.ts) — yoksa
+      // cüzdanındaki jetonlar eski kimlikte kalırdı.
+      if (await isGuestAccount()) {
+        const { error } = await supabase.auth.updateUser(
+          {
+            email,
+            password,
+            data: {
+              kvkk_consent: true,
+              terms_consent: true,
+              marketing_consent: consents.marketing,
+            },
+          },
+          { emailRedirectTo: emailRedirectTo() }
+        );
+        if (error) {
+          const msg = error.message.toLowerCase();
+          setError(
+            msg.includes("already") || msg.includes("registered")
+              ? t.login.errAlreadyRegistered
+              : msg.includes("password") && msg.includes("short")
+              ? t.login.errShortPassword
+              : msg.includes("invalid email")
+              ? t.login.errInvalidEmail
+              : t.login.errSignup
+          );
+          setLoading(false);
+          return;
+        }
+        // Adres doğrulanana kadar oturum misafir kimliğiyle devam eder; jetonlar
+        // ve geçmiş yerinde kalır, doğrulamayla birlikte hesap kalıcı olur.
+        setInfo(fmt(t.login.infoLinkEmail, { email }));
+        setLoading(false);
+        return;
+      }
+
       // Onaylar kayıt metadata'sına yazılır: e-posta onayı beklenirken oturum
       // açılmadığı için profile ancak buradan taşınabiliyor (0043).
       const { data: signUpData, error } = await supabase.auth.signUp({
@@ -287,12 +325,14 @@ function AuthPageContent({ params }: Props) {
     }
     // Google dönüşünde sorgu parametresi PKCE tarafından ezilebiliyor — hedef yol çerezle de taşınır
     document.cookie = `pending_oauth_next=${encodeURIComponent(nextPath)}; path=/; max-age=600; samesite=lax`;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?venueId=${venueId}&next=${encodeURIComponent(nextPath)}`,
-      },
-    });
+    const oauthOptions = {
+      redirectTo: `${window.location.origin}/auth/callback?venueId=${venueId}&next=${encodeURIComponent(nextPath)}`,
+    };
+    // Misafir kimliği varsa Google hesabı ONA bağlanır: yeni kullanıcı açılsaydı
+    // cüzdan ve geçmiş eski kimlikte kalırdı (bkz. lib/guest-session.ts).
+    const { error } = (await isGuestAccount())
+      ? await supabase.auth.linkIdentity({ provider: "google", options: oauthOptions })
+      : await supabase.auth.signInWithOAuth({ provider: "google", options: oauthOptions });
     if (error) {
       setError(t.login.errGoogleStart);
       setGoogleLoading(false);

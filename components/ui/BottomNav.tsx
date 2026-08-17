@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useVenueGate } from "@/lib/venue-gate";
 import {
@@ -18,6 +18,7 @@ interface BottomNavProps {
 
 export default function BottomNav({ venueId }: BottomNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { isMember, requireAccount } = useVenueGate(venueId);
   const supabase = useMemo(() => createClient(), []);
   const balance = useTokenBalance();
@@ -111,7 +112,13 @@ export default function BottomNav({ venueId }: BottomNavProps) {
             key={tab.href}
             href={tab.href}
             onClick={(e) => {
-              if (tab.requiresAccount && !requireAccount(tab.href)) e.preventDefault();
+              if (!tab.requiresAccount || isMember) return;
+              // Hesap kapısı artık asenkron (misafir oturumu açılıyor olabilir):
+              // gezinme senkron olarak durdurulup sonuç gelince elle yapılır
+              e.preventDefault();
+              requireAccount(tab.href).then((ok) => {
+                if (ok) router.push(tab.href);
+              });
             }}
             className="flex flex-col items-center justify-center gap-1 flex-1 h-full"
           >

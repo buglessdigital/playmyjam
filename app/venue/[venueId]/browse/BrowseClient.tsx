@@ -420,14 +420,14 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   );
 
   // Şansına bırak: cooldown'da/kuyrukta olmayan listeden rastgele bir şarkıyla sheet'i aç
-  const luckyPick = useCallback(() => {
+  const luckyPick = useCallback(async () => {
     if (playerOffline) return;
     const eligible = catalogSongs.filter((s) => s.in_venue_list && actionFor(s).kind === "add");
     if (eligible.length === 0) return;
-    // Şarkı girişten ÖNCE seçilir: misafir giriş yapıp döndüğünde eli boş
-    // kalmasın, aynı şarkının kartı kendiliğinden açılsın
+    // Şarkı hesap adımından ÖNCE seçilir: misafir oturumu açılamayıp giriş
+    // ekranına düşülse bile dönüşte aynı şarkının kartı kendiliğinden açılsın
     const pick = eligible[Math.floor(Math.random() * eligible.length)];
-    if (!requireAccount()) {
+    if (!(await requireAccount())) {
       savePendingAdd(venueId, pick.youtube_video_id);
       return;
     }
@@ -441,14 +441,14 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
   // Sıraya ekleme, istek, favori ve jeton hesaba bağlı — misafir giriş ekranına gider
   const openSheet = useCallback(
-    (song: DisplaySong) => {
+    async (song: DisplaySong) => {
       // Oynatıcı kapalıyken sheet hiç açılmaz: eklenen şarkı çalmayacağı için
       // jeton boşa gider (aynı kural sunucuda /api/queue içinde)
       if (playerOffline) return;
-      // Misafir giriş ekranına gider; hangi şarkı için gittiği saklanır. Dönüşte
-      // ekleme kartı kendiliğinden açılır — yeni kullanıcı şarkısını girişten
-      // sonra baştan aramak zorunda kalmasın (bkz. lib/pending-add.ts).
-      if (!requireAccount()) {
+      // Hesabı olmayan için misafir oturumu sessizce açılır ve kart aynı
+      // dokunuşta gelir. Yalnızca o da olmazsa giriş ekranına gidilir; hangi
+      // şarkı için gidildiği saklanır (bkz. lib/pending-add.ts).
+      if (!(await requireAccount())) {
         savePendingAdd(venueId, song.youtube_video_id);
         return;
       }
@@ -478,9 +478,9 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     if (!stateLoaded || pendingAddCheckedRef.current || playerOffline) return;
     if (venueSongMap.size === 0) return;
     pendingAddCheckedRef.current = true;
-    const videoId = takePendingAdd(venueId);
-    if (!videoId) return;
-    const song = venueSongMap.get(videoId);
+    const pending = takePendingAdd(venueId);
+    if (!pending) return;
+    const song = venueSongMap.get(pending.videoId);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- jeton dönüşündeki tek seferlik açılış
     if (song) setSelectedSong(song);
   }, [stateLoaded, playerOffline, venueSongMap, venueId]);
@@ -496,11 +496,11 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
   useEffect(() => {
     if (!addSignal || playerOffline) return;
-    const videoId = peekPendingAdd(venueId);
-    if (!videoId) return;
+    const pending = peekPendingAdd(venueId);
+    if (!pending) return;
     // Yeni onaylanan tek seferlik şarkı listeye realtime ile düşüyor; henüz
     // gelmediyse kayıt DURUR, liste güncellenince bu efekt tekrar dener
-    const song = venueSongMap.get(videoId);
+    const song = venueSongMap.get(pending.videoId);
     if (!song) return;
     clearPendingAdd(venueId);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- şeritten gelen tek seferlik açılış
@@ -564,7 +564,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
   const handleRequest = useCallback(async (song: DisplaySong) => {
     if (!venueDbId) return;
-    if (!requireAccount()) return;
+    if (!(await requireAccount())) return;
 
     // Optimistic update
     setRequestedIds((s) => new Set(s).add(song.youtube_video_id));
@@ -612,7 +612,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   // Misafirse talep giriş öncesi saklanır: hesabına girip gözat sayfasına
   // döndüğünde kendiliğinden gönderilir, kullanıcı aramayı baştan yapmaz.
   const handleSuggest = useCallback(async (title: string, artist: string, cover?: string): Promise<SuggestResult> => {
-    if (!requireAccount(`/venue/${venueId}/browse`)) {
+    if (!(await requireAccount(`/venue/${venueId}/browse`))) {
       savePendingSuggestion(venueId, title, artist, cover);
       return "auth";
     }
@@ -660,8 +660,15 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
   const toggleFavorite = useCallback(async (song: DisplaySong) => {
     if (!song.id) return;
-    if (!requireAccount()) return;
-    const userId = userIdRef.current;
+    if (!(await requireAccount())) return;
+    // Misafir oturumu tam bu dokunuşta açılmış olabilir: kimlik mount anındaki
+    // ref'te yoksa tazeden okunur
+    let userId = userIdRef.current;
+    if (!userId) {
+      const { data } = await supabase.auth.getSession();
+      userId = data.session?.user?.id ?? null;
+      userIdRef.current = userId;
+    }
     if (!userId) return;
 
     // Optimistic update

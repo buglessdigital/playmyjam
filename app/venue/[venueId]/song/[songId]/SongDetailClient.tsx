@@ -350,7 +350,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
 
   const toggleFavorite = async () => {
     if (!dbSongId) return;
-    if (!requireAccount()) return;
+    if (!(await requireAccount())) return;
     const { data } = await supabase.auth.getSession();
     const userId = data.session?.user?.id;
     if (!userId) return;
@@ -364,8 +364,10 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     }
   };
 
-  const handleAdd = async (priority: boolean) => {
-    const target = sheetTarget;
+  // `override`: kart hiç açılmadan eklenen durum için (ödeme dönüşündeki otomatik
+  // ekleme). State'ten okunsaydı setSheetTarget'ın yerleşmesini beklemek gerekirdi.
+  const handleAdd = async (priority: boolean, override?: SheetTarget) => {
+    const target = override ?? sheetTarget;
     if (!target || !venueDbId) return;
     const videoId = target.song.youtube_video_id;
     // Optimistic düşüm — gerçek düşüm RPC'de; öncelikli ücret kuyruğa bağlı
@@ -404,7 +406,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
 
   const handleRequest = async () => {
     if (!venueDbId) return;
-    if (!requireAccount()) return;
+    if (!(await requireAccount())) return;
     setRequested(true);
     await fetch(`/api/venue/${venueId}/request`, {
       method: "POST",
@@ -433,9 +435,9 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     router.push(`/venue/${venueId}/song/${song.youtube_video_id}`);
   };
 
-  const openSheetFor = (song: VenueSong, cd: Cooldown) => {
+  const openSheetFor = async (song: VenueSong, cd: Cooldown) => {
     if (playerOffline) return;
-    if (!requireAccount()) return;
+    if (!(await requireAccount())) return;
     setSheetTarget({ songId: song.id, song, cooldown: cd });
   };
 
@@ -450,16 +452,22 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     if (loaded) publishTokenBalance(tokenBalance);
   }, [loaded, tokenBalance]);
 
-  // Jeton almaya bu sayfadan gidildiyse dönüşte ekleme kartı kendiliğinden açılır.
+  // Araya jeton adımı girdiyse dönüşte akış buradan devam eder.
   // Kayıt başka bir şarkıya aitse dokunulmaz — gözat sayfası onu kendi açar.
+  //
+  // autoAdd: jeton doğrudan BU şarkı için, seçilmiş öncelikle satın alınmış demektir
+  // (bkz. AddSongSheet.buyAndPlay) — ödeme onayı verilmişken ikinci kez sormak
+  // sadece adım eklerdi, şarkı doğrudan sıraya girer. Bakiye yetmiyorsa (öncelikli
+  // ücret ödeme sırasında kuyruk kalabalıklaştığı için artmış olabilir) kart açılır.
   const pendingAddCheckedRef = useRef(false);
   useEffect(() => {
     if (!loaded || pendingAddCheckedRef.current || !track || !dbSongId || playerOffline) return;
     pendingAddCheckedRef.current = true;
-    if (peekPendingAdd(venueId) !== track.youtube_video_id) return;
+    const pending = peekPendingAdd(venueId);
+    if (pending?.videoId !== track.youtube_video_id) return;
     clearPendingAdd(venueId);
     if (cooldown.remainingMs > 0) return;
-    setSheetTarget({
+    const target: SheetTarget = {
       songId: dbSongId,
       song: {
         youtube_video_id: track.youtube_video_id,
@@ -468,8 +476,18 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
         album_cover_url: track.album_cover_url,
       },
       cooldown,
-    });
-  }, [loaded, track, dbSongId, playerOffline, cooldown, venueId]);
+    };
+    const cost = pending.priority ? dynamicPriorityCost : requestCost;
+    if (pending.autoAdd && tokenBalance >= cost) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ödeme dönüşündeki tek seferlik ekleme
+      handleAdd(pending.priority, target);
+      return;
+    }
+    setSheetTarget(target);
+    // handleAdd her render'da yeniden kuruluyor; bağımlılığa eklemek etkiyi
+    // gereksiz yere tetiklerdi — tek seferlik olduğu ref ile zaten garanti.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, track, dbSongId, playerOffline, cooldown, venueId, tokenBalance, dynamicPriorityCost, requestCost]);
 
   if (!loaded) {
     // Kullanıcı durumu henüz gelmedi (~100-150 ms) — yanlış durum göstermemek için nötr
@@ -495,8 +513,8 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
       centerDisabled = true;
     } else {
       const songId = dbSongId;
-      centerAction = () => {
-        if (!requireAccount()) return;
+      centerAction = async () => {
+        if (!(await requireAccount())) return;
         setSheetTarget({
           songId,
           song: { youtube_video_id: track.youtube_video_id, title: track.title, artist: track.artist, album_cover_url: track.album_cover_url },

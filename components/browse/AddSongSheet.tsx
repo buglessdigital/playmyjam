@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 import { formatWait } from "@/lib/wait-time";
 import type { Cooldown } from "./browse-types";
 import { fmt, useI18n } from "@/lib/i18n";
 import { savePendingAdd } from "@/lib/pending-add";
+import { isGuestAccount } from "@/lib/guest-session";
+import { ConsentNotice } from "@/components/ui/ConsentChecks";
 
 interface Song {
   youtube_video_id: string;
@@ -55,14 +57,23 @@ export default function AddSongSheet({
     </span>
   );
 
-  // Normal sıra seçildiğinde araya giren onay adımı: sonradan eklenen öncelikli
-  // şarkılar normal sıradakilerin önüne geçtiği için uyarıp yönlendiriyoruz.
-  // Onay hangi şarkı için açıldığını tutar: sheet kapanınca/başka şarkı seçilince
-  // kendiliğinden sıfırlanır.
-  const [confirmForId, setConfirmForId] = useState<string | null>(null);
-  const confirmNormal = !!song && confirmForId === song.youtube_video_id;
-  const setConfirmNormal = (open: boolean) =>
-    setConfirmForId(open && song ? song.youtube_video_id : null);
+  // Ödemeye yönlendirilirken hangi seçeneğe basıldığı: o butonda dönen simge çıkar,
+  // ikinci dokunuş ikinci sipariş açmasın diye ikisi de kilitlenir.
+  const [buying, setBuying] = useState<null | "normal" | "priority">(null);
+
+  // Giriş ekranından geçmeden devam eden müşteri onay metnini burada görür:
+  // zorunlu onaylar aşağıdaki dokunuşla verilmiş sayılır (bkz. lib/guest-session.ts).
+  const [isGuest, setIsGuest] = useState(false);
+  useEffect(() => {
+    if (!song) return;
+    let cancelled = false;
+    isGuestAccount().then((guest) => {
+      if (!cancelled) setIsGuest(guest);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [song]);
 
   if (!song) return null;
 
@@ -73,18 +84,58 @@ export default function AddSongSheet({
   const affordPriority = tokenBalance >= priorityCost;
   const canNormal = affordNormal && !inCooldown;
   const canPriority = affordPriority && !inCooldown;
-  // Jeton yetmediğinde seçenekler ölü buton gibi durmasın: tıklayınca yükleme
-  // sayfasına götürsün ve altta ayrıca büyük bir yükleme çağrısı çıksın.
-  // Jeton yüklemeye giderken hangi şarkı için gidildiği saklanır: müşteri geri
-  // döndüğünde şarkıyı baştan aramak zorunda kalmasın, kart kendiliğinden açılsın.
-  // Şarkı otomatik eklenmez — jeton harcaması yine müşterinin dokunuşuyla olur.
+  // Toplu jeton almak isteyen için jeton sayfası: şarkı saklanır, dönüşte kart
+  // kendiliğinden açılır ama şarkı EKLENMEZ — orada ne kadar jeton alındığı
+  // bilinmediği için son dokunuş müşterinin olmalı.
   const goTokens = () => {
     savePendingAdd(params.venueId, song.youtube_video_id);
     onClose();
     router.push(`/venue/${params.venueId}/tokens`);
   };
-  const missingTokens = Math.max(0, (affordNormal ? priorityCost : normalCost) - tokenBalance);
-  const showTopUpCta = !inCooldown && !affordPriority;
+
+  // Jeton yetmiyorsa asıl yol bu: jeton sayfasına hiç uğramadan, tam bu şarkı ve
+  // bu öncelik için eksik jeton kadar sipariş açılıp doğrudan ödemeye gidilir.
+  // Ödeme onayı zaten "bu şarkıyı şu fiyata çaldır" demek olduğu için dönüşte
+  // şarkı kendiliğinden sıraya girer (bkz. lib/pending-add.ts + SongDetailClient).
+  const buyAndPlay = async (priority: boolean) => {
+    if (buying) return;
+    const need = Math.max(0, (priority ? priorityCost : normalCost) - tokenBalance);
+    // Arada başka bir sekmeden jeton geldiyse ödemeye hiç gitme
+    if (need <= 0) {
+      onAdd(priority);
+      return;
+    }
+    setBuying(priority ? "priority" : "normal");
+    savePendingAdd(params.venueId, song.youtube_video_id, { priority, autoAdd: true });
+    try {
+      const res = await fetch(`/api/venue/${params.venueId}/tokens/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantity: need }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.paymentPageUrl) {
+        // Ödeme başlatılamadı: müşteri açıkta kalmasın, bildiğimiz jeton sayfasına düşsün
+        setBuying(null);
+        goTokens();
+        return;
+      }
+      window.location.href = data.paymentPageUrl;
+    } catch {
+      setBuying(null);
+      goTokens();
+    }
+  };
+  // Seçeneğin tek alt satırı: beklemesi ve —jeton yetmiyorsa— dokununca ödemeye
+  // gidileceği. Ayrı satırlara bölünmüş hâli kartı okunmaz yapıyordu.
+  const subLine = (waitMs: number, cost: number, afford: boolean) => {
+    const wait = fmt(t.addSong.waitSuffix, { wait: formatWait(waitMs) });
+    if (afford || inCooldown) return wait;
+    // Tutar sağdaki sütunda zaten yazıyor; burada yalnızca bakiyenin bir kısmı
+    // varken (ödenecek tutar sütundakinden az) tekrar edilir.
+    const price = tokenBalance > 0 ? priceLabel(cost - tokenBalance) : null;
+    return `${wait} · ${price ? fmt(t.addSong.payHint, { price }) : t.addSong.payHintPlain}`;
+  };
   // Sıra kalabalıklaştıkça öncelikli pahalılaşır: taban ücretin üstüne çıkıldığında
   // müşteri fiyatın neden yükseldiğini görsün
   const prioritySurcharge = priorityCost > basePriorityCost;
@@ -149,207 +200,114 @@ export default function AddSongSheet({
             </div>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <p className="text-[#9ca3af] text-sm">
+          // Bakiye yalnızca VARSA yazılır: sıfır bakiye satırı hiçbir şey
+          // anlatmıyordu, "jetonun yetmiyor" kutusuyla birlikte kartı
+          // gereksiz yere uzatıyordu. Ne ödeneceği zaten düğmelerin üstünde.
+          tokenBalance > 0 && (
+            <p className="text-[#6b7280] text-xs mb-4">
               {t.addSong.balance}{" "}
-              <span className="text-white font-bold">{fmt(t.addSong.tokensValue, { n: tokenBalance })}</span>
+              <span className="text-white font-semibold">{fmt(t.addSong.tokensValue, { n: tokenBalance })}</span>
             </p>
-            <button
-              onClick={goTokens}
-              className="flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold text-[#e91e8c] border border-[#e91e8c]/40 bg-[#e91e8c]/10 hover:bg-[#e91e8c]/20 transition-all"
-            >
-              + {t.addSong.topUp}
-            </button>
-          </div>
+          )
         )}
 
-        {/* Jeton hiç yetmiyorsa seçeneklerin üstünde neden yetmediğini söyle */}
-        {!inCooldown && !affordNormal && (
-          <div
-            className="flex items-start gap-3 p-4 rounded-2xl mb-4"
-            style={{ background: "rgba(233,30,140,0.08)", border: "1px solid rgba(233,30,140,0.25)" }}
+        <div className="space-y-3">
+          {/* Öncelikli sıra önce ve daha görünür duruyor: normal sıraya sonradan
+              eklenen öncelikliler önüne geçtiği için tercihi burada yönlendiriyoruz.
+              Eskiden bunu ayrı bir onay ekranı anlatıyordu — aynı bilgi artık iki
+              butonun kendisinde, bir dokunuş eksiğine. */}
+          <button
+            onClick={() => {
+              if (inCooldown || buying) return;
+              if (canPriority) onAdd(true);
+              else buyAndPlay(true);
+            }}
+            disabled={inCooldown || buying !== null}
+            className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
+            style={{
+              background: inCooldown ? "rgba(255,255,255,0.03)" : "rgba(233,30,140,0.12)",
+              borderColor: inCooldown ? "rgba(255,255,255,0.08)" : "rgba(233,30,140,0.45)",
+              opacity: inCooldown ? 0.5 : 1,
+            }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="flex-shrink-0 mt-0.5">
-              <circle cx="12" cy="12" r="9" stroke="#e91e8c" strokeWidth="1.5" />
-              <path d="M12 8v5M12 16h.01" stroke="#e91e8c" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-            <div>
-              <p className="text-white text-sm font-semibold">{t.addSong.needTitle}</p>
-              <p className="text-[#9ca3af] text-xs mt-1 leading-relaxed">
-                {fmt(t.addSong.needDesc, { n: normalCost, balance: tokenBalance })}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {confirmNormal ? (
-          <div className="space-y-3">
-            <div
-              className="flex items-start gap-3 p-4 rounded-2xl"
-              style={{ background: "rgba(233,30,140,0.08)", border: "1px solid rgba(233,30,140,0.25)" }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="flex-shrink-0 mt-0.5">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" />
-              </svg>
-              <div>
-                <p className="text-white text-sm font-semibold">{t.addSong.confirmTitle}</p>
-                <p className="text-[#9ca3af] text-xs mt-1 leading-relaxed">
-                  {t.addSong.confirmDescPrefix} <span className="text-[#e91e8c] font-semibold">{t.addSong.confirmDescPriority}</span>{" "}
-                  {t.addSong.confirmDescMiddle}{" "}
-                  <span className="text-white font-semibold">{formatWait(waitNormalMs)}</span>{t.addSong.confirmDescAfterWait}{" "}
-                  <span className="text-white font-semibold">{formatWait(waitPriorityMs)}</span> {t.addSong.confirmDescEnd}
-                </p>
-              </div>
-            </div>
-
-            {canPriority ? (
-              <button
-                onClick={() => onAdd(true)}
-                className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
-                style={{ background: "rgba(233,30,140,0.16)", borderColor: "rgba(233,30,140,0.45)" }}
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: "rgba(233,30,140,0.15)" }}
               >
-                <span className="text-white font-semibold text-sm flex items-center gap-2">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
-                  {t.addSong.addPriority}
-                </span>
-                {costLabel(priorityCost, "#e91e8c")}
-              </button>
-            ) : (
-              <button
-                onClick={goTokens}
-                className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
-                style={{ background: "rgba(233,30,140,0.16)", borderColor: "rgba(233,30,140,0.45)" }}
-              >
-                <span className="text-white font-semibold text-sm flex items-center gap-2">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
-                  {t.addSong.buyForPriority}
-                </span>
-                {costLabel(priorityCost, "#e91e8c")}
-              </button>
-            )}
-
-            {/* Normal sıra rengi (mavi) ana adımdakiyle aynı: "Geri" ile karışmasın,
-                öncelikli butonun pembesiyle de yarışmasın */}
-            <button
-              onClick={() => canNormal && onAdd(false)}
-              disabled={!canNormal}
-              className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
-              style={{
-                background: "rgba(59,130,246,0.14)",
-                borderColor: "rgba(59,130,246,0.4)",
-                opacity: canNormal ? 1 : 0.5,
-              }}
-            >
-              <span className="text-white font-semibold text-sm flex items-center gap-2">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-                {t.addSong.addNormalAnyway}
-              </span>
-              {costLabel(normalCost, "#3b82f6")}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {/* Normal Sıra — jeton yetmiyorsa tıklayınca yükleme sayfasına gider */}
-            <button
-              onClick={() => (canNormal ? setConfirmNormal(true) : !inCooldown && goTokens())}
-              disabled={inCooldown}
-              className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
-              style={{
-                background: canNormal ? "rgba(59,130,246,0.1)" : "rgba(255,255,255,0.03)",
-                borderColor: canNormal ? "rgba(59,130,246,0.3)" : "rgba(255,255,255,0.08)",
-                opacity: canNormal || !inCooldown ? 1 : 0.5,
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ background: "rgba(59,130,246,0.15)" }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                    <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </div>
-                <div className="text-left">
-                  <p className="text-white font-semibold text-sm">{t.addSong.normalQueue}</p>
-                  <p className="text-[#6b7280] text-xs">{fmt(t.addSong.waitSuffix, { wait: formatWait(waitNormalMs) })}</p>
-                  {!inCooldown && !affordNormal && (
-                    <p className="text-[#e91e8c] text-[11px] font-semibold mt-0.5">{t.addSong.lockedHint}</p>
-                  )}
-                </div>
-              </div>
-              {costLabel(normalCost, "#3b82f6")}
-            </button>
-
-            {/* Öncelikli Sıra */}
-            <button
-              onClick={() => (canPriority ? onAdd(true) : !inCooldown && goTokens())}
-              disabled={inCooldown}
-              className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
-              style={{
-                background: canPriority ? "rgba(233,30,140,0.1)" : "rgba(255,255,255,0.03)",
-                borderColor: canPriority ? "rgba(233,30,140,0.3)" : "rgba(255,255,255,0.08)",
-                opacity: canPriority || !inCooldown ? 1 : 0.5,
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ background: "rgba(233,30,140,0.15)" }}
-                >
+                {buying === "priority" ? (
+                  <span className="w-5 h-5 border-2 border-[#e91e8c]/30 border-t-[#e91e8c] rounded-full animate-spin" />
+                ) : (
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                     <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" />
                   </svg>
-                </div>
-                <div className="text-left">
-                  <p className="text-white font-semibold text-sm flex items-center gap-1.5">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" /></svg>
-                    {t.addSong.priorityQueue}
-                  </p>
-                  <p className="text-[#6b7280] text-xs">{fmt(t.addSong.waitSuffix, { wait: formatWait(waitPriorityMs) })}</p>
-                  {prioritySurcharge && (
-                    <p className="text-[#e91e8c]/80 text-[11px] mt-0.5">{t.addSong.priorityBusy}</p>
-                  )}
-                  {!inCooldown && !affordPriority && (
-                    <p className="text-[#e91e8c] text-[11px] font-semibold mt-0.5">{t.addSong.lockedHint}</p>
-                  )}
-                </div>
-              </div>
-              {costLabel(priorityCost, "#e91e8c")}
-            </button>
-
-            {/* Eksik jeton varsa asıl çağrı: seçeneklerin hemen altında dolu bir buton */}
-            {showTopUpCta && (
-              <button
-                onClick={goTokens}
-                className="w-full py-4 rounded-2xl font-bold text-white text-sm shadow-lg"
-                style={{ background: "linear-gradient(135deg,#e91e8c,#7c3aed)" }}
-              >
-                {t.addSong.topUp}
-                {missingTokens > 0 && (
-                  <span className="block text-[11px] font-semibold text-white/80 mt-0.5">
-                    {fmt(t.addSong.needMore, { n: missingTokens })}
-                    {tokenUnitPrice > 0 ? ` · ${priceLabel(missingTokens)}` : ""}
-                  </span>
                 )}
-              </button>
-            )}
-          </div>
-        )}
+              </div>
+              <div className="text-left">
+                <p className="text-white font-semibold text-sm flex items-center gap-1.5">
+                  {t.addSong.priorityQueue}
+                  <span className="rounded-full bg-[#e91e8c]/20 px-2 py-[1px] text-[9px] font-extrabold uppercase tracking-wider text-[#e91e8c]">
+                    {t.addSong.recommended}
+                  </span>
+                </p>
+                <p className="text-[#6b7280] text-xs">{subLine(waitPriorityMs, priorityCost, affordPriority)}</p>
+                {prioritySurcharge && (
+                  <p className="text-[#e91e8c]/80 text-[11px] mt-0.5">{t.addSong.priorityBusy}</p>
+                )}
+              </div>
+            </div>
+            {costLabel(priorityCost, "#e91e8c")}
+          </button>
 
-        {inCooldown && !affordNormal && (
-          <p className="text-center text-[#6b7280] text-xs mt-4">
-            {t.addSong.insufficient}{" "}
-            <span className="text-[#e91e8c] underline cursor-pointer" onClick={goTokens}>{t.addSong.topUp}</span>
-          </p>
+          {/* Normal Sıra */}
+          <button
+            onClick={() => {
+              if (inCooldown || buying) return;
+              if (canNormal) onAdd(false);
+              else buyAndPlay(false);
+            }}
+            disabled={inCooldown || buying !== null}
+            className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
+            style={{
+              background: inCooldown ? "rgba(255,255,255,0.03)" : "rgba(59,130,246,0.1)",
+              borderColor: inCooldown ? "rgba(255,255,255,0.08)" : "rgba(59,130,246,0.3)",
+              opacity: inCooldown ? 0.5 : 1,
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: "rgba(59,130,246,0.15)" }}
+              >
+                {buying === "normal" ? (
+                  <span className="w-5 h-5 border-2 border-[#3b82f6]/30 border-t-[#3b82f6] rounded-full animate-spin" />
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                )}
+              </div>
+              <div className="text-left">
+                <p className="text-white font-semibold text-sm">{t.addSong.normalQueue}</p>
+                <p className="text-[#6b7280] text-xs">{subLine(waitNormalMs, normalCost, affordNormal)}</p>
+                {/* Onay ekranının tek gerçek bilgisi buydu: sonradan gelen öncelikliler öne geçer */}
+                {!inCooldown && <p className="text-[#6b7280] text-[11px] mt-0.5">{t.addSong.normalWarn}</p>}
+              </div>
+            </div>
+            {costLabel(normalCost, "#3b82f6")}
+          </button>
+
+        </div>
+
+        {isGuest && (
+          <ConsentNotice variant="continue" className="mt-4 text-center text-[10px] leading-relaxed text-[#6b7280]" />
         )}
 
         <button
-          onClick={() => (confirmNormal ? setConfirmNormal(false) : onClose())}
+          onClick={onClose}
           className="w-full mt-4 py-3 rounded-2xl font-semibold text-[#9ca3af] border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-sm"
         >
-          {confirmNormal ? t.common.back : t.common.cancel}
+          {t.common.cancel}
         </button>
       </div>
     </div>

@@ -56,6 +56,10 @@ export interface CheckoutFormInitializeRequest {
   shippingAddress: IyzicoAddress;
   billingAddress: IyzicoAddress;
   basketItems: IyzicoBasketItem[];
+  // Kart saklama (0048): gönderilirse ödeme formu bu kullanıcının iyzico'da
+  // saklı kartlarını listeler. Anahtar iyzico tarafında silinmişse initialize
+  // başarısız döner — çağıran taraf anahtarsız tekrar denemekle yükümlü.
+  cardUserKey?: string;
 }
 
 export interface CheckoutFormInitializeResult {
@@ -78,6 +82,11 @@ export interface CheckoutFormRetrieveResult {
   price: number | string;
   token: string;
   signature?: string;
+  // Kullanıcı ödeme formunda kartını saklattıysa iyzico bu iki alanı döndürür.
+  // cardUserKey kalıcı olarak profilde tutulur (0048); cardToken tek bir karta
+  // işaret ettiği için saklanmıyor — formu cardUserKey ile açmak yeterli.
+  cardUserKey?: string;
+  cardToken?: string;
 }
 
 // IyzicoResourceConfig: types/iyzipay.d.ts içinde global ambient tip olarak tanımlı

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { createCheckoutForm } from "@/lib/iyzico";
+import { createCheckoutForm, type CheckoutFormInitializeRequest } from "@/lib/iyzico";
 import { hasVenueSession } from "@/lib/venue-auth-cookie";
 
 const MAX_TOKENS = 1000;
@@ -52,7 +52,7 @@ export async function POST(
   // hesaptan türetiliyor (kullanıcı adı / e-posta), doğrulanmayanlar yer tutucu.
   const { data: profile } = await supabaseAdmin
     .from("profiles")
-    .select("username")
+    .select("username, iyzico_card_user_key")
     .eq("id", userId)
     .maybeSingle();
   const buyerName = buyerNameFrom(profile?.username, email);
@@ -125,8 +125,12 @@ export async function POST(
   const registrationAddress = "Dijital ürün - fiziksel teslimat yok";
   const priceStr = total.toFixed(2);
 
+  // Kart saklama (0048): daha önce kartını saklatmış kullanıcının anahtarı
+  // gönderilirse ödeme formu saklı kartlarla açılır (müşteri sadece CVC girer).
+  const cardUserKey = profile?.iyzico_card_user_key || undefined;
+
   try {
-    const result = await createCheckoutForm({
+    const request = {
       conversationId: order.id,
       price: priceStr,
       paidPrice: priceStr,
@@ -166,7 +170,25 @@ export async function POST(
           price: priceStr,
         },
       ],
-    });
+    } satisfies CheckoutFormInitializeRequest;
+
+    let result = await createCheckoutForm(cardUserKey ? { ...request, cardUserKey } : request);
+
+    // Saklı kart anahtarı iyzico tarafında silinmiş/geçersiz hale gelmişse
+    // initialize hiç başlamaz. Müşteri "ödeme başlatılamadı" duvarına çarpmasın:
+    // anahtarı profilden düşürüp bir kez de anahtarsız deniyoruz. En kötü durumda
+    // kartını yeniden saklatır.
+    if (result.status !== "success" && cardUserKey) {
+      console.error("iyzico checkout: cardUserKey ile başlatılamadı, anahtar düşürülüyor", {
+        orderId: order.id,
+        errorMessage: result.errorMessage,
+      });
+      await supabaseAdmin
+        .from("profiles")
+        .update({ iyzico_card_user_key: null })
+        .eq("id", userId);
+      result = await createCheckoutForm(request);
+    }
 
     if (result.status !== "success" || !result.paymentPageUrl) {
       await supabaseAdmin

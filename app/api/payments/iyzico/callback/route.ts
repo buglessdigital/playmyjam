@@ -28,6 +28,10 @@ export async function POST(req: NextRequest) {
     paymentStatus: result.paymentStatus,
     conversationId: result.conversationId,
     hasSignature: Boolean(result.signature),
+    // Kart saklama teşhisi: iyzico bu alanı Checkout Form sorgu yanıtında
+    // dokümante etmiyor ama pratikte döndürüyor. Saklı kart özelliği
+    // çalışmıyorsa bakılacak ilk yer burası (anahtarın adı asla loglanmaz).
+    hasCardUserKey: Boolean(result.cardUserKey),
   });
 
   // iyzico DECLINED (başarısız) ödemelerde conversationId'yi geri döndürmüyor —
@@ -36,7 +40,7 @@ export async function POST(req: NextRequest) {
   const { data: order } = orderId
     ? await supabaseAdmin
         .from("payment_orders")
-        .select("id, venue_id")
+        .select("id, venue_id, user_id")
         .eq("id", orderId)
         .maybeSingle()
     : { data: null };
@@ -63,6 +67,22 @@ export async function POST(req: NextRequest) {
   const success = signatureOk && result.status === "success" && result.paymentStatus === "SUCCESS";
 
   if (success) {
+    // Kart saklama (0048): kullanıcı formda kartını saklattıysa iyzico bu ödemenin
+    // yanıtında cardUserKey döndürür. Anahtarı profile yazıyoruz — bir sonraki
+    // ödemede form saklı kartla açılır. Zaten anahtarı varsa dokunmuyoruz
+    // (aynı cüzdana eklenen ikinci kart da o anahtarın altında listelenir).
+    if (order.user_id && result.cardUserKey) {
+      const { error: cardKeyError } = await supabaseAdmin
+        .from("profiles")
+        .update({ iyzico_card_user_key: result.cardUserKey })
+        .eq("id", order.user_id)
+        .is("iyzico_card_user_key", null);
+      if (cardKeyError) {
+        // Jeton yükleme bundan etkilenmemeli: sadece "tek tık" konforu kaybolur
+        console.error("iyzico callback: cardUserKey kaydedilemedi", cardKeyError);
+      }
+    }
+
     await supabaseAdmin.rpc("confirm_payment_order", {
       p_order_id: order.id,
       p_iyzico_payment_id: result.paymentId,

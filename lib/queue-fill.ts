@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
-
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { runSingleFlight } from "@/lib/queue-lock";
 import { orderFromResume } from "@/lib/rotation-order";
 
 // Kuyruk artık "10 şarkılık kayan pencere" DEĞİL: sıradaki listeler bitip başa
@@ -70,9 +69,29 @@ function shuffleInPlace<T>(list: T[]): T[] {
 // (added_by='auto') düşer ve yeni havuzdan yeniden doldurulur. Müşterinin jeton
 // harcayarak eklediği şarkılara, adminin elle eklediklerine ve sahnede çalana
 // dokunulmaz.
+// Temizleme ve dolum TEK kilit altında: ikisi de playlist_rotation ile
+// playlist_rotation_consumed'a yazıyor. Ayrı kilitlerle yapılınca aradaki
+// boşluğa başka bir dolum girip kuyruğu eski imleçle dolduruyordu.
 export async function resetAutoQueue(venueId: string): Promise<void> {
-  await clearAutoQueue(venueId);
-  await fillQueue(venueId);
+  await runSingleFlight(venueId, async () => {
+    await clearAutoQueue(venueId);
+    await runFill(venueId);
+  });
+}
+
+/**
+ * Kuyruk imlecini/durumunu değiştiren ÇOK ADIMLI panel işleri için: adımların
+ * tamamı dolum kilidinin altında koşar, araya başka bir dolum giremez.
+ * İçeride fillQueue DEĞİL, runFill çağrılmalı (kilit zaten alınmış durumda) —
+ * bunun için `runFillUnlocked` dışa açık.
+ */
+export async function withFillLock(venueId: string, fn: () => Promise<void>): Promise<void> {
+  await runSingleFlight(venueId, fn);
+}
+
+/** withFillLock'un içinden çağrılan dolum: kilidi yeniden almaya çalışmaz. */
+export async function runFillUnlocked(venueId: string): Promise<void> {
+  await runFill(venueId);
 }
 
 // resetAutoQueue'nun ilk yarısı: bekleyen otomatik satırları düşürür ama YENİDEN
@@ -474,73 +493,16 @@ async function pickFromRotation(
 // ancak bütün liste işlendikten sonra beliriyordu.
 const HEAD_FILL = 20;
 
-// Dolum kirası: büyük listelerde tek tur birkaç saniye sürebiliyor, 60 sn bol
-// bir tavan. Süre dolarsa kilit kendiliğinden serbest kalır (0046).
-const FILL_LOCK_TTL_SECONDS = 60;
-// dirty bayrağı yüzünden atılacak ek tur sayısı. Sonsuz döngü olmasın diye
-// sınırlı: sürekli istek yağan mekanda birkaç turdan sonra bırakılır, bir
-// sonraki çağrı zaten yeniden kilidi alır.
-const MAX_FILL_PASSES = 4;
-
 /**
- * Kuyruk dolumu. Mekan başına TEK koşucu garantisi verir (0046).
+ * Kuyruk dolumu. Mekan başına TEK koşucu garantisi verir (0046 + 0047).
  *
  * Kilit olmadan iki dolum çakıştığında ikincisi kuyruğu boş, tüketim defterini
  * ise birincinin yazdığı haliyle dolu okuyup listeden şarkı bulamıyor ve
  * QUEUE_FLOOR yedeğine düşerek çalan listeyle alakasız rastgele katalog
  * şarkılarını kuyruğa yazıyordu.
- *
- * Kilidi alamayan çağrı beklemez: DB tarafında dirty bayrağı kalkar, kilidi
- * tutan iş bitiminde bir tur daha atar. Böylece "araya kuyruk temizleme girdi,
- * dolum atlandı, müzik sustu" hali de oluşmaz.
  */
 export async function fillQueue(venueId: string): Promise<void> {
-  const holder = randomUUID();
-  const { data: acquired, error: lockErr } = await supabaseAdmin.rpc("try_acquire_queue_fill_lock", {
-    p_venue_id: venueId,
-    p_holder: holder,
-    p_ttl_seconds: FILL_LOCK_TTL_SECONDS,
-  });
-
-  // KİLİT ARIZASINDA AÇIK KAL: RPC yoksa (0046 uygulanmadan deploy) ya da DB
-  // hata verirse dolum yapılmadan dönülürse müzik tamamen susar. Kilitsiz dolum
-  // eski davranıştır — yarış ihtimali kalır ama sessizlik olmaz. Yarışın asıl
-  // zararını (rastgele katalog şarkısı) runFill içindeki taze sayım zaten kesiyor.
-  if (lockErr) {
-    await runFill(venueId);
-    return;
-  }
-  // Kilit başkasında: o iş bitince dirty bayrağı sayesinde bir tur daha atacak.
-  if (!acquired) return;
-
-  try {
-    for (let pass = 0; pass < MAX_FILL_PASSES; pass++) {
-      await runFill(venueId);
-      const { data: again, error: finishErr } = await supabaseAdmin.rpc("finish_queue_fill", {
-        p_venue_id: venueId,
-        p_holder: holder,
-        p_ttl_seconds: FILL_LOCK_TTL_SECONDS,
-      });
-      // false: kilit bırakıldı (ya da kira başkasına geçti) — iş bitti.
-      // Hata: kilidi bırakıp çekil, kuyruk bu turda zaten dolduruldu.
-      if (finishErr || !again) break;
-    }
-  } finally {
-    // Normal çıkışta kilit finish_queue_fill ile zaten bırakıldı; bu çağrı o
-    // halde satırı bulamaz (holder eşleşse bile kira çoktan geçmiştir) ve
-    // zararsızdır. Asıl işi dolum patladığında görür: kira dolana kadar mekan
-    // dolumsuz kalmasın.
-    await releaseFillLock(venueId, holder);
-  }
-}
-
-async function releaseFillLock(venueId: string, holder: string): Promise<void> {
-  await supabaseAdmin
-    .rpc("release_queue_fill_lock", { p_venue_id: venueId, p_holder: holder })
-    .then(
-      () => {},
-      () => {}
-    );
+  await runSingleFlight(venueId, () => runFill(venueId));
 }
 
 async function runFill(venueId: string): Promise<void> {

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { runExclusive } from "@/lib/queue-lock";
 import {
   ADMIN_ADDED_BY,
   AUTO_ADDED_BY,
@@ -16,6 +17,9 @@ export type NextResult = {
   song_id?: string;
   queueEmpty?: boolean;
   error?: string;
+  // Sahneyi değiştiren başka bir iş sürüyor: bu çağrı hiçbir şey yapmadı.
+  // "Kuyruk boş" DEĞİLDİR — çağıran tarafın tekrar denemesi gerekir.
+  busy?: boolean;
 };
 
 // Arka arkaya kaç bozuk satır atlanabilir. Tavan yalnızca sonsuz özyinelemeye
@@ -25,10 +29,32 @@ const MAX_SKIPS = 25;
 // Kuyruğu ilerletir: çalanı 'played' yapar, sıradakini seçip now_playing'e yazar.
 // Oynatma artık admin cihazındaki gömülü player'da — burada yalnızca durum güncellenir,
 // player now_playing'i Realtime ile dinleyip yeni videoyu yükler.
+//
+// SAHNE KİLİDİ (0047): aynı anda ikinci bir ilerletme koşarsa, ilkinin sahneye
+// yeni koyduğu satırı aşağıdaki ilk UPDATE 'played' yapar ve şarkı HİÇ ÇALMADAN
+// yanar — jetonla alınmış şarkı dahil. Bu yola /api/queue'nun "boştaysa başlat"
+// dalından player claim'i olmadan girilebiliyor, yani istemci tarafındaki
+// advance kilidi de yetmiyor. İlerletme tekrarlanabilir bir iş olmadığı için
+// kilidi alamayan çağrı hiçbir şey yapmadan `busy` döner.
 export async function playNextFromQueue(
   venueId: string,
   retryAfterFill = true,
   skips = 0
+): Promise<NextResult> {
+  return runExclusive(
+    venueId,
+    () => advanceToNext(venueId, retryAfterFill, skips),
+    () => ({ started: false, busy: true })
+  );
+}
+
+// Kilidin İÇİNDEKİ asıl iş. Kendini çağırdığı için (atlama / dolum sonrası
+// tekrar) ayrı duruyor: playNextFromQueue'yu çağırsaydı kilit yeniden alınmaya
+// çalışılır, alınamaz ve özyineleme `busy` ile kırılırdı.
+async function advanceToNext(
+  venueId: string,
+  retryAfterFill: boolean,
+  skips: number
 ): Promise<NextResult> {
   await supabaseAdmin
     .from("queue")
@@ -58,7 +84,7 @@ export async function playNextFromQueue(
     // şarkı olduğu sürece "kuyruk boş" dönmemeli, çalma hiç durmamalı
     if (retryAfterFill) {
       await fillQueue(venueId).catch(() => {});
-      return playNextFromQueue(venueId, false, skips);
+      return advanceToNext(venueId, false, skips);
     }
     await supabaseAdmin
       .from("now_playing")
@@ -100,7 +126,7 @@ export async function playNextFromQueue(
     if (skips >= MAX_SKIPS) {
       return { started: false, error: `çalınabilir şarkı bulunamadı (${unplayable})` };
     }
-    return playNextFromQueue(venueId, retryAfterFill, skips + 1);
+    return advanceToNext(venueId, retryAfterFill, skips + 1);
   }
   if (!song) return { started: false, error: "şarkı bulunamadı" }; // yukarıda elendi
 
@@ -156,6 +182,8 @@ export type PlayNowResult = {
   video_id?: string;
   song_id?: string;
   error?: string;
+  // Sahneyi değiştiren başka bir iş sürüyor; bu çağrı hiçbir şey yapmadı.
+  busy?: boolean;
 };
 
 type PlayNowTarget = {
@@ -183,6 +211,21 @@ type PlayNowTarget = {
 // aksi halde kuyruk eski listenin şarkılarıyla kalır. Düğmenin sahneyi ~20 DB
 // turu beklemeden değiştirmesi için var.
 export async function playSongNow(
+  venueId: string,
+  target: PlayNowTarget,
+  options?: { deferQueueWork?: boolean }
+): Promise<PlayNowResult> {
+  // Sahne kilidi (0047): bu da sahnedeki satırı 'played' yapıp yerine yenisini
+  // koyuyor — biten şarkının ilerletmesiyle çakışırsa biri diğerinin şarkısını
+  // hiç çalmadan yakar.
+  return runExclusive(
+    venueId,
+    () => playSongNowLocked(venueId, target, options),
+    () => ({ ok: false, busy: true })
+  );
+}
+
+async function playSongNowLocked(
   venueId: string,
   target: PlayNowTarget,
   options?: { deferQueueWork?: boolean }
@@ -392,6 +435,21 @@ export async function syncPlayingVideo(
   venueId: string,
   videoId: string,
   progressMs = 0
+): Promise<{ ok: boolean; matched: boolean; busy?: boolean }> {
+  // Sahne kilidi (0047): burası da sahnedeki satırı kapatıp başkasını 'playing'
+  // yapıyor. Kilit doluysa hizalama ertelenir — player bir sonraki turda yine
+  // bildirir, kesinti sonrası mutabakat kaybolmaz.
+  return runExclusive(
+    venueId,
+    () => syncPlayingVideoLocked(venueId, videoId, progressMs),
+    () => ({ ok: false, matched: false, busy: true })
+  );
+}
+
+async function syncPlayingVideoLocked(
+  venueId: string,
+  videoId: string,
+  progressMs = 0
 ): Promise<{ ok: boolean; matched: boolean }> {
   const { data: song } = await supabaseAdmin
     .from("songs")
@@ -467,6 +525,16 @@ export async function syncPlayingVideo(
 // kuyruğa geri konur (kendi priority/position değerleriyle, yani bıraktığı yere),
 // böylece önceki şarkı bitince kaldığı yerden devam edilir.
 export async function playPreviousFromQueue(venueId: string): Promise<NextResult> {
+  // Sahne kilidi (0047): "geri" de sahnedeki satırı kuyruğa geri koyup başkasını
+  // sahneye çıkarıyor.
+  return runExclusive(
+    venueId,
+    () => playPreviousLocked(venueId),
+    () => ({ started: false, busy: true })
+  );
+}
+
+async function playPreviousLocked(venueId: string): Promise<NextResult> {
   const { data: prevItem } = await supabaseAdmin
     .from("queue")
     .select("id, song_id, songs(youtube_video_id, embeddable)")

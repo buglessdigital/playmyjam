@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { playSongNow } from "@/lib/queue";
-import { fillQueue, startPlaylistFrom } from "@/lib/queue-fill";
+import { runFillUnlocked, startPlaylistFrom, withFillLock } from "@/lib/queue-fill";
 
 // Panelden "şimdi çal": sahnedeki şarkı yarıda kesilir, seçilen şarkı başlar.
 //
@@ -44,6 +44,11 @@ export async function POST(req: NextRequest) {
     { deferQueueWork: true }
   );
 
+  // busy: sahneyi değiştiren başka bir iş (biten şarkının ilerletmesi) sürüyor.
+  // 503 + anlaşılır mesaj: panel tekrar denesin, "çalınamadı" deyip pes etmesin.
+  if (result.busy) {
+    return NextResponse.json({ error: "Şu an sıra değişiyor, tekrar deneyin" }, { status: 503 });
+  }
   if (!result.ok) {
     return NextResponse.json({ error: result.error ?? "Çalınamadı" }, { status: 409 });
   }
@@ -54,10 +59,15 @@ export async function POST(req: NextRequest) {
       // Kısa yol: listeyi devret + imleci taşı + kuyruğun başını yaz (iki DB
       // turu), gerisi arkadan gelsin. Panelde sıra saniyeler sonra değil hemen
       // güncellensin diye.
-      if (targetList && playedSongId) {
-        await startPlaylistFrom(session.venue_id, targetList, playedSongId);
-      }
-      await fillQueue(session.venue_id);
+      // İmleç taşıma ve dolum TEK kilit altında: ikisi de aynı rotasyon
+      // durumuna yazıyor, araya başka bir dolum girerse kuyruk eski imleçle
+      // dolar (bkz. 0047).
+      await withFillLock(session.venue_id, async () => {
+        if (targetList && playedSongId) {
+          await startPlaylistFrom(session.venue_id, targetList, playedSongId);
+        }
+        await runFillUnlocked(session.venue_id);
+      });
     })().catch(() => {})
   );
 

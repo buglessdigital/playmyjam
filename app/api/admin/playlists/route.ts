@@ -9,8 +9,10 @@ import {
   pickPlaylistOpener,
   playlistSongsForQueue,
   resetAutoQueue,
+  runFillUnlocked,
   startPlaylistFrom,
   verifyPlaylistOpener,
+  withFillLock,
 } from "@/lib/queue-fill";
 import { playSongNow } from "@/lib/queue";
 
@@ -352,10 +354,13 @@ export async function PATCH(req: NextRequest) {
     // Kuyruk işi İKİ AŞAMADA: önce kısa yol (listeyi devret + kuyruğun başını
     // yaz — iki DB turu), sonra geri kalanı. Eskiden bu iş otuza yakın ardışık
     // tur ediyor ve panelde sıra 8-9 saniye sonra beliriyordu.
-    const queueWork = async () => {
-      await startPlaylistFrom(session.venue_id, playlistId, openerReachedStage ? opener : null);
-      await fillQueue(session.venue_id);
-    };
+    // İmleç taşıma ve dolum TEK kilit altında (0047): ikisi de aynı rotasyon
+    // durumuna yazıyor, araya başka bir dolum girerse kuyruk eski imleçle dolar.
+    const queueWork = async () =>
+      withFillLock(session.venue_id, async () => {
+        await startPlaylistFrom(session.venue_id, playlistId, openerReachedStage ? opener : null);
+        await runFillUnlocked(session.venue_id);
+      });
 
     // Sahneyi müşteri şarkısı devralıyor: sahnedeki jetonsuz şarkı kapanır,
     // sıradaki ilk müşteri satırı çalmaya başlar. İmleç yine listeye taşınır ama

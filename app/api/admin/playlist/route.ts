@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { parseSongInput } from "@/lib/validate";
 import { addSongToVenuePlaylist, assertVenuePlaylist } from "@/lib/playlist";
-import { AUTO_ADDED_BY, fillQueue } from "@/lib/queue-fill";
+import { AUTO_ADDED_BY, fillQueue, runFillUnlocked, withFillLock } from "@/lib/queue-fill";
 
 export async function POST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
@@ -118,15 +118,19 @@ export async function DELETE(req: NextRequest) {
   // ve sahnedeki şarkıya dokunulmaz.
   after(
     (async () => {
-      await supabaseAdmin
-        .from("queue")
-        .update({ status: "removed" })
-        .eq("venue_id", session.venue_id)
-        .eq("status", "queued")
-        .is("user_id", null)
-        .eq("added_by", AUTO_ADDED_BY)
-        .eq("song_id", venueSong.song_id);
-      await fillQueue(session.venue_id);
+      // Satır düşürme ve dolum TEK kilit altında (0047): arada başka bir dolum
+      // koşarsa boşalan yer eski durumla kapanır.
+      await withFillLock(session.venue_id, async () => {
+        await supabaseAdmin
+          .from("queue")
+          .update({ status: "removed" })
+          .eq("venue_id", session.venue_id)
+          .eq("status", "queued")
+          .is("user_id", null)
+          .eq("added_by", AUTO_ADDED_BY)
+          .eq("song_id", venueSong.song_id);
+        await runFillUnlocked(session.venue_id);
+      });
     })().catch(() => {})
   );
 

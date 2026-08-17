@@ -141,6 +141,10 @@ export async function POST(
         return reply({ started: false, claim_lost: true }, { status: 409 });
       }
       const result = await playNextFromQueue(venueId);
+      // busy: sahneyi değiştiren başka bir iş sürüyor. 503 dönüyoruz ki istemci
+      // bunu "kuyruk boş" sanıp sessizlik ekranına düşmesin — api() null görüp
+      // 1,2 sn arayla iki kez daha dener, tamponundaki şarkı varsa onu çalar.
+      if (result.busy) return reply(result, { status: 503 });
       if (result.error) return reply(result, { status: 500 });
       return reply(result);
     }
@@ -162,7 +166,10 @@ export async function POST(
         return reply({ ok: false, claim_lost: true }, { status: 409 });
       }
       const progressMs = typeof body?.progress_ms === "number" ? Math.floor(body.progress_ms) : 0;
-      return reply(await syncPlayingVideo(venueId, videoId, progressMs));
+      const synced = await syncPlayingVideo(venueId, videoId, progressMs);
+      // Hizalama ertelendi: player bir sonraki turda yine bildirir
+      if (synced.busy) return reply(synced, { status: 503 });
+      return reply(synced);
     }
 
     // Panelin "geri" düğmesi: bir önceki şarkıya döner. Geçmiş yoksa
@@ -172,6 +179,7 @@ export async function POST(
         return reply({ started: false, claim_lost: true }, { status: 409 });
       }
       const result = await playPreviousFromQueue(venueId);
+      if (result.busy) return reply(result, { status: 503 });
       if (result.error) return reply(result, { status: 500 });
       return reply(result);
     }
@@ -234,9 +242,12 @@ export async function POST(
       // Geçici hata: şarkıyı damgalamadan yalnızca sıradakine geç. Mekan sessiz
       // kalmasın diye atlama yine yapılır, ama şarkı katalogda kalır.
       if (!isFatalPlaybackError(body)) {
-        return reply(await playNextFromQueue(venueId));
+        const skipped = await playNextFromQueue(venueId);
+        if (skipped.busy) return reply(skipped, { status: 503 });
+        return reply(skipped);
       }
       const result = await markUnplayableAndSkip(venueId, videoId);
+      if (result.busy) return reply(result, { status: 503 });
       return reply(result);
     }
 

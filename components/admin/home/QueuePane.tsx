@@ -389,7 +389,7 @@ export default function QueuePane({
               {/* Video albüm kapağının yerini alır: kart zaten "şu an çalıyor"
                   diyor, panele ikinci bir kutu eklemeye gerek yok. Yuva boş
                   durur, videoyu kabuktaki MiniPlayer hizalar. */}
-              <MiniPlayerSlot />
+              <MiniPlayerSlot coverUrl={current.album_cover_url} />
               <div className="flex-1 min-w-0">
                 <p className="text-white text-sm font-semibold truncate">{current.title}</p>
                 <p className="text-[#6b7280] text-[11px] truncate">{current.artist}</p>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import YouTubePlayer from "@/components/player/YouTubePlayer";
 import { useVenueDbId } from "@/lib/venue-db-id";
 import { MINI_CORNER_WIDTH, useMiniSlot } from "@/lib/mini-player-store";
+import { usePlayerHost } from "@/lib/player-host";
 
 /**
  * Panelin oynatıcısı — HEP AÇIK.
@@ -22,6 +23,11 @@ import { MINI_CORNER_WIDTH, useMiniSlot } from "@/lib/mini-player-store";
  * ayırır, video da o dikdörtgene sabitlenir. Böylece hiçbir yazının üstüne
  * binmez ve iframe DOM'da hiç taşınmadığı için sayfa değiştirmek şarkıyı baştan
  * yükletmez. Yuva olmayan sayfalarda sağ alt köşeye düşer.
+ *
+ * TELEFONDA HİÇ KURULMAZ: orada panel yalnızca uzaktan kumandadır, müzik
+ * bilgisayardaki panelden çalar (bkz. lib/player-host.ts). Köşedeki video küçük
+ * ekranın altını kaplayıp paneli kullanılamaz hale getiriyordu; ayrıca telefonda
+ * kurulan oynatıcı sahipliği kendine alıp mekanı susturuyordu.
  */
 
 /** Ölçülen yuva + dikdörtgeni; yuva değişince eski ölçüm geçersiz sayılır. */
@@ -31,6 +37,15 @@ type Rect = { el: HTMLElement; left: number; top: number; width: number };
 const CORNER = 12;
 
 export default function MiniPlayer({ venueId }: { venueId: string }) {
+  // Kumanda modunda (telefon) hiçbir şey kurulmaz — mekanın id'si bile
+  // sorulmaz. Karar verilene kadar (host === null) da beklenir: hidrasyon
+  // turunda iframe kurup hemen sökmek şarkıyı baştan yükletirdi.
+  const host = usePlayerHost();
+  if (host !== true) return null;
+  return <MiniPlayerHost venueId={venueId} />;
+}
+
+function MiniPlayerHost({ venueId }: { venueId: string }) {
   const venueDbId = useVenueDbId(venueId);
   const slot = useMiniSlot();
   const [rect, setRect] = useState<Rect | null>(null);

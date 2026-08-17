@@ -4,6 +4,7 @@ import Image from "next/image";
 import SeekBar from "./SeekBar";
 import { useProgress, type Playback } from "./usePlayback";
 import { requestPlayerStart, usePlayerNeedsStart } from "@/lib/mini-player-store";
+import { setPlayerHost, usePhoneDevice, usePlayerHost } from "@/lib/player-host";
 
 // Saniyede dört kez tazelenen tek parça bu: ilerleme sayısı panelin ortak
 // state'inde tutulsaydı her tick'te playlist rayı ve kuyruk da yeniden
@@ -52,9 +53,19 @@ export default function PlayerBar({
   // görür. Tarayıcı iznini kaybetmemek için start SENKRON çağrılır — komut
   // yollamak (playerAction) araya girmez, oynatıcı sunucudaki durumdan devam eder.
   const needsStart = usePlayerNeedsStart();
+  // Kumanda modu: bu cihazda oynatıcı hiç kurulmaz (telefon — bkz.
+  // lib/player-host.ts). Kontroller çalışır, çünkü hepsi sunucudan geçer;
+  // değişen tek şey "başlat" dokunuşunun burada yapılamaması.
+  const host = usePlayerHost();
+  const remoteOnly = host === false;
+  // Telefon olduğu halde "bu cihazda çal" seçilmiş: seçimi geri almanın yolu
+  // yalnızca o cihazda gösterilir.
+  const phoneOptedIn = usePhoneDevice() && host === true;
   const offlineTitle = needsStart
     ? "Müziği başlat — tarayıcı ilk oynatma için bir dokunuş ister"
-    : "Player henüz başlamadı — bu paneli müziği çalacak cihazda açın";
+    : remoteOnly
+      ? "Bu cihaz uzaktan kumanda — müziği çalacak cihazda paneli açın"
+      : "Player henüz başlamadı — bu paneli müziği çalacak cihazda açın";
 
   const handlePlayPause = () => {
     if (needsStart && requestPlayerStart()) return;
@@ -68,12 +79,19 @@ export default function PlayerBar({
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="mt-0.5 shrink-0">
             <path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <p className="text-[11px]" style={{ color: "#fbbf24" }}>
+          <div className="text-[11px]" style={{ color: "#fbbf24" }}>
             {needsStart ? (
               <>
                 Müzik henüz başlamadı. Müziği çalacak cihazda, aşağıdaki{" "}
                 <span className="font-bold">oynat</span> düğmesine bir kez dokunun; müzik
                 bu panelden çalar.
+              </>
+            ) : remoteOnly ? (
+              <>
+                Bu cihaz <span className="font-bold">uzaktan kumanda</span>: müzik burada
+                değil, mekanın müziği çalan cihazında (bilgisayarda) çalar. O cihazda
+                paneli açıp <span className="font-bold">oynat</span> düğmesine bir kez
+                dokunun — sonra buradan yönetebilirsiniz.
               </>
             ) : (
               <>
@@ -81,7 +99,7 @@ export default function PlayerBar({
                 aşağıdaki <span className="font-bold">oynat</span> düğmesine dokunun.
               </>
             )}
-          </p>
+          </div>
         </div>
       )}
 
@@ -218,6 +236,35 @@ export default function PlayerBar({
             <span className="text-[#9ca3af] text-[11px] font-semibold tabular-nums w-8 text-right shrink-0">%{volume}</span>
           </div>
 
+          {/* Cihaz seçimi. Telefonda oynatıcı kurulmadığı için "TV modu" da
+              gösterilmez: o sayfa müziği telefona alır (sahiplik oraya geçer,
+              bilgisayardaki player 409 ile susar) — yani kazara dokunulacak en
+              pahalı düğme. Yerine seçimi çevirecek düğme konur; karar cihazda
+              saklanır (bkz. lib/player-host.ts). */}
+          {remoteOnly ? (
+            <button
+              onClick={() => setPlayerHost(true)}
+              title="Müziği bu cihazın hoparlöründen çal — mekanın müziği buraya taşınır"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-colors"
+              style={{ background: "rgba(255,255,255,0.06)", color: "#9ca3af" }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="2" /></svg>
+              Bu cihazda çal
+            </button>
+          ) : (
+            phoneOptedIn && (
+              <button
+                onClick={() => setPlayerHost(false)}
+                title="Müziği bu cihazda çalmayı bırak — panel yalnızca uzaktan kumanda olsun"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-colors"
+                style={{ background: "rgba(255,255,255,0.06)", color: "#9ca3af" }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="7" y="2" width="10" height="20" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M11 18h2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                Kumanda moduna dön
+              </button>
+            )
+          )}
+
           {/* Videoyu TV'ye yansıtan mekanlar için tam ekran sayfa duruyor.
               Adlandırılmış pencere: tekrar tıklamak yeni sekme açmaz, aynı
               player'a döner. rel="noopener" YOK: noopener verilince tarayıcı
@@ -226,6 +273,7 @@ export default function PlayerBar({
 
               Panel oynatıcısı kapanmaz; TV açılınca sahiplik oraya geçer ve
               panelde "çalmayı buraya al" ekranı belirir. */}
+          {!remoteOnly && (
           <a
             href={`/admin/${venueId}/player`}
             target={`pmj-player-${venueId}`}
@@ -236,6 +284,7 @@ export default function PlayerBar({
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M8 21h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
             TV modu
           </a>
+          )}
 
           {volumeError && <p className="text-[11px] w-full text-right" style={{ color: "#f87171" }}>{volumeError}</p>}
         </div>

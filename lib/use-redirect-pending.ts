@@ -12,11 +12,19 @@ import { useCallback, useEffect, useState } from "react";
  * geri dönüşte `pageshow`, sekme değişiminden dönüşte `visibilitychange`.
  */
 export function useRedirectPending(): [boolean, (v: boolean) => void] {
-  const [pending, setPending] = useState(false);
+  return useRedirectPendingValue<boolean>(false);
+}
+
+/**
+ * Aynı davranışın "hangi düğmeye basıldı" gibi boolean olmayan durumlar için
+ * hâli: `idle` dışındaki her değer "gidiliyor" sayılır ve dönüşte `idle`'a döner.
+ */
+export function useRedirectPendingValue<T>(idle: T): [T, (v: T) => void] {
+  const [pending, setPending] = useState<T>(idle);
 
   useEffect(() => {
-    if (!pending) return;
-    const clear = () => setPending(false);
+    if (pending === idle) return;
+    const clear = () => setPending(idle);
     const onShow = (e: PageTransitionEvent) => {
       if (e.persisted) clear();
     };
@@ -29,7 +37,7 @@ export function useRedirectPending(): [boolean, (v: boolean) => void] {
       window.removeEventListener("pageshow", onShow);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [pending]);
+  }, [pending, idle]);
 
-  return [pending, useCallback((v: boolean) => setPending(v), [])];
+  return [pending, useCallback((v: T) => setPending(v), [])];
 }

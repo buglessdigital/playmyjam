@@ -8,6 +8,7 @@ import type { Cooldown } from "./browse-types";
 import { fmt, useI18n } from "@/lib/i18n";
 import { savePendingAdd } from "@/lib/pending-add";
 import { isGuestAccount } from "@/lib/guest-session";
+import { useRedirectPendingValue } from "@/lib/use-redirect-pending";
 import { ConsentNotice } from "@/components/ui/ConsentChecks";
 
 interface Song {
@@ -58,8 +59,10 @@ export default function AddSongSheet({
   );
 
   // Ödemeye yönlendirilirken hangi seçeneğe basıldığı: o butonda dönen simge çıkar,
-  // ikinci dokunuş ikinci sipariş açmasın diye ikisi de kilitlenir.
-  const [buying, setBuying] = useState<null | "normal" | "priority">(null);
+  // ikinci dokunuş ikinci sipariş açmasın diye ikisi de kilitlenir. Müşteri ödemeyi
+  // yapmadan geri dönerse kart bfcache'ten bu state ile geri gelir; kilit orada
+  // kalmasın diye bayrak sayfa yeniden görününce düşer (bkz. lib/use-redirect-pending.ts).
+  const [buying, setBuying] = useRedirectPendingValue<null | "normal" | "priority">(null);
 
   // Giriş ekranından geçmeden devam eden müşteri onay metnini burada görür:
   // zorunlu onaylar aşağıdaki dokunuşla verilmiş sayılır (bkz. lib/guest-session.ts).

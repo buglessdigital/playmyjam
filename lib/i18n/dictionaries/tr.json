@@ -367,6 +367,13 @@
     "pendingHelp": "Mekan talebini henüz onaylamadı. Onaylanırsa bu şerit yeşile döner ve şarkıyı buradan sıraya ekleyebilirsin.",
     "seeAll": "İsteklerim"
   },
+  "requestSent": {
+    "title": "Talebin mekana iletildi",
+    "trackHint": "Süreci alttaki şeritten takip et",
+    "cta": "Anladım",
+    "costLine": "Onaylanınca {n} jetonla (≈{price}) çaldırırsın",
+    "costLinePlain": "Onaylanınca {n} jetonla çaldırırsın"
+  },
   "requestsPage": {
     "title": "İsteklerim",
     "empty": "Henüz istek yapılmadı",
@@ -496,6 +503,7 @@
     "infoSignup": "{email} adresine bir onay e-postası gönderildi. E-postanızdaki bağlantıya tıkladığınızda oturumunuz otomatik açılacak.",
     "infoLinkEmail": "Doğrulama bağlantısı {email} adresine gönderildi. Onayladığında jetonların ve geçmişin bu hesaba bağlanır.",
     "errGoogleStart": "Google ile giriş başlatılamadı. Lütfen tekrar deneyin.",
+    "errGoogleLink": "Google hesabı şu an bağlanamıyor. Jetonların duruyor — aşağıdaki e-posta ve şifreyle hesabını oluşturabilirsin.",
     "headingLead": "Hadi partiyi",
     "headingAccent": "başlatalım",
     "sub": "Şarkı çaldırmak, jeton almak ve favorilerini kaydetmek için hesabın gerekiyor. Kuyruğa bakmak içinse giriş yapmana gerek yok.",

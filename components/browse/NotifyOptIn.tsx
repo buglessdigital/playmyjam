@@ -66,7 +66,10 @@ async function registeredOnServer(): Promise<boolean> {
   }
 }
 
-export default function NotifyOptIn() {
+export default function NotifyOptIn({
+  compact = false,
+  skipInstall = false,
+}: { compact?: boolean; skipInstall?: boolean } = {}) {
   const t = useT();
   const [state, setState] = useState<PushState>("checking");
   const [busy, setBusy] = useState(false);
@@ -145,13 +148,21 @@ export default function NotifyOptIn() {
 
   // 1. AŞAMA — kurulum. iPhone'da bildirimden önce zorunlu adım; diğer
   // cihazlarda öneri (tarayıcıda da bildirim çalışır, geçilebilir).
-  if (!installed && state !== "on" && (homeScreen || (prompt && !skippedInstall))) {
+  //
+  // skipInstall: dar yerlerde (talep gönderildi kartı) bu aşama hiç
+  // gösterilmez — orada tek bir iş var, kurulum teklifi kartı uzatıyor.
+  // iPhone'da bildirim yine de kurulum ister; o durumda kullanıcı "Bildirimleri
+  // Aç"a bastığında 2. aşamadaki iOS yönergesi devreye girer.
+  if (!skipInstall && !installed && state !== "on" && (homeScreen || (prompt && !skippedInstall))) {
     return (
       <div className="mt-3 rounded-xl border border-white/10 bg-[#1a0e2a] p-3">
         <p className="text-xs font-semibold text-white">{t.suggest.installTitle}</p>
-        <p className="mt-1 text-[11px] text-[#9ca3af]">
-          {homeScreen ? t.suggest.installIos : t.suggest.installDesc}
-        </p>
+        {/* iPhone yönergesi adım adım anlatım — kısaltılamaz; öneri metni compact'te düşer */}
+        {(homeScreen || !compact) && (
+          <p className="mt-1 text-[11px] text-[#9ca3af]">
+            {homeScreen ? t.suggest.installIos : t.suggest.installDesc}
+          </p>
+        )}
         {prompt && (
           <button
             onClick={install}
@@ -193,18 +204,24 @@ export default function NotifyOptIn() {
     );
   }
 
+  // compact: yalnızca "neden" satırı gizlenir — hata/yönerge metinleri (iOS
+  // adımları, reddedilmiş izin, başarısız kayıt) her zaman kalır, onlar
+  // olmadan kullanıcı takılıp kalır.
+  const notifyLine =
+    state === "ios"
+      ? t.suggest.notifyIos
+      : state === "denied"
+        ? t.suggest.notifyDenied
+        : state === "failed"
+          ? t.suggest.notifyFailed
+          : compact
+            ? null
+            : t.suggest.notifyDesc;
+
   return (
     <div className="mt-3 rounded-xl border border-white/10 bg-[#1a0e2a] p-3">
       <p className="text-xs font-semibold text-white">{t.suggest.notifyTitle}</p>
-      <p className="mt-1 text-[11px] text-[#9ca3af]">
-        {state === "ios"
-          ? t.suggest.notifyIos
-          : state === "denied"
-            ? t.suggest.notifyDenied
-            : state === "failed"
-              ? t.suggest.notifyFailed
-              : t.suggest.notifyDesc}
-      </p>
+      {notifyLine && <p className="mt-1 text-[11px] text-[#9ca3af]">{notifyLine}</p>}
       {state !== "denied" && state !== "ios" && (
         <button
           onClick={enable}

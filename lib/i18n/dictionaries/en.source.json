@@ -369,6 +369,7 @@
   "login.errSignup": "Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.",
   "login.infoSignup": "{email} adresine bir onay e-postası gönderildi. E-postanızdaki bağlantıya tıkladığınızda oturumunuz otomatik açılacak.",
   "login.errGoogleStart": "Google ile giriş başlatılamadı. Lütfen tekrar deneyin.",
+  "login.errGoogleLink": "Google hesabı şu an bağlanamıyor. Jetonların duruyor — aşağıdaki e-posta ve şifreyle hesabını oluşturabilirsin.",
   "login.headingLead": "Hadi partiyi",
   "login.headingAccent": "başlatalım",
   "login.sub": "Şarkı çaldırmak, jeton almak ve favorilerini kaydetmek için hesabın gerekiyor. Kuyruğa bakmak içinse giriş yapmana gerek yok.",
@@ -604,5 +605,10 @@
   "profile.guestName": "Misafir",
   "profile.guestEmail": "Hesap bağlı değil",
   "profile.linkAccountTitle": "Hesabını bağla",
-  "profile.linkAccountDesc": "Jetonların ve geçmişin şimdilik bu cihazda. E-posta veya Google bağlarsan her cihazdan girebilirsin."
+  "profile.linkAccountDesc": "Jetonların ve geçmişin şimdilik bu cihazda. E-posta veya Google bağlarsan her cihazdan girebilirsin.",
+  "requestSent.title": "Talebin mekana iletildi",
+  "requestSent.trackHint": "Süreci alttaki şeritten takip et",
+  "requestSent.cta": "Anladım",
+  "requestSent.costLine": "Onaylanınca {n} jetonla (≈{price}) çaldırırsın",
+  "requestSent.costLinePlain": "Onaylanınca {n} jetonla çaldırırsın"
 }

@@ -339,11 +339,17 @@ function AuthPageContent({ params }: Props) {
     };
     // Misafir kimliği varsa Google hesabı ONA bağlanır: yeni kullanıcı açılsaydı
     // cüzdan ve geçmiş eski kimlikte kalırdı (bkz. lib/guest-session.ts).
-    const { error } = (await isGuestAccount())
+    const guest = await isGuestAccount();
+    const { error } = guest
       ? await supabase.auth.linkIdentity({ provider: "google", options: oauthOptions })
       : await supabase.auth.signInWithOAuth({ provider: "google", options: oauthOptions });
     if (error) {
-      setError(t.login.errGoogleStart);
+      // linkIdentity yalnızca projede "Manual linking" AÇIKKEN çalışır; kapalıysa
+      // istek Google'a hiç gitmeden hata döner. signInWithOAuth'a düşmüyoruz:
+      // yeni kimlik açılır ve misafirin cüzdanı geride kalırdı — bunun yerine
+      // müşteriyi e-posta ile bağlamaya yönlendiriyoruz.
+      console.error("[google-auth]", error);
+      setError(guest ? t.login.errGoogleLink : t.login.errGoogleStart);
       setGoogleLoading(false);
     }
   };

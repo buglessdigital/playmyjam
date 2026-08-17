@@ -367,6 +367,13 @@
     "pendingHelp": "The venue hasn't approved your request yet. If they do, this bar turns green and you can add the song to the queue right here.",
     "seeAll": "My requests"
   },
+  "requestSent": {
+    "title": "Your request reached the venue",
+    "trackHint": "Follow it from the bar below",
+    "cta": "Got it",
+    "costLine": "Once approved, you play it for {n} tokens (≈{price})",
+    "costLinePlain": "Once approved, you play it for {n} tokens"
+  },
   "requestsPage": {
     "title": "My Requests",
     "empty": "No requests yet",
@@ -496,6 +503,7 @@
     "infoSignup": "A confirmation email has been sent to {email}. Clicking the link in it will log you in automatically.",
     "infoLinkEmail": "We sent a verification link to {email}. Once you confirm it, your tokens and history are linked to this account.",
     "errGoogleStart": "Couldn't start the Google sign-in. Please try again.",
+    "errGoogleLink": "Google account can't be linked right now. Your tokens are safe — you can create your account with the email and password below.",
     "headingLead": "Let's get this party",
     "headingAccent": "started",
     "sub": "You need an account to play songs, buy tokens, and save your favorites. However, you don't need to log in to view the queue.",

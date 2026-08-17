@@ -21,6 +21,7 @@ import SearchView, { type SuggestResult } from "@/components/browse/SearchView";
 import SongCard from "@/components/browse/SongCard";
 import SongRow from "@/components/browse/SongRow";
 import NotifyOptIn from "@/components/browse/NotifyOptIn";
+import RequestSentModal from "@/components/browse/RequestSentModal";
 import { savePendingSuggestion, takePendingSuggestion } from "@/lib/pending-suggestion";
 import { clearPendingAdd, peekPendingAdd, savePendingAdd, takePendingAdd } from "@/lib/pending-add";
 import { takeFirstVisit } from "@/lib/first-visit";
@@ -85,6 +86,8 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   const [suggestFlash, setSuggestFlash] = useState<
     { state: "sent" | "error"; title: string; artist: string } | null
   >(null);
+  // Talep gönderildikten sonra çıkan kart (bkz. RequestSentModal)
+  const [sentModal, setSentModal] = useState<{ title: string; artist: string } | null>(null);
   const isAddingRef = useRef(false);
   const userIdRef = useRef<string | null>(null);
 
@@ -623,6 +626,12 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       savePendingSuggestion(venueId, title, artist, cover);
       router.push(venueLoginPath(venueId, `/venue/${venueId}/browse`));
     }
+    if (result === "ok" || result === "duplicate") {
+      // Arama tam ekran ve durum şeridinin üstünde duruyor — talep gidince
+      // kapatılır ki müşteri şeridi geri dönmeden, olduğu yerde görsün.
+      setSearchOpen(false);
+      setSentModal({ title, artist });
+    }
     return result;
   }, [venueId, requireAccount, router, sendSuggestion]);
 
@@ -1035,6 +1044,18 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           onRequest={handleRequest}
           onSuggest={handleSuggest}
           onClose={() => setSearchOpen(false)}
+        />
+      )}
+
+      {sentModal && (
+        <RequestSentModal
+          title={sentModal.title}
+          artist={sentModal.artist}
+          /* Onaylanan şarkı normal sıraya eklenir — öncelikli seçmek isteyen
+             ekleme kartında farkı görür */
+          cost={requestCost}
+          tokenUnitPrice={tokenUnitPrice}
+          onClose={() => setSentModal(null)}
         />
       )}
 

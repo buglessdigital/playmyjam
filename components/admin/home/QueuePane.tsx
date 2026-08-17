@@ -42,6 +42,12 @@ const VIRTUAL_THRESHOLD = 60;
 
 function useQueueWindow(headerFlags: boolean[], enabled: boolean) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Satırlar kaydırma kutusunun EN BAŞINDA değil: üstlerinde pano başlığı ve
+  // "şu an çalıyor" kartı var (dar ekranda ikisi de kaydırmayla yukarı kayar).
+  // Pencereleme bu yüzden ham scrollTop ile değil, satır listesinin kutu
+  // içindeki kendi başlangıcına göre hesaplanır — yoksa dar ekranda liste
+  // başlığın yüksekliği kadar kaymış çizilir.
+  const rowsRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ top: 0, height: 0 });
   // Yükseklikler ekrandaki gerçek satırdan okunur: yazı tipi ya da dolgu
   // değişirse sabit sayı listeyi kaydırır. Kaydırma sırasında ÖLÇÜLMEZ —
@@ -50,8 +56,12 @@ function useQueueWindow(headerFlags: boolean[], enabled: boolean) {
 
   const measureView = useCallback(() => {
     const scroller = scrollRef.current;
+    const rows = rowsRef.current;
     if (!scroller) return;
-    const top = scroller.scrollTop;
+    // Satır listesinin kutunun tepesine olan uzaklığı: dar ekranda başlıklar
+    // kaydıkça küçülür, masaüstünde (başlıklar sticky) sabittir.
+    const offset = rows ? rows.getBoundingClientRect().top - scroller.getBoundingClientRect().top : 0;
+    const top = -offset;
     const height = scroller.clientHeight;
     setView((prev) => (prev.top === top && prev.height === height ? prev : { top, height }));
   }, []);
@@ -92,7 +102,7 @@ function useQueueWindow(headerFlags: boolean[], enabled: boolean) {
 
   const count = offsets.length - 1;
   if (!enabled || count <= 0) {
-    return { scrollRef, start: 0, end: Math.max(count, 0), padTop: 0, padBottom: 0 };
+    return { scrollRef, rowsRef, start: 0, end: Math.max(count, 0), padTop: 0, padBottom: 0 };
   }
 
   const find = (y: number) => {
@@ -111,6 +121,7 @@ function useQueueWindow(headerFlags: boolean[], enabled: boolean) {
 
   return {
     scrollRef,
+    rowsRef,
     start,
     end,
     padTop: offsets[start],
@@ -288,7 +299,7 @@ export default function QueuePane({
   }, [queue]);
 
   const virtual = queue.length > VIRTUAL_THRESHOLD;
-  const { scrollRef, start, end, padTop, padBottom } = useQueueWindow(headerFlags, virtual);
+  const { scrollRef, rowsRef, start, end, padTop, padBottom } = useQueueWindow(headerFlags, virtual);
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [playError, setPlayError] = useState("");
@@ -315,108 +326,115 @@ export default function QueuePane({
   );
 
   return (
-    <div className="flex flex-col min-h-0 h-full">
-      <div className="shrink-0 px-4 pt-4 pb-3 border-b border-white/10">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-white font-bold text-base">Sırada</p>
-            <p className="text-[#6b7280] text-xs mt-0.5">
-              {queue.length} şarkı · {movableCount} tanesi taşınabilir
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {/* Yalnızca "Sıraya ekle" ile eklenenleri siler: çalan listenin
-                şarkıları ve müşterinin jetonla aldığı sıra olduğu gibi kalır. */}
-            {manualCount > 0 && (
-              <button
-                onClick={() => void clearManualQueue()}
-                title={`Sıraya eklenen ${manualCount} şarkı silinsin — çalan listeye ve müşteri şarkılarına dokunulmaz`}
-                aria-label="Sırayı temizle"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
-                style={{ background: "rgba(239,68,68,0.12)", color: "#f87171" }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                Sırayı temizle
-              </button>
-            )}
-            <button
-              onClick={onAddSong}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
-              style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-              Ekle
-            </button>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 flex-wrap text-[#6b7280] text-[10px] mt-2">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-sm" style={{ background: "#e91e8c" }} /> Öncelikli
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-sm" style={{ background: "#8b5cf6" }} /> Jeton
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-sm" style={{ background: "#22c55e" }} /> Sıraya eklenen
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-sm" style={{ background: "rgba(255,255,255,0.15)" }} /> Otomatik
-          </span>
-        </div>
-
-        {queueError && (
-          <p className="text-[11px] rounded-lg px-2.5 py-2 mt-2" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171" }}>
-            {queueError}
-          </p>
-        )}
-        {playError && (
-          <button
-            onClick={() => setPlayError("")}
-            className="w-full text-left text-[11px] rounded-lg px-2.5 py-2 mt-2"
-            style={{ background: "rgba(239,68,68,0.08)", color: "#f87171" }}
-          >
-            {playError}
-          </button>
-        )}
-      </div>
-
-      <div className="shrink-0 px-4 pt-3 pb-3 border-b border-white/10">
-        <p className="text-[10px] font-bold tracking-[0.14em] text-[#6b7280]">ŞU AN ÇALIYOR</p>
-        {current ? (
-          <>
-            <div className="flex items-center gap-3 mt-2">
-              {/* Video albüm kapağının yerini alır: kart zaten "şu an çalıyor"
-                  diyor, panele ikinci bir kutu eklemeye gerek yok. Yuva boş
-                  durur, videoyu kabuktaki MiniPlayer hizalar. */}
-              <MiniPlayerSlot coverUrl={current.album_cover_url} />
-              <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-semibold truncate">{current.title}</p>
-                <p className="text-[#6b7280] text-[11px] truncate">{current.artist}</p>
-              </div>
-              {!playerOffline && isPlaying && (
-                <span className="flex items-end gap-[2px] h-4 shrink-0" title="Çalıyor">
-                  <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "60%", background: "#e91e8c" }} />
-                  <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "100%", background: "#e91e8c", animationDelay: "150ms" }} />
-                  <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "40%", background: "#e91e8c", animationDelay: "300ms" }} />
-                </span>
-              )}
+    // TEK kaydırma kutusu. Dar ekranda pano başlığı ve "şu an çalıyor" kartı
+    // sabit dururken listeye avuç içi kadar yer kalıyordu (üstte panel başlığı +
+    // pano seçici, altta oynatma barı): iki blok da artık kaydırmayla yukarı
+    // kayar, sıra ekranın tamamını kullanır. Geniş ekranda yer sıkıntısı yok, o
+    // yüzden ikisi orada eskisi gibi tepede sabit (sticky) kalır.
+    <div ref={scrollRef} className="flex flex-col min-h-0 h-full overflow-y-auto">
+      <div className="lg:sticky lg:top-0 lg:z-20 shrink-0" style={{ background: "#0f0a18" }}>
+        <div className="px-4 pt-4 pb-3 border-b border-white/10">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-white font-bold text-base">Sırada</p>
+              <p className="text-[#6b7280] text-xs mt-0.5">
+                {queue.length} şarkı · {movableCount} tanesi taşınabilir
+              </p>
             </div>
-            {playerOffline ? (
-              <p className="mt-2 text-[11px]" style={{ color: "#fbbf24" }}>Player kapalı — süreler gizlendi</p>
-            ) : (
-              <NowPlayingProgress playback={playback} />
-            )}
-          </>
-        ) : (
-          <div className="flex items-center gap-3 mt-2">
-            <MiniPlayerSlot />
-            <p className="text-[#6b7280] text-xs">Şu an bir şarkı çalmıyor</p>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Yalnızca "Sıraya ekle" ile eklenenleri siler: çalan listenin
+                  şarkıları ve müşterinin jetonla aldığı sıra olduğu gibi kalır. */}
+              {manualCount > 0 && (
+                <button
+                  onClick={() => void clearManualQueue()}
+                  title={`Sıraya eklenen ${manualCount} şarkı silinsin — çalan listeye ve müşteri şarkılarına dokunulmaz`}
+                  aria-label="Sırayı temizle"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
+                  style={{ background: "rgba(239,68,68,0.12)", color: "#f87171" }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                  Sırayı temizle
+                </button>
+              )}
+              <button
+                onClick={onAddSong}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
+                style={{ background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                Ekle
+              </button>
+            </div>
           </div>
-        )}
+
+          <div className="flex items-center gap-3 flex-wrap text-[#6b7280] text-[10px] mt-2">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-sm" style={{ background: "#e91e8c" }} /> Öncelikli
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-sm" style={{ background: "#8b5cf6" }} /> Jeton
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-sm" style={{ background: "#22c55e" }} /> Sıraya eklenen
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-sm" style={{ background: "rgba(255,255,255,0.15)" }} /> Otomatik
+            </span>
+          </div>
+
+          {queueError && (
+            <p className="text-[11px] rounded-lg px-2.5 py-2 mt-2" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171" }}>
+              {queueError}
+            </p>
+          )}
+          {playError && (
+            <button
+              onClick={() => setPlayError("")}
+              className="w-full text-left text-[11px] rounded-lg px-2.5 py-2 mt-2"
+              style={{ background: "rgba(239,68,68,0.08)", color: "#f87171" }}
+            >
+              {playError}
+            </button>
+          )}
+        </div>
+
+        <div className="px-4 pt-3 pb-3 border-b border-white/10">
+          <p className="text-[10px] font-bold tracking-[0.14em] text-[#6b7280]">ŞU AN ÇALIYOR</p>
+          {current ? (
+            <>
+              <div className="flex items-center gap-3 mt-2">
+                {/* Video albüm kapağının yerini alır: kart zaten "şu an çalıyor"
+                    diyor, panele ikinci bir kutu eklemeye gerek yok. Yuva boş
+                    durur, videoyu kabuktaki MiniPlayer hizalar. */}
+                <MiniPlayerSlot coverUrl={current.album_cover_url} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-semibold truncate">{current.title}</p>
+                  <p className="text-[#6b7280] text-[11px] truncate">{current.artist}</p>
+                </div>
+                {!playerOffline && isPlaying && (
+                  <span className="flex items-end gap-[2px] h-4 shrink-0" title="Çalıyor">
+                    <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "60%", background: "#e91e8c" }} />
+                    <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "100%", background: "#e91e8c", animationDelay: "150ms" }} />
+                    <span className="w-[3px] rounded-sm animate-pulse" style={{ height: "40%", background: "#e91e8c", animationDelay: "300ms" }} />
+                  </span>
+                )}
+              </div>
+              {playerOffline ? (
+                <p className="mt-2 text-[11px]" style={{ color: "#fbbf24" }}>Player kapalı — süreler gizlendi</p>
+              ) : (
+                <NowPlayingProgress playback={playback} />
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-3 mt-2">
+              <MiniPlayerSlot />
+              <p className="text-[#6b7280] text-xs">Şu an bir şarkı çalmıyor</p>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={rowsRef}>
         {queue.length === 0 ? (
           <div className="px-4 py-8 text-center text-[#6b7280] text-sm">
             Kuyruk boş — sıra boşaldıkça aktif listelerden otomatik doldurulur

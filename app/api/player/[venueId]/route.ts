@@ -87,6 +87,19 @@ export async function POST(
   const action = body?.action;
   const claimId = typeof body?.claim_id === "string" ? body.claim_id : null;
 
+  // ERKEN İLERLETME KAPISINI kim geçer (bkz. lib/queue.ts): panelin atlama
+  // düğmesi (manual) ve oynatıcının "bu şarkı çalmıyor, kurtaramadım" dediği
+  // haller (reason). Şarkının kendi bitişi bu ikisinden hiçbiri değildir —
+  // kapıya takılır ve şarkının vakti varsa kuyruk ilerlemez.
+  const forceAdvance =
+    body?.manual === true ||
+    body?.reason === "stall" ||
+    body?.reason === "error" ||
+    // Oynatıcı kapıya takıldıktan sonra videonun FİİLEN bittiğini doğruladı:
+    // kayıttaki süre yanlış demektir, mekan sessiz kalmasın (bkz. player
+    // activeDeckFinished).
+    body?.reason === "ended-verified";
+
   switch (action) {
     // Player açılışta sahiplik ister. Sahip yoksa/bayatsa ya da force verildiyse
     // devralır; aksi halde çağıran taraf "başka cihazda açık" uyarısı gösterir.
@@ -140,7 +153,13 @@ export async function POST(
       if (!(await isOwner(venueId, claimId))) {
         return reply({ started: false, claim_lost: true }, { status: 409 });
       }
-      const result = await playNextFromQueue(venueId);
+      const result = await playNextFromQueue(venueId, { force: forceAdvance });
+      // kept: şarkının daha vakti vardı, kuyruk ilerletilmedi. Sahnedeki şarkı
+      // aynen duruyor; istemciye onu "başlamış" gibi bildiriyoruz ki eski
+      // sürümdeki oynatıcı bunu "kuyruk boş" sanıp sessizliğe düşmesin.
+      if (result.kept) {
+        return reply({ started: true, kept: true, video_id: result.video_id, song_id: result.song_id });
+      }
       // busy: sahneyi değiştiren başka bir iş sürüyor. 503 dönüyoruz ki istemci
       // bunu "kuyruk boş" sanıp sessizlik ekranına düşmesin — api() null görüp
       // 1,2 sn arayla iki kez daha dener, tamponundaki şarkı varsa onu çalar.
@@ -242,7 +261,8 @@ export async function POST(
       // Geçici hata: şarkıyı damgalamadan yalnızca sıradakine geç. Mekan sessiz
       // kalmasın diye atlama yine yapılır, ama şarkı katalogda kalır.
       if (!isFatalPlaybackError(body)) {
-        const skipped = await playNextFromQueue(venueId);
+        // Video hata verdi: şarkının "vakti var" diye tutulması sessizlik olurdu
+        const skipped = await playNextFromQueue(venueId, { force: true });
         if (skipped.busy) return reply(skipped, { status: 503 });
         return reply(skipped);
       }

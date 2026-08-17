@@ -20,11 +20,37 @@ export type NextResult = {
   // Sahneyi değiştiren başka bir iş sürüyor: bu çağrı hiçbir şey yapmadı.
   // "Kuyruk boş" DEĞİLDİR — çağıran tarafın tekrar denemesi gerekir.
   busy?: boolean;
+  // ERKEN İLERLETME REDDEDİLDİ: sahnedeki şarkının daha çalacak vakti vardı,
+  // kuyruk ilerletilmedi. video_id sahnede DURAN şarkıdır (değişmedi).
+  kept?: boolean;
 };
 
 // Arka arkaya kaç bozuk satır atlanabilir. Tavan yalnızca sonsuz özyinelemeye
 // karşı emniyet; normalde kuyrukta bir iki bozuk satır olur.
 const MAX_SKIPS = 25;
+
+/**
+ * ERKEN İLERLETME KAPISI.
+ *
+ * Otomatik ilerletme ("şarkı bitti") ancak şarkı GERÇEKTEN bitmeye yakınsa
+ * kabul edilir. Sebebi mekan kayıtlarında görüldü: 17 Ağustos'ta Mezzanine'de
+ * 16:08–16:14 arası 14 şarkı 1–64 saniyede sahneye çıkıp `played` oldu, yani
+ * kuyruk hiç çalmadan eridi. Panelde bu, "sıradaki şarkı bir saniye açılıp
+ * kayboldu, sıradakiler yok oldu" diye görünüyor.
+ *
+ * İstemcide bunun onlarca sebebi olabilir (aynı anda iki oynatıcı, düşen istek
+ * sonrası tekrar, çapraz geçişin bayat tamponu, YouTube'un anında ENDED
+ * vermesi). Hepsini tek tek kovalamak yerine kural SUNUCUDA duruyor: şarkının
+ * daha bu kadar vakti varsa kuyruk ilerlemez.
+ *
+ * Pay, çapraz geçişin en uzun süresinden (12 sn) belirgin biçimde geniş: geçiş
+ * kuyruğu şarkı bitmeden başlatıyor ve bu MEŞRU.
+ */
+const EARLY_ADVANCE_TOLERANCE_MS = 20_000;
+
+// Bu yollar kapıya takılmaz: kullanıcının kendi iradesi (panelden atlama) ya da
+// şarkının fiilen çalamadığı haller (YouTube hatası, takılma kurtarması).
+export type AdvanceOptions = { force?: boolean };
 
 // Kuyruğu ilerletir: çalanı 'played' yapar, sıradakini seçip now_playing'e yazar.
 // Oynatma artık admin cihazındaki gömülü player'da — burada yalnızca durum güncellenir,
@@ -38,12 +64,11 @@ const MAX_SKIPS = 25;
 // kilidi alamayan çağrı hiçbir şey yapmadan `busy` döner.
 export async function playNextFromQueue(
   venueId: string,
-  retryAfterFill = true,
-  skips = 0
+  options: AdvanceOptions = {}
 ): Promise<NextResult> {
   return runExclusive(
     venueId,
-    () => advanceToNext(venueId, retryAfterFill, skips),
+    () => advanceToNext(venueId, true, 0, options.force === true),
     () => ({ started: false, busy: true })
   );
 }
@@ -54,8 +79,46 @@ export async function playNextFromQueue(
 async function advanceToNext(
   venueId: string,
   retryAfterFill: boolean,
-  skips: number
+  skips: number,
+  force: boolean
 ): Promise<NextResult> {
+  // Sahnedeki satır ÖNCE okunur: kapıyı geçemezse hiçbir şeye dokunulmamalı
+  // (bkz. EARLY_ADVANCE_TOLERANCE_MS).
+  const { data: stage } = await supabaseAdmin
+    .from("queue")
+    .select("id, song_id, started_at, songs(youtube_video_id, duration_ms)")
+    .eq("venue_id", venueId)
+    .eq("status", "playing")
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!force && stage?.started_at) {
+    type StageSong = { youtube_video_id: string | null; duration_ms: number | null };
+    const rel = stage.songs as unknown as StageSong | StageSong[] | null;
+    const stageSong = Array.isArray(rel) ? rel[0] : rel;
+    const duration = stageSong?.duration_ms ?? 0;
+    const elapsed = Date.now() - Date.parse(stage.started_at);
+    // Süresi bilinmeyen şarkıda kapı yok: yanlışlıkla sonsuza kadar takılı
+    // kalmasındansa eski davranış sürsün.
+    if (duration > 0 && Number.isFinite(elapsed) && elapsed >= 0) {
+      const remaining = duration - elapsed;
+      if (remaining > EARLY_ADVANCE_TOLERANCE_MS) {
+        console.warn(
+          `[queue] erken ilerletme reddedildi (${venueId}): sahnedeki şarkının ${Math.round(
+            remaining / 1000
+          )} sn'si var`
+        );
+        return {
+          started: false,
+          kept: true,
+          video_id: stageSong?.youtube_video_id ?? undefined,
+          song_id: stage.song_id ?? undefined,
+        };
+      }
+    }
+  }
+
   await supabaseAdmin
     .from("queue")
     .update({ status: "played", played_at: new Date().toISOString() })
@@ -84,7 +147,7 @@ async function advanceToNext(
     // şarkı olduğu sürece "kuyruk boş" dönmemeli, çalma hiç durmamalı
     if (retryAfterFill) {
       await fillQueue(venueId).catch(() => {});
-      return advanceToNext(venueId, false, skips);
+      return advanceToNext(venueId, false, skips, force);
     }
     await supabaseAdmin
       .from("now_playing")
@@ -126,7 +189,7 @@ async function advanceToNext(
     if (skips >= MAX_SKIPS) {
       return { started: false, error: `çalınabilir şarkı bulunamadı (${unplayable})` };
     }
-    return advanceToNext(venueId, retryAfterFill, skips + 1);
+    return advanceToNext(venueId, retryAfterFill, skips + 1, force);
   }
   if (!song) return { started: false, error: "şarkı bulunamadı" }; // yukarıda elendi
 
@@ -591,7 +654,8 @@ export async function markUnplayableAndSkip(
   videoId: string
 ): Promise<NextResult> {
   await markUnplayable(videoId);
-  return playNextFromQueue(venueId);
+  // Şarkı fiilen çalamıyor: erken ilerletme kapısı burada uygulanmaz
+  return playNextFromQueue(venueId, { force: true });
 }
 
 // Aynı işaretleme, ATLAMADAN. Hatayı bildiren boştaki (önyükleme) deck ise

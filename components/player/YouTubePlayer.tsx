@@ -542,6 +542,9 @@ type PlayerApiResult = {
   ok?: boolean;
   taken?: boolean;
   claimed?: boolean;
+  // Sunucu ilerletmeyi reddetti: sahnedeki şarkının daha çalacak vakti vardı
+  // (bkz. lib/queue.ts). Kuyruk DEĞİŞMEDİ, sahnedeki şarkı olduğu gibi duruyor.
+  kept?: boolean;
 };
 
 // Çalmayı durduran engeller: oturum düştü (401) veya sahiplik başka cihaza geçti (409).
@@ -1373,6 +1376,24 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     ]
   );
 
+  // Sahnedeki video FİİLEN bitmiş mi? Sunucunun erken ilerletme kapısı süreye
+  // bakıyor; kayıttaki süre videonunkiyle uyuşmuyorsa (indirilen üstveri yanlış,
+  // video sonradan kısaltılmış) kapı gerçek bir bitişi de reddedebilir. O halde
+  // mekan sessiz kalmasın diye hakem burasıdır: deck durduysa şarkı bitmiştir.
+  const activeDeckFinished = useCallback((): boolean => {
+    try {
+      const player = activePlayer();
+      const YT = window.YT;
+      if (!player || !YT) return false;
+      if (player.getPlayerState() === YT.PlayerState.ENDED) return true;
+      const duration = player.getDuration();
+      const position = player.getCurrentTime();
+      return duration > 0 && duration - position <= 2;
+    } catch {
+      return false;
+    }
+  }, [activePlayer]);
+
   // Şarkı bitti / hata verdi → kuyruğu ilerlet, dönen videoyu yükle
   const advance = useCallback(
     async (payload: Record<string, unknown>) => {
@@ -1401,15 +1422,32 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             result ? `başladı=${result.started} video=${result.video_id ?? "-"}` : "YANIT YOK"
           }`
         );
+        // KUYRUK İLERLEMEDİ: sunucu "sahnedeki şarkının daha vakti var" dedi
+        // (bkz. lib/queue.ts erken ilerletme kapısı).
+        if (result?.kept) {
+          // Deck hâlâ çalıyorsa istek zaten hatalıydı: sahnedeki şarkıya
+          // dokunmuyoruz (yeniden yüklemek onu baştan başlatırdı).
+          if (!activeDeckFinished()) {
+            plog("ilerletme reddedildi — şarkı çalmaya devam ediyor, dokunulmadı");
+            return;
+          }
+          // Video FİİLEN bitmiş: kayıttaki süre yanlış demektir. Mekan sessiz
+          // kalmasın diye bir kez zorlayarak isteriz.
+          plog("ilerletme reddedildi AMA video bitmiş — zorlanarak tekrar isteniyor");
+          result = await api({ ...payload, reason: "ended-verified" });
+          // Yanıt yok (ağ / sahne kilidi meşgul): bu tur bırakılır, bekçiler ve
+          // mutabakat zaten birazdan yeniden dener.
+          if (!result) return;
+        }
         if (result?.started && result.video_id) {
-          // Bu videoyu az önce başka bir yol (Realtime yankısı, panelin hızlı
-          // hattı) yüklediyse ikinci kez yükleme: arka arkaya iki loadVideoById
-          // iframe'i asılı bırakıp şarkıyı hiç başlatmayabiliyor.
-          const justLoaded =
-            result.video_id === currentVideoRef.current &&
-            Date.now() - lastLoadAtRef.current < 5_000;
+          // Sunucu sahnede zaten duran videoyu döndürdüyse yeniden YÜKLEME:
+          // loadVideoById şarkıyı baştan başlatır. AMA deck bitmişse bu, kuyruğa
+          // arka arkaya düşmüş AYNI videodur (tek şarkılık liste, elle iki kez
+          // sıraya alma): yüklemezsek deck ENDED'de kalır, tick bekçisi zorlayarak
+          // ilerletir ve şarkı hiç çalmadan yanar.
+          if (result.video_id === currentVideoRef.current && !activeDeckFinished()) return;
           // Tamponda duruyorsa oradan çal, yoksa normal yükle
-          if (!justLoaded && !playPreloaded(result.video_id)) loadVideo(result.video_id);
+          if (!playPreloaded(result.video_id)) loadVideo(result.video_id);
         } else if (!result && !blockedRef.current && preloadedVideoRef.current) {
           // Sunucuya ulaşılamıyor AMA sıradaki şarkıyı önceden öğrenip tampona
           // almıştık: müzik susmasın, onu çal. Kuyruk sunucuda ilerlemedi;
@@ -1447,6 +1485,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       setDesiredPlaying,
       advanceBusy,
       setAdvancing,
+      activeDeckFinished,
     ]
   );
 
@@ -1608,6 +1647,14 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     // sahiplik kaybı): endCrossfade bayrağı düşürür ve geçiş iptal edilmiştir.
     // Sunucuya yazılan yeni şarkıyı Realtime/reconcile zaten aktif deck'e yükler.
     if (!fadingRef.current) return;
+
+    // Sunucu ilerletmeyi reddetti (şarkının vakti var): geçişten vazgeç, şarkı
+    // kendi sonuna kadar çalsın. Sahnede duran video değişmedi.
+    if (result?.kept) {
+      plog("geçiş iptal — sunucu ilerletmeyi reddetti (şarkının vakti var)");
+      endCrossfade();
+      return;
+    }
 
     const videoId = result?.started ? result.video_id : null;
     if (!videoId) {
@@ -1878,7 +1925,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       // arka plan kısıntısı); sağlam bir şarkıyı ömürlük cezalandırmayalım.
       stallStepRef.current = 3;
       plog(`kurtarma 3/3: pes edildi, sıradakine geçiliyor (${Math.round(stuck / 1000)} sn takılı)`);
-      advance({ action: "next" });
+      advance({ action: "next", reason: "stall" });
       return;
     }
     if (stuck >= ladder.reload && stallStepRef.current < 2) {
@@ -1938,7 +1985,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     // Şarkı katalogda bulunamadı (olmaması gereken durum): now_playing bize
     // hizalanamadı, kuyruğu ileri sarıp tutarlı duruma dön
     if (result.ok === false) {
-      advance({ action: "next" });
+      advance({ action: "next", reason: "stall" });
       return;
     }
     // Panel ve müşteri ekranı doğru şarkıyı beklemeden görsün
@@ -2341,7 +2388,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             endCrossfade();
             const failed = currentVideoRef.current;
             if (!failed) {
-              advance({ action: "next" });
+              advance({ action: "next", reason: "stall" });
               return;
             }
             if (fatal) {
@@ -2360,7 +2407,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
               return;
             }
             plog(`çalan şarkı ${seen} kez geçici hata verdi — damgasız atlanıyor`);
-            advance({ action: "next" });
+            advance({ action: "next", reason: "stall" });
           },
         },
       });

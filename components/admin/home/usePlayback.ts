@@ -627,7 +627,10 @@ export function usePlayback(venueDbId: string) {
       const res = await fetch(`/api/player/${venueDbId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        // manual: bu atlamayı ADMİN istedi. Sunucudaki erken ilerletme kapısı
+        // (bkz. lib/queue.ts) yalnızca "şarkı kendi bitti" diyen otomatik
+        // ilerletmeleri süzer; düğmeye basıldığında şarkının vakti olsa da atlar.
+        body: JSON.stringify({ action, manual: true }),
       });
       // Yanıttaki video kimliğini player'a anında ilet: aksi halde player aynı
       // bilgiyi DB → Realtime turundan öğrenecek ve şarkı ~1 sn geç başlayacaktı.

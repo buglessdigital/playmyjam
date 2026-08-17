@@ -10,6 +10,7 @@ import {
 } from "@/lib/queue-fill";
 import { sendPushToUser } from "@/lib/push";
 import { purgeUnplayableSong } from "@/lib/playlist";
+import { shouldKeepStage } from "@/lib/stage-clock";
 
 export type NextResult = {
   started: boolean;
@@ -29,27 +30,9 @@ export type NextResult = {
 // karşı emniyet; normalde kuyrukta bir iki bozuk satır olur.
 const MAX_SKIPS = 25;
 
-/**
- * ERKEN İLERLETME KAPISI.
- *
- * Otomatik ilerletme ("şarkı bitti") ancak şarkı GERÇEKTEN bitmeye yakınsa
- * kabul edilir. Sebebi mekan kayıtlarında görüldü: 17 Ağustos'ta Mezzanine'de
- * 16:08–16:14 arası 14 şarkı 1–64 saniyede sahneye çıkıp `played` oldu, yani
- * kuyruk hiç çalmadan eridi. Panelde bu, "sıradaki şarkı bir saniye açılıp
- * kayboldu, sıradakiler yok oldu" diye görünüyor.
- *
- * İstemcide bunun onlarca sebebi olabilir (aynı anda iki oynatıcı, düşen istek
- * sonrası tekrar, çapraz geçişin bayat tamponu, YouTube'un anında ENDED
- * vermesi). Hepsini tek tek kovalamak yerine kural SUNUCUDA duruyor: şarkının
- * daha bu kadar vakti varsa kuyruk ilerlemez.
- *
- * Pay, çapraz geçişin en uzun süresinden (12 sn) belirgin biçimde geniş: geçiş
- * kuyruğu şarkı bitmeden başlatıyor ve bu MEŞRU.
- */
-const EARLY_ADVANCE_TOLERANCE_MS = 20_000;
-
-// Bu yollar kapıya takılmaz: kullanıcının kendi iradesi (panelden atlama) ya da
-// şarkının fiilen çalamadığı haller (YouTube hatası, takılma kurtarması).
+// Bu yollar erken ilerletme kapısına takılmaz (bkz. lib/stage-clock.ts):
+// kullanıcının kendi iradesi (panelden atlama) ya da şarkının fiilen çalamadığı
+// haller (YouTube hatası, takılma kurtarması).
 export type AdvanceOptions = { force?: boolean };
 
 // Kuyruğu ilerletir: çalanı 'played' yapar, sıradakini seçip now_playing'e yazar.
@@ -97,25 +80,40 @@ async function advanceToNext(
     type StageSong = { youtube_video_id: string | null; duration_ms: number | null };
     const rel = stage.songs as unknown as StageSong | StageSong[] | null;
     const stageSong = Array.isArray(rel) ? rel[0] : rel;
-    const duration = stageSong?.duration_ms ?? 0;
-    const elapsed = Date.now() - Date.parse(stage.started_at);
-    // Süresi bilinmeyen şarkıda kapı yok: yanlışlıkla sonsuza kadar takılı
-    // kalmasındansa eski davranış sürsün.
-    if (duration > 0 && Number.isFinite(elapsed) && elapsed >= 0) {
-      const remaining = duration - elapsed;
-      if (remaining > EARLY_ADVANCE_TOLERANCE_MS) {
-        console.warn(
-          `[queue] erken ilerletme reddedildi (${venueId}): sahnedeki şarkının ${Math.round(
-            remaining / 1000
-          )} sn'si var`
-        );
-        return {
-          started: false,
-          kept: true,
-          video_id: stageSong?.youtube_video_id ?? undefined,
-          song_id: stage.song_id ?? undefined,
-        };
-      }
+
+    // Oynatıcının raporladığı konum: SARMA yalnızca burada görünür. Kuyruk
+    // çapasına güvenip bunu okumazsak sona sarılan her şarkı "vakti var" diye
+    // reddediliyor, oynatıcı bitişi doğrulayıp zorluyor ve arada ~2 sn sessizlik
+    // oluyordu (17 Ağustos kaydı).
+    const { data: np } = await supabaseAdmin
+      .from("now_playing")
+      .select("song_id, started_at, progress_ms, is_playing")
+      .eq("venue_id", venueId)
+      .maybeSingle();
+
+    const keep = shouldKeepStage({
+      now: Date.now(),
+      durationMs: stageSong?.duration_ms ?? null,
+      queueStartedAt: stage.started_at,
+      stageSongId: stage.song_id ?? null,
+      np: np
+        ? {
+            songId: np.song_id ?? null,
+            startedAt: np.started_at ?? null,
+            progressMs: np.progress_ms ?? null,
+            isPlaying: np.is_playing === true,
+          }
+        : null,
+    });
+
+    if (keep) {
+      console.warn(`[queue] erken ilerletme reddedildi (${venueId}): sahnedeki şarkının vakti var`);
+      return {
+        started: false,
+        kept: true,
+        video_id: stageSong?.youtube_video_id ?? undefined,
+        song_id: stage.song_id ?? undefined,
+      };
     }
   }
 

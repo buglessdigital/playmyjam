@@ -50,6 +50,8 @@ function AuthPageContent({ params }: Props) {
   const [resendLoading, setResendLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [existingUser, setExistingUser] = useState<{ name: string } | null>(null);
+  // Misafir: var olan bir hesaba giriş yaparsa anonim kimlikteki cüzdan geride kalır
+  const [isGuest, setIsGuest] = useState(false);
   const [continueLoading, setContinueLoading] = useState(false);
   const [consents, setConsents] = useState(EMPTY_CONSENTS);
   const t = useT();
@@ -76,6 +78,13 @@ function AuthPageContent({ params }: Props) {
       const { data: sessionData } = await supabase.auth.getSession();
       const user = sessionData.session?.user;
       if (cancelled || !user) return;
+      // Misafir buraya hesabını BAĞLAMAYA geldi: "devam et" onu geldiği yere
+      // geri atar ve akış kapanır. Onun yerine kayıt formu açılır.
+      if (user.is_anonymous) {
+        setIsGuest(true);
+        setIsLogin(false);
+        return;
+      }
       const { data: profile } = await supabase
         .from("profiles")
         .select("username")
@@ -441,6 +450,15 @@ function AuthPageContent({ params }: Props) {
           <span className="text-xs text-[#4b5563]">{t.login.orWithEmail}</span>
           <div className="flex-1 h-px bg-white/10" />
         </div>
+
+        {/* Misafirken var olan bir hesaba giriş: Supabase iki kimliği birleştiremiyor,
+            anonim cüzdan geride kalır. Google düğmesi linkIdentity kullandığı için
+            (bkz. handleGoogle) bu uyarı yalnızca e-posta+şifre girişine ait. */}
+        {isGuest && isLogin && (
+          <div className="mb-4 px-4 py-2.5 rounded-xl text-xs leading-relaxed text-amber-300/90 bg-amber-500/10 border border-amber-500/20">
+            {t.login.guestSignInWarn}
+          </div>
+        )}
 
         <div className="space-y-4">
           <div>

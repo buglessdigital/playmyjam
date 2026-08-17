@@ -17,7 +17,9 @@ import {
 
 // getClaims: JWT imzasını yerelde doğrular (asimetrik anahtarla) — her istekte
 // Auth sunucusuna gitmez. Token süresi dolmuşsa oturumu tazeleyip cookie'leri günceller.
-async function getVenueSession(req: NextRequest): Promise<{ userId?: string; response: NextResponse }> {
+async function getVenueSession(
+  req: NextRequest
+): Promise<{ userId?: string; isAnonymous: boolean; response: NextResponse }> {
   let response = NextResponse.next({ request: req });
 
   const supabase = createServerClient(
@@ -38,7 +40,8 @@ async function getVenueSession(req: NextRequest): Promise<{ userId?: string; res
   );
 
   const { data: claimsData } = await supabase.auth.getClaims();
-  return { userId: claimsData?.claims.sub, response };
+  const claims = claimsData?.claims as { sub?: string; is_anonymous?: boolean } | undefined;
+  return { userId: claims?.sub, isAnonymous: claims?.is_anonymous === true, response };
 }
 
 // Hesap gerektirmeyen müşteri sayfaları — mekanı QR'dan açan biri giriş
@@ -133,7 +136,7 @@ export async function proxy(req: NextRequest) {
       (seg) => subPath === seg || subPath.startsWith(`${seg}/`)
     );
 
-    const { userId, response } = await getVenueSession(req);
+    const { userId, isAnonymous, response } = await getVenueSession(req);
 
     // Bu venue'ya özel cookie'yi kontrol et — başka mekanların session'ı geçersiz.
     // Cross-venue otomatik yönlendirme yok: A mekanı kullanıcısı B'nin login'inde formu görür.
@@ -167,6 +170,14 @@ export async function proxy(req: NextRequest) {
       const loginUrl = new URL(`/venue/${venueId}/login`, req.url);
       loginUrl.searchParams.set("next", pathname);
       return redirectWithCookies(loginUrl, response);
+    }
+
+    // Misafir (anonim) kimlik login sayfasına GİREBİLMELİ: profildeki "hesabı
+    // bağla" oraya gider ve form anonim hesabı kalıcıya çevirir. Buradan geri
+    // atarsak düğme hiçbir şey yapmıyormuş gibi görünür.
+    if (isLoginPage && isAnonymous) {
+      setVenueAuthCookie(response, venueId, userId);
+      return response;
     }
 
     // Oturumu açık kullanıcıya login formunu tekrar gösterme

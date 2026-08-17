@@ -504,6 +504,7 @@
     "continuing": "Continuing...",
     "continueAs": "Continue as {name}",
     "orDifferentAccount": "or with a different account",
+    "guestSignInWarn": "If you sign in to an existing account, the tokens and requests on this device won't move over to it. To keep them, link your account with \"Sign up\" or with Google.",
     "redirecting": "Redirecting...",
     "continueWithGoogle": "Continue with Google",
     "orWithEmail": "or by email",

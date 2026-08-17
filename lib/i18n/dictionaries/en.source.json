@@ -377,6 +377,7 @@
   "login.continuing": "Devam ediliyor...",
   "login.continueAs": "{name} olarak devam et",
   "login.orDifferentAccount": "veya farklı hesapla",
+  "login.guestSignInWarn": "Var olan bir hesaba girersen bu cihazdaki jetonların ve isteklerin o hesaba taşınmaz. Onları korumak için \"Kayıt ol\" ile ya da Google ile hesabını bağla.",
   "login.redirecting": "Yönlendiriliyor...",
   "login.continueWithGoogle": "Google ile devam et",
   "login.orWithEmail": "veya e-posta ile",

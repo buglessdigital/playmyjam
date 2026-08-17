@@ -504,6 +504,7 @@
     "continuing": "Devam ediliyor...",
     "continueAs": "{name} olarak devam et",
     "orDifferentAccount": "veya farklı hesapla",
+    "guestSignInWarn": "Var olan bir hesaba girersen bu cihazdaki jetonların ve isteklerin o hesaba taşınmaz. Onları korumak için \"Kayıt ol\" ile ya da Google ile hesabını bağla.",
     "redirecting": "Yönlendiriliyor...",
     "continueWithGoogle": "Google ile devam et",
     "orWithEmail": "veya e-posta ile",

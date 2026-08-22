@@ -839,7 +839,7 @@ function SearchModal({
           value={query}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && doSearch(query)}
-          placeholder="Şarkı adı veya sanatçı..."
+          placeholder="Şarkı, sanatçı ya da YouTube bağlantısı..."
           autoFocus
           className="w-full rounded-xl px-3.5 py-2.5 pr-10 text-sm text-white outline-none"
           style={inputStyle}
@@ -861,7 +861,9 @@ function SearchModal({
         {error && <p className="text-center text-red-400 text-sm py-6">{error}</p>}
         {!error && results.length === 0 && !searching && (
           <p className="text-center text-[#6b7280] text-sm py-6">
-            {query ? "Sonuç bulunamadı" : "Aramak istediğin şarkıyı yaz"}
+            {query
+              ? "Bulunamadı — YouTube'da bulup bağlantısını buraya yapıştırabilirsin"
+              : "Aramak istediğin şarkıyı yaz ya da YouTube bağlantısını yapıştır"}
           </p>
         )}
         {results.map((track) => {

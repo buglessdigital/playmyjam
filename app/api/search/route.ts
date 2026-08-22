@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { searchVideos, YouTubeQuotaError, type TrackDetails } from "@/lib/youtube";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { getSuperSession } from "@/lib/session";
 import { consumeRateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { resolveVideoLink } from "@/lib/request-approval";
+import { parseVideoId } from "@/lib/youtube-oembed";
 
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 gün
-
-// Her cache miss YouTube kotasından ~100 birim yakıyor. Kota artışı onaylanana
-// kadar bu uç yalnızca mekan/super-admin paneline açık: müşteri paneli mekanın
-// kendi listesinde arıyor, bulamadığını öneri olarak gönderiyor (bkz. SearchView).
+// Mekan panelinin arama ucu. YouTube search.list (100 birim) BURADAN KALDIRILDI —
+// tek bir kalabalık gece günlük kotayı bitirebiliyordu.
+//
+// Yerine iki yol var, ikisi de kotasız ya da ihmal edilebilir:
+//   1. Ortak havuz (songs) — tohumlanan katalog + bugüne kadar kullanılmış her
+//      şarkı. Tüm mekanlar için ortak (bkz. scripts/seed-catalog.ts). 0 birim.
+//   2. Admin bir YouTube bağlantısı yapıştırırsa o video doğrudan çözülür.
+//      videos.list = 1 birim; günlük kotayla 10.000 yapıştırma.
 const SEARCH_LIMIT = 20;
 const SEARCH_WINDOW_SECONDS = 60;
 
@@ -21,18 +25,6 @@ type SearchTrack = {
   duration_ms: number;
 };
 
-function slim(t: TrackDetails): SearchTrack {
-  return {
-    youtube_video_id: t.youtube_video_id,
-    title: t.title,
-    artist: t.artist,
-    album_cover_url: t.album_cover_url,
-    duration_ms: t.duration_ms,
-  };
-}
-
-// Kota savunması üç katman: (1) songs tablosunda yerel arama (0 birim),
-// (2) search_cache — aynı sorgu 30 gün YouTube'a gitmez, (3) ancak o zaman search.list.
 export async function GET(req: NextRequest) {
   const admin = await getVerifiedAdminSession(req);
   const caller = admin ? `admin:${admin.admin_id}` : getSuperSession(req) ? "super" : null;
@@ -52,59 +44,34 @@ export async function GET(req: NextRequest) {
     return tooManyRequests(retryAfter, "Çok hızlı arama yapıyorsun, biraz yavaşla.");
   }
 
-  const cacheKey = q.toLocaleLowerCase("tr");
+  // Yapıştırılan bağlantı: aramaya hiç girmez, video doğrudan çözülür.
+  // Havuzda olmayan bir şarkıyı panele eklemenin yolu budur.
+  if (parseVideoId(q)) {
+    const resolved = await resolveVideoLink(q);
+    if ("error" in resolved) {
+      return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const track: SearchTrack = {
+      youtube_video_id: resolved.youtube_video_id,
+      title: resolved.title,
+      artist: resolved.artist,
+      album_cover_url: resolved.album_cover_url,
+      duration_ms: resolved.duration_ms,
+    };
+    return NextResponse.json({ tracks: [track], source: "link" });
+  }
 
-  // 1) Yerel katalog: daha önce herhangi bir mekanda seçilmiş şarkılar
-  // (virgül/parantez PostgREST or() sözdizimini bozar — joker karakterlerle birlikte ayıkla)
-  const like = `%${cacheKey.replace(/[%_,()\\]/g, "")}%`;
+  // Ortak havuzda arama. Metin KÜÇÜLTÜLMEZ: JS "İ"yi "i" yaparken Postgres
+  // "i̇" (i + birleşik nokta) yapıyor, ilike o satırları hiç bulamıyordu.
+  // (virgül/parantez PostgREST or() sözdizimini bozar — jokerlerle birlikte ayıkla)
+  const like = `%${q.replace(/[%_,()\\]/g, "")}%`;
   const { data: localRows } = await supabaseAdmin
     .from("songs")
     .select("youtube_video_id, title, artist, album_cover_url, duration_ms")
     .eq("embeddable", true)
     .or(`title.ilike.${like},artist.ilike.${like}`)
     .order("view_count", { ascending: false })
-    .limit(10);
+    .limit(30);
 
-  const local: SearchTrack[] = localRows ?? [];
-
-  // Yerel sonuç yeterliyse YouTube'a hiç gitme
-  if (local.length >= 8) {
-    return NextResponse.json({ tracks: local, source: "local" });
-  }
-
-  // 2) Arama önbelleği
-  const { data: cached } = await supabaseAdmin
-    .from("search_cache")
-    .select("results, cached_at")
-    .eq("query", cacheKey)
-    .maybeSingle();
-
-  if (cached && Date.now() - new Date(cached.cached_at).getTime() < CACHE_TTL_MS) {
-    const tracks = mergeResults(local, cached.results as SearchTrack[]);
-    return NextResponse.json({ tracks, source: "cache" });
-  }
-
-  // 3) YouTube search.list (100 birim)
-  try {
-    const results = (await searchVideos(q)).map(slim);
-
-    await supabaseAdmin
-      .from("search_cache")
-      .upsert({ query: cacheKey, results, cached_at: new Date().toISOString() });
-
-    return NextResponse.json({ tracks: mergeResults(local, results), source: "youtube" });
-  } catch (err) {
-    if (err instanceof YouTubeQuotaError) {
-      // Kota dolu — yerel sonuçlarla zarifçe devam et
-      return NextResponse.json({ tracks: local, source: "local", quota_exceeded: true });
-    }
-    const message = err instanceof Error ? err.message : "Arama başarısız";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
-
-// Yerel eşleşmeler önce (katalogda olanların id/play_count durumu client'ta zaten var)
-function mergeResults(local: SearchTrack[], remote: SearchTrack[]): SearchTrack[] {
-  const seen = new Set(local.map((t) => t.youtube_video_id));
-  return [...local, ...remote.filter((t) => !seen.has(t.youtube_video_id))];
+  return NextResponse.json({ tracks: (localRows ?? []) as SearchTrack[], source: "pool" });
 }

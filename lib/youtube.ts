@@ -1,4 +1,4 @@
-import { cacheLife } from "next/cache";
+import { parseVideoTitle, parseISODuration, videoThumbnail } from "@/lib/youtube-parse";
 
 const API_KEY = process.env.YOUTUBE_API_KEY!;
 const API_BASE = "https://www.googleapis.com/youtube/v3";
@@ -18,54 +18,9 @@ export type TrackDetails = YouTubeTrack & {
   external_url: string | null;
 };
 
-// "Sanatçı - Şarkı (Official Video)" kalıbından temiz başlık/sanatçı çıkarır.
-// YouTube yapısal artist alanı vermez; tek kaynak video başlığı + kanal adı.
-const TITLE_NOISE_RE =
-  /\s*[([](?:official\s*(?:music\s*)?(?:video|audio|clip)|lyric\s*video|lyrics?|visualizer|audio|video|klip|s[öo]zleri|hd|4k|hq)[)\]]\s*/gi;
-
-// "|" ile ayrılmış gürültü bölümleri: "Şarkı | Official Music Video" gibi
-const NOISE_SEGMENT_RE =
-  /official|music\s*video|lyric|visualizer|audio|video|klip|s[öo]zleri|4k|hd|hq/i;
-
-export function parseVideoTitle(
-  rawTitle: string,
-  channelTitle: string
-): { title: string; artist: string } {
-  let cleaned = rawTitle.replace(TITLE_NOISE_RE, " ").replace(/\s{2,}/g, " ").trim();
-
-  if (cleaned.includes("|")) {
-    const parts = cleaned.split("|").map((p) => p.trim()).filter(Boolean);
-    const kept = parts.filter((p) => !NOISE_SEGMENT_RE.test(p));
-    cleaned = (kept.length > 0 ? kept : parts.slice(0, 1)).join(" - ").trim();
-  }
-
-  // "X - Topic" kanalları YouTube'un otomatik resmi ses kanallarıdır — kanal adı sanatçıdır
-  const topicMatch = channelTitle.match(/^(.+?)\s*-\s*Topic$/i);
-  if (topicMatch) {
-    return { title: cleaned, artist: topicMatch[1].trim() };
-  }
-
-  const dash = cleaned.search(/\s[-–—]\s/);
-  if (dash > 0) {
-    const artist = cleaned.slice(0, dash).trim();
-    const title = cleaned.slice(dash + 3).trim();
-    if (artist && title) return { title, artist };
-  }
-
-  return { title: cleaned, artist: channelTitle.trim() };
-}
-
-// ISO8601 süre (PT3M45S) → ms
-export function parseISODuration(iso: string): number {
-  const m = iso.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
-  if (!m) return 0;
-  const [, h, min, s] = m;
-  return ((Number(h ?? 0) * 60 + Number(min ?? 0)) * 60 + Number(s ?? 0)) * 1000;
-}
-
-export function videoThumbnail(videoId: string): string {
-  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-}
+// Başlık/süre/kapak çözümleme lib/youtube-parse.ts'te (saf, importsuz) —
+// tohumlama betiği de aynı kodu kullanıyor.
+export { parseVideoTitle, parseISODuration, videoThumbnail };
 
 type VideoItem = {
   id: string;
@@ -182,49 +137,16 @@ export async function refreshVideoMetadata(
   return result;
 }
 
-// search.list (100 birim!) + videos.list (1 birim). Çağıran taraf önce yerel
-// katalog + search_cache'e bakmalı — bu fonksiyon kotanın tek büyük tüketicisi.
-export async function searchVideos(query: string): Promise<TrackDetails[]> {
-  const params = new URLSearchParams({
-    part: "snippet",
-    type: "video",
-    videoCategoryId: "10", // Music
-    videoEmbeddable: "true",
-    regionCode: "TR",
-    maxResults: "10",
-    q: query,
-    key: API_KEY,
-  });
-  const data = await fetchJson<{ items?: Array<{ id?: { videoId?: string } }> }>(
-    `${API_BASE}/search?${params}`
-  );
-  const ids = (data.items ?? [])
-    .map((i) => i.id?.videoId)
-    .filter((id): id is string => !!id);
-  if (ids.length === 0) return [];
-  const details = await getVideoDetails(ids);
-  // search sırasını koru (alaka sıralaması)
-  const order = new Map(ids.map((id, i) => [id, i]));
-  return details.sort(
-    (a, b) => (order.get(a.youtube_video_id) ?? 99) - (order.get(b.youtube_video_id) ?? 99)
-  );
-}
-
-// Şarkı detay kabuğu için tek video (Spotify getTrackDetails'in yerine geçer)
-export async function getTrackDetails(videoId: string): Promise<TrackDetails | null> {
-  "use cache";
-  cacheLife("days");
-
-  const params = new URLSearchParams({
-    part: "snippet,contentDetails,statistics,status",
-    id: videoId,
-    key: API_KEY,
-  });
-  const data = await fetchJson<{ items?: VideoItem[] }>(`${API_BASE}/videos?${params}`);
-  const v = data.items?.[0];
-  if (!v) return null;
-  return toTrack(v);
-}
+// search.list (100 birim) BURADAN KALDIRILDI — 22 Ağu 2026.
+// Tek bir kalabalık gece günlük kotanın tamamını bitirebiliyordu ve kota artışı
+// başvurusu onay beklerken bu risk taşınamazdı. Yerine geçen yol:
+//   • ortak havuz (songs) — tohumlanmış katalog, 0 birim (scripts/seed-catalog.ts)
+//   • admin'in yapıştırdığı bağlantı — videos.list, talep başına 1 birim
+// Ayrıntı: lib/request-approval.ts (findInPool / resolveVideoLink).
+//
+// Şarkı detay kabuğu da artık buraya gelmiyor: bkz. lib/track-lookup.ts.
+// Bu dosyada kalan çağrılar yalnızca playlist içe aktarma ve günlük senkron —
+// ikisi de 1 birim/50 şarkı ve senkronun günlük tavanı 1000 birim.
 
 // Playlist URL'sinden ("...list=PL..." veya çıplak kimlik) playlist id çıkarır
 export function parsePlaylistId(input: string): string | null {

@@ -67,6 +67,9 @@ function RequestsPageContent({ params }: Props) {
   const [history, setHistory] = useState<Request[]>([]);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Havuzda tanınmayan talep: kart altında "YouTube bağlantısını yapıştır" açılır
+  const [linkFor, setLinkFor] = useState<string | null>(null);
+  const [linkValue, setLinkValue] = useState("");
   // Bildirim üstünden gelinen talep (?act=...): kart en üstte vurgulanır
   const highlightId = searchParams.get("act");
   const actionToken = searchParams.get("t");
@@ -128,13 +131,13 @@ function RequestsPageContent({ params }: Props) {
   }, [venueId, supabase]);
 
   const resolve = useCallback(
-    async (id: string, status: "accepted" | "rejected") => {
+    async (id: string, status: "accepted" | "rejected", videoUrl?: string) => {
       const req = pending.find((r) => r.id === id);
       if (!req || busyId) return;
       setError("");
       setBusyId(id);
 
-      // Onay sunucuda YouTube araması yapabiliyor: satır yanıt gelene kadar
+      // Onay sunucuda havuz sorgusu yapabiliyor: satır yanıt gelene kadar
       // listede kalır ama düğmeler kilitlenir (yanlışlıkla ikinci karar olmasın).
       const res = await fetch("/api/admin/requests/act", {
         method: "POST",
@@ -144,18 +147,28 @@ function RequestsPageContent({ params }: Props) {
           action: status === "accepted" ? "approve" : "reject",
           // Bildirimden gelindiyse jeton da yollanır (oturum düşmüş olsa bile geçer)
           token: highlightId === id ? actionToken ?? undefined : undefined,
+          video_url: videoUrl,
         }),
       });
 
       setBusyId(null);
 
       if (res.ok) {
+        setLinkFor(null);
+        setLinkValue("");
         setPending((prev) => prev.filter((r) => r.id !== id));
         setHistory((prev) => [{ ...req, status, resolved_at: new Date().toISOString() }, ...prev]);
         return;
       }
 
       const body = await res.json().catch(() => null);
+      // Şarkı ortak havuzda yok — onaylanacak somut bir video henüz belli değil.
+      // Hata gibi göstermek yerine yapıştırma alanını aç.
+      if (body?.code === "needs_link") {
+        setLinkFor(id);
+        setLinkValue("");
+        return;
+      }
       setError(body?.error ?? "İşlem tamamlanamadı");
     },
     [pending, busyId, highlightId, actionToken]
@@ -177,9 +190,11 @@ function RequestsPageContent({ params }: Props) {
       <h1 className="text-white font-bold text-2xl mb-2">İstekler</h1>
       <p className="text-[#9ca3af] text-sm mb-6">
         Müşteriler listende olmayan şarkıları <span className="text-white font-medium">talep</span> olarak
-        gönderiyor. Onaylarsan şarkı YouTube&apos;dan bulunup{" "}
-        <span className="text-white font-medium">10 dakikalığına tek seferlik</span> çalınabilir hale gelir —
-        kalıcı listene eklenmez. Karar için senin de 10 dakikan var.
+        gönderiyor. Onaylarsan şarkı <span className="text-white font-medium">10 dakikalığına tek seferlik</span>{" "}
+        çalınabilir hale gelir — kalıcı listene eklenmez. Karar için senin de 10 dakikan var.
+        <br />
+        Şarkı sistemde tanınmıyorsa tek yapman gereken YouTube bağlantısını yapıştırmak; bir kez
+        yapıştırdığın şarkı bir daha sorulmaz.
       </p>
 
       <AdminPushBanner />
@@ -212,15 +227,17 @@ function RequestsPageContent({ params }: Props) {
             const timeLeft = req.expires_at ? new Date(req.expires_at).getTime() - now : null;
             const outOfTime = timeLeft !== null && timeLeft <= 0;
 
+            const needsLink = linkFor === req.id;
+
             return (
               <div
                 key={req.id}
-                className="flex items-center gap-3 px-5 py-4"
                 style={{
                   borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined,
                   background: highlighted ? "rgba(233,30,140,0.08)" : undefined,
                 }}
               >
+              <div className="flex items-center gap-3 px-5 py-4">
                 {req.songs?.album_cover_url ? (
                   <Image src={req.songs.album_cover_url} alt="" width={48} height={48} className="w-12 h-12 rounded-xl object-cover shrink-0" />
                 ) : (
@@ -270,6 +287,54 @@ function RequestsPageContent({ params }: Props) {
                     {req.status === "accepted" ? "Onaylandı" : req.status === "expired" ? "Süre doldu" : "Reddedildi"}
                   </span>
                 )}
+              </div>
+
+              {/* Şarkı ortak havuzda tanınmadı: onaylanacak somut video henüz yok.
+                  Admin YouTube'da bulup bağlantıyı yapıştırır — yapıştırdığı an
+                  şarkı havuza girer ve bir daha hiçbir mekanda sorulmaz. */}
+              {needsLink && (
+                <div className="px-5 pb-4 -mt-1">
+                  <div className="rounded-xl border border-[#fbbf24]/25 bg-[#fbbf24]/[0.06] p-3">
+                    <p className="text-[#fbbf24] text-xs mb-2.5">
+                      Bu şarkı sistemde yok. YouTube&apos;da bul, bağlantıyı yapıştır.
+                    </p>
+                    <a
+                      href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${artist} ${title}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 mb-2.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                      style={{ background: "rgba(255,255,255,0.08)", color: "#e5e7eb" }}
+                    >
+                      YouTube&apos;da aç
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden>
+                        <path d="M7 17L17 7M17 7H8M17 7v9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </a>
+                    <div className="flex gap-2">
+                      <input
+                        value={linkValue}
+                        onChange={(e) => setLinkValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && linkValue.trim()) resolve(req.id, "accepted", linkValue.trim());
+                        }}
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        autoFocus
+                        inputMode="url"
+                        className="flex-1 min-w-0 px-3 py-2 rounded-lg text-xs text-white placeholder:text-[#6b7280] outline-none"
+                        style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)" }}
+                      />
+                      <button
+                        onClick={() => resolve(req.id, "accepted", linkValue.trim())}
+                        disabled={busyId !== null || !linkValue.trim() || outOfTime}
+                        className="px-3 py-2 rounded-lg text-xs font-medium disabled:opacity-40 shrink-0"
+                        style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}
+                      >
+                        {busyId === req.id ? "..." : "Onayla"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               </div>
             );
           })

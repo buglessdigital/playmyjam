@@ -1,8 +1,9 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendPushToUser, sendPushToVenueAdmins } from "@/lib/push";
 import { signRequestActionToken } from "@/lib/session";
-import { suggestionMatchesSong } from "@/lib/suggestions";
-import { searchVideos, YouTubeQuotaError, type TrackDetails } from "@/lib/youtube";
+import { pickBestMatch } from "@/lib/song-match";
+import { getVideoDetails, YouTubeQuotaError, type TrackDetails } from "@/lib/youtube";
+import { fetchOEmbed, parseVideoId } from "@/lib/youtube-oembed";
 
 // Talep onay akışının tek karar noktası (bkz. 0045 migration). Hem panel
 // düğmeleri hem bildirim üstündeki onay/ret buradan geçer — kural tek yerde.
@@ -13,7 +14,12 @@ export const PLAY_WINDOW_MS = 10 * 60 * 1000;
 
 export type ApproveOutcome =
   | { ok: true; title: string; artist: string; songId: string; playDeadline: string }
-  | { ok: false; error: string; status: number };
+  | { ok: false; error: string; status: number; code?: ResolveFailureCode };
+
+/** needs_link: havuzda tanınmadı — admin YouTube bağlantısını yapıştırmalı */
+export type ResolveFailureCode = "needs_link";
+
+export type ResolveFailure = { error: string; status: number; code?: ResolveFailureCode };
 
 type SuggestionRow = {
   id: string;
@@ -36,76 +42,150 @@ async function slugFor(venueId: string): Promise<string | null> {
 }
 
 /**
- * Öneriyi çalınabilir bir videoya çevirir. Kota savunması /api/search ile aynı
- * üç katman: (1) yerel songs tablosu (0 birim), (2) search_cache (0 birim),
- * (3) YouTube search.list (100 birim). Sonuç listesinin İLK ögesi seçilir —
- * mekan admini uğraşmasın diye karar otomatik.
+ * Talebi ORTAK HAVUZDA arar. İki katman, ikisi de 0 kota birimi:
+ *   1. songs tablosu — tohumlanan katalog + bugüne kadar kullanılmış her şarkı
+ *      (bkz. scripts/seed-catalog.ts)
+ *   2. search_cache — geçmişte YouTube'dan gelmiş sorgular
+ *
+ * Eskiden burada 3. bir katman vardı: search.list (100 birim). Kaldırıldı —
+ * kalabalık bir gecede tek başına günlük kotayı bitirebiliyordu. Havuzda
+ * bulunamayan şarkı artık admin'in yapıştırdığı bağlantıyla çözülür
+ * (resolveVideoLink).
+ *
+ * Her katmanda aday listesinden EN İYİ SÜRÜM seçilir (lib/song-match.ts) —
+ * ilk satırı almak karaoke/hızlandırılmış kayıt çaldırıyordu.
  */
-export async function resolveSuggestion(
-  title: string,
-  artist: string
-): Promise<TrackDetails | { error: string; status: number }> {
-  const query = `${artist} ${title}`.trim();
-  const cacheKey = query.toLocaleLowerCase("tr");
+export async function findInPool(title: string, artist: string): Promise<TrackDetails | null> {
+  const request = { suggested_title: title, suggested_artist: artist };
 
-  // 1) Yerel katalog: daha önce herhangi bir mekanda kullanılmış şarkılar.
-  //    Kelime kümesi eşleşmesi öneri akışının kendi ölçütüyle aynı.
-  const like = `%${title.toLocaleLowerCase("tr").replace(/[%_,()\\]/g, "")}%`;
-  const { data: localRows } = await supabaseAdmin
+  // 1) Ortak havuz.
+  //    LIKE için başlığın parantezli eki atılır: talep "Kuzu Kuzu (Remastered)"
+  //    diye gelse de YouTube başlığı sade olabiliyor, ham metinle arayınca kaçıyor.
+  //
+  //    DİKKAT — metin KÜÇÜLTÜLMEZ: JS "İ" harfini "i"ye indirirken Postgres onu
+  //    "i̇" (i + birleşik nokta) yapıyor, ilike hiçbir zaman tutmuyordu.
+  //    ("Rüyanda Görsen İnanma" havuzda dururken 0 aday dönüyordu.)
+  const likeCore = title
+    .replace(/[([].*$/, "")
+    .replace(/[%_,()\\]/g, "")
+    .trim();
+
+  const COLUMNS =
+    "youtube_video_id, title, artist, album_cover_url, duration_ms, channel_title, view_count";
+
+  let { data: localRows } = await supabaseAdmin
     .from("songs")
-    .select("youtube_video_id, title, artist, album_cover_url, duration_ms")
+    .select(COLUMNS)
     .eq("embeddable", true)
-    .ilike("title", like)
+    .ilike("title", `%${likeCore}%`)
     .order("view_count", { ascending: false })
-    .limit(10);
+    .limit(50);
 
-  const localHit = (localRows ?? []).find((s) =>
-    suggestionMatchesSong({ suggested_title: title, suggested_artist: artist }, {
-      id: "",
-      title: s.title as string,
-      artist: s.artist as string,
-    })
-  );
+  // Başlık yazımı tutmadıysa (çevirmen, farklı imla, apostrof) sanatçıdan gir:
+  // eleme zaten lib/song-match.ts'te, buradaki sorgu yalnızca aday topluyor.
+  if (!localRows || localRows.length === 0) {
+    const artistCore = artist.split(/[,&]/)[0].replace(/[%_,()\\]/g, "").trim();
+    if (artistCore.length > 1) {
+      ({ data: localRows } = await supabaseAdmin
+        .from("songs")
+        .select(COLUMNS)
+        .eq("embeddable", true)
+        .ilike("artist", `%${artistCore}%`)
+        .order("view_count", { ascending: false })
+        .limit(100));
+    }
+  }
+
+  const localHit = pickBestMatch(request, localRows ?? []);
   if (localHit) return localHit as unknown as TrackDetails;
 
-  // 2) Arama önbelleği (aynı sorgu 30 gün YouTube'a gitmez)
+  // 2) Eski arama önbelleği
+  const cacheKey = `${artist} ${title}`.trim().toLocaleLowerCase("tr");
   const { data: cached } = await supabaseAdmin
     .from("search_cache")
     .select("results")
     .eq("query", cacheKey)
     .maybeSingle();
-  const cachedFirst = (cached?.results as TrackDetails[] | undefined)?.[0];
-  if (cachedFirst?.youtube_video_id) return cachedFirst;
 
-  // 3) YouTube araması — kotanın tek büyük tüketicisi
-  try {
-    const results = await searchVideos(query);
-    if (results.length === 0) {
-      return { error: "Bu şarkı YouTube'da bulunamadı", status: 404 };
-    }
-    await supabaseAdmin
-      .from("search_cache")
-      .upsert({ query: cacheKey, results, cached_at: new Date().toISOString() });
-    return results[0];
-  } catch (err) {
-    if (err instanceof YouTubeQuotaError) {
-      return { error: "YouTube arama kotası doldu, biraz sonra tekrar dene", status: 429 };
-    }
-    return { error: "Şarkı aranamadı, tekrar dene", status: 502 };
+  const cachedResults = (cached?.results as TrackDetails[] | undefined) ?? [];
+  const cachedHit = pickBestMatch(request, cachedResults) ?? cachedResults[0];
+  return cachedHit?.youtube_video_id ? cachedHit : null;
+}
+
+const NEEDS_LINK: ResolveFailure = {
+  error: "Bu şarkı havuzda yok — YouTube bağlantısını yapıştır",
+  status: 422,
+  code: "needs_link",
+};
+
+export async function resolveSuggestion(
+  title: string,
+  artist: string
+): Promise<TrackDetails | ResolveFailure> {
+  return (await findInPool(title, artist)) ?? NEEDS_LINK;
+}
+
+/**
+ * Admin'in yapıştırdığı YouTube bağlantısını çalınabilir şarkıya çevirir.
+ *
+ * Burada videos.list kullanılır ve TALEP BAŞINA 1 BİRİM yakar — search.list'in
+ * 100 biriminin yanında ihmal edilebilir (günlük kotayla 10.000 elle onay).
+ * Karşılığında SÜRE kesin gelir; süre kuyruk hesabı ve çapraz geçiş için şart.
+ *
+ * Kota yine de dolmuşsa oEmbed'e düşülür: şarkı çalar, yalnızca süre bilinmez
+ * (player çalarken öğrenir). Mekan kotadan dolayı iş göremez halde bırakılmaz.
+ */
+export async function resolveVideoLink(input: string): Promise<TrackDetails | ResolveFailure> {
+  const videoId = parseVideoId(input);
+  if (!videoId) {
+    return { error: "Geçerli bir YouTube bağlantısı değil", status: 400 };
   }
+
+  try {
+    const [details] = await getVideoDetails([videoId]);
+    if (details) return details;
+    // getVideoDetails boş dönerse video ya silinmiş, ya gömmeye kapalı, ya da
+    // süresi sınırların dışında (canlı yayın / saatlik karışım)
+    return { error: "Bu video gömülü oynatıcıda çalmıyor — başka bir bağlantı dene", status: 422 };
+  } catch (err) {
+    if (!(err instanceof YouTubeQuotaError)) {
+      return { error: "Video bilgisi alınamadı, tekrar dene", status: 502 };
+    }
+  }
+
+  const fallback = await fetchOEmbed(videoId);
+  if (!fallback) {
+    return { error: "Bu video açılamadı — başka bir bağlantı dene", status: 422 };
+  }
+  return {
+    ...fallback,
+    duration_ms: 0, // player çalarken öğrenir; kuyruk süresi o ana kadar tahmini
+    view_count: 0,
+    release_date: null,
+    external_url: `https://www.youtube.com/watch?v=${videoId}`,
+  };
 }
 
 /**
  * Talebi onaylar: şarkıyı çözer, TEK SEFERLİK çalma hakkı açar ve müşteriye
  * push atar. Mekanın kalıcı kataloğuna (venue_songs/playlist_songs) dokunmaz.
+ *
+ * videoUrl verilirse havuz hiç yoklanmaz: admin hangi videoyu istediğini zaten
+ * söylemiştir. Verilmezse havuza bakılır; bulunamazsa code:"needs_link" döner
+ * ve panel yapıştırma alanını açar.
  */
-export async function approveSuggestion(request: SuggestionRow): Promise<ApproveOutcome> {
+export async function approveSuggestion(
+  request: SuggestionRow,
+  videoUrl?: string
+): Promise<ApproveOutcome> {
   const title = request.suggested_title ?? "";
   const artist = request.suggested_artist ?? "";
 
-  const resolved = await resolveSuggestion(title, artist);
+  const resolved = videoUrl
+    ? await resolveVideoLink(videoUrl)
+    : await resolveSuggestion(title, artist);
   if ("error" in resolved) {
-    return { ok: false, error: resolved.error, status: resolved.status };
+    return { ok: false, error: resolved.error, status: resolved.status, code: resolved.code };
   }
 
   const { data: songRow, error: songErr } = await supabaseAdmin
@@ -218,14 +298,19 @@ export async function rejectSuggestion(request: SuggestionRow): Promise<void> {
 }
 
 /**
- * Yeni talep geldiğinde mekan adminlerine bildirim atar. Bildirimde TEK düğme
- * (Onayla) ve dokununca açılan panel için imzalı jeton taşınır.
+ * Yeni talep geldiğinde mekan adminlerine bildirim atar.
+ *
+ * İKİ TÜR BİLDİRİM — ayrımı burada, talep düşer düşmez yapılır (havuz sorgusu
+ * 0 kota birimi):
+ *   A) Şarkı havuzda TANINIYOR → bildirimde "Onayla" düğmesi. Tek dokunuş,
+ *      panel hiç açılmaz. Vakaların çoğu bu (bkz. scripts/seed-catalog.ts).
+ *   B) Tanınmıyor → onaylanacak somut bir video yok. Düğme konmaz; admin
+ *      bildirime dokunur, panelde YouTube bağlantısını yapıştırır.
  *
  * Neden tek düğme: iki düğmeli bildirimde Android'de basılan düğme ile sunucuya
  * ulaşan komutun ters eşleştiği ölçüldü (13 Ağu 2026 — "Onayla"ya basıldığında
  * talep reddediliyordu). Tek eylemli bildirimde aynı akış doğru çalışıyor.
- * Reddetmek bildirime dokunup açılan panelden yapılır; sık olan işlem onay,
- * ve o tek dokunuşla kalıyor.
+ * Reddetmek her iki türde de bildirime dokunup panelden yapılır.
  */
 export async function notifyAdminsOfRequest(params: {
   requestId: string;
@@ -245,15 +330,21 @@ export async function notifyAdminsOfRequest(params: {
   );
   const url = `/admin/${params.venueSlug}/requests?act=${params.requestId}&t=${encodeURIComponent(token)}`;
 
+  // Havuz yoklaması kotasız — başarısız olursa B türü bildirim atılır (yani
+  // admin panele yönlendirilir), akış durmaz
+  const known = await findInPool(params.title, params.artist).catch(() => null);
+
   await sendPushToVenueAdmins(params.venueId, {
     title: "Yeni şarkı talebi",
-    body: `${params.title} — ${params.artist} (${params.requestedBy}). Onayla'ya bas ya da reddetmek için bildirime dokun. Karar için 10 dakikan var.`,
+    body: known
+      ? `${params.title} — ${params.artist} (${params.requestedBy}). Onayla'ya bas ya da reddetmek için bildirime dokun. Karar için 10 dakikan var.`
+      : `${params.title} — ${params.artist} (${params.requestedBy}). Bu şarkı listende yok: onaylamak için bildirime dokun. Karar için 10 dakikan var.`,
     url,
-    icon: params.coverUrl,
+    icon: params.coverUrl ?? known?.album_cover_url,
     tag: `req-${params.requestId}`,
     requireInteraction: true,
     // iOS bu alanı yok sayar; orada bildirime dokunmak yukarıdaki url'i açar
-    actions: [{ action: "approve", title: "Onayla" }],
+    ...(known ? { actions: [{ action: "approve", title: "Onayla" }] } : {}),
     data: { requestId: params.requestId, token },
   }).catch(() => {});
 }

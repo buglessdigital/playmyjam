@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
   const { data: songRows, error: songErr } = await supabaseAdmin
     .from("songs")
     .upsert(rows, { onConflict: "youtube_video_id" })
-    .select("id, title, artist, channel_title");
+    .select("id, title, artist, channel_title, view_count, duration_ms");
 
   if (songErr || !songRows) {
     return NextResponse.json({ error: songErr?.message ?? "Şarkılar kaydedilemedi" }, { status: 500 });

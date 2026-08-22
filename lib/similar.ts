@@ -1,4 +1,5 @@
 import { artistKey, primaryArtist, type VenueSong } from "@/components/browse/browse-types";
+import { fold } from "@/lib/song-match";
 
 // "Benzer" önerileri tamamen mekanın çalınabilir listesinden üretilir — YouTube'un
 // related-video ucu 2023'te kapandığı için harici öneri kaynağı yok, zaten öneriler
@@ -20,19 +21,9 @@ export type SimilarArtist = {
   score: number;
 };
 
-// Türkçe karakterleri ASCII'ye indirger, noktalama atar: "Dünyanın Sonuna" → "dunyanin sonuna".
-// ı/İ NFD ile ayrışmadığı için önce elle eşlenir.
-export function fold(text: string): string {
-  return text
-    .replace(/[İI]/g, "i")
-    .replace(/ı/g, "i")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-z0-9\s]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+// fold() tek yerde durur (lib/song-match.ts) — eşleştirme ile benzerlik aynı
+// normalleştirmeyi kullanmazsa "Şınanay" iki tarafta iki farklı şeye dönüşür.
+export { fold };
 
 // Başlıklarda hemen her şarkıda geçen, benzerlik taşımayan kelimeler
 const TITLE_STOPWORDS = new Set([

@@ -1,31 +1,20 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendPushToUser } from "@/lib/push";
-import { fold } from "@/lib/similar";
+import { pickBestMatch, suggestionMatchesSong } from "@/lib/song-match";
 
 // Serbest metin öneriler (song_id boş song_requests satırları) ile mekan
 // playlist'ine yeni giren şarkıları eşleştirir. Mekan, önerilen şarkıyı kendi
 // YouTube playlist'ine ekleyip panelden yeniden içe aktardığında öneri
 // kendiliğinden kapanır — admin'in aynı işi ikinci kez yapması gerekmez.
 
-// YouTube başlıklarında sürekli geçen, eşleşmeye katkısı olmayan kelimeler
-const NOISE = new Set([
-  "official", "video", "audio", "lyrics", "lyric", "visualizer", "klip", "sozleri", "sozler",
-  "feat", "ft", "prod", "remix", "mix", "version", "versiyon", "live", "canli", "cover",
-  "music", "full", "album", "original", "radio", "edit", "extended", "remastered",
-  "hd", "hq", "4k", "the", "and", "ile",
-]);
-
-function tokens(text: string): string[] {
-  return fold(text)
-    .split(" ")
-    .filter((t) => t.length > 1 && !NOISE.has(t));
-}
-
 export type MatchableSong = {
   id: string;
   title: string;
   artist: string;
   channel_title?: string | null;
+  /** Sürüm seçiminde kullanılır (bkz. lib/song-match.ts) — yoksa eşleşme yine çalışır */
+  view_count?: number | null;
+  duration_ms?: number | null;
 };
 
 export type PendingSuggestion = {
@@ -35,25 +24,9 @@ export type PendingSuggestion = {
   suggested_artist: string | null;
 };
 
-// Eşleşme ölçütü: önerinin hem şarkı adı hem sanatçı kelimelerinin tamamı
-// şarkının başlık/sanatçı/kanal metninde geçmeli. YouTube başlıkları
-// "TARKAN - Kuzu Kuzu (Official Video)" gibi olduğu için kelime kümesi
-// karşılaştırması sıralamadan bağımsız çalışır.
-export function suggestionMatchesSong(
-  suggestion: { suggested_title: string | null; suggested_artist: string | null },
-  song: MatchableSong
-): boolean {
-  const titleTokens = tokens(suggestion.suggested_title ?? "");
-  const artistTokens = tokens(suggestion.suggested_artist ?? "");
-  if (titleTokens.length === 0 || artistTokens.length === 0) return false;
-
-  const haystack = new Set(
-    tokens(`${song.title} ${song.artist} ${song.channel_title ?? ""}`)
-  );
-  return (
-    titleTokens.every((t) => haystack.has(t)) && artistTokens.every((t) => haystack.has(t))
-  );
-}
+// Eşleşme ve sürüm seçimi lib/song-match.ts'te — aynı kurallar talep onayında
+// (lib/request-approval.ts) ve tohumlamada da geçerli.
+export { suggestionMatchesSong };
 
 /**
  * Mekana yeni eklenen şarkılarla bekleyen önerileri eşleştirir; eşleşenleri
@@ -79,7 +52,9 @@ export async function resolveMatchingSuggestions(
   const matched: { suggestion: PendingSuggestion; song: MatchableSong }[] = [];
 
   for (const suggestion of pending as PendingSuggestion[]) {
-    const song = songs.find((s) => suggestionMatchesSong(suggestion, s));
+    // İlk eşleşen değil EN İYİ sürüm: aynı listede şarkının canlı/karaoke
+    // kaydı da bulunabiliyor (bkz. lib/song-match.ts SEÇME kuralları)
+    const song = pickBestMatch(suggestion, songs);
     if (song) matched.push({ suggestion, song });
   }
 

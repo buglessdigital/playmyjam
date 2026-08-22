@@ -1,0 +1,23 @@
+# Ortak şarkı havuzunu tohumlayacak YouTube playlist'leri — satır başına bir bağlantı.
+# "#" ile başlayan satırlar yok sayılır. Aynı listeyi tekrar eklemek zararsızdır
+# (havuzda olan şarkılar için YouTube'a hiç gidilmez).
+#
+# Kullanım:
+#   npm run seed:catalog -- --dry     # kaç birim tutacağını gösterir
+#   npm run seed:catalog              # gerçekten tohumlar
+#
+# Maliyet: yaklaşık 50 şarkı = 2 birim. 50.000 şarkı ≈ 2.000 birim.
+# Günlük kota 10.000 olduğu için iş birkaç oturumda rahatça biter.
+#
+# NE EKLEMELİ
+#   • Türkçe pop/rock/rap/arabesk "en çok dinlenenler" listeleri
+#   • Yabancı hit listeleri (Billboard, global top)
+#   • Mekanların kendi listeleri (zaten aktarılmışsa gerek yok)
+#   • Sanatçı sayfalarındaki "Popüler şarkılar" listeleri
+#
+# NE EKLEMEMELİ
+#   • Saatlik karışımlar, "1 hour mix", DJ setleri (süzgeç zaten eler ama boşuna kota yakar)
+#   • Karaoke / enstrümantal listeleri
+#
+# ÖRNEK BİÇİM (kendi bağlantılarınızla değiştirin):
+# https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxxxxxxxx

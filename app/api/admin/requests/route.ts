@@ -11,9 +11,10 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const requestId = typeof body?.request_id === "string" ? body.request_id : "";
   const status = body?.status;
+  const videoUrl = typeof body?.video_url === "string" ? body.video_url.trim() : "";
   if (!requestId || (status !== "accepted" && status !== "rejected")) {
     return NextResponse.json({ error: "Eksik veya geçersiz alan" }, { status: 400 });
   }
 
-  return resolveRequest(session.venue_id, requestId, status);
+  return resolveRequest(session.venue_id, requestId, status, videoUrl || undefined);
 }

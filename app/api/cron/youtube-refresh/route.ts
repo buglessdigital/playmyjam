@@ -6,14 +6,23 @@ import { purgeUnplayableSong } from "@/lib/playlist";
 
 // YouTube API veri saklama uyumu (Developer Policy III.E.4): günlük cron.
 // 1) 30 günden eski search_cache satırları silinir.
-// 2) 30 gündür tazelenmemiş songs metadata'sı videos.list ile yenilenir
-//    (50'lik parti = 1 birim → günlük 500 şarkı ≈ 10 birim, kota etkisi ihmal edilir).
+// 2) 30 gündür tazelenmemiş songs metadata'sı videos.list ile yenilenir.
 // 3) Otomatik senkronu açık YouTube playlist'lerine eklenen yeni şarkılar alınır
-//    (bkz. lib/playlist-sync.ts — tipik gün ~20 birim).
+//    (bkz. lib/playlist-sync.ts — tipik gün ~20 birim, tavanı 1000).
 // Üçü tek route'ta: Vercel'in cron sayısı plana göre sınırlı, ayrıca üçü de aynı
 // kota havuzunu kullanıyor — tek yerde toplamak bütçeyi görünür kılıyor.
+//
+// search.list artık hiçbir yerde çağrılmıyor, bu yüzden günlük tüketimin tamamı
+// bu route'tan geçiyor ve üst sınırı buradan okunabiliyor:
+//   tazeleme  ≤ REFRESH_MAX/50 = 100 birim
+//   senkron   ≤ 1000 birim
 const RETENTION_DAYS = 30;
-const REFRESH_BATCH = 500;
+
+// Parti büyüklüğü havuzla birlikte büyür: tohumlama sonrası havuz on binlerce
+// satır olabiliyor ve sabit 500'lük parti 30 günlük turu tamamlayamıyordu
+// (tamamlanamayan tur = tazelenmemiş metadata = uyum ihlali).
+const REFRESH_MIN = 500;
+const REFRESH_MAX = 5000;
 const UPDATE_CONCURRENCY = 20;
 
 // Haftada bir tam tarama: itemCount ön kontrolü aynı gün 1 ekleyip 1 silmeyi
@@ -28,6 +37,15 @@ export async function GET(req: NextRequest) {
 
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
+  // Havuzun tamamı RETENTION_DAYS içinde bir kez dönsün
+  const { count: poolSize } = await supabaseAdmin
+    .from("songs")
+    .select("id", { count: "exact", head: true });
+  const refreshBatch = Math.min(
+    REFRESH_MAX,
+    Math.max(REFRESH_MIN, Math.ceil((poolSize ?? 0) / RETENTION_DAYS))
+  );
+
   const { error: cacheErr } = await supabaseAdmin
     .from("search_cache")
     .delete()
@@ -38,7 +56,7 @@ export async function GET(req: NextRequest) {
     .select("id, youtube_video_id")
     .lt("metadata_refreshed_at", cutoff)
     .order("metadata_refreshed_at", { ascending: true })
-    .limit(REFRESH_BATCH);
+    .limit(refreshBatch);
 
   if (staleErr) {
     return NextResponse.json({ error: staleErr.message }, { status: 500 });
@@ -109,6 +127,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     cache_cleanup: cacheErr ? cacheErr.message : "done",
+    pool_size: poolSize ?? 0,
+    refresh_batch: refreshBatch,
     stale_found: rows.length,
     refreshed,
     delisted,

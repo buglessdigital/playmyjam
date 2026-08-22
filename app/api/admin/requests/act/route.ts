@@ -13,6 +13,8 @@ export async function POST(req: NextRequest) {
   const action = body?.action;
   const token = typeof body?.token === "string" ? body.token : "";
   const requestIdInput = typeof body?.request_id === "string" ? body.request_id : "";
+  // Havuzda tanınmayan talepte admin videonun bağlantısını yapıştırır
+  const videoUrl = typeof body?.video_url === "string" ? body.video_url.trim() : "";
 
   if (action !== "approve" && action !== "reject") {
     return NextResponse.json({ error: "Geçersiz işlem" }, { status: 400 });
@@ -32,5 +34,10 @@ export async function POST(req: NextRequest) {
     requestId = requestIdInput;
   }
 
-  return resolveRequest(venueId, requestId, action === "approve" ? "accepted" : "rejected");
+  return resolveRequest(
+    venueId,
+    requestId,
+    action === "approve" ? "accepted" : "rejected",
+    videoUrl || undefined
+  );
 }

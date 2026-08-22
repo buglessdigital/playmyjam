@@ -94,7 +94,7 @@ async function resolveSongs(
     const chunk = videoIds.slice(i, i + SONG_LOOKUP_CHUNK);
     const { data, error } = await supabaseAdmin
       .from("songs")
-      .select("id, youtube_video_id, title, artist, channel_title, embeddable")
+      .select("id, youtube_video_id, title, artist, channel_title, view_count, duration_ms, embeddable")
       .in("youtube_video_id", chunk);
     if (error) throw new Error(error.message);
 
@@ -109,6 +109,8 @@ async function resolveSongs(
         title: row.title,
         artist: row.artist,
         channel_title: row.channel_title,
+        view_count: row.view_count,
+        duration_ms: row.duration_ms,
       });
     }
     for (const id of chunk) if (!found.has(id)) unknown.push(id);
@@ -134,7 +136,7 @@ async function resolveSongs(
       })),
       { onConflict: "youtube_video_id" }
     )
-    .select("id, youtube_video_id, title, artist, channel_title");
+    .select("id, youtube_video_id, title, artist, channel_title, view_count, duration_ms");
   if (error) throw new Error(error.message);
 
   for (const row of inserted ?? []) {
@@ -143,6 +145,8 @@ async function resolveSongs(
       title: row.title,
       artist: row.artist,
       channel_title: row.channel_title,
+      view_count: row.view_count,
+      duration_ms: row.duration_ms,
     });
   }
   return { songs, units };

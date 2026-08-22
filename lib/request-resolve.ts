@@ -16,12 +16,14 @@ import {
 //  * song_id dolu  → mekan listesinde zaten olan şarkı için istek (eski akış):
 //    kabul edilirse şarkı mekanın kalıcı playlist'ine eklenir.
 //  * song_id boş   → müşterinin yazdığı serbest metin talep (0045): kabul
-//    edilirse YouTube'daki ilk sonuç TEK SEFERLİK çalma hakkı olarak açılır,
-//    kalıcı kataloğa girmez.
+//    edilirse ortak havuzdaki en iyi sürüm TEK SEFERLİK çalma hakkı olarak
+//    açılır, kalıcı kataloğa girmez. Havuzda yoksa admin bağlantı yapıştırır.
 export async function resolveRequest(
   venueId: string,
   requestId: string,
-  status: "accepted" | "rejected"
+  status: "accepted" | "rejected",
+  /** Admin'in yapıştırdığı YouTube bağlantısı — havuzda tanınmayan talepler için */
+  videoUrl?: string
 ): Promise<NextResponse> {
   // Karar anında süre kontrolü: 10 dakikası dolmuş talep artık onaylanamaz
   await expireStaleRequests(venueId);
@@ -55,9 +57,13 @@ export async function resolveRequest(
 
   // Serbest metin talep: şarkıyı çöz + tek seferlik hak aç + müşteriye push
   if (!request.song_id) {
-    const result = await approveSuggestion(request);
+    const result = await approveSuggestion(request, videoUrl);
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+      // code:"needs_link" → panel yapıştırma alanını açar (bkz. requests/page.tsx)
+      return NextResponse.json(
+        { error: result.error, ...(result.code ? { code: result.code } : {}) },
+        { status: result.status }
+      );
     }
     return NextResponse.json({ ok: true, title: result.title, artist: result.artist });
   }

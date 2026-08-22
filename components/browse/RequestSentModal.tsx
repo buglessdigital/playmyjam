@@ -44,13 +44,41 @@ export default function RequestSentModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-3xl border border-[#22c55e]/30 p-5"
-        style={{ background: "linear-gradient(160deg, rgba(34,197,94,0.18), #150e22 60%)" }}
+        className="w-full max-w-md overflow-hidden rounded-3xl border border-[#fbbf24]/30 p-5"
+        style={{ background: "linear-gradient(160deg, rgba(251,191,36,0.16), #150e22 60%)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#22c55e]/15 ring-1 ring-inset ring-[#22c55e]/30">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          {/* Yeşil tik "şarkı çalacak" izlenimi veriyordu; talep henüz beklemede.
+              Onun yerine şeritteki sarıyla aynı tonda, dolmakta olan bir saat. */}
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fbbf24]/15 ring-1 ring-inset ring-[#fbbf24]/30">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="#fbbf24" strokeOpacity="0.28" strokeWidth="2" />
+              {/* Dolan pay: çember uzunluğu 2πr ≈ 56.5 */}
+              <circle
+                cx="12"
+                cy="12"
+                r="9"
+                stroke="#fbbf24"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeDasharray="56.5"
+                transform="rotate(-90 12 12)"
+              >
+                <animate attributeName="stroke-dashoffset" values="56.5;0" dur="3s" repeatCount="indefinite" />
+              </circle>
+              {/* Akrep sabit, yelkovan dönüyor */}
+              <path d="M12 12V8" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round">
+                <animateTransform
+                  attributeName="transform"
+                  type="rotate"
+                  values="0 12 12;360 12 12"
+                  dur="3s"
+                  repeatCount="indefinite"
+                />
+              </path>
+              <path d="M12 12h2.5" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" />
+            </svg>
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-base font-bold text-white">{t.requestSent.title}</p>
@@ -79,17 +107,19 @@ export default function RequestSentModal({
         )}
 
         {/* Tek satır: şerit kartın hemen altında, ok oraya bakar */}
-        <div className="mt-2.5 flex items-center gap-2 rounded-2xl border border-[#fbbf24]/25 bg-[#fbbf24]/[0.07] px-3 py-2.5">
+        {/* Kartın tamamı sarıya döndüğü için bu satır nötr: sarı artık "bekliyor"
+            sinyali, ok ise sadece yön gösteriyor */}
+        <div className="mt-2.5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2.5">
           <svg className="shrink-0 animate-bounce" width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M12 4v14M6 13l6 6 6-6" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M12 4v14M6 13l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <p className="min-w-0 flex-1 text-xs font-medium text-[#d6c9a8]">{t.requestSent.trackHint}</p>
+          <p className="min-w-0 flex-1 text-xs font-medium text-[#9ca3af]">{t.requestSent.trackHint}</p>
         </div>
 
         <button
           onClick={onClose}
-          className="mt-4 w-full rounded-2xl py-3 text-sm font-bold text-white"
-          style={{ background: "linear-gradient(135deg, #22c55e, #16a34a)" }}
+          className="mt-4 w-full rounded-2xl py-3 text-sm font-bold text-[#1a1005]"
+          style={{ background: "linear-gradient(135deg, #fbbf24, #f59e0b)" }}
         >
           {t.requestSent.cta}
         </button>

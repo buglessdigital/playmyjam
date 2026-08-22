@@ -368,7 +368,7 @@
     "seeAll": "My requests"
   },
   "requestSent": {
-    "title": "Your request reached the venue",
+    "title": "If the venue approves, you can add it to the queue",
     "trackHint": "Follow it from the bar below",
     "cta": "Got it",
     "costLine": "Once approved, you play it for {n} tokens (≈{price})",

@@ -368,7 +368,7 @@
     "seeAll": "İsteklerim"
   },
   "requestSent": {
-    "title": "Talebin mekana iletildi",
+    "title": "Mekan onaylarsa sıraya ekleyebilirsin",
     "trackHint": "Süreci alttaki şeritten takip et",
     "cta": "Anladım",
     "costLine": "Onaylanınca {n} jetonla (≈{price}) çaldırırsın",

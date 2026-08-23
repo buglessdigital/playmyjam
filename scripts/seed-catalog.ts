@@ -6,6 +6,7 @@
  *   npm run seed:catalog                       # scripts/seed-playlists.txt'i işler
  *   npm run seed:catalog -- --budget 4000      # kotanın yalnızca bir kısmını harca
  *   npm run seed:catalog -- --playlist <url>   # tek liste
+ *   npm run seed:catalog -- --force            # bilinen listeleri de yeniden tara
  *
  * NEDEN VAR
  * Müşteri katalogda olmayan bir şarkı istediğinde sistemin "şu yazı = şu YouTube
@@ -21,10 +22,15 @@
  * Havuzda zaten bulunan video kimlikleri için videos.list hiç çağrılmaz, bu yüzden
  * betiği tekrar tekrar çalıştırmak ucuzdur (yarıda kalırsa kaldığı yerden sürer).
  *
+ * Dosyaya liste eklendikçe her tur ESKİ listeleri de baştan okuyordu: 34 listede
+ * tek tur 144 birime çıktı. Artık her listenin şarkı sayısı scripts/.seed-state.json
+ * dosyasında tutuluyor ve tur başında TEK playlists.list çağrısıyla (50 liste =
+ * 1 birim) karşılaştırılıyor — sayı değişmemiş liste hiç açılmıyor.
+ *
  * TEK SEFERLİK İŞ: bittiğinde üretimde çalışan hiçbir şey bu betiğe bağlı değildir.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,6 +45,7 @@ const API_BASE = "https://www.googleapis.com/youtube/v3";
 
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry");
+const FORCE = args.includes("--force");
 
 function flag(name: string, fallback: string): string {
   const i = args.indexOf(`--${name}`);
@@ -48,6 +55,7 @@ function flag(name: string, fallback: string): string {
 const BUDGET = Number(flag("budget", "9000"));
 const MAX_PER_PLAYLIST = Number(flag("max-per-playlist", "5000"));
 const LIST_FILE = flag("file", join(ROOT, "scripts/seed-playlists.txt"));
+const STATE_FILE = join(ROOT, "scripts/.seed-state.json");
 
 /* ---------- ortam ---------- */
 
@@ -130,6 +138,46 @@ function readPlaylistIds(): string[] {
   return [...new Set(ids)];
 }
 
+/* ---------- tamamlanmış listeler ---------- */
+
+// playlistId → en son tohumlandığındaki şarkı sayısı.
+// Sayı değişmediyse listede yeni şarkı yok demektir; açmaya değmez.
+type SeedState = Record<string, number>;
+
+function readState(): SeedState {
+  if (!existsSync(STATE_FILE)) return {};
+  try {
+    return JSON.parse(readFileSync(STATE_FILE, "utf8")) as SeedState;
+  } catch {
+    return {}; // bozuk dosya: baştan kurulur, en fazla bir tur fazladan kota
+  }
+}
+
+function writeState(state: SeedState) {
+  writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
+// playlists.list — 1 birim / 50 liste. Turun en ucuz adımı ve en büyük tasarrufu.
+// Yanıtta dönmeyen kimlik silinmiş/gizlenmiş listedir; state'e bakılmadan denenir
+// ve asıl hatayı playlistItems verir.
+async function currentItemCounts(playlistIds: string[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  for (let i = 0; i < playlistIds.length; i += 50) {
+    const batch = playlistIds.slice(i, i + 50);
+    spend(1);
+    const data = await api<{ items?: Array<{ id?: string; contentDetails?: { itemCount?: number } }> }>(
+      "playlists",
+      { part: "contentDetails", id: batch.join(","), maxResults: "50" }
+    );
+    for (const item of data.items ?? []) {
+      if (item.id && typeof item.contentDetails?.itemCount === "number") {
+        counts.set(item.id, item.contentDetails.itemCount);
+      }
+    }
+  }
+  return counts;
+}
+
 /* ---------- şarkı süzgeci ---------- */
 
 // Tohumlamada havuza HİÇ girmemesi gereken içerik. Buradaki ölçüt "şarkı değil":
@@ -166,6 +214,7 @@ type SongRow = {
 
 const stats = {
   playlists: 0,
+  unchanged: 0,
   seenIds: 0,
   alreadyKnown: 0,
   filtered: 0,
@@ -280,22 +329,32 @@ async function main() {
     process.exit(1);
   }
 
+  const state = FORCE ? {} : readState();
+
+  // Ön kontrol: şarkı sayısı değişmemiş listeler bu turda hiç açılmayacak
+  const counts = await currentItemCounts(playlistIds);
+  const todo = playlistIds.filter((id) => {
+    const seen = state[id];
+    const now = counts.get(id);
+    if (seen !== undefined && now !== undefined && seen === now) {
+      stats.unchanged++;
+      return false;
+    }
+    return true;
+  });
+
   console.log(
-    `${playlistIds.length} playlist, kota bütçesi ${BUDGET} birim${DRY_RUN ? " (KURU ÇALIŞMA)" : ""}\n`
+    `${playlistIds.length} playlist (${stats.unchanged} değişmemiş, ${todo.length} taranacak), ` +
+      `kota bütçesi ${BUDGET} birim${DRY_RUN ? " (KURU ÇALIŞMA)" : ""}\n`
   );
 
-  for (const playlistId of playlistIds) {
+  for (const playlistId of todo) {
     const ids = await playlistVideoIds(playlistId);
     stats.playlists++;
     stats.seenIds += ids.length;
 
     const unknown = await filterKnown(ids);
     stats.alreadyKnown += ids.length - unknown.length;
-
-    if (unknown.length === 0) {
-      console.log(`  ${playlistId}: ${ids.length} şarkı, hepsi havuzda zaten`);
-      continue;
-    }
 
     if (DRY_RUN) {
       console.log(
@@ -304,11 +363,23 @@ async function main() {
       continue;
     }
 
-    const rows = await fetchRows(unknown);
-    await upsert(rows);
-    console.log(
-      `  ${playlistId}: ${ids.length} şarkı → ${rows.length} yeni kayıt (${unitsSpent} birim harcandı)`
-    );
+    if (unknown.length > 0) {
+      const rows = await fetchRows(unknown);
+      await upsert(rows);
+      console.log(
+        `  ${playlistId}: ${ids.length} şarkı → ${rows.length} yeni kayıt (${unitsSpent} birim harcandı)`
+      );
+    } else {
+      console.log(`  ${playlistId}: ${ids.length} şarkı, hepsi havuzda zaten`);
+    }
+
+    // Liste baştan sona işlendi: bir dahaki tura ön kontrolde elensin.
+    // Her listeden sonra yazılır — tur yarıda kesilse bile ilerleme korunur.
+    const count = counts.get(playlistId);
+    if (count !== undefined) {
+      state[playlistId] = count;
+      writeState(state);
+    }
   }
 }
 
@@ -326,7 +397,8 @@ main()
 // havuzda olduğu için ikinci çalıştırmada videos.list'e hiç gitmez.
 function report(headline: string) {
   console.log(`\n${headline}`);
-  console.log(`  playlist       : ${stats.playlists}`);
+  console.log(`  taranan liste  : ${stats.playlists}`);
+  console.log(`  değişmemiş     : ${stats.unchanged}`);
   console.log(`  görülen şarkı  : ${stats.seenIds}`);
   console.log(`  havuzda vardı  : ${stats.alreadyKnown}`);
   console.log(`  süzgeçte elendi: ${stats.filtered}`);

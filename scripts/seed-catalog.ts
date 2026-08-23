@@ -112,16 +112,70 @@ async function api<T>(path: string, params: Record<string, string>): Promise<T> 
 
 /* ---------- kaynak listesi ---------- */
 
-// Playlist URL'sinden ("...list=PL..." veya çıplak kimlik) playlist id çıkarır
-function parsePlaylistId(input: string): string | null {
+// Bağlantıyı türüne göre ayırır.
+//
+// Kanal bağlantısı bir liste DEĞİLDİR: kanalın "yüklemeler" listesi (UC→UU)
+// çoğu derleme kanalında boştur — içerik playlist'lerde durur. Bu yüzden kanal
+// ayrı ele alınır ve tur başında kendi listelerine açılır (bkz. expandChannels).
+//
+// @kullaniciadi biçimindeki bağlantılar desteklenmez: kanal kimliğine çevirmek
+// ayrı bir API çağrısı ister. Kanalın herhangi bir videosundan /channel/UC... alın.
+type Source = { kind: "playlist" | "channel"; id: string };
+
+function parseSource(input: string): Source | null {
   const trimmed = input.trim();
+
   const fromUrl = trimmed.match(/[?&]list=([A-Za-z0-9_-]{10,60})/);
-  if (fromUrl) return fromUrl[1];
-  if (/^[A-Za-z0-9_-]{10,60}$/.test(trimmed)) return trimmed;
+  if (fromUrl) return { kind: "playlist", id: fromUrl[1] };
+
+  const channelUrl = trimmed.match(/\/channel\/(UC[A-Za-z0-9_-]{20,30})/);
+  if (channelUrl) return { kind: "channel", id: channelUrl[1] };
+
+  if (/^UC[A-Za-z0-9_-]{20,30}$/.test(trimmed)) return { kind: "channel", id: trimmed };
+  if (/^[A-Za-z0-9_-]{10,60}$/.test(trimmed)) return { kind: "playlist", id: trimmed };
   return null;
 }
 
-function readPlaylistIds(): string[] {
+// playlists.list?channelId — 1 birim / 50 liste. Kanalın herkese açık bütün
+// listeleri. Boş listeler atılır; şarkı sayıları ön kontrole doğrudan girer,
+// böylece kanal listeleri için ikinci bir playlists.list çağrısı gerekmez.
+async function expandChannels(
+  channelIds: string[],
+  counts: Map<string, number>
+): Promise<string[]> {
+  const found: string[] = [];
+
+  for (const channelId of channelIds) {
+    let pageToken: string | undefined;
+    let fromThis = 0;
+    do {
+      spend(1);
+      const data = await api<{
+        nextPageToken?: string;
+        items?: Array<{ id?: string; snippet?: { title?: string }; contentDetails?: { itemCount?: number } }>;
+      }>("playlists", {
+        part: "contentDetails",
+        channelId,
+        maxResults: "50",
+        ...(pageToken ? { pageToken } : {}),
+      });
+      for (const item of data.items ?? []) {
+        const count = item.contentDetails?.itemCount ?? 0;
+        if (!item.id || count === 0) continue;
+        counts.set(item.id, count);
+        found.push(item.id);
+        fromThis++;
+      }
+      pageToken = data.nextPageToken;
+    } while (pageToken);
+
+    console.log(`  kanal ${channelId}: ${fromThis} liste bulundu`);
+  }
+
+  return found;
+}
+
+function readSources(): { playlists: string[]; channels: string[] } {
   const inline = args.flatMap((a, i) => (args[i - 1] === "--playlist" ? [a] : []));
 
   const fromFile = existsSync(LIST_FILE)
@@ -131,11 +185,14 @@ function readPlaylistIds(): string[] {
         .filter((l) => l && !l.startsWith("#"))
     : [];
 
-  const ids = [...inline, ...fromFile]
-    .map(parsePlaylistId)
-    .filter((id): id is string => !!id);
+  const sources = [...inline, ...fromFile]
+    .map(parseSource)
+    .filter((s): s is Source => !!s);
 
-  return [...new Set(ids)];
+  return {
+    playlists: [...new Set(sources.filter((s) => s.kind === "playlist").map((s) => s.id))],
+    channels: [...new Set(sources.filter((s) => s.kind === "channel").map((s) => s.id))],
+  };
 }
 
 /* ---------- tamamlanmış listeler ---------- */
@@ -215,6 +272,7 @@ type SongRow = {
 const stats = {
   playlists: 0,
   unchanged: 0,
+  failed: [] as string[],
   seenIds: 0,
   alreadyKnown: 0,
   filtered: 0,
@@ -321,18 +379,22 @@ async function upsert(rows: SongRow[]) {
 /* ---------- ana akış ---------- */
 
 async function main() {
-  const playlistIds = readPlaylistIds();
-  if (playlistIds.length === 0) {
+  const { playlists, channels } = readSources();
+  if (playlists.length === 0 && channels.length === 0) {
     console.error(
-      `Kaynak liste boş. ${LIST_FILE} dosyasına playlist bağlantısı ekleyin ya da --playlist <url> verin.`
+      `Kaynak liste boş. ${LIST_FILE} dosyasına playlist ya da kanal bağlantısı ekleyin veya --playlist <url> verin.`
     );
     process.exit(1);
   }
 
   const state = FORCE ? {} : readState();
 
-  // Ön kontrol: şarkı sayısı değişmemiş listeler bu turda hiç açılmayacak
-  const counts = await currentItemCounts(playlistIds);
+  // Kanal listelerinin şarkı sayıları expandChannels sırasında zaten dolduğu için
+  // ön kontrol yalnızca doğrudan verilen playlist'ler için çağrılır
+  const counts = await currentItemCounts(playlists);
+  const fromChannels = channels.length > 0 ? await expandChannels(channels, counts) : [];
+  const playlistIds = [...new Set([...playlists, ...fromChannels])];
+
   const todo = playlistIds.filter((id) => {
     const seen = state[id];
     const now = counts.get(id);
@@ -344,42 +406,57 @@ async function main() {
   });
 
   console.log(
-    `${playlistIds.length} playlist (${stats.unchanged} değişmemiş, ${todo.length} taranacak), ` +
-      `kota bütçesi ${BUDGET} birim${DRY_RUN ? " (KURU ÇALIŞMA)" : ""}\n`
+    `${playlistIds.length} playlist` +
+      (channels.length > 0 ? ` (${fromChannels.length}'i ${channels.length} kanaldan)` : "") +
+      ` · ${stats.unchanged} değişmemiş, ${todo.length} taranacak · ` +
+      `bütçe ${BUDGET} birim${DRY_RUN ? " (KURU ÇALIŞMA)" : ""}\n`
   );
 
   for (const playlistId of todo) {
-    const ids = await playlistVideoIds(playlistId);
-    stats.playlists++;
-    stats.seenIds += ids.length;
-
-    const unknown = await filterKnown(ids);
-    stats.alreadyKnown += ids.length - unknown.length;
-
-    if (DRY_RUN) {
-      console.log(
-        `  ${playlistId}: ${ids.length} şarkı, ${unknown.length} yeni → ~${Math.ceil(unknown.length / 50)} birim daha`
-      );
-      continue;
+    try {
+      await seedPlaylist(playlistId, counts, state);
+    } catch (err) {
+      // Bütçe/kota dışındaki hatalar TEK listeyi düşürür, turu değil: silinmiş
+      // ya da gizlenmiş bir bağlantı yüzünden 36 listenin taranmaması saçma olur
+      if (err instanceof BudgetExhausted || err instanceof QuotaExhausted) throw err;
+      stats.failed.push(playlistId);
+      console.log(`  ${playlistId}: ATLANDI — ${err instanceof Error ? err.message.split("\n")[0] : err}`);
     }
+  }
+}
 
-    if (unknown.length > 0) {
-      const rows = await fetchRows(unknown);
-      await upsert(rows);
-      console.log(
-        `  ${playlistId}: ${ids.length} şarkı → ${rows.length} yeni kayıt (${unitsSpent} birim harcandı)`
-      );
-    } else {
-      console.log(`  ${playlistId}: ${ids.length} şarkı, hepsi havuzda zaten`);
-    }
+// Tek listenin tüm işi. Hatası çağırana gider, orada tek liste olarak yutulur.
+async function seedPlaylist(playlistId: string, counts: Map<string, number>, state: SeedState) {
+  const ids = await playlistVideoIds(playlistId);
+  stats.playlists++;
+  stats.seenIds += ids.length;
 
-    // Liste baştan sona işlendi: bir dahaki tura ön kontrolde elensin.
-    // Her listeden sonra yazılır — tur yarıda kesilse bile ilerleme korunur.
-    const count = counts.get(playlistId);
-    if (count !== undefined) {
-      state[playlistId] = count;
-      writeState(state);
-    }
+  const unknown = await filterKnown(ids);
+  stats.alreadyKnown += ids.length - unknown.length;
+
+  if (DRY_RUN) {
+    console.log(
+      `  ${playlistId}: ${ids.length} şarkı, ${unknown.length} yeni → ~${Math.ceil(unknown.length / 50)} birim daha`
+    );
+    return;
+  }
+
+  if (unknown.length > 0) {
+    const rows = await fetchRows(unknown);
+    await upsert(rows);
+    console.log(
+      `  ${playlistId}: ${ids.length} şarkı → ${rows.length} yeni kayıt (${unitsSpent} birim harcandı)`
+    );
+  } else {
+    console.log(`  ${playlistId}: ${ids.length} şarkı, hepsi havuzda zaten`);
+  }
+
+  // Liste baştan sona işlendi: bir dahaki tura ön kontrolde elensin.
+  // Her listeden sonra yazılır — tur yarıda kesilse bile ilerleme korunur.
+  const count = counts.get(playlistId);
+  if (count !== undefined) {
+    state[playlistId] = count;
+    writeState(state);
   }
 }
 
@@ -404,4 +481,8 @@ function report(headline: string) {
   console.log(`  süzgeçte elendi: ${stats.filtered}`);
   console.log(`  havuza eklendi : ${stats.upserted}`);
   console.log(`  kota harcanan  : ${unitsSpent} birim`);
+  if (stats.failed.length > 0) {
+    console.log(`  AÇILAMADI      : ${stats.failed.join(", ")}`);
+    console.log("  (liste silinmiş/gizli olabilir — seed-playlists.txt'ten çıkarın)");
+  }
 }

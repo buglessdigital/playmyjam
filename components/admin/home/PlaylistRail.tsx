@@ -161,22 +161,22 @@ export default function PlaylistRail({
                   <div className="flex items-center gap-2">
                     {isCurrent ? (
                       <span
-                        className="w-4 h-4 rounded-md shrink-0 flex items-center justify-center"
+                        className="rail-badge-playing w-6 h-6 rounded-lg shrink-0 flex items-center justify-center"
                         style={{ background: "#22c55e" }}
                         title="Şu an bu liste çalıyor"
                       >
-                        <svg width="8" height="8" viewBox="0 0 24 24" fill="#0b1220">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#06210f">
                           <path d="M8 5.5v13l11-6.5L8 5.5z" />
                         </svg>
                       </span>
                     ) : queuedSongs > 0 ? (
                       <span
-                        className="w-4 h-4 rounded-md shrink-0 text-[10px] font-bold flex items-center justify-center"
-                        style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}
+                        className="w-6 h-6 rounded-lg shrink-0 flex items-center justify-center"
+                        style={{ background: "#fbbf24", boxShadow: "0 0 0 1px rgba(251,191,36,0.35)" }}
                         title={`Sıraya eklendi — ${queuedSongs} şarkısı çalan şarkıdan sonra çalacak`}
                       >
-                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
-                          <path d="M4 6h11M4 12h11M4 18h7M20 10v8m-4-4h8" stroke="#22c55e" strokeWidth="2.4" strokeLinecap="round" />
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                          <path d="M4 6h11M4 12h11M4 18h7M20 10v8m-4-4h8" stroke="#231603" strokeWidth="2.6" strokeLinecap="round" />
                         </svg>
                       </span>
                     ) : (
@@ -210,13 +210,17 @@ export default function PlaylistRail({
                   </div>
                   <p className="text-[#6b7280] text-[11px] mt-0.5">
                     {total} şarkı
-                    {filtering
-                      ? ` · ${matches} eşleşme`
-                      : isCurrent
-                        ? ` · Çalıyor ${done}/${total}`
-                        : queuedSongs > 0
-                          ? ` · Sırada ${queuedSongs} şarkı`
-                          : ""}
+                    {filtering ? ` · ${matches} eşleşme` : null}
+                    {!filtering && isCurrent && (
+                      <span style={{ color: "#22c55e", fontWeight: 600 }}>
+                        {` · Çalıyor ${done}/${total}`}
+                      </span>
+                    )}
+                    {!filtering && !isCurrent && queuedSongs > 0 && (
+                      <span style={{ color: "#fbbf24", fontWeight: 600 }}>
+                        {` · Sırada ${queuedSongs} şarkı`}
+                      </span>
+                    )}
                     {/* Müşteri aktifliği artık satırın sağındaki göz düğmesinde;
                         metinde tekrarlamıyoruz. */}
                   </p>

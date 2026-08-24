@@ -941,6 +941,17 @@ export function usePlayback(venueDbId: string) {
     return map;
   }, [queue]);
 
+  // Elle sıraya eklenen listeler, ÇALACAKLARI sırayla (rayda çalanın hemen
+  // altına bu sırayla diziliyorlar). Ölçüt kuyruktaki ilk satırın yeri.
+  const manualListOrder = useMemo(() => {
+    const seen: string[] = [];
+    for (const item of queue) {
+      if (!isManualRow(item) || !item.source_playlist_id) continue;
+      if (!seen.includes(item.source_playlist_id)) seen.push(item.source_playlist_id);
+    }
+    return seen;
+  }, [queue]);
+
   const manualCount = useMemo(() => queue.filter(isManualRow).length, [queue]);
 
   // "Sırayı temizle": yalnızca elle eklenenler düşer. Çalan listenin şarkıları ve
@@ -968,6 +979,7 @@ export function usePlayback(venueDbId: string) {
     playingListId,
     pendingByList,
     manualByList,
+    manualListOrder,
     manualCount,
     clearManualQueue,
     nowPlaying,

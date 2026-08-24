@@ -68,6 +68,7 @@ export function useLibrary(
     playingListId: string | null;
     pendingByList: Record<string, number>;
     manualByList: Record<string, number>;
+    manualListOrder: string[];
     stageTakeover: (videoId: string, options?: { refreshQueue?: boolean }) => void;
     // Play tuşunun sahneyi devralıp almayacağını sunucudan ÖNCE kestirmek için
     // (bkz. playNow): müşteri şarkısı sahnedeyse ya da sırada bekliyorsa liste
@@ -467,12 +468,24 @@ export function useLibrary(
     return at > 0 ? [...queueLists.slice(at), ...queueLists.slice(0, at)] : queueLists;
   }, [queueLists, currentList]);
 
+  // Ray düzeni: 1) çalan liste, 2) elle sıraya eklenmiş listeler ÇALACAKLARI
+  // sırayla, 3) geri kalanlar (kuyruktakiler, sonra boştakiler).
+  const manualListOrder = playback?.manualListOrder;
   const railLists = useMemo(() => {
     const idle = playlists
       .filter((p) => p.queue_position === null)
       .sort((a, b) => a.sort_order - b.sort_order);
-    return [...queueRail, ...idle];
-  }, [playlists, queueRail]);
+    const base = [...queueRail, ...idle];
+    const queuedIds = (manualListOrder ?? []).filter((id) => id !== currentList?.id);
+    if (queuedIds.length === 0) return base;
+    const rank = new Map(queuedIds.map((id, i) => [id, i]));
+    const head = base.filter((p) => p.id === currentList?.id);
+    const queued = base
+      .filter((p) => rank.has(p.id))
+      .sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+    const rest = base.filter((p) => p.id !== currentList?.id && !rank.has(p.id));
+    return [...head, ...queued, ...rest];
+  }, [playlists, queueRail, manualListOrder, currentList]);
 
   // Raydaki listeler: ad araması süzer, seçili liste her zaman görünür kalır
   const listQ = normalize(listQuery.trim());

@@ -166,6 +166,16 @@ async function unconsumeRows(
 // Satır kuyruğa yazılırken zaten "tüketildi" işaretlenmişti; işaret GERİ
 // ALINMAZ — şarkı yine çalacak, sadece elle eklendiği yerde. Yine de emniyet
 // olsun diye tüketim tekrar yazılır: arada bir unconsumeRows geçmiş olabilir.
+//
+// KAPSAM (24 Ağu 2026'da kapatılan hata): devralma yalnızca TEKLİ eklemeler ve
+// AYNI listenin yeniden sıraya alınması için geçerlidir. Sıraya BAŞKA bir liste
+// eklendiğinde çalan listenin otomatik satırlarına dokunulmaz. Eskiden şarkı
+// eşleşmesi tek ölçüttü: 20 şarkılık "test" çalarken sıraya "night" eklenince,
+// iki listenin ortak şarkıları (yani test'in neredeyse tamamı) kuyruktan silinip
+// "test bu turda çaldı" diye işaretleniyordu; night bittiğinde test kaldığı
+// yerden değil, ortak olmayan iki-üç şarkısıyla dağınık biçimde devam ediyordu.
+// İki listede aynı şarkı varsa o şarkı iki kez çalar — sıraya listeyi ekleyen
+// bunu bilerek yapıyor; listenin sırasını bozmak bundan daha kötü.
 async function consumeAutoDuplicates(
   venueId: string,
   queuedRows: {
@@ -174,11 +184,16 @@ async function consumeAutoDuplicates(
     added_by: string;
     source_playlist_id: string | null;
   }[],
-  picked: string[]
+  picked: string[],
+  playlistId: string | null
 ): Promise<void> {
   const wanted = new Set(picked);
   const dupes = queuedRows.filter(
-    (r) => r.user_id === null && r.added_by === AUTO_ADDED_BY && wanted.has(r.song_id)
+    (r) =>
+      r.user_id === null &&
+      r.added_by === AUTO_ADDED_BY &&
+      wanted.has(r.song_id) &&
+      (playlistId === null || r.source_playlist_id === playlistId)
   );
   if (dupes.length === 0) return;
 
@@ -737,9 +752,11 @@ export async function enqueueManual(
   // Tekrar ENGELLENMEZ: admin bilerek ekliyor. Zaten kuyrukta olan (hatta
   // sahnede çalan) bir şarkı da sıraya alınabilir — o zaman iki kez çalar.
   // Otomatik dolum kendi bloğuna aynı şarkıyı ikinci kez koymaz (excludeIds),
-  // bu kural yalnızca elle ekleme için gevşetilmiştir. TEK İSTİSNA: çalan
-  // listenin bekleyen otomatik satırı devralınır (bkz. consumeAutoDuplicates) —
-  // orada "iki kez çalsın" diyen bir irade yok, sadece dolumun kopyası var.
+  // bu kural yalnızca elle ekleme için gevşetilmiştir. TEK İSTİSNA: TEKLİ
+  // eklemede (ve aynı liste yeniden sıraya alınırken) o şarkının bekleyen
+  // otomatik satırı devralınır (bkz. consumeAutoDuplicates) — orada "iki kez
+  // çalsın" diyen bir irade yok, sadece dolumun kopyası var. Sıraya BAŞKA bir
+  // liste eklemek çalan listenin satırlarına dokunmaz.
   const rows = existing ?? [];
 
   // Tavan: elle ekleme otomatik dolumdan ÖNCELİKLİDİR. Kuyruk tavana dayanmışsa
@@ -779,8 +796,10 @@ export async function enqueueManual(
   //
   // Sahnedeki satıra dokunulmaz, müşteri satırına ve daha önce elle eklenmiş
   // satırlara da: admin aynı şarkıyı bilerek iki kez sıraya alabilir, kural
-  // yalnızca OTOMATİK dolumun kopyası için geçerli.
-  await consumeAutoDuplicates(venueId, queuedRows, picked);
+  // yalnızca OTOMATİK dolumun kopyası için geçerli. Başka bir listeyi sıraya
+  // eklemek de çalan listenin satırlarını devralmaz (bkz. consumeAutoDuplicates
+  // KAPSAM notu) — yoksa çalan liste sıradan silinirdi.
+  await consumeAutoDuplicates(venueId, queuedRows, picked, playlistId);
 
   // Şerit seçimi: tekli eklemeler (playlistId yok) üst şeride, sıraya eklenen
   // listeler alt şeride girer. Yalnızca KENDİ şeridindeki satırlar sayılır —

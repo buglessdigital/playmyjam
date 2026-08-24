@@ -342,20 +342,6 @@ export default function QueuePane({
               </p>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* Yalnızca "Sıraya ekle" ile eklenenleri siler: çalan listenin
-                  şarkıları ve müşterinin jetonla aldığı sıra olduğu gibi kalır. */}
-              {manualCount > 0 && (
-                <button
-                  onClick={() => void clearManualQueue()}
-                  title={`Sıraya eklenen ${manualCount} şarkı silinsin — çalan listeye ve müşteri şarkılarına dokunulmaz`}
-                  aria-label="Sırayı temizle"
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
-                  style={{ background: "rgba(239,68,68,0.12)", color: "#f87171" }}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                  Sırayı temizle
-                </button>
-              )}
               <button
                 onClick={onAddSong}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
@@ -432,6 +418,24 @@ export default function QueuePane({
             </div>
           )}
         </div>
+
+        {/* Yalnızca "Sıraya ekle" ile eklenenleri siler: çalan listenin
+            şarkıları ve müşterinin jetonla aldığı sıra olduğu gibi kalır.
+            Yeri bilerek burası: çalan şarkının altı, sıranın hemen üstü. */}
+        {manualCount > 0 && (
+          <div className="px-4 py-2 border-b border-white/10">
+            <button
+              onClick={() => void clearManualQueue()}
+              title={`Sıraya eklenen ${manualCount} şarkı silinsin — çalan listeye ve müşteri şarkılarına dokunulmaz`}
+              aria-label="Sırayı temizle"
+              className="flex items-center justify-center gap-1.5 w-full px-2.5 py-1.5 rounded-xl text-xs font-semibold"
+              style={{ background: "rgba(239,68,68,0.12)", color: "#f87171" }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+              Sırayı temizle
+            </button>
+          </div>
+        )}
       </div>
 
       <div ref={rowsRef}>

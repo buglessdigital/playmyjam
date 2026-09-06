@@ -7,6 +7,8 @@
  *   npm run seed:catalog -- --budget 4000      # kotanın yalnızca bir kısmını harca
  *   npm run seed:catalog -- --playlist <url>   # tek liste
  *   npm run seed:catalog -- --force            # bilinen listeleri de yeniden tara
+ *   npm run seed:catalog -- --harvest          # havuzdaki kanalları kaynağa çevir
+ *   npm run seed:catalog -- --harvest-any      # sadece Topic değil, HER kanal
  *
  * NEDEN VAR
  * Müşteri katalogda olmayan bir şarkı istediğinde sistemin "şu yazı = şu YouTube
@@ -27,6 +29,19 @@
  * dosyasında tutuluyor ve tur başında TEK playlists.list çağrısıyla (50 liste =
  * 1 birim) karşılaştırılıyor — sayı değişmemiş liste hiç açılmıyor.
  *
+ * HASAT (--harvest)
+ * Elle playlist bağlantısı toplamak havuzu büyütmenin en yavaş yolu. Oysa
+ * videos.list yanıtı zaten snippet.channelId'yi döndürüyor ve bir kanalın
+ * yüklemeler listesi saf string dönüşümüyle bulunuyor: UCxxx -> UUxxx, sıfır
+ * kota. "Sanatçı - Topic" kanallarında bu liste sanatçının TÜM resmi
+ * diskografisi demek (ölçüldü: The Weeknd - Topic = 967 şarkı, ~20 birim).
+ *
+ * Hasat iki adım: (1) channel_id'si boş satırlar için videos.list ile geri
+ * doldurma, (2) havuzdaki kanalların yükleme listelerini kaynak listesine ekleme.
+ * Tur kendi kendini besler — yeni şarkı yeni kanal getirir. Varsayılan olarak
+ * yalnızca Topic kanalları alınır; --harvest-any her kanalı alır ama derleme
+ * kanallarının mix/set yüklemeleri süzgece yüklenir.
+ *
  * TEK SEFERLİK İŞ: bittiğinde üretimde çalışan hiçbir şey bu betiğe bağlı değildir.
  */
 
@@ -46,6 +61,8 @@ const API_BASE = "https://www.googleapis.com/youtube/v3";
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry");
 const FORCE = args.includes("--force");
+const HARVEST_ANY = args.includes("--harvest-any");
+const HARVEST = HARVEST_ANY || args.includes("--harvest");
 
 function flag(name: string, fallback: string): string {
   const i = args.indexOf(`--${name}`);
@@ -94,20 +111,52 @@ let unitsSpent = 0;
 class BudgetExhausted extends Error {}
 class QuotaExhausted extends Error {}
 
+// Tekrarlanmasının anlamı olmayan hata: silinmiş/gizlenmiş liste, hatalı istek.
+// retry() bunu olduğu gibi yukarı verir, çağıran tek listeyi düşürür.
+class NotRetryable extends Error {}
+
 function spend(units: number) {
   if (unitsSpent + units > BUDGET) throw new BudgetExhausted();
   unitsSpent += units;
 }
 
+// Geri doldurma binlerce HTTP turu sürüyor; tek bir geçici ağ takılması ("fetch
+// failed") bütün turu düşürüyordu. Kota/yetki hataları YENİDEN DENENMEZ, onlar
+// tekrar edince de aynı sonucu verir; yalnızca ağ hatası ve 5xx tekrarlanır.
+// fn her denemede YENİDEN çağrılır: Supabase sorgu kurucuları tek atımlıktır,
+// aynı kurucuyu ikinci kez await etmek istek tekrarlamaz.
+async function retry<T>(label: string, fn: () => PromiseLike<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof QuotaExhausted || err instanceof BudgetExhausted) throw err;
+      if (err instanceof NotRetryable) throw err;
+      lastError = err;
+      const wait = 1000 * 3 ** attempt;
+      console.log(`  ${label}: geçici hata, ${wait / 1000} sn sonra yeniden denenecek`);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+  throw lastError;
+}
+
 async function api<T>(path: string, params: Record<string, string>): Promise<T> {
   const query = new URLSearchParams({ ...params, key: API_KEY! });
-  const res = await fetch(`${API_BASE}/${path}?${query}`);
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    if (res.status === 403 && body.includes("quota")) throw new QuotaExhausted();
-    throw new Error(`YouTube ${path} hatası (${res.status}): ${body.slice(0, 200)}`);
-  }
-  return res.json() as Promise<T>;
+  return retry(path, async () => {
+    const res = await fetch(`${API_BASE}/${path}?${query}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      if (res.status === 403 && body.includes("quota")) throw new QuotaExhausted();
+      const message = `YouTube ${path} hatası (${res.status}): ${body.slice(0, 200)}`;
+      // 5xx ve 429 geçici; kalan 4xx'ler (404 silinmiş liste, 400 hatalı kimlik)
+      // ne kadar denenirse denensin aynı yanıtı verir.
+      if (res.status < 500 && res.status !== 429) throw new NotRetryable(message);
+      throw new Error(message);
+    }
+    return res.json() as Promise<T>;
+  });
 }
 
 /* ---------- kaynak listesi ---------- */
@@ -251,6 +300,7 @@ type VideoItem = {
   snippet?: {
     title?: string;
     channelTitle?: string;
+    channelId?: string;
     categoryId?: string;
     thumbnails?: { high?: { url?: string }; medium?: { url?: string } };
   };
@@ -266,6 +316,7 @@ type SongRow = {
   album_cover_url: string;
   duration_ms: number;
   channel_title: string;
+  channel_id: string | null;
   view_count: number;
 };
 
@@ -277,6 +328,8 @@ const stats = {
   alreadyKnown: 0,
   filtered: 0,
   upserted: 0,
+  backfilled: 0,
+  harvested: 0,
 };
 
 function toRow(v: VideoItem): SongRow | null {
@@ -299,6 +352,7 @@ function toRow(v: VideoItem): SongRow | null {
       v.snippet?.thumbnails?.high?.url ?? v.snippet?.thumbnails?.medium?.url ?? videoThumbnail(v.id),
     duration_ms: duration,
     channel_title: v.snippet?.channelTitle ?? "",
+    channel_id: v.snippet?.channelId ?? null,
     view_count: Number(v.statistics?.viewCount ?? 0),
   };
 }
@@ -335,10 +389,9 @@ async function filterKnown(videoIds: string[]): Promise<string[]> {
   const unknown: string[] = [];
   for (let i = 0; i < videoIds.length; i += 200) {
     const chunk = videoIds.slice(i, i + 200);
-    const { data, error } = await supabase
-      .from("songs")
-      .select("youtube_video_id")
-      .in("youtube_video_id", chunk);
+    const { data, error } = await retry("songs okuma", () =>
+      supabase.from("songs").select("youtube_video_id").in("youtube_video_id", chunk)
+    );
     if (error) throw new Error(`songs okunamadı: ${error.message}`);
     const known = new Set((data ?? []).map((r) => r.youtube_video_id as string));
     for (const id of chunk) if (!known.has(id)) unknown.push(id);
@@ -365,22 +418,101 @@ async function fetchRows(videoIds: string[]): Promise<SongRow[]> {
   return rows;
 }
 
-async function upsert(rows: SongRow[]) {
+// ignoreDuplicates=false yalnızca geri doldurmada kullanılır: orada satır zaten
+// havuzda, amaç eksik kolonu (channel_id) tamamlamak.
+async function upsert(rows: SongRow[], ignoreDuplicates = true) {
   for (let i = 0; i < rows.length; i += 500) {
     const chunk = rows.slice(i, i + 500);
-    const { error } = await supabase
-      .from("songs")
-      .upsert(chunk, { onConflict: "youtube_video_id", ignoreDuplicates: true });
+    const { error } = await retry("songs yazma", () =>
+      supabase.from("songs").upsert(chunk, { onConflict: "youtube_video_id", ignoreDuplicates })
+    );
     if (error) throw new Error(`songs yazılamadı: ${error.message}`);
     stats.upserted += chunk.length;
   }
+}
+
+
+/* ---------- hasat ---------- */
+
+// channel_id'si bulunamayan satırın nişanı. Olmasa silinmiş/süzgece takılmış
+// videolar her turda yeniden sorulur ve geri doldurma hiç bitmez.
+const UNKNOWN_CHANNEL = "-";
+
+// videos.list — 1 birim/50. Havuzdaki eski satırlar channel_id kolonundan önce
+// yazıldığı için kanal kimlikleri boş; hasat edebilmek için bir kez doldurulur.
+// Tur yarıda kesilse bile ilerleme kolonda durur, kaldığı yerden sürer.
+async function backfillChannelIds() {
+  for (;;) {
+    const { data, error } = await retry("songs okuma", () =>
+      supabase.from("songs").select("youtube_video_id").is("channel_id", null).limit(1000)
+    );
+    if (error) throw new Error(`songs okunamadı: ${error.message}`);
+
+    const ids = (data ?? []).map((r) => r.youtube_video_id as string);
+    if (ids.length === 0) return;
+
+    for (let i = 0; i < ids.length; i += 50) {
+      const batch = ids.slice(i, i + 50);
+      const rows = await fetchRows(batch);
+      if (rows.length > 0) await upsert(rows, false);
+      stats.backfilled += rows.length;
+
+      const filled = new Set(rows.map((r) => r.youtube_video_id));
+      const missing = batch.filter((id) => !filled.has(id));
+      if (missing.length > 0) {
+        const { error: markError } = await retry("channel_id işaretleme", () =>
+          supabase.from("songs").update({ channel_id: UNKNOWN_CHANNEL }).in("youtube_video_id", missing)
+        );
+        if (markError) throw new Error(`channel_id işaretlenemedi: ${markError.message}`);
+      }
+    }
+
+    console.log(`  geri doldurma: ${stats.backfilled} kanal kimliği (${unitsSpent} birim)`);
+  }
+}
+
+// Havuzdaki kanalları yükleme listelerine çevirir. UC -> UU dönüşümü string
+// işlemi: kanal başına playlists.list çağrısı YOK, sıfır kota.
+//
+// Varsayılan yalnızca "Sanatçı - Topic" kanalları: bunların yüklemeleri resmi
+// albüm sesleridir, kategori 10 ve gömülebilir. --harvest-any her kanalı alır;
+// derleme kanallarının saatlik mix'leri süzgece yüklenir, kota boşa gider.
+async function harvestUploadPlaylists(): Promise<string[]> {
+  const channels = new Set<string>();
+  const PAGE = 1000;
+
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await retry("kanal okuma", () => {
+      const query = supabase
+        .from("songs")
+        .select("channel_id")
+        .not("channel_id", "is", null)
+        .neq("channel_id", UNKNOWN_CHANNEL)
+        .range(from, from + PAGE - 1);
+      return HARVEST_ANY ? query : query.ilike("channel_title", "%- Topic");
+    });
+    if (error) throw new Error(`songs okunamadı: ${error.message}`);
+    for (const row of data ?? []) {
+      const id = row.channel_id as string | null;
+      if (id && id.startsWith("UC")) channels.add(id);
+    }
+    if (!data || data.length < PAGE) break;
+  }
+
+  const uploads = [...channels].map((id) => `UU${id.slice(2)}`);
+  stats.harvested = uploads.length;
+  console.log(
+    `  hasat: ${channels.size} kanal -> ${uploads.length} yükleme listesi` +
+      (HARVEST_ANY ? " (her kanal)" : " (yalnızca Topic)")
+  );
+  return uploads;
 }
 
 /* ---------- ana akış ---------- */
 
 async function main() {
   const { playlists, channels } = readSources();
-  if (playlists.length === 0 && channels.length === 0) {
+  if (playlists.length === 0 && channels.length === 0 && !HARVEST) {
     console.error(
       `Kaynak liste boş. ${LIST_FILE} dosyasına playlist ya da kanal bağlantısı ekleyin veya --playlist <url> verin.`
     );
@@ -389,11 +521,25 @@ async function main() {
 
   const state = FORCE ? {} : readState();
 
+  let harvested: string[] = [];
+  if (HARVEST) {
+    if (DRY_RUN) {
+      const { count } = await supabase
+        .from("songs")
+        .select("youtube_video_id", { count: "exact", head: true })
+        .is("channel_id", null);
+      console.log(`  geri doldurulacak: ${count ?? 0} satır ≈ ${Math.ceil((count ?? 0) / 50)} birim`);
+    } else {
+      await backfillChannelIds();
+    }
+    harvested = await harvestUploadPlaylists();
+  }
+
   // Kanal listelerinin şarkı sayıları expandChannels sırasında zaten dolduğu için
-  // ön kontrol yalnızca doğrudan verilen playlist'ler için çağrılır
-  const counts = await currentItemCounts(playlists);
+  // ön kontrol yalnızca doğrudan verilen playlist'ler ve hasat için çağrılır
+  const counts = await currentItemCounts([...playlists, ...harvested]);
   const fromChannels = channels.length > 0 ? await expandChannels(channels, counts) : [];
-  const playlistIds = [...new Set([...playlists, ...fromChannels])];
+  const playlistIds = [...new Set([...playlists, ...harvested, ...fromChannels])];
 
   const todo = playlistIds.filter((id) => {
     const seen = state[id];
@@ -408,6 +554,7 @@ async function main() {
   console.log(
     `${playlistIds.length} playlist` +
       (channels.length > 0 ? ` (${fromChannels.length}'i ${channels.length} kanaldan)` : "") +
+      (harvested.length > 0 ? ` (${harvested.length}'i hasattan)` : "") +
       ` · ${stats.unchanged} değişmemiş, ${todo.length} taranacak · ` +
       `bütçe ${BUDGET} birim${DRY_RUN ? " (KURU ÇALIŞMA)" : ""}\n`
   );
@@ -474,6 +621,8 @@ main()
 // havuzda olduğu için ikinci çalıştırmada videos.list'e hiç gitmez.
 function report(headline: string) {
   console.log(`\n${headline}`);
+  if (stats.backfilled > 0) console.log(`  geri doldurulan: ${stats.backfilled} kanal kimliği`);
+  if (stats.harvested > 0) console.log(`  hasat listesi  : ${stats.harvested}`);
   console.log(`  taranan liste  : ${stats.playlists}`);
   console.log(`  değişmemiş     : ${stats.unchanged}`);
   console.log(`  görülen şarkı  : ${stats.seenIds}`);

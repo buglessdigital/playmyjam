@@ -72,6 +72,12 @@ const RECONCILE_MS = 15_000;
 // Kuyruk boş kaldığında sıradakini yeniden isteme aralığı. Sessizlik ne kadar
 // kısa sürerse o kadar iyi; sunucu tarafı zaten otomatik dolum yapıyor.
 const IDLE_RETRY_MS = 8_000;
+// "Sıradaki" isteğinin tekrar denemeleri (bkz. advance). Meşgul (503) sahne
+// kilidi kısa işler için tutulur; birkaç kısa aralıklı deneme onu geçer.
+const ADVANCE_RETRIES = 2;
+const ADVANCE_RETRY_MS = 1_200;
+const ADVANCE_BUSY_RETRIES = 6;
+const ADVANCE_BUSY_RETRY_MS = 700;
 // Yükleme sonrası bu süre içinde gelen "duraklat" yankıları yok sayılır — skip
 // anında yarışan bayat heartbeat'ler yeni şarkıyı durduramasın
 const PAUSE_ECHO_GRACE_MS = 8_000;
@@ -545,7 +551,21 @@ type PlayerApiResult = {
   // Sunucu ilerletmeyi reddetti: sahnedeki şarkının daha çalacak vakti vardı
   // (bkz. lib/queue.ts). Kuyruk DEĞİŞMEDİ, sahnedeki şarkı olduğu gibi duruyor.
   kept?: boolean;
+  // İlerletme zaten yapılmış (from_video_id artık sahnede değil): video_id
+  // sahnedeki şarkıdır, çalınması gereken odur. started da true gelir.
+  already?: boolean;
+  // Mekan oturumu iptal edildi ama çalma sürdürülüyor (bkz. player route'undaki
+  // PLAYBACK_GRACE_ACTIONS): ekranda "tekrar giriş yapın" uyarısı gösterilir.
+  reauth?: boolean;
 };
+
+// Son başarısız isteğin türü. "Sıradaki" mantığı buna göre karar verir:
+//   busy    → 503, sahneyi değiştiren başka bir iş sürüyor. Kısa sürede tekrar
+//             denenir; çevrimdışı yedeğe GEÇİLMEZ (sunucu ayakta ve sahneyi az
+//             önce başka biri değiştirmiş olabilir).
+//   server  → diğer HTTP hataları (500 vb.).
+//   network → istek sunucuya ulaşamadı ya da zaman aşımına uğradı.
+type ApiFailure = "busy" | "server" | "network";
 
 // Çalmayı durduran engeller: oturum düştü (401) veya sahiplik başka cihaza geçti (409).
 // İkisi de "kuyruk boş" DEĞİLDİR — ekranda ayrı ayrı, doğru mesajla gösterilir.
@@ -556,17 +576,46 @@ let apiPromise: Promise<void> | null = null;
 // Sekme kimliği: sahiplik bunun üzerinden yürür. sessionStorage sekmeye özeldir
 // ve yenilemede korunur — sayfa yenilenince kendi kilidimize takılmayız, ama
 // ikinci bir sekme/cihaz her zaman farklı kimlik alır.
+// Sahiplik kimliği SAYFANIN BELLEĞİNDE tutulur (modül düzeyi): aynı sayfada
+// player yeniden kurulsa da aynı kalır, ama başka bir sekmeye ASLA taşınmaz.
+// Eskiden sessionStorage'daydı ve Chrome onu kopyalıyordu — panelin "TV modu"
+// bağlantısıyla (isimli hedef, opener'lı) ya da "Sekmeyi çoğalt" ile açılan
+// sekme panelle AYNI kimliği alıyordu. Sunucu ikisini tek cihaz sanıyor, hiçbiri
+// susturulmuyor ve mekanda iki ses üst üste çalıyordu; TV sekmesi kapanınca da
+// ortak kimlikle giden "bırak" paneldeki müziği durduruyordu. Sayfa yenilenince
+// yeni kimlik alınır — eski kilidi pagehide'daki "release" zaten bırakıyor.
+const playerInstanceIds = new Map<string, string>();
+
 function playerInstanceId(venueDbId: string): string {
-  const key = `pmj-player-claim:${venueDbId}`;
-  try {
-    const existing = sessionStorage.getItem(key);
-    if (existing) return existing;
-    const fresh = crypto.randomUUID();
-    sessionStorage.setItem(key, fresh);
-    return fresh;
-  } catch {
-    return crypto.randomUUID();
+  let id = playerInstanceIds.get(venueDbId);
+  if (!id) {
+    id = crypto.randomUUID();
+    playerInstanceIds.set(venueDbId, id);
   }
+  return id;
+}
+
+// Aynı tarayıcıdaki player sekmeleri arasındaki hat. Çalan sekme kapanırken
+// (TV modu sekmesi kapatıldı) "bıraktım, şu şarkıda şu saniyedeydim" der;
+// sahipliği ona kaptırıp susmuş olan panel çalmayı KENDİLİĞİNDEN, kaldığı
+// yerden devralır. Bilerek yalnızca aynı tarayıcı: başka bir cihazdaki (ör. evde
+// açık kalmış laptop) player'ın mekan kapanınca kendiliğinden çalmaya
+// başlaması istenmez.
+const HANDOFF_CHANNEL = (venueDbId: string) => `pmj-player-handoff:${venueDbId}`;
+type HandoffMessage = {
+  type: "released";
+  claimId: string;
+  videoId: string | null;
+  positionSec: number;
+  playing: boolean;
+};
+
+function postHandoff(venueDbId: string, message: HandoffMessage): void {
+  try {
+    const channel = new BroadcastChannel(HANDOFF_CHANNEL(venueDbId));
+    channel.postMessage(message);
+    channel.close();
+  } catch {}
 }
 
 // IFrame API script'i tek sefer yüklenir; YT hazır olunca resolve eder
@@ -874,6 +923,13 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
   // çalıyoruz: now_playing satırı bu sırada bayattır, bağlantı dönünce
   // eşitlenir (bkz. syncOfflineFallback)
   const offlineFallbackRef = useRef(false);
+  // Yedeğe geçmeden ÖNCE çalan (biten) şarkı: eşitlemede sunucuya söylenir ki
+  // kesinti sırasında sahneye başkasının koyduğu şarkı yakılmasın, sıraya dönsün
+  const fallbackFromRef = useRef<string | null>(null);
+  // Son başarısız isteğin türü (bkz. ApiFailure)
+  const lastFailRef = useRef<ApiFailure | null>(null);
+  // Oturum iptal edildi, çalma izinle sürüyor: yeniden giriş uyarısı
+  const [needsReauth, setNeedsReauth] = useState(false);
 
   // İstenen seviyeyi AKTİF deck'e bas. Tek seferlik DEĞİL: YouTube yeni video
   // yüklenince kendi hatırladığı seviyeye dönebiliyor, bu yüzden aşağıdaki
@@ -971,22 +1027,32 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
         // 401: mekan oturumu düştü. 409: çalma başka bir cihaza geçti.
         if (res.status === 401) {
           plog(`api ${payload.action}: 401 — mekan oturumu düştü`);
+          lastFailRef.current = "server";
           setBlock("auth");
           return null;
         }
         if (res.status === 409) {
           plog(`api ${payload.action}: 409 — sahiplik başka cihazda`);
+          lastFailRef.current = "server";
           setBlock("claim");
           return null;
         }
         if (!res.ok) {
           plog(`api ${payload.action}: HTTP ${res.status}`);
+          lastFailRef.current = res.status === 503 ? "busy" : "server";
           return null;
         }
         setBlock(null);
-        return res.json();
+        lastFailRef.current = null;
+        const data = (await res.json()) as PlayerApiResult;
+        // Oturum iptal edilmiş ama çalma sürdürülüyor: uyarı yalnızca değişince
+        // basılır (her heartbeat'te render olmasın)
+        const reauth = data?.reauth === true;
+        setNeedsReauth((prev) => (prev === reauth ? prev : reauth));
+        return data;
       } catch (e) {
         plog(`api ${payload.action}: AĞ HATASI (${(e as Error)?.name ?? "?"})`);
+        lastFailRef.current = "network";
         return null;
       }
     },
@@ -1184,8 +1250,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
   // Sert geçiş: videoyu AKTİF deck'e yükler. Elle atlama, panel komutu, hata
   // sonrası atlama hep buradan geçer — crossfade yalnızca şarkı doğal biterken
   // devreye girer, çünkü tuşa basan biri beklemek istemez.
+  // startSeconds: şarkıyı baştan değil bu konumdan başlat (başka sekmeden
+  // çalmayı devralırken kaldığı yerden sürsün diye)
   const loadVideo = useCallback(
-    (videoId: string) => {
+    (videoId: string, startSeconds = 0) => {
       // Araya giren komut: yarım kalmış geçiş derhal biter, boştaki deck susar
       endCrossfade();
       preloadedVideoRef.current = null;
@@ -1204,7 +1272,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       );
       if (activeReady() && typeof player?.loadVideoById === "function") {
         pendingVideoRef.current = null;
-        player.loadVideoById(videoId);
+        player.loadVideoById(startSeconds > 0 ? { videoId, startSeconds } : videoId);
         forceLowQuality(player);
         scheduleNudges(PLAY_WATCHDOG_DELAYS_MS);
       } else {
@@ -1403,19 +1471,36 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       }
       setAdvancing(true);
       plog(`ilerlet(${payload.action}) istendi`);
+      // Hangi şarkıdan ilerlettiğimizi söyleriz: sunucu sahnede artık başka
+      // şarkı görürse ilerletmez, onu döndürür (bkz. lib/queue.ts AdvanceOptions).
+      // Bu sayede aşağıdaki TEKRAR DENEMELER güvenlidir — ilk kopyası sunucuda
+      // işleyip yanıtı kaybolan istek, yeni şarkıyı ikinci kez atlayıp yakamaz.
+      // Çevrimdışı yedekle çalarken sunucunun sahnesi bayattır; o zaman eski
+      // davranış (ilerletme) sürer, hizalamayı syncOfflineFallback yapar.
+      const fromVideoId = offlineFallbackRef.current ? null : currentVideoRef.current;
+      const request = fromVideoId ? { ...payload, from_video_id: fromVideoId } : payload;
       try {
-        let result = await api(payload);
-        // Ağ/sunucu hatası "kuyruk boş" DEĞİLDİR: tek denemede idle'a düşmek
-        // geçici bir kesintiyi sessizliğe çeviriyordu — kısa aralıkla tekrar dene.
-        // Tamponda sıradaki şarkı hazır bekliyorsa beklemeye hiç girmeyiz;
-        // müzik anında devam eder, kuyruk sonradan eşitlenir.
-        for (
-          let i = 0;
-          !result && !blockedRef.current && !preloadedVideoRef.current && i < 2;
-          i++
-        ) {
-          await new Promise((resolve) => setTimeout(resolve, 1_200));
-          result = await api(payload);
+        let result = await api(request);
+        // Hata "kuyruk boş" DEĞİLDİR: tek denemede idle'a düşmek geçici bir
+        // kesintiyi sessizliğe çeviriyordu — kısa aralıkla tekrar dene.
+        //
+        // 503 (sahne kilidi meşgul) sunucunun AYAKTA olduğunu gösterir ve çoğu
+        // zaman sahneyi az önce başka bir işin (panelden "şimdi çal") değiştirdiği
+        // anlamına gelir. Eskiden bu da "ağ yok" sayılıp tampondaki şarkı kendi
+        // kararımızla çalınıyordu; sunucunun koyduğu şarkı da sonradan hiç
+        // çalmadan yanıyordu. Artık meşgulde tekrar denenir — yanıt sunucunun
+        // sahnesini getirir. Yedeğe yalnızca gerçek ağ kopukluğunda geçilir.
+        for (let attempt = 0; !result && !blockedRef.current; attempt++) {
+          const failure = lastFailRef.current;
+          const limit = failure === "busy" ? ADVANCE_BUSY_RETRIES : ADVANCE_RETRIES;
+          if (attempt >= limit) break;
+          // Ağ yok ve sıradaki şarkı tamponda hazır: bir denemeden sonra yedeğe
+          // geç, mekan sessiz beklemesin
+          if (failure === "network" && preloadedVideoRef.current && attempt >= 1) break;
+          await new Promise((resolve) =>
+            setTimeout(resolve, failure === "busy" ? ADVANCE_BUSY_RETRY_MS : ADVANCE_RETRY_MS)
+          );
+          result = await api(request);
         }
         plog(
           `ilerlet(${payload.action}) sonuç: ${
@@ -1434,12 +1519,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           // Video FİİLEN bitmiş: kayıttaki süre yanlış demektir. Mekan sessiz
           // kalmasın diye bir kez zorlayarak isteriz.
           plog("ilerletme reddedildi AMA video bitmiş — zorlanarak tekrar isteniyor");
-          result = await api({ ...payload, reason: "ended-verified" });
+          result = await api({ ...request, reason: "ended-verified" });
           // Yanıt yok (ağ / sahne kilidi meşgul): bu tur bırakılır, bekçiler ve
           // mutabakat zaten birazdan yeniden dener.
           if (!result) return;
         }
         if (result?.started && result.video_id) {
+          if (result.already) {
+            plog(`sahne zaten değişmişti — sunucunun şarkısı çalınıyor (${result.video_id})`);
+          }
           // Sunucu sahnede zaten duran videoyu döndürdüyse yeniden YÜKLEME:
           // loadVideoById şarkıyı baştan başlatır. AMA deck bitmişse bu, kuyruğa
           // arka arkaya düşmüş AYNI videodur (tek şarkılık liste, elle iki kez
@@ -1453,7 +1541,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           // almıştık: müzik susmasın, onu çal. Kuyruk sunucuda ilerlemedi;
           // bağlantı dönünce reconcile eşitler (bkz. syncOfflineFallback).
           const fallback = preloadedVideoRef.current;
-          plog(`sunucuya ulaşılamadı — çevrimdışı yedek çalınıyor (${fallback})`);
+          plog(
+            `sunucuya ulaşılamadı (${lastFailRef.current ?? "?"}) — çevrimdışı yedek çalınıyor (${fallback})`
+          );
+          // Zaten yedekteysek ilk yedeğin çıkış şarkısı korunur: sunucunun
+          // sahnesinde hâlâ o duruyor
+          if (!offlineFallbackRef.current) fallbackFromRef.current = currentVideoRef.current;
           if (!playPreloaded(fallback)) loadVideo(fallback);
           offlineFallbackRef.current = true;
         } else if (!blockedRef.current) {
@@ -1467,6 +1560,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           preloadedForRef.current = null;
           preloadRetryAtRef.current = 0;
           offlineFallbackRef.current = false;
+          fallbackFromRef.current = null;
           setIdle(true);
           onTrackChange?.({ videoId: null, isPlaying: false });
           broadcastState({ video_id: null, is_playing: false, progress_ms: 0 });
@@ -1638,7 +1732,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     setAdvancing(true);
     let result: PlayerApiResult | null = null;
     try {
-      result = await api({ action: "next" });
+      // Çıkan şarkıdan ilerlettiğimizi söyleriz: sahne bu arada başkası
+      // tarafından değiştirildiyse sunucu onu döndürür, ikinci kez atlamaz
+      const from = currentVideoRef.current;
+      result = await api(from ? { action: "next", from_video_id: from } : { action: "next" });
     } finally {
       setAdvancing(false);
     }
@@ -1966,6 +2063,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     const videoId = currentVideoRef.current;
     if (!videoId) {
       offlineFallbackRef.current = false;
+      fallbackFromRef.current = null;
       return;
     }
     let progress = 0;
@@ -1975,13 +2073,22 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     setAdvancing(true);
     let result: PlayerApiResult | null = null;
     try {
-      result = await api({ action: "sync", video_id: videoId, progress_ms: progress });
+      result = await api({
+        action: "sync",
+        video_id: videoId,
+        progress_ms: progress,
+        // Yedekten önce çalan şarkı: sunucu sahnede ondan BAŞKA bir şarkı
+        // bulursa (kesinti sırasında panelden "şimdi çal" vb.) onu yakmaz,
+        // sıraya geri koyar
+        ...(fallbackFromRef.current ? { from_video_id: fallbackFromRef.current } : {}),
+      });
     } finally {
       setAdvancing(false);
     }
     // Hâlâ ulaşılamıyor: çalmaya devam, sonraki turda yeniden denenir
     if (!result) return;
     offlineFallbackRef.current = false;
+    fallbackFromRef.current = null;
     // Şarkı katalogda bulunamadı (olmaması gereken durum): now_playing bize
     // hizalanamadı, kuyruğu ileri sarıp tutarlı duruma dön
     if (result.ok === false) {
@@ -2259,6 +2366,21 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             // CUED verir, aşağıdaki dal onu çalmaya kalkardı — sahiplik daha
             // alınmadan ses çıkması demek olurdu.
             if (!startedRef.current) return;
+            // SAHİPLİK BAŞKA SEKMEDE/CİHAZDA: bu sekme susmak ZORUNDA. Susturmanın
+            // kendi pauseVideo()'su bir PAUSED olayı doğuruyor ve aşağıdaki "dış
+            // kaynaklı duraklatma — geri aç" dalı onu toparlanacak bir aksilik
+            // sanıp çalmayı YENİDEN başlatıyordu: TV modu devraldığında panel de
+            // çalmaya devam ediyor, mekanda iki ses üst üste biniyordu (tarayıcı
+            // testiyle görüldü). Bu durumda hiçbir olay çalmayı açamaz; bir deck
+            // yine de çalmaya başlarsa (bekleyen bir dürtme vb.) anında susturulur.
+            if (blockedRef.current === "claim") {
+              if (e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.BUFFERING) {
+                try {
+                  decksRef.current[key]?.pauseVideo();
+                } catch {}
+              }
+              return;
+            }
             // Boştaki deck'in olayları çalma akışını yönetmez. Geçiş sırasında
             // çıkan şarkı burada biter (ENDED) — kuyruğu ikinci kez ilerletmemeli.
             if (key !== activeDeckRef.current) {
@@ -3019,11 +3141,28 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
 
   // Sekme/pencere kapanırken sahipliği bırak. Aksi halde kilit 45 sn bayatlayana
   // kadar duruyor ve player hemen yeniden açıldığında kendi eski kilidimiz yüzünden
-  // "başka bir cihazda açık" uyarısı çıkıyordu (sessionStorage kimliği sekmeye özel).
+  // "başka bir cihazda açık" uyarısı çıkıyordu.
   useEffect(() => {
     if (!started) return;
     const url = `/api/player/${venueDbId}`;
     const release = () => {
+      // Sahip biz değilsek (sahiplik başka sekmeye geçmişti) bırakacak bir şey
+      // yok; devralma çağrısı da yapılmaz — çalan zaten başkası
+      if (blockedRef.current === "claim") return;
+      // Aynı tarayıcıda susturulmuş bir panel varsa müziği kaldığı yerden
+      // devralsın (bkz. HANDOFF_CHANNEL). Sunucuya giden "bırak"tan ÖNCE: devralan
+      // sekme zorla sahiplik aldığı için sıralama yarışı zararsız.
+      let positionSec = 0;
+      try {
+        positionSec = activePlayer()?.getCurrentTime() ?? 0;
+      } catch {}
+      postHandoff(venueDbId, {
+        type: "released",
+        claimId: claimId(),
+        videoId: currentVideoRef.current,
+        positionSec,
+        playing: desiredPlayingRef.current,
+      });
       const body = JSON.stringify({ action: "release", claim_id: claimId() });
       try {
         // sendBeacon kapanış sırasında da teslim edilir; aynı origin olduğu için cookie gider
@@ -3062,7 +3201,41 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       // kendimiz düşürürüz. Gerçek kapanışı zaten pagehide yakalıyor.
       releaseTimerRef.current = setTimeout(release, 300);
     };
-  }, [started, venueDbId, claimId]);
+  }, [started, venueDbId, claimId, activePlayer]);
+
+  // DEVRALMA: aynı tarayıcıda çalmayı bizden almış sekme (TV modu) kapandı.
+  // Sahipliği kaybedip susmuştuk; müzik mekanda kesilmesin diye dokunuş
+  // beklemeden, onun kaldığı şarkı ve saniyeden devam ederiz. Bu sekme zaten bir
+  // kez dokunuşla başlatıldığı için tarayıcı oynatmaya izin verir.
+  useEffect(() => {
+    if (!started) return;
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel(HANDOFF_CHANNEL(venueDbId));
+    } catch {
+      return;
+    }
+    channel.onmessage = (event: MessageEvent<HandoffMessage>) => {
+      const msg = event.data;
+      if (msg?.type !== "released" || msg.claimId === claimId()) return;
+      // Yalnızca sahipliği KAYBETMİŞ (susturulmuş) sekme devralır. Çalan bir
+      // sekme varsa zaten o çalıyor; duraklatılmış müzik de duraklatılmış kalır.
+      if (blockedRef.current !== "claim" || !msg.playing || !msg.videoId) return;
+      const videoId = msg.videoId;
+      const positionSec = Math.max(0, msg.positionSec || 0);
+      plog(`çalan sekme kapandı — çalma buraya alınıyor (${videoId} @ ${positionSec.toFixed(0)} sn)`);
+      void (async () => {
+        const result = await api({ action: "claim", force: true });
+        if (!result?.claimed) return;
+        setClaimTaken(false);
+        // Engel ÖNCE kalkar: sahiplik kaybındaki deck olayları çalmayı
+        // susturuyor, yeni yüklemenin PLAYING'i ona takılmasın
+        setBlock(null);
+        loadVideo(videoId, positionSec);
+      })();
+    };
+    return () => channel?.close();
+  }, [started, venueDbId, claimId, api, loadVideo, setBlock]);
 
   // "Başka cihazda açık" ekranı asılı kalmasın: diğer sekme kapandığında ya da
   // kilit bayatladığında kendiliğinden normal "Başlat" ekranına dönsün.
@@ -3211,6 +3384,21 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
         <p className="mt-2 text-center text-xs text-[#fbbf24]">
           Bu cihaz uzaktan ses ayarını kabul etmiyor — sesi cihazın kendi düğmelerinden
           ayarlayın. Uzaktan kontrol ve çapraz geçiş için player&apos;ı bilgisayarda açın.
+        </p>
+      )}
+
+      {/* Oturum iptal edildi (şifre/kullanıcı adı değişti) ama müzik bu cihazda
+          sürüyor. Videonun ÜSTÜNE değil altına basılır (YouTube kuralı). */}
+      {needsReauth && blocked !== "auth" && (
+        <p
+          className={`mt-2 text-center text-[#fbbf24] ${compact ? "text-[10px] leading-tight" : "text-xs"}`}
+        >
+          Mekan oturumu kapandı — müzik çalmaya devam ediyor, ama panel kilitli.{" "}
+          {loginHref && (
+            <a href={loginHref} target="_blank" rel="noopener" className="font-bold underline">
+              Tekrar giriş yapın
+            </a>
+          )}
         </p>
       )}
 

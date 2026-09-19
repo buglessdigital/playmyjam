@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { renewAdminCookie, venueAccess } from "@/lib/admin-session";
+import { isRevokedAdminSessionFor, renewAdminCookie, venueAccess } from "@/lib/admin-session";
 import {
   playNextFromQueue,
   playPreviousFromQueue,
@@ -28,6 +28,24 @@ function isFatalPlaybackError(body: unknown): boolean {
   if (typeof code !== "number") return true;
   return FATAL_YT_ERROR_CODES.has(code);
 }
+
+// OTURUMU İPTAL EDİLMİŞ PLAYER'IN YAPABİLDİKLERİ. Şifre/kullanıcı adı değişince
+// mekanın bütün oturumları düşer — mekandaki bilgisayar dahil. Eskiden o anda
+// çalan şarkı biter, sıradaki istenemez ve müzik biri tekrar giriş yapana kadar
+// susardı. Artık çalmayı FİİLEN yürüten cihaz (geçerli sahiplik kimliği + taze
+// kilit) yalnızca çalmayı sürdüren bu komutlarla devam edebilir; yanıtta
+// reauth:true döner ve ekranda "tekrar giriş yapın" uyarısı çıkar. Sahiplik
+// alma (claim), panelin elle atlaması, duraklatma, ses vb. KAPALIDIR — iptal
+// edilmiş bir çerez bununla hiçbir yetki kazanmaz, yalnızca mevcut çalma sürer.
+const PLAYBACK_GRACE_ACTIONS = new Set([
+  "heartbeat",
+  "next",
+  "peek",
+  "sync",
+  "error",
+  "unplayable",
+  "release",
+]);
 
 type ClaimRow = { player_claim: string | null; player_claim_at: string | null };
 
@@ -75,17 +93,40 @@ export async function POST(
 ) {
   const { venueId } = await params;
 
-  const access = await venueAccess(req, venueId);
-  if (!access) {
-    return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
-  }
-  // Her istek oturumu tazeler: mekan ekranı günlerce açık kalsa da düşmez
-  const reply = (body: unknown, init?: ResponseInit) =>
-    renewAdminCookie(NextResponse.json(body, init), access);
-
   const body = await req.json().catch(() => null);
   const action = body?.action;
   const claimId = typeof body?.claim_id === "string" ? body.claim_id : null;
+
+  const access = await venueAccess(req, venueId);
+  let grace = false;
+  if (!access) {
+    if (
+      claimId &&
+      typeof action === "string" &&
+      PLAYBACK_GRACE_ACTIONS.has(action) &&
+      body?.manual !== true &&
+      (await isRevokedAdminSessionFor(req, venueId))
+    ) {
+      const row = await readClaim(venueId);
+      grace = !!row && row.player_claim === claimId && !claimIsStale(row);
+    }
+    if (!grace) return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
+  }
+  // Her istek oturumu tazeler: mekan ekranı günlerce açık kalsa da düşmez.
+  // İptal edilmiş oturumla sürdürülen çalmada çerez tazelenmez; player'a
+  // yeniden giriş gerektiği bildirilir.
+  const reply = (payload: unknown, init?: ResponseInit) => {
+    if (grace) {
+      const marked =
+        payload && typeof payload === "object" ? { ...payload, reauth: true } : payload;
+      return NextResponse.json(marked, init);
+    }
+    return renewAdminCookie(NextResponse.json(payload, init), access);
+  };
+
+  // Player'ın "şu şarkıdan ilerlet" dediği video (bkz. AdvanceOptions)
+  const fromVideoId =
+    typeof body?.from_video_id === "string" && body.from_video_id ? body.from_video_id : null;
 
   // ERKEN İLERLETME KAPISINI kim geçer (bkz. lib/queue.ts): panelin atlama
   // düğmesi (manual) ve oynatıcının "bu şarkı çalmıyor, kurtaramadım" dediği
@@ -153,7 +194,7 @@ export async function POST(
       if (!(await isOwner(venueId, claimId))) {
         return reply({ started: false, claim_lost: true }, { status: 409 });
       }
-      const result = await playNextFromQueue(venueId, { force: forceAdvance });
+      const result = await playNextFromQueue(venueId, { force: forceAdvance, fromVideoId });
       // kept: şarkının daha vakti vardı, kuyruk ilerletilmedi. Sahnedeki şarkı
       // aynen duruyor; istemciye onu "başlamış" gibi bildiriyoruz ki eski
       // sürümdeki oynatıcı bunu "kuyruk boş" sanıp sessizliğe düşmesin.
@@ -185,7 +226,7 @@ export async function POST(
         return reply({ ok: false, claim_lost: true }, { status: 409 });
       }
       const progressMs = typeof body?.progress_ms === "number" ? Math.floor(body.progress_ms) : 0;
-      const synced = await syncPlayingVideo(venueId, videoId, progressMs);
+      const synced = await syncPlayingVideo(venueId, videoId, progressMs, fromVideoId);
       // Hizalama ertelendi: player bir sonraki turda yine bildirir
       if (synced.busy) return reply(synced, { status: 503 });
       return reply(synced);
@@ -262,7 +303,11 @@ export async function POST(
       // kalmasın diye atlama yine yapılır, ama şarkı katalogda kalır.
       if (!isFatalPlaybackError(body)) {
         // Video hata verdi: şarkının "vakti var" diye tutulması sessizlik olurdu
-        const skipped = await playNextFromQueue(venueId, { force: true });
+        // Hata bu videonundur: sahne çoktan değiştiyse yeni şarkı atlanmamalı
+        const skipped = await playNextFromQueue(venueId, {
+          force: true,
+          fromVideoId: fromVideoId ?? videoId,
+        });
         if (skipped.busy) return reply(skipped, { status: 503 });
         return reply(skipped);
       }

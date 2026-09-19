@@ -24,6 +24,11 @@ export type NextResult = {
   // ERKEN İLERLETME REDDEDİLDİ: sahnedeki şarkının daha çalacak vakti vardı,
   // kuyruk ilerletilmedi. video_id sahnede DURAN şarkıdır (değişmedi).
   kept?: boolean;
+  // İSTEK ZATEN KARŞILANMIŞ: çağıranın "şundan ilerlet" dediği şarkı artık
+  // sahnede değil (bu isteğin zaman aşımına uğrayan önceki kopyası ya da başka
+  // bir iş sahneyi değiştirmiş). Kuyruğa dokunulmadı; video_id sahnede duran
+  // şarkıdır ve çağıran onu çalmalıdır. started da true döner.
+  already?: boolean;
 };
 
 // Arka arkaya kaç bozuk satır atlanabilir. Tavan yalnızca sonsuz özyinelemeye
@@ -33,7 +38,14 @@ const MAX_SKIPS = 25;
 // Bu yollar erken ilerletme kapısına takılmaz (bkz. lib/stage-clock.ts):
 // kullanıcının kendi iradesi (panelden atlama) ya da şarkının fiilen çalamadığı
 // haller (YouTube hatası, takılma kurtarması).
-export type AdvanceOptions = { force?: boolean };
+//
+// fromVideoId: çağıranın İLERLETMEK İSTEDİĞİ şarkı (kendi çalmakta olduğu).
+// Sahnede artık başka bir şarkı varsa ilerletme YAPILMAZ. Bu, isteği
+// tekrarlanabilir kılar: ilk kopyası sunucuda işleyip yanıtı yolda kaybolan
+// (zaman aşımı) ya da sahne kilidine takılıp tekrar denenen bir "sıradaki",
+// yeni sahneye çıkmış şarkıyı — jetonla alınmış olabilir — hiç çalmadan
+// yakamaz. Verilmezse eski davranış sürer.
+export type AdvanceOptions = { force?: boolean; fromVideoId?: string | null };
 
 // Kuyruğu ilerletir: çalanı 'played' yapar, sıradakini seçip now_playing'e yazar.
 // Oynatma artık admin cihazındaki gömülü player'da — burada yalnızca durum güncellenir,
@@ -51,7 +63,8 @@ export async function playNextFromQueue(
 ): Promise<NextResult> {
   return runExclusive(
     venueId,
-    () => advanceToNext(venueId, true, 0, options.force === true),
+    () =>
+      advanceToNext(venueId, true, 0, options.force === true, options.fromVideoId ?? null),
     () => ({ started: false, busy: true })
   );
 }
@@ -63,7 +76,8 @@ async function advanceToNext(
   venueId: string,
   retryAfterFill: boolean,
   skips: number,
-  force: boolean
+  force: boolean,
+  fromVideoId: string | null = null
 ): Promise<NextResult> {
   // Sahnedeki satır ÖNCE okunur: kapıyı geçemezse hiçbir şeye dokunulmamalı
   // (bkz. EARLY_ADVANCE_TOLERANCE_MS).
@@ -76,10 +90,28 @@ async function advanceToNext(
     .limit(1)
     .maybeSingle();
 
+  type StageSong = { youtube_video_id: string | null; duration_ms: number | null };
+  const stageRel = stage?.songs as unknown as StageSong | StageSong[] | null | undefined;
+  const stageSong = Array.isArray(stageRel) ? stageRel[0] : stageRel;
+
+  // Sahne, çağıranın ilerletmek istediği şarkıdan çoktan ayrılmış: istek zaten
+  // karşılanmış (ya da başka bir iş sahneyi değiştirmiş). Zorlamalı istekte de
+  // geçerlidir — tekrarlanan bir atlama ikinci şarkıyı yakmamalı.
+  if (
+    fromVideoId &&
+    stage &&
+    stageSong?.youtube_video_id &&
+    stageSong.youtube_video_id !== fromVideoId
+  ) {
+    return {
+      started: true,
+      already: true,
+      video_id: stageSong.youtube_video_id,
+      song_id: stage.song_id ?? undefined,
+    };
+  }
+
   if (!force && stage?.started_at) {
-    type StageSong = { youtube_video_id: string | null; duration_ms: number | null };
-    const rel = stage.songs as unknown as StageSong | StageSong[] | null;
-    const stageSong = Array.isArray(rel) ? rel[0] : rel;
 
     // Oynatıcının raporladığı konum: SARMA yalnızca burada görünür. Kuyruk
     // çapasına güvenip bunu okumazsak sona sarılan her şarkı "vakti var" diye
@@ -492,17 +524,23 @@ export async function peekNextFromQueue(venueId: string): Promise<{ video_id: st
 // eklemiş olabilir. "Bir ileri sar" deseydik sunucu o şarkıyı döndürür, player
 // da çalmakta olan şarkıyı ORTASINDAN kesip ona atlardı. Burada kesme yok:
 // çalan şarkı bitene kadar çalar, müşterinin öncelikli şarkısı sıradaki olur.
+//
+// fromVideoId: player yedeğe geçmeden ÖNCE çalan (biten) şarkı. Verilirse
+// sahnede ondan başka bir şarkı bulunması "kesinti sırasında sahneyi başka bir
+// iş değiştirdi" demektir (panelden "şimdi çal" vb.). O şarkı hiç duyulmadı:
+// 'played' yazılıp yakılmaz, kendi yerine sıraya GERİ konur.
 export async function syncPlayingVideo(
   venueId: string,
   videoId: string,
-  progressMs = 0
+  progressMs = 0,
+  fromVideoId: string | null = null
 ): Promise<{ ok: boolean; matched: boolean; busy?: boolean }> {
   // Sahne kilidi (0047): burası da sahnedeki satırı kapatıp başkasını 'playing'
   // yapıyor. Kilit doluysa hizalama ertelenir — player bir sonraki turda yine
   // bildirir, kesinti sonrası mutabakat kaybolmaz.
   return runExclusive(
     venueId,
-    () => syncPlayingVideoLocked(venueId, videoId, progressMs),
+    () => syncPlayingVideoLocked(venueId, videoId, progressMs, fromVideoId),
     () => ({ ok: false, matched: false, busy: true })
   );
 }
@@ -510,7 +548,8 @@ export async function syncPlayingVideo(
 async function syncPlayingVideoLocked(
   venueId: string,
   videoId: string,
-  progressMs = 0
+  progressMs = 0,
+  fromVideoId: string | null = null
 ): Promise<{ ok: boolean; matched: boolean }> {
   const { data: song } = await supabaseAdmin
     .from("songs")
@@ -532,11 +571,19 @@ async function syncPlayingVideoLocked(
 
   const { data: playingRows } = await supabaseAdmin
     .from("queue")
-    .select("id, song_id")
+    .select("id, song_id, songs(youtube_video_id)")
     .eq("venue_id", venueId)
     .eq("status", "playing")
     .limit(2);
   const playing = playingRows ?? [];
+  const rowVideo = (row: (typeof playing)[number]): string | null => {
+    const rel = row.songs as unknown as
+      | { youtube_video_id: string | null }
+      | { youtube_video_id: string | null }[]
+      | null;
+    const song = Array.isArray(rel) ? rel[0] : rel;
+    return song?.youtube_video_id ?? null;
+  };
 
   // Zaten bu şarkı sahnedeyse kuyruğa dokunma; yalnızca now_playing tazelenir
   if (playing.some((row) => row.song_id === song.id)) {
@@ -559,13 +606,45 @@ async function syncPlayingVideoLocked(
     .maybeSingle();
 
   if (playing.length > 0) {
-    await supabaseAdmin
-      .from("queue")
-      .update({ status: "played", played_at: new Date().toISOString() })
-      .in(
-        "id",
-        playing.map((r) => r.id)
+    // Yedekten önce çalan şarkı fiilen çaldı ve bitti → 'played'. Sahnede
+    // ondan başka bir şarkı varsa (fromVideoId biliniyorken) o hiç duyulmadı →
+    // sıraya geri. fromVideoId yoksa (eski istemci) eski davranış: hepsi played.
+    const unheard = fromVideoId
+      ? playing.filter((r) => {
+          const v = rowVideo(r);
+          return v !== null && v !== fromVideoId;
+        })
+      : [];
+    const unheardIds = new Set(unheard.map((r) => r.id));
+    const finished = playing.filter((r) => !unheardIds.has(r.id));
+
+    await Promise.all([
+      finished.length > 0
+        ? supabaseAdmin
+            .from("queue")
+            .update({ status: "played", played_at: new Date().toISOString() })
+            .in(
+              "id",
+              finished.map((r) => r.id)
+            )
+        : Promise.resolve(null),
+      // Kendi priority/position değerleriyle döner, yani bıraktığı yere: jetonlu
+      // öncelikli şarkı yine en önde bekler (playPreviousLocked ile aynı yöntem)
+      unheard.length > 0
+        ? supabaseAdmin
+            .from("queue")
+            .update({ status: "queued" })
+            .in(
+              "id",
+              unheard.map((r) => r.id)
+            )
+        : Promise.resolve(null),
+    ]);
+    if (unheard.length > 0) {
+      console.warn(
+        `[queue] eşitleme (${venueId}): kesinti sırasında sahneye çıkan ${unheard.length} şarkı sıraya geri kondu`
       );
+    }
   }
 
   if (row) {
@@ -652,8 +731,9 @@ export async function markUnplayableAndSkip(
   videoId: string
 ): Promise<NextResult> {
   await markUnplayable(videoId);
-  // Şarkı fiilen çalamıyor: erken ilerletme kapısı burada uygulanmaz
-  return playNextFromQueue(venueId, { force: true });
+  // Şarkı fiilen çalamıyor: erken ilerletme kapısı burada uygulanmaz. Ama hata
+  // bu videonundur — sahne çoktan başka şarkıya geçtiyse o şarkı atlanmamalı.
+  return playNextFromQueue(venueId, { force: true, fromVideoId: videoId });
 }
 
 // Aynı işaretleme, ATLAMADAN. Hatayı bildiren boştaki (önyükleme) deck ise

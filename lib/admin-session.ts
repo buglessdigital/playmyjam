@@ -72,6 +72,22 @@ export async function getVerifiedAdminSession(
   return session;
 }
 
+// Çerez bu mekanın admininin, imzası ve süresi geçerli, ama şifre/kullanıcı adı
+// değişimiyle sonradan İPTAL EDİLMİŞ mi? Yalnızca player'ın "çalmaya devam"
+// izni için kullanılır (bkz. app/api/player/[venueId]/route.ts): biri telefondan
+// şifreyi değiştirdi diye mekandaki müzik şarkı sonunda susmasın. Panelin hiçbir
+// yetkisi bununla açılmaz.
+export async function isRevokedAdminSessionFor(
+  req: NextRequest,
+  venueDbId: string
+): Promise<boolean> {
+  const session = getAdminSession(req);
+  if (!session || session.venue_id !== venueDbId) return false;
+  const state = await currentState(session.admin_id);
+  if (state === "unknown" || state === "deleted") return false;
+  return (session.sv ?? 1) !== state.version;
+}
+
 // Google kurtarma hesabı bağlanana kadar panel kilitli mi?
 export async function adminGoogleLinkPending(adminId: string): Promise<boolean> {
   const state = await currentState(adminId);

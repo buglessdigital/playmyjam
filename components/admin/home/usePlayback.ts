@@ -630,7 +630,15 @@ export function usePlayback(venueDbId: string) {
         // manual: bu atlamayı ADMİN istedi. Sunucudaki erken ilerletme kapısı
         // (bkz. lib/queue.ts) yalnızca "şarkı kendi bitti" diyen otomatik
         // ilerletmeleri süzer; düğmeye basıldığında şarkının vakti olsa da atlar.
-        body: JSON.stringify({ action, manual: true }),
+        //
+        // from_video_id: panelin atladığını SANDIĞI şarkı. Tam o anda şarkı
+        // kendiliğinden değişmişse sunucu yeni başlayanı atlamaz, onu döndürür
+        // (bkz. lib/queue.ts AdvanceOptions) — jetonlu şarkı böyle yanmaz.
+        body: JSON.stringify(
+          action === "next" && previousVideoId
+            ? { action, manual: true, from_video_id: previousVideoId }
+            : { action, manual: true }
+        ),
       });
       // Yanıttaki video kimliğini player'a anında ilet: aksi halde player aynı
       // bilgiyi DB → Realtime turundan öğrenecek ve şarkı ~1 sn geç başlayacaktı.

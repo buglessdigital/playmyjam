@@ -481,14 +481,21 @@ async function harvestUploadPlaylists(): Promise<string[]> {
   const channels = new Set<string>();
   const PAGE = 1000;
 
-  for (let from = 0; ; from += PAGE) {
+  // Anahtar sıralı sayfalama (id > son id). Sırasız .range() 227 bin satırda
+  // sayfalar arasında satır atlıyordu: 1.471 kanalın 1.165'i bulunuyordu.
+  // OFFSET'li sıralı sayfalama da olmaz — derin sayfalarda her istek baştan tarar.
+  let lastId: string | null = null;
+  for (;;) {
+    const after = lastId;
     const { data, error } = await retry("kanal okuma", () => {
-      const query = supabase
+      let query = supabase
         .from("songs")
-        .select("channel_id")
+        .select("id, channel_id")
         .not("channel_id", "is", null)
         .neq("channel_id", UNKNOWN_CHANNEL)
-        .range(from, from + PAGE - 1);
+        .order("id")
+        .limit(PAGE);
+      if (after) query = query.gt("id", after);
       return HARVEST_ANY ? query : query.ilike("channel_title", "%- Topic");
     });
     if (error) throw new Error(`songs okunamadı: ${error.message}`);
@@ -497,6 +504,7 @@ async function harvestUploadPlaylists(): Promise<string[]> {
       if (id && id.startsWith("UC")) channels.add(id);
     }
     if (!data || data.length < PAGE) break;
+    lastId = data[data.length - 1].id as string;
   }
 
   const uploads = [...channels].map((id) => `UU${id.slice(2)}`);

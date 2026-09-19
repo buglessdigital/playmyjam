@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import VenueLogo from "@/components/VenueLogo";
+import BusinessOverview from "@/components/super-admin/BusinessOverview";
 
 const ACCENT = "#f59e0b";
 
@@ -53,7 +54,7 @@ export default function SuperAdminDashboard() {
   ];
 
   return (
-    <div className="p-6 md:p-8 max-w-5xl mx-auto">
+    <div className="p-6 md:p-8 max-w-6xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Dashboard</h1>
         <p className="text-[#6b7280] text-sm mt-1">Tüm sistemin genel görünümü</p>
@@ -72,6 +73,10 @@ export default function SuperAdminDashboard() {
           </div>
         ))}
       </div>
+
+      <Suspense>
+        <BusinessOverview />
+      </Suspense>
 
       {newApplications > 0 && (
         <Link

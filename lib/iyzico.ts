@@ -100,11 +100,44 @@ function getConfig(): IyzicoResourceConfig {
   return { apiKey, secretKey, uri };
 }
 
+// SDK'nın HTTP katmanı (postman-request) Eylül 2026 itibarıyla iyzico'ya her
+// istekte ECONNRESET alıyor; aynı istek Node'un fetch'iyle sorunsuz geçiyor.
+// Gövde modeli ve IYZWSv2 imzası SDK'da kalır, yalnızca gönderim fetch'e alınır.
+// İmza JSON.stringify(body) üzerinden atıldığı için birebir aynı string gönderilir.
+type SdkRequestInternals = {
+  _preparePath(method: string): void;
+  _getMethod(method: string): string;
+  _getUrl(method: string): string;
+  _getHttpHeaders(method: string): Record<string, string>;
+  _getQueryString(method: string): Record<string, string>;
+  _getBody(method: string): unknown;
+  _request(method: string, cb: (err: Error | null, res: unknown, body: unknown) => void): void;
+};
+
+function withFetchTransport<T extends object>(resource: T): T {
+  const r = resource as unknown as SdkRequestInternals;
+  r._request = function (method, cb) {
+    this._preparePath(method);
+    const url = new URL(this._getUrl(method));
+    for (const [k, v] of Object.entries(this._getQueryString(method))) url.searchParams.set(k, String(v));
+    const httpMethod = this._getMethod(method);
+    const body = this._getBody(method);
+    fetch(url, {
+      method: httpMethod,
+      headers: { ...this._getHttpHeaders(method), "Content-Type": "application/json", Accept: "application/json" },
+      body: httpMethod === "GET" ? undefined : JSON.stringify(body),
+    })
+      .then(async (res) => cb(null, res, await res.json()))
+      .catch((err: Error) => cb(err, null, null));
+  };
+  return resource;
+}
+
 export function createCheckoutForm(
   request: CheckoutFormInitializeRequest
 ): Promise<CheckoutFormInitializeResult> {
   return new Promise((resolve, reject) => {
-    new CheckoutFormInitializeResource(getConfig()).create(request, (err, result) => {
+    withFetchTransport(new CheckoutFormInitializeResource(getConfig())).create(request, (err, result) => {
       if (err) return reject(err);
       resolve(result as CheckoutFormInitializeResult);
     });
@@ -115,7 +148,7 @@ export function createCheckoutForm(
 // kendi secret key'imizle server-to-server çağrılıp gerçek ödeme durumu doğrulanır.
 export function retrieveCheckoutForm(token: string): Promise<CheckoutFormRetrieveResult> {
   return new Promise((resolve, reject) => {
-    new CheckoutFormResource(getConfig()).retrieve({ locale: "tr", token }, (err, result) => {
+    withFetchTransport(new CheckoutFormResource(getConfig())).retrieve({ locale: "tr", token }, (err, result) => {
       if (err) return reject(err);
       resolve(result as CheckoutFormRetrieveResult);
     });

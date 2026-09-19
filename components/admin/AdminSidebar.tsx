@@ -48,6 +48,16 @@ const navItems = (venueId: string): NavItem[] => [
     ),
   },
   {
+    href: `/admin/${venueId}/contracts`,
+    label: "Sözleşmelerim",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M6 3h9l4 4v13a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M9 17c1-1.5 2-2 3-1s2 .5 3-1M9 9h6M9 12h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     href: `/admin/${venueId}/settings`,
     label: "Ayarlar",
     icon: (

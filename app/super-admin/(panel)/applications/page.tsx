@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 const ACCENT = "#f59e0b";
@@ -59,7 +60,35 @@ function ApplicationCard({
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [importState, setImportState] = useState<"idle" | "busy" | "exists" | "error">("idle");
+  const router = useRouter();
   const meta = STATUS_META[app.status];
+
+  // Başvuruyu görüşme hattına aday olarak taşır; aynı başvuru iki kez aktarılamaz
+  const importToCrm = async () => {
+    setImportState("busy");
+    const res = await fetch("/api/super-admin/crm/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: app.venue_name,
+        contact_name: app.contact_name,
+        phone: app.phone,
+        email: app.email,
+        city: app.city,
+        venue_type: app.venue_type,
+        notes: [app.message, app.notes].filter(Boolean).join("\n\n"),
+        source: "application",
+        application_id: app.id,
+      }),
+    }).catch(() => null);
+    if (res?.ok) {
+      const { id } = await res.json();
+      router.push(`/super-admin/crm/${id}`);
+      return;
+    }
+    setImportState(res?.status === 409 ? "exists" : "error");
+  };
 
   const saveNotes = async () => {
     setSavingNotes(true);
@@ -102,13 +131,33 @@ function ApplicationCard({
           </p>
         </div>
 
-        <Link
-          href={newVenueHref}
-          className="shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-all"
-          style={{ background: "rgba(245,158,11,0.12)", color: ACCENT }}
-        >
-          Mekan Oluştur
-        </Link>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {importState === "exists" ? (
+            <Link
+              href="/super-admin/crm"
+              className="text-xs px-3 py-1.5 rounded-lg font-medium"
+              style={{ background: "rgba(255,255,255,0.08)", color: "#9ca3af" }}
+            >
+              Zaten CRM’de →
+            </Link>
+          ) : (
+            <button
+              onClick={importToCrm}
+              disabled={importState === "busy"}
+              className="text-xs px-3 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
+              style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa" }}
+            >
+              {importState === "error" ? "Aktarılamadı, tekrar dene" : "CRM’e Aktar"}
+            </button>
+          )}
+          <Link
+            href={newVenueHref}
+            className="text-xs px-3 py-1.5 rounded-lg font-medium transition-all"
+            style={{ background: "rgba(245,158,11,0.12)", color: ACCENT }}
+          >
+            Mekan Oluştur
+          </Link>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">

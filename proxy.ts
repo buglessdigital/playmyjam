@@ -8,6 +8,7 @@ import {
   renewedAdminToken,
 } from "@/lib/session";
 import { adminGoogleLinkPending, getVerifiedAdminSession } from "@/lib/admin-session";
+import { venueDocumentsPending } from "@/lib/venue-documents";
 import {
   clearVenueMemberCookie,
   setVenueAuthCookie,
@@ -104,6 +105,16 @@ export async function proxy(req: NextRequest) {
     }
     if (!linkPending && subPath === "/link-google") {
       return NextResponse.redirect(new URL(`/admin/${venueId}`, req.url));
+    }
+
+    // Mekana gönderilmiş sözleşme onaylanana kadar panel (player dahil) kilitli;
+    // onay ekranı panel kabuğunun dışında, orada müzik de çalmaz.
+    const documentsPending = !linkPending && (await venueDocumentsPending(session.venue_id));
+    if (documentsPending && subPath !== "/contract-approval") {
+      return NextResponse.redirect(new URL(`/admin/${venueId}/contract-approval`, req.url));
+    }
+    if (!documentsPending && subPath === "/contract-approval") {
+      return NextResponse.redirect(new URL(`/admin/${venueId}/contracts`, req.url));
     }
 
     // Kayan süre: panel kullanıldıkça oturum uzar. Mekan ekranındaki player

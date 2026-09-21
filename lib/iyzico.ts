@@ -15,6 +15,7 @@
 import CheckoutFormInitializeResource from "iyzipay/lib/resources/CheckoutFormInitialize";
 import CheckoutFormResource from "iyzipay/lib/resources/CheckoutForm";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import https from "node:https";
 
 interface IyzicoAddress {
   contactName: string;
@@ -100,10 +101,20 @@ function getConfig(): IyzicoResourceConfig {
   return { apiKey, secretKey, uri };
 }
 
-// SDK'nın HTTP katmanı (postman-request) Eylül 2026 itibarıyla iyzico'ya her
-// istekte ECONNRESET alıyor; aynı istek Node'un fetch'iyle sorunsuz geçiyor.
-// Gövde modeli ve IYZWSv2 imzası SDK'da kalır, yalnızca gönderim fetch'e alınır.
-// İmza JSON.stringify(body) üzerinden atıldığı için birebir aynı string gönderilir.
+// Gönderim SDK'nın HTTP katmanı (postman-request) yerine node:https ile yapılır.
+// Gövde modeli ve IYZWSv2 imzası SDK'da kalır. İmza JSON.stringify(body)
+// üzerinden atıldığı için birebir aynı string gönderilir.
+//
+// TLS 1.2 ŞART: Vercel'den (Node 24.20 / OpenSSL 3.5.7) api.iyzipay.com'a
+// açılan TLS 1.3 bağlantıları iyzico'nun önündeki cihazda ECONNRESET ile
+// kesiliyor (sandbox kesmiyor; yerel Node 24.12'den de geçiyor). 17 Eyl 2026
+// Vercel hesap taşımasından beri canlıda tek ödeme alınamamasının sebebi buydu.
+// 21 Eyl 2026'da Vercel'den ölçüldü: TLS 1.2 üç turda da 200, TLS 1.3 varsayılanı
+// hep kesildi, eğri kısıtlamak (ecdhCurve) tutarsız. Kaldırmadan önce Vercel'den
+// tekrar ölç.
+const IYZICO_TLS_MAX_VERSION = "TLSv1.2";
+const IYZICO_CONNECT_ATTEMPTS = 6;
+
 type SdkRequestInternals = {
   _preparePath(method: string): void;
   _getMethod(method: string): string;
@@ -114,21 +125,54 @@ type SdkRequestInternals = {
   _request(method: string, cb: (err: Error | null, res: unknown, body: unknown) => void): void;
 };
 
-function withFetchTransport<T extends object>(resource: T): T {
+function withHttpsTransport<T extends object>(resource: T): T {
   const r = resource as unknown as SdkRequestInternals;
   r._request = function (method, cb) {
     this._preparePath(method);
     const url = new URL(this._getUrl(method));
     for (const [k, v] of Object.entries(this._getQueryString(method))) url.searchParams.set(k, String(v));
     const httpMethod = this._getMethod(method);
-    const body = this._getBody(method);
-    fetch(url, {
-      method: httpMethod,
-      headers: { ...this._getHttpHeaders(method), "Content-Type": "application/json", Accept: "application/json" },
-      body: httpMethod === "GET" ? undefined : JSON.stringify(body),
-    })
-      .then(async (res) => cb(null, res, await res.json()))
-      .catch((err: Error) => cb(err, null, null));
+    const payload = httpMethod === "GET" ? undefined : JSON.stringify(this._getBody(method));
+    const headers = {
+      ...this._getHttpHeaders(method),
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
+    };
+
+    const attempt = (n: number) => {
+      let responded = false;
+      const req = https.request(
+        url,
+        { method: httpMethod, maxVersion: IYZICO_TLS_MAX_VERSION, timeout: 20_000, headers },
+        (res) => {
+          responded = true;
+          let raw = "";
+          res.setEncoding("utf8");
+          res.on("data", (chunk) => (raw += chunk));
+          res.on("end", () => {
+            try {
+              cb(null, res, JSON.parse(raw));
+            } catch {
+              cb(new Error(`iyzico yanıtı okunamadı (${res.statusCode}): ${raw.slice(0, 200)}`), null, null);
+            }
+          });
+        }
+      );
+      req.on("timeout", () => req.destroy(new Error("iyzico zaman aşımı")));
+      req.on("error", (err: NodeJS.ErrnoException) => {
+        // TLS 1.2'de de soğuk başlangıçta ilk ~2 sn bağlantılar kesiliyor. Kesinti
+        // el sıkışmada, yanıt gelmeden oluyor: istek iyzico'ya ulaşmadı, yeniden
+        // denemek güvenli (en kötü ihtimalle kullanılmayan bir form token'ı).
+        if (!responded && err.code === "ECONNRESET" && n < IYZICO_CONNECT_ATTEMPTS) {
+          setTimeout(() => attempt(n + 1), 500 * n);
+          return;
+        }
+        cb(err, null, null);
+      });
+      req.end(payload);
+    };
+    attempt(1);
   };
   return resource;
 }
@@ -137,7 +181,7 @@ export function createCheckoutForm(
   request: CheckoutFormInitializeRequest
 ): Promise<CheckoutFormInitializeResult> {
   return new Promise((resolve, reject) => {
-    withFetchTransport(new CheckoutFormInitializeResource(getConfig())).create(request, (err, result) => {
+    withHttpsTransport(new CheckoutFormInitializeResource(getConfig())).create(request, (err, result) => {
       if (err) return reject(err);
       resolve(result as CheckoutFormInitializeResult);
     });
@@ -148,7 +192,7 @@ export function createCheckoutForm(
 // kendi secret key'imizle server-to-server çağrılıp gerçek ödeme durumu doğrulanır.
 export function retrieveCheckoutForm(token: string): Promise<CheckoutFormRetrieveResult> {
   return new Promise((resolve, reject) => {
-    withFetchTransport(new CheckoutFormResource(getConfig())).retrieve({ locale: "tr", token }, (err, result) => {
+    withHttpsTransport(new CheckoutFormResource(getConfig())).retrieve({ locale: "tr", token }, (err, result) => {
       if (err) return reject(err);
       resolve(result as CheckoutFormRetrieveResult);
     });

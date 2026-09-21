@@ -10,7 +10,7 @@ export default function PrivacyPage() {
       tr={
         <main className="max-w-3xl mx-auto px-6 pb-16 pt-6 text-white">
           <h1 className="text-3xl font-bold mb-2">Gizlilik Politikası</h1>
-          <p className="text-gray-400 mb-10 text-sm">Son güncelleme: 6 Eylül 2026</p>
+          <p className="text-gray-400 mb-10 text-sm">Son güncelleme: 21 Eylül 2026</p>
 
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-3">1. Giriş</h2>
@@ -39,6 +39,8 @@ export default function PrivacyPage() {
                 <strong>Ödeme ve fatura bilgileri:</strong> Jeton satın alırken ad, soyad, şehir ve
                 mevzuat gereği T.C. kimlik numarası alınır. Kart bilgileriniz hiçbir aşamada
                 tarafımızca görülmez veya saklanmaz; ödeme lisanslı ödeme kuruluşu üzerinden alınır.
+                Ödeme formunda kartınızı saklatmayı seçerseniz kart iyzico&apos;da saklanır; bize
+                yalnızca kart numarası içermeyen bir anahtar iletilir.
               </li>
               <li>
                 <strong>Bildirim aboneliği:</strong> Bildirimlere izin verdiğinizde tarayıcınızın
@@ -207,7 +209,7 @@ export default function PrivacyPage() {
       en={
         <main className="max-w-3xl mx-auto px-6 pb-16 pt-6 text-white">
           <h1 className="text-3xl font-bold mb-2">Privacy Policy</h1>
-          <p className="text-gray-400 mb-10 text-sm">Last updated: September 6, 2026</p>
+          <p className="text-gray-400 mb-10 text-sm">Last updated: September 21, 2026</p>
 
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-3">1. Introduction</h2>
@@ -236,7 +238,8 @@ export default function PrivacyPage() {
                 <strong>Payment and invoicing data:</strong> When you purchase tokens we collect your
                 first name, surname, city and — as required by Turkish law — your national ID number.
                 We never see or store your card details; payments are handled by a licensed payment
-                provider.
+                provider. If you choose to save your card on the payment form, it is stored by
+                iyzico; we receive only a key that contains no card number.
               </li>
               <li>
                 <strong>Notification subscription:</strong> If you allow notifications, we store the

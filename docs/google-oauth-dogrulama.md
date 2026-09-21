@@ -3,6 +3,14 @@
 Kapsam: `https://www.googleapis.com/auth/youtube.readonly` (sensitive scope)
 Amaç: "Google bu uygulamayı doğrulamadı" uyarı ekranını kaldırmak ve 100 kullanıcı tavanından çıkmak.
 
+> **21 Eyl 2026 — BEKLEMEDE.** 17 Eyl'de Supabase yeni projeye (`quvkscvbsplxkuolvhwe`) taşındı;
+> orada özel alan adı yok (Supabase Pro + custom domain eklentisi gerekir), `auth.playmyjam.com.tr`
+> hâlâ eski projeye CNAME'li ve çalışmıyor. Google girişi `quvkscvbsplxkuolvhwe.supabase.co`
+> üzerinden gidiyor, bu alan Search Console'da doğrulanamaz → branding kontrolü düşer.
+> Başvurudan ÖNCE iki yoldan biri: (a) Supabase Pro + custom domain ile `auth.playmyjam.com.tr`'yi
+> yeni projeye bağla, (b) `youtube.readonly`'yi kaldır (yalnız temel kapsamlar doğrulama istemez,
+> "YouTube hesabımdan seç" özelliği gider). Aşağıdaki "supabase.co silinecek" adımı ancak (a)'dan sonra geçerli.
+
 ## Sıra
 
 1. **Branding doğrulaması** (Google Auth Platform → Branding). Kapsam incelemesi bu geçmeden başlamaz.

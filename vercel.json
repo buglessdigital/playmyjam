@@ -6,6 +6,10 @@
     {
       "path": "/api/cron/youtube-refresh",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-new",
+      "schedule": "0 6 * * *"
     }
   ]
 }

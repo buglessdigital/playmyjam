@@ -51,7 +51,12 @@ import { fileURLToPath } from "node:url";
 
 import { createClient } from "@supabase/supabase-js";
 
-import { parseISODuration, parseVideoTitle, videoThumbnail } from "../lib/youtube-parse.ts";
+import {
+  CATALOG_VIDEO_PARTS,
+  toCatalogRow,
+  type CatalogSongRow,
+  type CatalogVideoItem,
+} from "../lib/catalog-row.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const API_BASE = "https://www.googleapis.com/youtube/v3";
@@ -265,6 +270,21 @@ function writeState(state: SeedState) {
   writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
+// Aynı bilgi veritabanında da tutulur (catalog_sources): günlük "yeni çıkanlar"
+// cron'u (lib/catalog-new.ts) bu dosyayı göremiyor. Kayıtlı liste orada en
+// yeni sayfadan okunur ve bilinen şarkıda durur; kayıtsız liste baştan sona
+// okunur. Yani elle hasat edilmiş kanal cron'a sayılmazsa boşa kota yakar.
+async function syncStateToDb(state: SeedState) {
+  const rows = Object.entries(state).map(([playlist_id, item_count]) => ({ playlist_id, item_count }));
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
+    const { error } = await retry("catalog_sources yazma", () =>
+      supabase.from("catalog_sources").upsert(chunk, { onConflict: "playlist_id" })
+    );
+    if (error) throw new Error(`catalog_sources yazılamadı: ${error.message}`);
+  }
+}
+
 // playlists.list — 1 birim / 50 liste. Turun en ucuz adımı ve en büyük tasarrufu.
 // Yanıtta dönmeyen kimlik silinmiş/gizlenmiş listedir; state'e bakılmadan denenir
 // ve asıl hatayı playlistItems verir.
@@ -288,39 +308,11 @@ async function currentItemCounts(playlistIds: string[]): Promise<Map<string, num
 
 /* ---------- şarkı süzgeci ---------- */
 
-// Tohumlamada havuza HİÇ girmemesi gereken içerik. Buradaki ölçüt "şarkı değil":
-// canlı/remix gibi meşru sürümler elenmez, onlar seçim aşamasında geriye itilir
-// (bkz. lib/song-match.ts). Amaç havuzu çöple doldurmamak.
-const NOT_A_SONG =
-  /\b(karaoke|instrumental|enstrumantal|playback|reaction|tepki|tutorial|nasil\s+calinir|full\s+album|tam\s+albüm|megamix|nonstop|dj\s*set|mix\s*20\d\d|greatest\s+hits|top\s+\d+|playlist|derleme|saatlik|1\s*hour|10\s*hours|asmr|sleep|lofi\s+radio)\b/i;
-
-const MIN_MS = 45_000;
-const MAX_MS = 12 * 60_000;
-
-type VideoItem = {
-  id: string;
-  snippet?: {
-    title?: string;
-    channelTitle?: string;
-    channelId?: string;
-    categoryId?: string;
-    thumbnails?: { high?: { url?: string }; medium?: { url?: string } };
-  };
-  contentDetails?: { duration?: string };
-  statistics?: { viewCount?: string };
-  status?: { embeddable?: boolean };
-};
-
-type SongRow = {
-  youtube_video_id: string;
-  title: string;
-  artist: string;
-  album_cover_url: string;
-  duration_ms: number;
-  channel_title: string;
-  channel_id: string | null;
-  view_count: number;
-};
+// Süzgeç ve satır biçimi lib/catalog-row.ts'te: günlük "yeni çıkanlar" cron'u
+// da aynısını kullanıyor.
+type VideoItem = CatalogVideoItem;
+type SongRow = CatalogSongRow;
+const toRow = toCatalogRow;
 
 const stats = {
   playlists: 0,
@@ -333,31 +325,6 @@ const stats = {
   backfilled: 0,
   harvested: 0,
 };
-
-function toRow(v: VideoItem): SongRow | null {
-  if (v.snippet?.categoryId && v.snippet.categoryId !== "10") return null; // Müzik dışı
-  if (v.status?.embeddable === false) return null; // gömülü player'da çalmaz
-  const duration = parseISODuration(v.contentDetails?.duration ?? "");
-  if (duration < MIN_MS || duration > MAX_MS) return null;
-
-  const rawTitle = v.snippet?.title ?? "";
-  if (!rawTitle || NOT_A_SONG.test(rawTitle)) return null;
-
-  const { title, artist } = parseVideoTitle(rawTitle, v.snippet?.channelTitle ?? "");
-  if (!title || !artist) return null;
-
-  return {
-    youtube_video_id: v.id,
-    title,
-    artist,
-    album_cover_url:
-      v.snippet?.thumbnails?.high?.url ?? v.snippet?.thumbnails?.medium?.url ?? videoThumbnail(v.id),
-    duration_ms: duration,
-    channel_title: v.snippet?.channelTitle ?? "",
-    channel_id: v.snippet?.channelId ?? null,
-    view_count: Number(v.statistics?.viewCount ?? 0),
-  };
-}
 
 /* ---------- adımlar ---------- */
 
@@ -408,7 +375,7 @@ async function fetchRows(videoIds: string[]): Promise<SongRow[]> {
     const batch = videoIds.slice(i, i + 50);
     spend(1);
     const data = await api<{ items?: VideoItem[] }>("videos", {
-      part: "snippet,contentDetails,statistics,status",
+      part: CATALOG_VIDEO_PARTS,
       id: batch.join(","),
     });
     for (const v of data.items ?? []) {
@@ -532,6 +499,7 @@ async function main() {
   // --force yalnızca atlamayı kapatır; kayıtları silmez. Eskiden boş state ile
   // başlıyor ve ilk yazışta diğer listelerin tüm kayıtlarını siliyordu.
   const state = readState();
+  if (!DRY_RUN) await syncStateToDb(state);
 
   let harvested: string[] = [];
   if (HARVEST) {
@@ -616,6 +584,7 @@ async function seedPlaylist(playlistId: string, counts: Map<string, number>, sta
   if (count !== undefined) {
     state[playlistId] = count;
     writeState(state);
+    await syncStateToDb({ [playlistId]: count });
   }
 }
 

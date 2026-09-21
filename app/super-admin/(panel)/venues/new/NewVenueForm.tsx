@@ -48,6 +48,7 @@ export default function NewVenueForm() {
   const [adminUsername, setAdminUsername] = useState(prefillName ? toSlug(prefillName) + "_admin" : "");
   const [usernameEdited, setUsernameEdited] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
+  const [hubEnabled, setHubEnabled] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -89,6 +90,7 @@ export default function NewVenueForm() {
         logo_url: logoUrl,
         admin_username: adminUsername,
         admin_password: adminPassword,
+        hub_enabled: hubEnabled,
       }),
     });
     const data = await res.json();
@@ -147,6 +149,23 @@ export default function NewVenueForm() {
 
           <Field label="Tagline" value={tagline} onChange={setTagline} placeholder="örn. Müziği sen seç, geceyi sen yönet" />
           <Field label="Logo URL" value={logoUrl} onChange={setLogoUrl} placeholder="https://..." />
+
+          {/* İsteyen mekan için plaketin ARKA yüzüne ikinci bir karekod basılır;
+              istemeyende iki yüz de PlayMyJam olur. Sonradan da açılabilir. */}
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hubEnabled}
+              onChange={(e) => setHubEnabled(e.target.checked)}
+              className="h-4 w-4 mt-0.5 accent-[#f59e0b]"
+            />
+            <span>
+              <span className="block text-sm text-white">Mekan sayfası (plaket arka yüzü)</span>
+              <span className="mt-1 block text-xs text-[#6b7280]">
+                Mekan kendi panelinden menü, Instagram, Google yorum ve Wi-Fi şifresi ekleyebilir.
+              </span>
+            </span>
+          </label>
         </div>
 
         <div className="rounded-2xl border border-white/10 p-5 flex flex-col gap-4" style={{ background: "rgba(255,255,255,0.03)" }}>

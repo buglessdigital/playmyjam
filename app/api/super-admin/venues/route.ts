@@ -39,6 +39,9 @@ export async function POST(req: NextRequest) {
   const logo_url = typeof body.logo_url === "string" ? body.logo_url.trim() : "";
   const admin_username = typeof body.admin_username === "string" ? body.admin_username.trim() : "";
   const admin_password = typeof body.admin_password === "string" ? body.admin_password : "";
+  // Mekan sayfası (plaket arka yüzü) — anlaşma sırasında karara bağlanan
+  // insiyatife bağlı hizmet
+  const hub_enabled = body.hub_enabled === true;
 
   if (!slug || !name || !admin_username || !admin_password) {
     return NextResponse.json({ error: "Eksik alan" }, { status: 400 });
@@ -68,7 +71,7 @@ export async function POST(req: NextRequest) {
 
   const { data: venue, error: venueError } = await supabaseAdmin
     .from("venues")
-    .insert({ slug, name, tagline, logo_url, status: "active" })
+    .insert({ slug, name, tagline, logo_url, status: "active", hub_enabled })
     .select()
     .single();
 

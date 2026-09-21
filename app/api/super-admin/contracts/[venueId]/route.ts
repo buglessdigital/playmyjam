@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSuperSession } from "@/lib/session";
 import { optionalDay, optionalNumber, text, UUID_RE } from "@/lib/business-server";
 import { syncVenueDocuments, type DocumentSyncResult } from "@/lib/venue-documents";
+import { revalidateTag } from "next/cache";
 
 const TEXT_FIELDS: Record<string, number> = {
   legal_name: 200,
@@ -66,8 +67,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ venu
   }
   row.iban = cleanIban;
 
-  const { data: venue } = await supabaseAdmin.from("venues").select("id").eq("id", venueId).maybeSingle();
+  const { data: venue } = await supabaseAdmin
+    .from("venues")
+    .select("id, slug, hub_enabled")
+    .eq("id", venueId)
+    .maybeSingle<{ id: string; slug: string; hub_enabled: boolean }>();
   if (!venue) return NextResponse.json({ error: "Mekan bulunamadı" }, { status: 404 });
+
+  // Mekan sayfası (plaket arka yüzü) anlaşma anında karara bağlanır. Sözleşme
+  // tablosunda değil venues'ta durur: sayfanın kendisi o bayrağa bakıyor.
+  if (typeof body.hub_enabled === "boolean" && body.hub_enabled !== venue.hub_enabled) {
+    await supabaseAdmin.from("venues").update({ hub_enabled: body.hub_enabled }).eq("id", venue.id);
+    revalidateTag(`hub-${venue.slug}`, "max");
+  }
 
   const { data, error } = await supabaseAdmin
     .from("venue_contracts")
@@ -84,5 +96,5 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ venu
     documents = { error: e instanceof Error ? e.message : "Belgeler oluşturulamadı" };
   }
 
-  return NextResponse.json({ contract: data, documents });
+  return NextResponse.json({ contract: data, documents, hub_enabled: body.hub_enabled === true });
 }

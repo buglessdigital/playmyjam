@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { matchesTokens, searchTokens, songHaystack } from "@/lib/search-match";
 
 export type Song = {
   venueSongId: string;
@@ -435,12 +436,16 @@ export function useLibrary(
     [songs]
   );
 
-  const q = normalize(query.trim());
+  // Her kelime başlıkta ya da sanatçıda geçmeli; Türkçe harfler eşit sayılır
+  // (bkz. lib/search-match.ts). Eskiden metnin tamamı tek parça aranıyordu:
+  // "sena sener f" yazınca sonuçlar tamamen kayboluyordu.
+  const tokens = useMemo(() => searchTokens(query), [query]);
+  const q = tokens.join(" ");
   const filtering = q.length > 0;
 
   const matchesQuery = useCallback(
-    (song: Song) => !q || normalize(song.title).includes(q) || normalize(song.artist ?? "").includes(q),
-    [q]
+    (song: Song) => tokens.length === 0 || matchesTokens(tokens, songHaystack(song)),
+    [tokens]
   );
 
   // Aramada her listenin kaç eşleşmesi olduğunu yan rayda göstermek için —

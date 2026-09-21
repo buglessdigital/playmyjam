@@ -48,6 +48,19 @@ const navItems = (venueId: string): NavItem[] => [
     ),
   },
   {
+    href: `/admin/${venueId}/hub`,
+    label: "Mekan Sayfası",
+    // Plaketin arka yüzündeki karekodun açtığı sayfa. Hizmet kapalı olan
+    // mekanlarda da görünür: sayfa ne olduğunu anlatır (bkz. hub/page.tsx).
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M14 3h7v7M14 21h3M21 14v3M17.5 17.5h.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
     href: `/admin/${venueId}/contracts`,
     label: "Sözleşmelerim",
     icon: (

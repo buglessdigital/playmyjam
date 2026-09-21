@@ -8,6 +8,7 @@ import { artistKey, primaryArtist, type DisplaySong, type SongActionState, type 
 import { fmt, useT } from "@/lib/i18n";
 import LangToggle from "@/components/ui/LangToggle";
 import type { DiscoverTrack } from "@/lib/discover";
+import { matchesTokens, searchTokens, songHaystack } from "@/lib/search-match";
 
 const MAX_RECENT = 8;
 // Mekan listesi boş dönünce dış katalog aramasına gitmeden önceki bekleme:
@@ -131,14 +132,13 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
 
   // Mekan listesindeki eşleşmeler — tek veri kaynağı bu (ağ isteği yok)
   const results = useMemo<DisplaySong[]>(() => {
-    const q = deferredQuery.trim().toLocaleLowerCase("tr");
-    if (!q) return [];
+    // Her kelime başlıkta ya da sanatçıda geçmeli; Türkçe harfler eşit sayılır
+    // (bkz. lib/search-match.ts) — "sena sener f", "tarkan kuzu" gibi aramalar
+    const tokens = searchTokens(deferredQuery);
+    if (tokens.length === 0) return [];
     const matches: VenueSong[] = [];
     for (const s of venueSongMap.values()) {
-      if (!s.in_venue_list) continue;
-      if (s.title.toLocaleLowerCase("tr").includes(q) || s.artist.toLocaleLowerCase("tr").includes(q)) {
-        matches.push(s);
-      }
+      if (s.in_venue_list && matchesTokens(tokens, songHaystack(s))) matches.push(s);
     }
     return matches.sort((a, b) => b.play_count - a.play_count).slice(0, 50);
   }, [deferredQuery, venueSongMap]);

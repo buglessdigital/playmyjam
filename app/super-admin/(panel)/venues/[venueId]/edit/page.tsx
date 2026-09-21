@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { generatePassword } from "@/lib/utils";
 import VenueLogoUploader from "@/components/admin/VenueLogoUploader";
+import { hubPath } from "@/lib/hub";
 
 const ACCENT = "#f59e0b";
 
@@ -17,6 +18,7 @@ type VenueData = {
   status: string;
   request_cost: number;
   priority_cost: number;
+  hub_enabled: boolean;
   venue_admins: { id: string; username: string }[];
 };
 
@@ -67,6 +69,7 @@ function EditVenueForm() {
   const [adminPassword, setAdminPassword] = useState("");
   const [requestCost, setRequestCost] = useState("1");
   const [priorityCost, setPriorityCost] = useState("2");
+  const [hubEnabled, setHubEnabled] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -88,6 +91,7 @@ function EditVenueForm() {
         setAdminUsername(v.venue_admins?.[0]?.username ?? "");
         setRequestCost(String(v.request_cost ?? 1));
         setPriorityCost(String(v.priority_cost ?? 2));
+        setHubEnabled(v.hub_enabled === true);
       })
       .catch(() => setError("Mekan bilgileri yüklenemedi"))
       .finally(() => setLoading(false));
@@ -110,6 +114,7 @@ function EditVenueForm() {
           adminPassword: adminPassword || undefined,
           requestCost: Number(requestCost),
           priorityCost: Number(priorityCost),
+          hubEnabled,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -218,6 +223,44 @@ function EditVenueForm() {
               />
             </div>
           </div>
+        </div>
+
+        {/* Mekan sayfası: plaketin ARKA yüzündeki karekod. İnsiyatife bağlı bir
+            hizmet — kapalıysa arka yüz karekodu hiç basılmaz, sayfa 404 döner. */}
+        <div className="rounded-2xl border border-white/10 p-5 flex flex-col gap-4" style={{ background: "rgba(255,255,255,0.03)" }}>
+          <p className="text-white text-sm font-semibold">Mekan Sayfası (plaket arka yüzü)</p>
+          <p className="text-[#6b7280] text-xs -mt-2">
+            Açarsanız mekan kendi panelinden menü, Instagram, Google yorum ve Wi-Fi şifresi
+            ekleyebilir. Plaketin arka yüzüne basılacak karekod aşağıdaki adrese gider.
+          </p>
+
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hubEnabled}
+              onChange={(e) => setHubEnabled(e.target.checked)}
+              className="h-4 w-4 accent-[#f59e0b]"
+            />
+            <span className="text-sm text-white">Bu mekan için mekan sayfası hizmeti açık</span>
+          </label>
+
+          {venue.slug && (
+            <div className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded-xl px-3 py-2.5 font-mono text-sm text-[#9ca3af]"
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                playmyjam.com.tr{hubPath(venue.slug)}
+              </code>
+              <a
+                href={hubPath(venue.slug)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 rounded-xl px-3 py-2.5 text-xs font-medium"
+                style={{ background: "rgba(255,255,255,0.08)", color: "#9ca3af" }}
+              >
+                Aç
+              </a>
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-white/10 p-5 flex flex-col gap-4" style={{ background: "rgba(255,255,255,0.03)" }}>

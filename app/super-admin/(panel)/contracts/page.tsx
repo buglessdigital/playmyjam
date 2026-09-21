@@ -24,7 +24,7 @@ type Contract = {
 };
 
 type Row = {
-  venue: { id: string; slug: string; name: string; status: string; created_at: string };
+  venue: { id: string; slug: string; name: string; status: string; created_at: string; hub_enabled: boolean };
   contract: Contract | null;
   usage30: { tokens: number; requests: number; last_spend_at: string | null };
 };
@@ -74,7 +74,7 @@ function formatIban(iban: string) {
   return iban.replace(/(.{4})/g, "$1 ").trim();
 }
 
-function ContractModal({ row, onClose, onSaved }: { row: Row; onClose: () => void; onSaved: (c: Contract, docs: SyncResult) => void }) {
+function ContractModal({ row, onClose, onSaved }: { row: Row; onClose: () => void; onSaved: (c: Contract, docs: SyncResult, hubEnabled: boolean) => void }) {
   const init = row.contract ?? { ...EMPTY, venue_id: row.venue.id };
   const [f, setF] = useState({
     ...init,
@@ -84,6 +84,7 @@ function ContractModal({ row, onClose, onSaved }: { row: Row; onClose: () => voi
     end_date: init.end_date ?? "",
     iban: formatIban(init.iban),
   });
+  const [hubEnabled, setHubEnabled] = useState(row.venue.hub_enabled === true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const set = (key: keyof typeof f) => (v: string) => setF((prev) => ({ ...prev, [key]: v }));
@@ -98,8 +99,9 @@ function ContractModal({ row, onClose, onSaved }: { row: Row; onClose: () => voi
         ...f,
         commission_pct: Number(f.commission_pct),
         payment_day: Number(f.payment_day),
+        hub_enabled: hubEnabled,
       });
-      onSaved(res.contract, res.documents);
+      onSaved(res.contract, res.documents, hubEnabled);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kaydedilemedi");
       setSaving(false);
@@ -140,6 +142,27 @@ function ContractModal({ row, onClose, onSaved }: { row: Row; onClose: () => voi
           <TextInput label="Muhatap" value={f.contact_name} onChange={set("contact_name")} maxLength={120} />
           <TextInput label="Telefon" type="tel" value={f.contact_phone} onChange={set("contact_phone")} maxLength={40} />
         </div>
+        <p className="text-white text-sm font-semibold mt-2">Ek hizmetler</p>
+        {/* Mekan sayfası insiyatife bağlı: isteyen mekan için plaketin ARKA
+            yüzüne ikinci bir karekod basılır. İstemeyende iki yüz de PMJ olur. */}
+        <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-white/10 p-3.5"
+               style={{ background: "rgba(255,255,255,0.03)" }}>
+          <input
+            type="checkbox"
+            checked={hubEnabled}
+            onChange={(e) => setHubEnabled(e.target.checked)}
+            className="h-4 w-4 mt-0.5 accent-[#f59e0b]"
+          />
+          <span>
+            <span className="block text-sm text-white">Mekan sayfası (plaket arka yüzü)</span>
+            <span className="mt-1 block text-xs text-[#6b7280]">
+              Mekan kendi panelinden menü, Instagram, Google yorum ve Wi-Fi şifresi ekler.
+              Kapalıysa plaketin iki yüzü de PlayMyJam karekodu olur.
+              {` Adres: playmyjam.com.tr/${row.venue.slug}/bilgi`}
+            </span>
+          </span>
+        </label>
+
         <TextArea label="Notlar / özel şartlar" value={f.notes} onChange={set("notes")} rows={3} maxLength={4000} />
 
         <div
@@ -312,8 +335,14 @@ function ContractsPageContent() {
         <ContractModal
           row={editing}
           onClose={() => setEditing(null)}
-          onSaved={(c, result) => {
-            setRows((prev) => prev.map((r) => (r.venue.id === c.venue_id ? { ...r, contract: c } : r)));
+          onSaved={(c, result, hubEnabled) => {
+            setRows((prev) =>
+              prev.map((r) =>
+                r.venue.id === c.venue_id
+                  ? { ...r, contract: c, venue: { ...r.venue, hub_enabled: hubEnabled } }
+                  : r
+              )
+            );
             setNotice(syncNotice(editing.venue.name, result));
             loadDocs();
             setEditing(null);

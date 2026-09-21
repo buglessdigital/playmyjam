@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const from = new Date(Date.parse(`${today}T00:00:00Z`) - 29 * 86400000).toISOString().slice(0, 10);
 
   const [venues, contracts, usage] = await Promise.all([
-    supabaseAdmin.from("venues").select("id, slug, name, logo_url, status, created_at").order("name"),
+    supabaseAdmin.from("venues").select("id, slug, name, logo_url, status, created_at, hub_enabled").order("name"),
     supabaseAdmin.from("venue_contracts").select("*"),
     getVenueUsage(from, tomorrow).catch(() => null),
   ]);

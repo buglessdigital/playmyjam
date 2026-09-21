@@ -227,7 +227,9 @@ async function expandChannels(
 function readSources(): { playlists: string[]; channels: string[] } {
   const inline = args.flatMap((a, i) => (args[i - 1] === "--playlist" ? [a] : []));
 
-  const fromFile = existsSync(LIST_FILE)
+  // --playlist verilince YALNIZCA o liste: dosyadaki kanallar her turda
+  // playlists.list ile yeniden açılıyor, tek liste için 50+ birim yakıyordu
+  const fromFile = inline.length === 0 && existsSync(LIST_FILE)
     ? readFileSync(LIST_FILE, "utf8")
         .split("\n")
         .map((l) => l.trim())
@@ -527,7 +529,9 @@ async function main() {
     process.exit(1);
   }
 
-  const state = FORCE ? {} : readState();
+  // --force yalnızca atlamayı kapatır; kayıtları silmez. Eskiden boş state ile
+  // başlıyor ve ilk yazışta diğer listelerin tüm kayıtlarını siliyordu.
+  const state = readState();
 
   let harvested: string[] = [];
   if (HARVEST) {
@@ -552,7 +556,7 @@ async function main() {
   const todo = playlistIds.filter((id) => {
     const seen = state[id];
     const now = counts.get(id);
-    if (seen !== undefined && now !== undefined && seen === now) {
+    if (!FORCE && seen !== undefined && now !== undefined && seen === now) {
       stats.unchanged++;
       return false;
     }

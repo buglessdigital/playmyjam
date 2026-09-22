@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { assertVenuePlaylist } from "@/lib/playlist";
 import { syncPlaylistSources } from "@/lib/playlist-sync";
+import { withActor } from "@/lib/actor";
 
 // "Şimdi güncelle": tek playlist'i beklemeden YouTube kaynağıyla eşitler.
 // Günlük cron aynı işi kendiliğinden yapıyor; bu buton mekan sabırsızlandığında
@@ -11,7 +12,7 @@ import { syncPlaylistSources } from "@/lib/playlist-sync";
 // gerçekten okunduğunu görmeli.
 // prune: elle senkronda iki liste birebir eşitlenir, YouTube'dan çıkarılan şarkı
 // PMJ listesinden de düşer. Günlük cron bunu YAPMAZ (bkz. syncPlaylistSources).
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -57,3 +58,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+// Kuyruk sağlık kaydı değişikliği bu adla yazar (bkz. lib/actor.ts)
+export const POST = (...args: Parameters<typeof handlePOST>) =>
+  withActor("admin-playlist-sync", () => handlePOST(...args));

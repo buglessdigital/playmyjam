@@ -9,12 +9,13 @@ import {
   fillQueue,
   playlistSongsForQueue,
 } from "@/lib/queue-fill";
+import { withActor } from "@/lib/actor";
 
 // "Sıraya ekle": şarkı ÇALAN ŞARKIDAN HEMEN SONRA çalar (Spotify'daki gibi).
 // Satır user_id null'dır — jeton harcanmaz, 30 dk kilidi doğurmaz — ve
 // müşterinin jetonla aldığı sıranın ARKASINA girer; çalan listenin otomatik
 // şarkılarının ise ÖNÜNE (bkz. lib/queue-fill.ts pozisyon bantları).
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, song_id: songRow.id });
 }
 
-export async function PATCH(req: NextRequest) {
+async function handlePATCH(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -128,7 +129,7 @@ export async function PATCH(req: NextRequest) {
 // Sıralama: yalnızca otomatik blok (user_id null) kendi içinde taşınabilir.
 // Müşterinin jetonla aldığı sıra satın alınmış bir haktır — admin onu kaydıramaz;
 // zaten müşteri satırları position < 9000 olduğu için kuyruğun başında kalır.
-export async function PUT(req: NextRequest) {
+async function handlePUT(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -188,3 +189,11 @@ export async function PUT(req: NextRequest) {
   }
   return NextResponse.json({ ok: true });
 }
+
+// Kuyruk sağlık kaydı değişikliği bu adla yazar (bkz. lib/actor.ts)
+export const POST = (...args: Parameters<typeof handlePOST>) =>
+  withActor("admin-queue", () => handlePOST(...args));
+export const PATCH = (...args: Parameters<typeof handlePATCH>) =>
+  withActor("admin-queue", () => handlePATCH(...args));
+export const PUT = (...args: Parameters<typeof handlePUT>) =>
+  withActor("admin-queue", () => handlePUT(...args));

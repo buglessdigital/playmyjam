@@ -5,8 +5,9 @@ import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { parseSongInput } from "@/lib/validate";
 import { addSongToVenuePlaylist, assertVenuePlaylist } from "@/lib/playlist";
 import { AUTO_ADDED_BY, fillQueue, runFillUnlocked, withFillLock } from "@/lib/queue-fill";
+import { withActor } from "@/lib/actor";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(result);
 }
 
-export async function PATCH(req: NextRequest) {
+async function handlePATCH(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -61,7 +62,7 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req: NextRequest) {
+async function handleDELETE(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -137,3 +138,11 @@ export async function DELETE(req: NextRequest) {
   revalidateTag(`venue-songs-${session.venue_id}`, "max");
   return NextResponse.json({ ok: true });
 }
+
+// Kuyruk sağlık kaydı değişikliği bu adla yazar (bkz. lib/actor.ts)
+export const POST = (...args: Parameters<typeof handlePOST>) =>
+  withActor("admin-playlist", () => handlePOST(...args));
+export const PATCH = (...args: Parameters<typeof handlePATCH>) =>
+  withActor("admin-playlist", () => handlePATCH(...args));
+export const DELETE = (...args: Parameters<typeof handleDELETE>) =>
+  withActor("admin-playlist", () => handleDELETE(...args));

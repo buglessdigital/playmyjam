@@ -15,6 +15,7 @@ import {
   withFillLock,
 } from "@/lib/queue-fill";
 import { playSongNow } from "@/lib/queue";
+import { withActor } from "@/lib/actor";
 
 const MAX_NAME = 40;
 
@@ -28,7 +29,7 @@ function parseName(value: unknown): string | null {
 // Yeni playlist. Sıra dışında başlar — admin hazır olunca kuyruğa alır ya da
 // play tuşuyla doğrudan çaldırır (queue_position null = sırada değil).
 // customer_visible kolonu varsayılan true: yeni liste müşteriye AÇIK doğar (0040).
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
 
 // Yeniden adlandırma, kuyruğa alma/çıkarma, play, liste içi karıştırma; playlist_id
 // olmadan da listelerin sırası. Kuyruk değişirse otomatik kuyruk tazelenir.
-export async function PATCH(req: NextRequest) {
+async function handlePATCH(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -483,7 +484,7 @@ export async function PATCH(req: NextRequest) {
 
 // Playlist silme. Üyelikler cascade ile gider; hiçbir listede kalmayan şarkı
 // 0026'daki trigger ile katalogdan da düşer.
-export async function DELETE(req: NextRequest) {
+async function handleDELETE(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -522,3 +523,11 @@ export async function DELETE(req: NextRequest) {
   }
   return NextResponse.json({ ok: true });
 }
+
+// Kuyruk sağlık kaydı değişikliği bu adla yazar (bkz. lib/actor.ts)
+export const POST = (...args: Parameters<typeof handlePOST>) =>
+  withActor("admin-playlists", () => handlePOST(...args));
+export const PATCH = (...args: Parameters<typeof handlePATCH>) =>
+  withActor("admin-playlists", () => handlePATCH(...args));
+export const DELETE = (...args: Parameters<typeof handleDELETE>) =>
+  withActor("admin-playlists", () => handleDELETE(...args));

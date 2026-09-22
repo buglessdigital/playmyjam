@@ -20,6 +20,15 @@ const navItems = [
     ),
   },
   {
+    href: "/super-admin/health",
+    label: "Sağlık",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M3 12h4l2.5-6 4 12 2.5-6H21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/super-admin/venues",
     label: "Mekanlar",
     icon: (

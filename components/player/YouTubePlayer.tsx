@@ -308,6 +308,37 @@ function plog(text: string) {
   logSubscriber?.();
 }
 
+// SAĞLIK KAYDI (0055 venue_events): önemli olaylar super admin'e de gider.
+// plog'a ek olarak bir giden kutusuna yazılır; heartbeat her turda en fazla 30
+// tanesini taşır. İstek düşerse (ağ yok, sahiplik yok) olaylar kutuya geri
+// konur — kesinti bitince zaman damgalarıyla birlikte ulaşır.
+type HealthSeverity = "info" | "warn" | "error";
+type HealthEvent = {
+  at: number;
+  kind: string;
+  severity: HealthSeverity;
+  message: string;
+  detail?: Record<string, unknown>;
+};
+const HEALTH_OUTBOX_LIMIT = 100;
+const HEALTH_BATCH = 30;
+const healthOutbox: HealthEvent[] = [];
+
+function report(kind: string, severity: HealthSeverity, message: string, detail?: Record<string, unknown>) {
+  plog(message);
+  healthOutbox.push({ at: Date.now(), kind, severity, message, detail });
+  if (healthOutbox.length > HEALTH_OUTBOX_LIMIT) healthOutbox.shift();
+}
+
+function takeHealthEvents(): HealthEvent[] {
+  return healthOutbox.splice(0, HEALTH_BATCH);
+}
+
+function returnHealthEvents(events: HealthEvent[]) {
+  healthOutbox.unshift(...events);
+  if (healthOutbox.length > HEALTH_OUTBOX_LIMIT) healthOutbox.splice(0, healthOutbox.length - HEALTH_OUTBOX_LIMIT);
+}
+
 // Oturum sınırı sayfa yüklenişi başına BİR kez düşer: bileşen iki kez
 // bağlanınca (StrictMode'un çift çağrısı, hızlı yeniden çizim) döküm aynı
 // damgadan iki satırla açılıyordu.
@@ -1026,12 +1057,18 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
         });
         // 401: mekan oturumu düştü. 409: çalma başka bir cihaza geçti.
         if (res.status === 401) {
+          if (blockedRef.current !== "auth") {
+            report("session_lost", "error", "Mekan oturumu düştü — player yeniden giriş bekliyor");
+          }
           plog(`api ${payload.action}: 401 — mekan oturumu düştü`);
           lastFailRef.current = "server";
           setBlock("auth");
           return null;
         }
         if (res.status === 409) {
+          if (blockedRef.current !== "claim") {
+            report("claim_lost", "warn", "Çalma başka bir cihaza geçti — bu player sustu");
+          }
           plog(`api ${payload.action}: 409 — sahiplik başka cihazda`);
           lastFailRef.current = "server";
           setBlock("claim");
@@ -1051,6 +1088,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
         setNeedsReauth((prev) => (prev === reauth ? prev : reauth));
         return data;
       } catch (e) {
+        if (lastFailRef.current !== "network") {
+          report("network_error", "warn", "Player sunucuya ulaşamıyor (ağ hatası)", {
+            action: String(payload.action),
+          });
+        }
         plog(`api ${payload.action}: AĞ HATASI (${(e as Error)?.name ?? "?"})`);
         lastFailRef.current = "network";
         return null;
@@ -1158,8 +1200,13 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     // Kuyruk boşken de sinyal gider: müşteri tarafı "oynatıcı açık mı" sorusunu
     // heartbeat tazeliğinden okuyor; sessiz kalırsak boş mekanda şarkı eklenemez.
     // presence:true çalma durumunu yazmaz, yalnızca sağlık sinyalini tazeler.
+    const events = takeHealthEvents();
+    const withEvents = events.length > 0 ? { events } : {};
+    const settle = (sent: Promise<PlayerApiResult | null>) => {
+      if (events.length > 0) void sent.then((r) => { if (!r) returnHealthEvents(events); });
+    };
     if (!currentVideoRef.current) {
-      api({ action: "heartbeat", presence: true });
+      settle(api({ action: "heartbeat", presence: true, ...withEvents }));
       return;
     }
     let progress = 0;
@@ -1182,12 +1229,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     }
     // video_id eşlik eder: sunucu yalnızca satırdaki video hâlâ buysa yazar —
     // skip ile yarışan bayat heartbeat yeni şarkının durumunu ezemez
-    api({
-      action: "heartbeat",
-      progress_ms: progress,
-      is_playing: playing,
-      video_id: currentVideoRef.current,
-    });
+    settle(
+      api({
+        action: "heartbeat",
+        progress_ms: progress,
+        is_playing: playing,
+        video_id: currentVideoRef.current,
+        ...withEvents,
+      })
+    );
   }, [api, activePlayer, broadcastState]);
 
   // Odak şu an video iframe'inde mi? Kendi düğmelerimize tıklamak odağı iframe'e
@@ -1541,8 +1591,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           // almıştık: müzik susmasın, onu çal. Kuyruk sunucuda ilerlemedi;
           // bağlantı dönünce reconcile eşitler (bkz. syncOfflineFallback).
           const fallback = preloadedVideoRef.current;
-          plog(
-            `sunucuya ulaşılamadı (${lastFailRef.current ?? "?"}) — çevrimdışı yedek çalınıyor (${fallback})`
+          report(
+            "offline_fallback",
+            "warn",
+            `Sunucuya ulaşılamadı (${lastFailRef.current ?? "?"}) — player kendi tamponundaki şarkıyı çalıyor (${fallback})`
           );
           // Zaten yedekteysek ilk yedeğin çıkış şarkısı korunur: sunucunun
           // sahnesinde hâlâ o duruyor
@@ -1550,7 +1602,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           if (!playPreloaded(fallback)) loadVideo(fallback);
           offlineFallbackRef.current = true;
         } else if (!blockedRef.current) {
-          plog("kuyruk boş — sessizlik ekranı");
+          report("idle_silence", "error", "Kuyruk boş — player sessizlik ekranına geçti, müzik durdu");
           // Yalnızca gerçekten sıradaki yoksa idle'a düş. Oturum düşmesi ya da
           // sahiplik kaybı "kuyruk boş" değildir; kendi ekranını gösterir.
           endCrossfade();
@@ -1954,7 +2006,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       // ASIL KANIT: bekçi 3 sn'de bir dönmeli. Aradaki boşluk bu kadar açıldıysa
       // tarayıcı sayfayı kısmış ya da dondurmuştur — kesintinin sebebi ağ ya da
       // YouTube değil, sekmenin/pencerenin uyutulmasıdır.
-      plog(`SEKME KISILDI/DONDU: bekçi ${Math.round(gap / 1000)} sn çalışmadı (${stateName(state)})`);
+      report(
+        "tab_throttled",
+        "warn",
+        `Sekme kısıldı/dondu: player ${Math.round(gap / 1000)} sn çalışamadı (${stateName(state)})`,
+        { seconds: Math.round(gap / 1000) }
+      );
       markProgress(videoId, position > 0 ? position : -1);
       return;
     }
@@ -1981,7 +2038,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           skip: STALL_SKIP_MS,
         };
     if (stuck >= ladder.nudge && stallStepRef.current < 1) {
-      plog(`TAKILDI ${stateName(state)} ${Math.round(stuck / 1000)} sn — konum ${position.toFixed(1)}`);
+      report(
+        "stall",
+        "warn",
+        `Şarkı takıldı: ${Math.round(stuck / 1000)} sn ilerlemedi (${stateName(state)}, ${position.toFixed(0)}. sn)`,
+        { video_id: videoId, seconds: Math.round(stuck / 1000) }
+      );
     }
     // GİZLİ PENCEREDE ATLAMA YOK. Tarayıcı, görünmeyen sayfada YENİ yüklenen
     // videoyu başlatmıyor: video TAMPON'da konum 0.0'da asılı kalıyor ve pencere
@@ -2004,7 +2066,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
         // tarayıcı medyayı askıya alıyor". ctx suspended görünüyorsa varsayım
         // doğrulanır, running görünüyorsa sebep başkadır ve orayı kazarız.
         const ctxState = keepAliveRef.current?.ctx.state ?? "yok";
-        plog(
+        report(
+          "skip_deferred",
+          "warn",
           `atlama ERTELENDİ: pencere arkada, video hiç başlamadı — görünürlük beklenecek (${Math.round(stuck / 1000)} sn, taşıyıcı ton: ${ctxState})`
         );
         setBackgroundBlocked(true);
@@ -2021,7 +2085,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       // çalınamaz işaretler. Takılmanın sebebi büyük ihtimalle geçici (ağ,
       // arka plan kısıntısı); sağlam bir şarkıyı ömürlük cezalandırmayalım.
       stallStepRef.current = 3;
-      plog(`kurtarma 3/3: pes edildi, sıradakine geçiliyor (${Math.round(stuck / 1000)} sn takılı)`);
+      report(
+        "stall_gave_up",
+        "error",
+        `Takılan şarkı kurtarılamadı (${Math.round(stuck / 1000)} sn) — sıradakine geçildi`,
+        { video_id: videoId }
+      );
       advance({ action: "next", reason: "stall" });
       return;
     }
@@ -2030,7 +2099,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       // cue'lanan tampon deck hiç veri indirmemiş olabiliyor; loadVideoById
       // yüklemeyi ve oynatmayı birlikte zorlar.
       stallStepRef.current = 2;
-      plog(`kurtarma 2/3: video yeniden yükleniyor (${Math.round(stuck / 1000)} sn takılı)`);
+      report(
+        "stall_reload",
+        "warn",
+        `Takılan şarkı yeniden yükleniyor (${Math.round(stuck / 1000)} sn takılı)`,
+        { video_id: videoId }
+      );
       try {
         // Şarkının ORTASINDA takıldıysak (ağ dalgalanması) kaldığımız yerden
         // devam ederiz — baştan sarmak mekanda aynı şarkıyı iki kez çalardı
@@ -2452,7 +2526,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
                 onTrackChange?.({ videoId: currentVideoRef.current, isPlaying: false });
                 sendHeartbeat();
               } else {
-                plog("duraklatma DIŞ KAYNAKLI — geri açılıyor");
+                report("external_pause", "warn", "Müzik dışarıdan duraklatıldı — player geri açtı");
                 try {
                   decksRef.current[key]?.playVideo();
                 } catch {}
@@ -2474,7 +2548,12 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             // da siliyor, geçici bir aksilik bunu hak etmez.
             const code = typeof e.data === "number" ? e.data : -1;
             const fatal = FATAL_YT_ERROR_CODES.has(code);
-            plog(`deck ${key}: YOUTUBE HATASI ${code}${fatal ? "" : " (geçici)"}`);
+            report(
+              "youtube_error",
+              fatal ? "error" : "warn",
+              `YouTube hatası ${code}${fatal ? " (şarkı çalınamaz)" : " (geçici)"}${key === activeDeckRef.current ? "" : " — sıradaki önyüklemede"}`,
+              { code, video_id: currentVideoRef.current }
+            );
             if (key !== activeDeckRef.current) {
               // BOŞTAKİ deck: çalan şarkı kesilmez, ama şarkı SUNUCUDA da
               // işaretlenmeli. Eskiden yalnızca tampon düşürülüyordu; peek 10 sn
@@ -2528,7 +2607,9 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
               loadVideo(failed);
               return;
             }
-            plog(`çalan şarkı ${seen} kez geçici hata verdi — damgasız atlanıyor`);
+            report("transient_skip", "error", `Çalan şarkı ${seen} kez hata verdi — atlandı`, {
+              video_id: failed,
+            });
             advance({ action: "next", reason: "stall" });
           },
         },
@@ -2735,7 +2816,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     };
     // Chrome sayfayı gerçekten DONDURDUYSA (Page Lifecycle) bu olay düşer:
     // pencere uygulama olarak kurulduğunda ve arkada kaldığında görülür.
-    const onFreeze = () => plog("SAYFA DONDURULDU (freeze)");
+    const onFreeze = () => report("page_frozen", "warn", "Tarayıcı player sayfasını dondurdu");
     // Odak video iframe'ine geçtiyse kullanıcı videonun üstüne tıklamış demektir;
     // hemen ardından gelen duraklatma GERÇEK duraklatmadır, geri açılmaz
     const onBlur = () => {
@@ -2749,8 +2830,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     };
     // Mekanın internetinin gidip gelmesi de kesinti sebebi olabilir — ayırt
     // edebilmek için kaydedilir
-    const onOffline = () => plog("AĞ KOPTU (offline)");
-    const onOnline = () => plog("ağ geri geldi (online)");
+    const onOffline = () => report("network_offline", "warn", "Mekan cihazının interneti koptu");
+    const onOnline = () => report("network_online", "info", "Mekan cihazının interneti geri geldi");
     document.addEventListener("visibilitychange", onVisibility);
     document.addEventListener("resume", onResume);
     document.addEventListener("freeze", onFreeze);
@@ -3223,7 +3304,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       if (blockedRef.current !== "claim" || !msg.playing || !msg.videoId) return;
       const videoId = msg.videoId;
       const positionSec = Math.max(0, msg.positionSec || 0);
-      plog(`çalan sekme kapandı — çalma buraya alınıyor (${videoId} @ ${positionSec.toFixed(0)} sn)`);
+      report(
+        "handoff",
+        "info",
+        `Çalan sekme kapandı — çalma bu sekmeye alındı (${positionSec.toFixed(0)}. sn'den)`
+      );
       void (async () => {
         const result = await api({ action: "claim", force: true });
         if (!result?.claimed) return;

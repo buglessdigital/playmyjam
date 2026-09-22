@@ -10,13 +10,14 @@ import {
 } from "@/lib/youtube";
 import { assertVenuePlaylist, attachSongsToPlaylist, getDefaultPlaylistId } from "@/lib/playlist";
 import { readYoutubeToken } from "@/lib/youtube-token";
+import { withActor } from "@/lib/actor";
 
 // Public YouTube playlist'indeki tüm şarkıları mekanın bir playlist'ine toplu ekler.
 // OAuth gerekmez — admin playlist URL'sini yapıştırır.
 // Hedef: body.playlist_id (mevcut liste) | body.new_playlist (yeni liste açılır) | varsayılan.
 // body.auto_sync ile günlük otomatik güncelleme açılır (bkz. lib/playlist-sync.ts).
 // { added, skipped, playlist } döner.
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -183,3 +184,7 @@ export async function POST(req: NextRequest) {
     auto_sync: autoSync && !sourceErr,
   });
 }
+
+// Kuyruk sağlık kaydı değişikliği bu adla yazar (bkz. lib/actor.ts)
+export const POST = (...args: Parameters<typeof handlePOST>) =>
+  withActor("admin-playlist-import", () => handlePOST(...args));

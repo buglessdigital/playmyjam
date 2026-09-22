@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { syncPlaylistSources } from "@/lib/playlist-sync";
 import { refreshStaleMetadata, type MetadataRefreshResult } from "@/lib/metadata-refresh";
+import { withActor } from "@/lib/actor";
 
 // YouTube API veri saklama uyumu (Developer Policy III.E.4): günlük cron.
 // 1) 30 günden eski search_cache satırları silinir.
@@ -21,7 +22,7 @@ const REFRESH_TIME_BUDGET_MS = 180_000;
 // göremiyor (sayı sabit kalır), pazar turu o kör noktayı kapatır.
 const FULL_SWEEP_WEEKDAY = 0;
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -34,6 +35,12 @@ export async function GET(req: NextRequest) {
     .from("search_cache")
     .delete()
     .lt("cached_at", cutoff);
+
+  // Mekan sağlık kaydı (0055) 30 günden eskisini tutmaz
+  const { error: eventsErr } = await supabaseAdmin
+    .from("venue_events")
+    .delete()
+    .lt("at", cutoff);
 
   let refresh: MetadataRefreshResult;
   try {
@@ -61,8 +68,11 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     cache_cleanup: cacheErr ? cacheErr.message : "done",
+    events_cleanup: eventsErr ? eventsErr.message : "done",
     metadata_refresh: refresh,
     playlist_sync: sync,
     playlist_sync_error: syncError,
   });
 }
+
+export const GET = (req: NextRequest) => withActor("cron-refresh", () => handleGET(req));

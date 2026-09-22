@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { playSongNow } from "@/lib/queue";
 import { runFillUnlocked, startPlaylistFrom, withFillLock } from "@/lib/queue-fill";
+import { withActor } from "@/lib/actor";
 
 // Panelden "şimdi çal": sahnedeki şarkı yarıda kesilir, seçilen şarkı başlar.
 //
@@ -13,7 +14,7 @@ import { runFillUnlocked, startPlaylistFrom, withFillLock } from "@/lib/queue-fi
 //
 // Sahnedeki şarkıyı müşteri eklediyse istek 409 ile reddedilir — jetonla alınan
 // sıra yarıda kesilemez. Panel düğmeyi zaten kapatır; burası asıl kilit.
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -73,3 +74,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json(result);
 }
+
+// Kuyruk sağlık kaydı değişikliği bu adla yazar (bkz. lib/actor.ts)
+export const POST = (...args: Parameters<typeof handlePOST>) =>
+  withActor("admin-play-now", () => handlePOST(...args));

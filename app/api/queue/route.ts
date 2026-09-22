@@ -6,8 +6,9 @@ import { playNextFromQueue } from "@/lib/queue";
 import { fillQueue } from "@/lib/queue-fill";
 import { hasVenueSession } from "@/lib/venue-auth-cookie";
 import { isPlayerOnline } from "@/lib/player-status";
+import { withActor } from "@/lib/actor";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const supabase = await createClient();
   // getClaims: JWT'yi yerelde doğrular — Auth sunucusuna gitmez
   const { data: claimsData } = await supabase.auth.getClaims();
@@ -108,3 +109,7 @@ export async function POST(req: NextRequest) {
   // düşümünü gerçekten kesilen tutarla eşitlesin diye geri veriliyor
   return NextResponse.json({ ok: true, cost: result?.cost });
 }
+
+// Kuyruk sağlık kaydı değişikliği bu adla yazar (bkz. lib/actor.ts)
+export const POST = (...args: Parameters<typeof handlePOST>) =>
+  withActor("customer-request", () => handlePOST(...args));

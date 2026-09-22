@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { runSingleFlight } from "@/lib/queue-lock";
 import { orderFromResume } from "@/lib/rotation-order";
+import { withActor } from "@/lib/actor";
 
 // Kuyruk artık "10 şarkılık kayan pencere" DEĞİL: sıradaki listeler bitip başa
 // sarana kadarki şarkıların hepsi kuyruğa yazılır, panel ve player ne
@@ -517,7 +518,10 @@ const HEAD_FILL = 20;
  * şarkılarını kuyruğa yazıyordu.
  */
 export async function fillQueue(venueId: string): Promise<void> {
-  await runSingleFlight(venueId, () => runFill(venueId));
+  // Dolumun yaptığı değişiklikler, onu tetikleyen isteğe değil dolumun kendisine
+  // yazılsın (bkz. lib/actor.ts): admin'in düğmesinden sonra koşan dolum
+  // "mekan bilerek yaptı" sayılmamalı
+  await withActor("autofill", () => runSingleFlight(venueId, () => runFill(venueId)));
 }
 
 async function runFill(venueId: string): Promise<void> {

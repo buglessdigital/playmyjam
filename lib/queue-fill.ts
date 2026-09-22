@@ -8,7 +8,8 @@ import { withActor } from "@/lib/actor";
 // sarana kadarki şarkıların hepsi kuyruğa yazılır, panel ve player ne
 // gösteriyorsa aynen o çalar. QUEUE_FLOOR yalnızca listelerden şarkı çıkmadığı
 // hallerde (kuyrukta liste yok, ya da kalanlar şu an çalınamıyor) katalogdan
-// doldurulan tabandır — müzik susmasın diye.
+// doldurulan tabandır — müzik susmasın diye. Çalan bir liste varken taban 1'e
+// iner (bkz. runFill): kısa liste kendi döngüsünde kalsın.
 const QUEUE_FLOOR = 10;
 // Emniyet tavanı: 3000 şarkılık listeler paneli ve DB'yi boğmasın. Tavanın
 // dışında kalan şarkılar kuyruk eridikçe eklenir.
@@ -649,8 +650,8 @@ async function runFill(venueId: string): Promise<void> {
     recentByList.set(row.source_playlist_id, history);
   }
 
-  const rotationPicks =
-    (await pickFromRotation(venueId, capacity, {
+  const rotation =
+    await pickFromRotation(venueId, capacity, {
       catalogEligible,
       excludeIds,
       cooldownIds,
@@ -658,9 +659,9 @@ async function runFill(venueId: string): Promise<void> {
       playingList: playingNow?.source_playlist_id ?? null,
       queuedNow: current,
       recentByList,
-    })) ?? [];
+    });
 
-  const picks: { songId: string; playlistId: string | null }[] = [...rotationPicks];
+  const picks: { songId: string; playlistId: string | null }[] = [...(rotation ?? [])];
 
   // Kuyrukta liste yoksa — ya da kuyruktakilerden şu an şarkı çıkmadıysa (hepsi
   // kuyrukta bekliyor / 30 dk kilidinde) — kuyruk QUEUE_FLOOR'a kadar tüm
@@ -677,7 +678,14 @@ async function runFill(venueId: string): Promise<void> {
     .eq("venue_id", venueId)
     .eq("status", "queued");
 
-  const needed = QUEUE_FLOOR - (freshCount ?? current);
+  // Çalan bir liste varken taban 10 değil 1'dir: kısa bir liste (ör. 3 şarkı)
+  // kendi şarkılarının hepsi sahnede/kuyrukta olduğu için yeni şarkı veremez ve
+  // bu, "liste bitti" değil "liste zaten döngüde" demektir. 10'luk taban burada
+  // araya katalogdan rastgele şarkı sokup döngüyü bozuyordu (22 Eyl 2026, 3
+  // şarkılık "night" listesinin arkasına 8 yabancı şarkı girdi). 1 şarkı yine de
+  // tutulur: listenin tek çalınabilir şarkısı sahnedeyse müzik susmasın.
+  const floor = rotation === null ? QUEUE_FLOOR : 1;
+  const needed = floor - (freshCount ?? current);
   if (picks.length < needed) {
     const alreadyPicked = new Set(picks.map((p) => p.songId));
     const eligible = (venueSongs ?? [])

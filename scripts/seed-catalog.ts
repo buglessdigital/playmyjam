@@ -75,7 +75,9 @@ function flag(name: string, fallback: string): string {
 }
 
 const BUDGET = Number(flag("budget", "9000"));
-const MAX_PER_PLAYLIST = Number(flag("max-per-playlist", "5000"));
+// Plak şirketi yüklemeleri 20 bine varıyor (netd müzik 19.073, Avrupa 17.850).
+// Eski 5.000'lik tavan bu listelerin çoğunu hiç okutmuyordu.
+const MAX_PER_PLAYLIST = Number(flag("max-per-playlist", "25000"));
 const LIST_FILE = flag("file", join(ROOT, "scripts/seed-playlists.txt"));
 const STATE_FILE = join(ROOT, "scripts/.seed-state.json");
 
@@ -237,7 +239,8 @@ function readSources(): { playlists: string[]; channels: string[] } {
   const fromFile = inline.length === 0 && existsSync(LIST_FILE)
     ? readFileSync(LIST_FILE, "utf8")
         .split("\n")
-        .map((l) => l.trim())
+        // satır sonu yorumu: "UUxxx  # netd müzik" — boşluksuz # (URL parçası) dokunulmaz
+        .map((l) => l.replace(/\s+#.*$/, "").trim())
         .filter((l) => l && !l.startsWith("#"))
     : [];
 
@@ -324,12 +327,16 @@ const stats = {
   upserted: 0,
   backfilled: 0,
   harvested: 0,
+  deferred: 0,
 };
 
 /* ---------- adımlar ---------- */
 
 // playlistItems.list — 1 birim/sayfa (50 şarkı)
-async function playlistVideoIds(playlistId: string): Promise<string[]> {
+// truncated: tavana takılıp sonuna kadar okunamadı demek. Böyle liste "bitti"
+// sayılmamalı — eskiden tam şarkı sayısı kaydediliyor ve kalanı bir daha hiç
+// açılmıyordu (Avrupa Müzik'in 17.850 videosunun yalnızca ilk 5.000'i).
+async function playlistVideoIds(playlistId: string): Promise<{ ids: string[]; truncated: boolean }> {
   const ids: string[] = [];
   let pageToken: string | undefined;
 
@@ -350,7 +357,7 @@ async function playlistVideoIds(playlistId: string): Promise<string[]> {
     pageToken = data.nextPageToken;
   } while (pageToken && ids.length < MAX_PER_PLAYLIST);
 
-  return [...new Set(ids)];
+  return { ids: [...new Set(ids)], truncated: !!pageToken };
 }
 
 // Havuzda zaten olanları ayıkla — asıl tasarruf burada (videos.list hiç çağrılmaz)
@@ -540,6 +547,14 @@ async function main() {
   );
 
   for (const playlistId of todo) {
+    // Şarkılar liste sonunda yazılıyor: bütçe listenin ortasında biterse okunan
+    // sayfalar çöpe gider (19 binlik bir listede ~380 birim). Başlamadan önce en
+    // kötü durumu (okuma + her şarkı yeni) hesapla; sığmıyorsa sonraki tura bırak.
+    const pages = Math.ceil(Math.min(counts.get(playlistId) ?? 0, MAX_PER_PLAYLIST) / 50);
+    if (unitsSpent + pages * 2 > BUDGET) {
+      stats.deferred++;
+      continue;
+    }
     try {
       await seedPlaylist(playlistId, counts, state);
     } catch (err) {
@@ -554,7 +569,7 @@ async function main() {
 
 // Tek listenin tüm işi. Hatası çağırana gider, orada tek liste olarak yutulur.
 async function seedPlaylist(playlistId: string, counts: Map<string, number>, state: SeedState) {
-  const ids = await playlistVideoIds(playlistId);
+  const { ids, truncated } = await playlistVideoIds(playlistId);
   stats.playlists++;
   stats.seenIds += ids.length;
 
@@ -576,6 +591,11 @@ async function seedPlaylist(playlistId: string, counts: Map<string, number>, sta
     );
   } else {
     console.log(`  ${playlistId}: ${ids.length} şarkı, hepsi havuzda zaten`);
+  }
+
+  if (truncated) {
+    console.log(`  ${playlistId}: ${MAX_PER_PLAYLIST} tavanına takıldı, BİTTİ SAYILMADI (--max-per-playlist ile artır)`);
+    return;
   }
 
   // Liste baştan sona işlendi: bir dahaki tura ön kontrolde elensin.
@@ -605,6 +625,7 @@ function report(headline: string) {
   if (stats.backfilled > 0) console.log(`  geri doldurulan: ${stats.backfilled} kanal kimliği`);
   if (stats.harvested > 0) console.log(`  hasat listesi  : ${stats.harvested}`);
   console.log(`  taranan liste  : ${stats.playlists}`);
+  if (stats.deferred > 0) console.log(`  sonraki tura   : ${stats.deferred} liste (bütçeye sığmadı)`);
   console.log(`  değişmemiş     : ${stats.unchanged}`);
   console.log(`  görülen şarkı  : ${stats.seenIds}`);
   console.log(`  havuzda vardı  : ${stats.alreadyKnown}`);

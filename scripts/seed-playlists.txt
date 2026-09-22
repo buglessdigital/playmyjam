@@ -97,3 +97,24 @@ https://www.youtube.com/playlist?list=UUHlNOM_bEJxKPZ9lSVvJXOA
 https://www.youtube.com/playlist?list=UUs-ofxCnIFUW74vjTbdw5zg
 https://www.youtube.com/playlist?list=UURcpC8Y1EV-4-kNbWGopqbg
 https://www.youtube.com/playlist?list=UU3aqBnkDAfMh5eUmiYi_tfQ
+
+# Yerli plak şirketleri — yükleme listeleri (UC→UU). Kanal satırı DEĞİL:
+# kanal satırı alt playlist'leri açar, onlar yüklemelerin kopyası olduğu için
+# aynı şarkıya ikinci kez kota harcanır. (22 Eyl 2026)
+UUR5wZcXtOUka8jTA57flzMg  # netd müzik (19073 video)
+UUE8sTBz0MMkAkeSXqWjaHsA  # Avrupa Müzik (17850 video)
+UU_WpMKM2lC43y3engDpb9jw  # Kalan Müzik (13749 video)
+UUh-d8OYom5pN09mt_38GvMg  # Seyhan Müzik (11536 video)
+UUCsiNBMCBo9qsVnFSF9JKqQ  # DMC (9472 video)
+UUzZ1I1j--g9sFVB-6-1yzWw  # Poll Production (8418 video)
+UUIz8UYOEuojPGnh_a416u9A  # Esen Müzik (4657 video)
+UU3NOx6apPIs-fmJ04xbSF_g  # Elenor Müzik (4432 video)
+UUEyoHn3gbdFph2sTPl89h0g  # Ada Müzik (4414 video)
+UU_TI9cq59d3IQGhLt3M5DLg  # OSSİ MÜZİK (3714 video)
+UU0HC6-GUCO4ahc6R6Mb9g9A  # Ulus Müzik (3647 video)
+UUbCFxJq-fCwiEo9CgowI7CQ  # DokuzSekiz Müzik (3162 video)
+UU8RV7VMlB79LVdUrZe6YK6Q  # Arda Müzik (2808 video)
+UUSZxfIWNwPEAtfIENUmNe8w  # Pasaj Müzik (2210 video)
+UUZ7_WFlva2io0r5Z3Gl0QVw  # Emre Müzik Official (1023 video)
+UUBlgOOqROfh4ufiUg-uWMXg  # GNL Entertainment (101 video)
+UUTP3a83n-LeZTrFIFJBvy2Q  # Universal Music Publishing Türkiye (44 video)

@@ -36,6 +36,9 @@ type HealthResponse = { now: string; venues: VenueHealth[]; events: HealthEvent[
 const REFRESH_MS = 15_000;
 // Panelin "oynatıcı çevrimdışı" eşiğiyle aynı
 const OFFLINE_MS = 45_000;
+// Bundan eski son sinyal "kesinti" değil, player o gün hiç açılmamış demek
+// (kapanmadan susan eski oturumlar sinyali sonsuza dek "çalıyor" bırakıyor)
+const SIGNAL_LOST_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 const SEVERITY_META: Record<Severity, { label: string; color: string }> = {
   error: { label: "Hata", color: "#f87171" },
@@ -81,8 +84,10 @@ function liveState(v: VenueHealth, now: number): { label: string; color: string;
   }
   // Sinyal düzgün kapanışta (sekme kapandı) sıfırlanır; duruyorsa player
   // kapanmadan sustu demektir
-  if (beat) return { label: "Sinyal kesildi", color: "#f87171", note: `Son sinyal ${ago(beat, now)}` };
-  return { label: "Player kapalı", color: "#6b7280", note: null };
+  if (beat && now - Date.parse(beat) <= SIGNAL_LOST_WINDOW_MS) {
+    return { label: "Sinyal kesildi", color: "#f87171", note: `Son sinyal ${ago(beat, now)}` };
+  }
+  return { label: "Player kapalı", color: "#6b7280", note: beat ? `Son sinyal ${ago(beat, now)}` : null };
 }
 
 function HealthPageContent() {

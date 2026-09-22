@@ -73,6 +73,8 @@ const INTENT_HOLD_MS = 2_000;
 // Sarma sonrası koruma penceresi: bu süre boyunca dışarıdan gelen ilerleme
 // değerleri yok sayılır (yoldaki heartbeat'ler henüz eski konumu taşıyor).
 const SEEK_GUARD_MS = 2_000;
+// Sahneye iyimser çıkan satır bu süre boyunca bayat kuyruk yanıtlarından süzülür
+const LEAVING_HOLD_MS = 5_000;
 
 // Müşterinin jetonla aldığı sıra taşınamaz; taşınabilen tek blok otomatik/elle
 // eklenen şarkılardır (user_id null). Sunucu tarafı da aynı kuralı uygular.
@@ -189,6 +191,9 @@ export function usePlayback(venueDbId: string) {
   // Sahnede olmasını beklediğimiz video: panel yeni şarkıyı sunucudan önce
   // gösterdiğinde, yoldaki bayat now_playing satırı onu geri almasın diye.
   const expectedVideoRef = useRef<{ id: string; at: number } | null>(null);
+  // Sıradan iyimser düşürülen (sahneye çıkan) satır: sunucu yazana kadar
+  // gelen bayat kuyruk yanıtı onu geri getirmesin.
+  const leavingRef = useRef<{ id: string; at: number } | null>(null);
   // Ses fiilen akıyor mu (player'ın bildirdiği son durum). Şarkı değişiminde
   // YouTube videoyu birkaç saniye tamponluyor; bu sırada çubuk SAYMAZ, yoksa
   // sesin önüne geçip ilk gerçek ölçümde geri sıçrıyordu.
@@ -222,7 +227,16 @@ export function usePlayback(venueDbId: string) {
           .limit(1)
           .maybeSingle(),
       ]);
-      if (data) setQueue(data as unknown as QueueItem[]);
+      if (data) {
+        const rows = data as unknown as QueueItem[];
+        // Sahneye iyimser çıkardığımız satır, sunucu onu 'playing' yazmadan
+        // yola çıkan bir sorguda hâlâ 'queued' görünür. Uygulansaydı sıranın
+        // başına bir anlığına geri dönüp tekrar kaybolurdu.
+        const leaving = leavingRef.current;
+        const fresh = leaving && Date.now() - leaving.at < LEAVING_HOLD_MS;
+        if (leaving && !fresh) leavingRef.current = null;
+        setQueue(fresh ? rows.filter((q) => q.id !== leaving.id) : rows);
+      }
       setPlayingRow(
         (current as { user_id: string | null; added_by: string; source_playlist_id: string | null } | null) ??
           null
@@ -429,6 +443,7 @@ export function usePlayback(venueDbId: string) {
             });
             setProgress(beat.progress_ms);
             // Sahneye çıkan satır sıradan düşer; gerçeği fetchQueue doğrular
+            leavingRef.current = { id: known.id, at: Date.now() };
             setQueue((prev) => prev.filter((q) => q.id !== known.id));
           } else {
             setNowPlaying({ ...current, last_heartbeat_at: seenAt });
@@ -617,8 +632,14 @@ export function usePlayback(venueDbId: string) {
               }
             : prev
         );
-        // Kuyruktan da düşür — gerçek satır Realtime ile birazdan doğrular
-        setQueue((prev) => prev.slice(1));
+        // Kuyruktan da düşür — gerçek satır Realtime ile birazdan doğrular.
+        // Kimlikle süzülür, slice(1) DEĞİL: yukarıdaki load komutu panel içi
+        // player'dan anında bir durum sinyali döndürüyor ve applyBeat aynı
+        // satırı zaten düşürmüş olabiliyor. slice(1) o zaman bir sonraki
+        // şarkıyı da siliyor, sıranın başındaki iki satır bir anlığına
+        // kaybolup geri geliyordu.
+        leavingRef.current = { id: upcoming.id, at: Date.now() };
+        setQueue((prev) => prev.filter((q) => q.id !== upcoming.id));
       }
     }
 
@@ -654,6 +675,8 @@ export function usePlayback(venueDbId: string) {
         // Sunucu atlamayı yapmadı (kuyruk değişmiş ya da istek reddedilmiş):
         // iyimser başlattığımız şarkı sahnede kalmasın
         expectedVideoRef.current = null;
+        // İyimser düşürdüğümüz satır sırada kalmış olabilir: geri gelsin
+        leavingRef.current = null;
         // Sunucudan gelen gerçek satır iyimser tahmini ezebilsin
         localActionAtRef.current = 0;
         sendCommand({ type: "load", video_id: previousVideoId });
@@ -774,7 +797,10 @@ export function usePlayback(venueDbId: string) {
             }
           : prev
       );
-      if (target.queue_id) setQueue((prev) => prev.filter((q) => q.id !== target.queue_id));
+      if (target.queue_id) {
+        leavingRef.current = { id: target.queue_id, at: Date.now() };
+        setQueue((prev) => prev.filter((q) => q.id !== target.queue_id));
+      }
     }
 
     try {
@@ -791,6 +817,8 @@ export function usePlayback(venueDbId: string) {
         if (song && previousVideoId && previousVideoId !== song.youtube_video_id) {
           sendCommand({ type: "load", video_id: previousVideoId });
         }
+        // Satır sırada kaldı: bayat-yanıt süzgeci onu gizlemesin
+        leavingRef.current = null;
         await fetchQueue(venueDbId);
         return { ok: false as const, error: (data.error as string) ?? "Çalınamadı" };
       }

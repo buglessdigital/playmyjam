@@ -99,13 +99,29 @@ export async function refreshPushSubscription(
   }
 }
 
+// Son başarısız subscribeToPush denemesinin sebebi. Kart yalnızca "olmadı"
+// diyordu; kurulu Android uygulamasında hata sunucuya hiç ulaşmadan oluşunca
+// neyin bozulduğunu görmenin başka yolu yoktu.
+let lastPushError: string | null = null;
+export function getLastPushError(): string | null {
+  return lastPushError;
+}
+
 // İzin ister, push aboneliği oluşturur ve sunucuya kaydeder.
 // true = abonelik aktif; false = izin reddedildi / desteklenmiyor / kayıt başarısız.
 export async function subscribeToPush(
   apiEndpoint: string = CUSTOMER_PUSH_ENDPOINT
 ): Promise<boolean> {
-  if (!isPushSupported()) return false;
-  if ((await requestPermission()) !== "granted") return false;
+  lastPushError = null;
+  if (!isPushSupported()) {
+    lastPushError = "unsupported";
+    return false;
+  }
+  const permission = await requestPermission();
+  if (permission !== "granted") {
+    lastPushError = `permission:${permission}`;
+    return false;
+  }
 
   try {
     const registration = await navigator.serviceWorker.ready;
@@ -121,8 +137,11 @@ export async function subscribeToPush(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(subscription.toJSON()),
     });
+    if (!res.ok) lastPushError = `http:${res.status}`;
     return res.ok;
-  } catch {
+  } catch (error) {
+    lastPushError =
+      error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     return false;
   }
 }

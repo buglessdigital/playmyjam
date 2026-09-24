@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   ADMIN_PUSH_ENDPOINT,
+  getLastPushError,
   getPermission,
   isPushSupported,
   subscribeToPush,
@@ -47,6 +48,7 @@ async function registeredOnServer(): Promise<boolean> {
 export default function AdminPushBanner() {
   const [state, setState] = useState<State>("checking");
   const [busy, setBusy] = useState(false);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +82,7 @@ export default function AdminPushBanner() {
     setBusy(false);
     if (ok) return setState("on");
     if (getPermission() === "denied") return setState("denied");
+    setErrorDetail(getLastPushError());
     setState(needsHomeScreen() && !isPushSupported() ? "ios-install" : "failed");
   };
 
@@ -128,9 +131,15 @@ export default function AdminPushBanner() {
         <>
           <p className="mt-1 text-xs text-[#9ca3af]">
             {state === "failed"
-              ? "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene."
+              ? errorDetail === "permission:default"
+                ? "Bildirim izni verilmedi. İzin penceresi çıkmadıysa telefonun Ayarlar → Uygulamalar bölümünden bu uygulamaya bildirim izni verip tekrar dene."
+                : "Bildirim kaydı tamamlanamadı. Bağlantını kontrol edip tekrar dene."
               : "Müşteri şarkı talebi gönderdiğinde telefonuna bildirim düşer; paneli açmadan bildirim üstünden onaylayıp reddedebilirsin."}
           </p>
+          {state === "failed" && errorDetail && (
+            // Destek için: kurulu uygulamada hatayı görmenin tek yolu bu satır
+            <p className="mt-1 break-all font-mono text-[10px] text-[#6b7280]">{errorDetail}</p>
+          )}
           <button
             onClick={enable}
             disabled={busy}

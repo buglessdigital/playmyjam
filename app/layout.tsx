@@ -37,6 +37,20 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
+// Mekan panelinin ve müşteri sayfasının kendi manifest'i generateMetadata'dan
+// geliyor, ama dinamik sayfalarda Next metadata'yı <body>'ye akıtıyor ve Chrome
+// <body>'deki manifest bağlantısını görmüyor: kurulum "Bu uygulama yüklenemez"
+// diye reddediliyordu. Bağlantı adresi yalnızca slug'a bağlı olduğundan
+// ayrıştırma sırasında <head>'in en başına buradan konuyor (Chrome ilk
+// manifest bağlantısını kullanır). React 19 hidrasyonu head'deki fazla
+// etiketleri yok sayıyor.
+const venueManifestScript = `(function(){try{
+var m=location.pathname.match(/^\\/(admin|venue)\\/([^\\/]+)(?:\\/|$)/);
+if(!m)return;var b="/"+m[1]+"/"+m[2],h=document.head;
+var i=document.createElement("link");i.rel="apple-touch-icon";i.sizes="192x192";i.href=b+"/app-icon/192.png";h.prepend(i);
+var l=document.createElement("link");l.rel="manifest";l.href=b+"/manifest.webmanifest";h.prepend(l);
+}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -44,6 +58,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" className={`${geist.variable} antialiased`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: venueManifestScript }} />
+      </head>
       <body className="min-h-full flex flex-col bg-[#0f0a18] text-white">
         <ServiceWorkerRegister />
         {/* Dil tercihi istemcide tutulur: sunucuda cookie okunsaydı kök layout

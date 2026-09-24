@@ -552,6 +552,8 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       if (typeof charged === "number" && charged !== cost) {
         setTokenBalance((b) => b + cost - charged);
       }
+      // Onaylı talebin şeridi hakkın tükendiğini görsün (RequestStatusBar)
+      window.dispatchEvent(new Event("pmj-queue-added"));
     } else {
       // Rollback on error
       setTokenBalance((b) => b + cost);

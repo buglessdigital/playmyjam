@@ -390,6 +390,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
       if (typeof charged === "number" && charged !== cost) {
         setTokenBalance((b) => b + cost - charged);
       }
+      window.dispatchEvent(new Event("pmj-queue-added"));
     } else {
       setTokenBalance((b) => b + cost);
       setAddedIds((s) => {

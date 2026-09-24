@@ -36,6 +36,10 @@ type ActiveRequest = {
     artist: string;
     album_cover_url: string;
   } | null;
+  // Onayın açtığı tek seferlik hak. Şarkı sıraya eklenince talep 'accepted'
+  // kalıyor, yalnızca hak tükeniyor (consumed_at) — şerit buna bakmazsa
+  // eklenmiş şarkı için "Sıraya Ekle" demeye devam ediyordu.
+  one_time_songs: { consumed_at: string | null }[] | null;
 };
 
 function clock(ms: number): string {
@@ -61,7 +65,7 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
       const { data } = await supabase
         .from("song_requests")
         .select(
-          "id, status, expires_at, play_deadline, suggested_title, suggested_artist, songs(youtube_video_id, title, artist, album_cover_url)"
+          "id, status, expires_at, play_deadline, suggested_title, suggested_artist, songs(youtube_video_id, title, artist, album_cover_url), one_time_songs(consumed_at)"
         )
         .eq("user_id", userId)
         .eq("venue_id", venueDbId)
@@ -118,10 +122,13 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
       window.addEventListener("focus", refresh);
       // Talep gönderildiği anda şerit belirsin (bkz. BrowseClient)
       window.addEventListener("pmj-suggestion-sent", refresh);
+      // Onaylı şarkı sıraya eklendiği anda şerit kalksın (bkz. BrowseClient)
+      window.addEventListener("pmj-queue-added", refresh);
       cleanupListeners = () => {
         document.removeEventListener("visibilitychange", onVisible);
         window.removeEventListener("focus", refresh);
         window.removeEventListener("pmj-suggestion-sent", refresh);
+        window.removeEventListener("pmj-queue-added", refresh);
       };
       refreshRef.current = refresh;
     })();
@@ -151,7 +158,11 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
   // Onaylanan talep beklemedekinin önüne geçer: süresi işleyen ve aksiyon
   // isteyen tek durum o
   const approved = rows.find(
-    (r) => r.status === "accepted" && r.play_deadline && new Date(r.play_deadline).getTime() > tick
+    (r) =>
+      r.status === "accepted" &&
+      r.play_deadline &&
+      new Date(r.play_deadline).getTime() > tick &&
+      !r.one_time_songs?.some((o) => o.consumed_at)
   );
   const pending = rows.find(
     (r) => r.status === "pending" && (!r.expires_at || new Date(r.expires_at).getTime() > tick)

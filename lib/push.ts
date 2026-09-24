@@ -38,16 +38,36 @@ export interface PushPayload {
   requireInteraction?: boolean;
 }
 
+// web-push varsayılanı "normal" aciliyet + 4 hafta TTL. Android normal öncelikli
+// mesajı ekran kapalıyken (Doze) biriktirip dakikalar sonra teslim ediyor —
+// 10 dakikalık karar penceresi olan talep bildirimi admine geç düşüyordu.
+// Bildirimlerimizin hepsi kullanıcıya görünür ve zamana bağlı: hepsi "high".
+export interface PushDelivery {
+  /** Saniye. Cihaz bu sürede çevrimiçi olmazsa bildirim hiç gösterilmez. */
+  ttl?: number;
+}
+
+const DEFAULT_TTL = 60 * 60 * 24;
+
+function sendOptions(delivery?: PushDelivery) {
+  return { urgency: "high" as const, TTL: delivery?.ttl ?? DEFAULT_TTL };
+}
+
 type SubscriptionRow = { id: string; endpoint: string; p256dh: string; auth: string };
 
-async function deliver(subs: SubscriptionRow[], payload: PushPayload): Promise<void> {
+async function deliver(
+  subs: SubscriptionRow[],
+  payload: PushPayload,
+  delivery?: PushDelivery
+): Promise<void> {
   const body = JSON.stringify(payload);
   await Promise.all(
     subs.map(async (sub) => {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          body
+          body,
+          sendOptions(delivery)
         );
       } catch (err) {
         const status = (err as { statusCode?: number }).statusCode;
@@ -70,7 +90,8 @@ export async function sendPushToSubscription(
   try {
     await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-      JSON.stringify(payload)
+      JSON.stringify(payload),
+      sendOptions()
     );
     return true;
   } catch {
@@ -79,7 +100,11 @@ export async function sendPushToSubscription(
 }
 
 // Kullanıcının tüm cihazlarına gönderir; süresi dolmuş abonelikleri (404/410) temizler.
-export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
+export async function sendPushToUser(
+  userId: string,
+  payload: PushPayload,
+  delivery?: PushDelivery
+): Promise<void> {
   if (!ensureVapid()) return;
 
   const { data: subs } = await supabaseAdmin
@@ -88,13 +113,17 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
     .eq("user_id", userId);
   if (!subs || subs.length === 0) return;
 
-  await deliver(subs, payload);
+  await deliver(subs, payload, delivery);
 }
 
 // Mekanın tüm adminlerinin cihazlarına gönderir (0045: admin_id'li abonelikler).
 // Aynı mekanda birden çok admin olabilir — hepsi haberdar olur, ilk karar veren
 // kazanır (sunucu talebin hâlâ 'pending' olduğunu doğruluyor).
-export async function sendPushToVenueAdmins(venueId: string, payload: PushPayload): Promise<void> {
+export async function sendPushToVenueAdmins(
+  venueId: string,
+  payload: PushPayload,
+  delivery?: PushDelivery
+): Promise<void> {
   if (!ensureVapid()) return;
 
   const { data: admins } = await supabaseAdmin
@@ -110,5 +139,5 @@ export async function sendPushToVenueAdmins(venueId: string, payload: PushPayloa
     .in("admin_id", adminIds);
   if (!subs || subs.length === 0) return;
 
-  await deliver(subs, payload);
+  await deliver(subs, payload, delivery);
 }

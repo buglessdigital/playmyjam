@@ -346,7 +346,10 @@ export async function notifyAdminsOfRequest(params: {
     // iOS bu alanı yok sayar; orada bildirime dokunmak yukarıdaki url'i açar
     ...(known ? { actions: [{ action: "approve", title: "Onayla" }] } : {}),
     data: { requestId: params.requestId, token },
-  }).catch(() => {});
+  },
+    // Karar penceresi kapandıktan sonra düşen bildirim işe yaramaz
+    { ttl: Math.ceil(REQUEST_DECISION_MS / 1000) }
+  ).catch(() => {});
 }
 
 /** Süresi dolmuş bekleyen talepleri kapatır (fırsat buldukça çağrılır). */

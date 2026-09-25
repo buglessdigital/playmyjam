@@ -49,7 +49,7 @@ type Preview = { gross: number; vat: number; bankFee: number; other: number; net
 type Row = {
   venue: { id: string; slug: string; name: string; status: string };
   contract: { commission_pct: number; payment_day: number; iban: string; account_holder: string } | null;
-  usage: { tokens: number; requests: number };
+  usage: { tokens: number; paid_tokens: number; requests: number };
   preview: Preview | null;
   payout: Payout | null;
 };
@@ -190,7 +190,7 @@ function PayoutModal({ payout, row, onClose, onChanged }: { payout: Payout; row?
         </div>
 
         <Card className="p-4">
-          <Line label={`Harcanan jeton × ${formatTL(Number(payout.unit_price))}`} value={`${formatNumber(payout.tokens)} jeton`} muted />
+          <Line label={`Ücretli jeton × ${formatTL(Number(payout.unit_price))}`} value={`${formatNumber(payout.tokens)} jeton`} muted />
           <Line label="Brüt ciro (KDV dahil)" value={formatTL(Number(payout.gross_amount))} />
           <Line label={`KDV (%${formatNumber(Number(payout.vat_rate))})`} value={`− ${formatTL(Number(payout.vat_amount))}`} />
           <Line label={`Banka komisyonu (%${formatNumber(Number(payout.bank_fee_pct))})`} value={`− ${formatTL(Number(payout.bank_fee))}`} />
@@ -299,7 +299,7 @@ function csvCell(v: string | number) {
 }
 
 function downloadCsv(data: MonthData) {
-  const header = ["Mekan", "Dönem", "Jeton", "Brüt ciro", "KDV", "Banka kom.", "Ek kesinti", "Net ciro", "Komisyon %", "Hakediş", "Düzeltme", "Ödenecek", "Vade", "Durum", "Ödeme tarihi", "Referans", "IBAN", "Hesap sahibi"];
+  const header = ["Mekan", "Dönem", "Ücretli jeton", "Brüt ciro", "KDV", "Banka kom.", "Ek kesinti", "Net ciro", "Komisyon %", "Hakediş", "Düzeltme", "Ödenecek", "Vade", "Durum", "Ödeme tarihi", "Referans", "IBAN", "Hesap sahibi"];
   const n = (x: number) => Number(x).toFixed(2).replace(".", ",");
   const lines = data.rows
     .filter((r) => r.payout)
@@ -391,14 +391,15 @@ function PayoutsPageContent() {
     if (r.payout) return 0;
     return r.preview?.[key] ?? 0;
   };
-  const tokens = sumOf((r) => r.usage.tokens);
+  const tokens = sumOf((r) => r.usage.paid_tokens);
+  const freeTokens = sumOf((r) => r.usage.tokens - r.usage.paid_tokens);
   const gross = sumOf((r) => valueOf(r, "gross"));
   const net = sumOf((r) => valueOf(r, "net"));
   const payable = sumOf((r) => valueOf(r, "computed"));
   const paid = withPayout.filter((r) => r.payout!.status === "paid").reduce((a, r) => a + Number(r.payout!.amount), 0);
-  const missingDrafts = rows.filter((r) => r.contract && r.usage.tokens > 0 && (!r.payout || r.payout.status === "draft")).length;
+  const missingDrafts = rows.filter((r) => r.contract && r.usage.paid_tokens > 0 && (!r.payout || r.payout.status === "draft")).length;
   const draftCount = rows.filter((r) => r.payout?.status === "draft").length;
-  const noContract = rows.filter((r) => !r.contract && r.usage.tokens > 0);
+  const noContract = rows.filter((r) => !r.contract && r.usage.paid_tokens > 0);
 
   const selectedPayout =
     rows.find((r) => r.payout?.id === selected)?.payout ?? data?.open.find((p) => p.id === selected) ?? data?.orphans.find((p) => p.id === selected) ?? null;
@@ -436,7 +437,7 @@ function PayoutsPageContent() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
-            <Stat label="Harcanan jeton" value={formatNumber(tokens)} />
+            <Stat label="Ücretli jeton" value={formatNumber(tokens)} sub={freeTokens > 0 ? `+${formatNumber(freeTokens)} bedava, hesaba girmez` : undefined} />
             <Stat label="Brüt ciro" value={formatTL(gross)} sub="KDV dahil" />
             <Stat label="Net ciro" value={formatTL(net)} sub="kesintiler sonrası" />
             <Stat label="Mekanlara hakediş" value={formatTL(payable)} tone="warn" />
@@ -485,7 +486,7 @@ function PayoutsPageContent() {
                 <thead>
                   <tr className="text-left text-xs text-[#6b7280] border-b border-white/10">
                     <th className="px-4 py-3 font-medium">Mekan</th>
-                    <th className="px-3 py-3 font-medium text-right">Jeton</th>
+                    <th className="px-3 py-3 font-medium text-right">Ücretli jeton</th>
                     <th className="px-3 py-3 font-medium text-right">Brüt</th>
                     <th className="px-3 py-3 font-medium text-right">Net</th>
                     <th className="px-3 py-3 font-medium text-right">Kom.</th>
@@ -508,7 +509,7 @@ function PayoutsPageContent() {
                           <p className="text-white">{r.venue.name}</p>
                           <p className="text-xs text-[#6b7280]">{formatNumber(r.usage.requests)} istek</p>
                         </td>
-                        <td className="px-3 py-3 text-right tabular-nums text-[#d1d5db]">{formatNumber(p ? p.tokens : r.usage.tokens)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-[#d1d5db]">{formatNumber(p ? p.tokens : r.usage.paid_tokens)}</td>
                         <td className="px-3 py-3 text-right tabular-nums text-[#d1d5db]">{p ? formatTL(Number(p.gross_amount)) : pv ? formatTL(pv.gross) : "-"}</td>
                         <td className="px-3 py-3 text-right tabular-nums text-[#d1d5db]">{p ? formatTL(Number(p.net_amount)) : pv ? formatTL(pv.net) : "-"}</td>
                         <td className="px-3 py-3 text-right tabular-nums text-[#9ca3af]">

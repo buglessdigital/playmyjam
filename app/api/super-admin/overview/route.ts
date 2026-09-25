@@ -80,10 +80,11 @@ export async function GET(req: NextRequest) {
   let payoutEstimate = 0;
   for (const [venueId, u] of usageMonth) {
     const c = contractBy.get(venueId);
-    if (c) payoutEstimate += computePayout(u.tokens, unitPrice, settings, Number(c.commission_pct)).computed;
+    if (c) payoutEstimate += computePayout(u.paid_tokens, unitPrice, settings, Number(c.commission_pct)).computed;
   }
 
   const tokensMonth = sum(usageMonth);
+  const paidTokensMonth = [...usageMonth.values()].reduce((a, u) => a + u.paid_tokens, 0);
   const sales = salesMonth.data as { orders: number; tokens: number; total: number } | null;
   const salesPrevData = salesPrev.data as { orders: number; tokens: number; total: number } | null;
 
@@ -149,7 +150,7 @@ export async function GET(req: NextRequest) {
     revenue: {
       tokens_used: tokensMonth,
       tokens_used_prev: sum(usagePrevPartial),
-      usage_value: Math.round(tokensMonth * unitPrice * 100) / 100,
+      usage_value: Math.round(paidTokensMonth * unitPrice * 100) / 100,
       sales_total: Number(sales?.total ?? 0),
       sales_orders: Number(sales?.orders ?? 0),
       sales_total_prev: Number(salesPrevData?.total ?? 0),

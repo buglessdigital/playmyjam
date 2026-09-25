@@ -42,10 +42,10 @@ export async function GET(req: NextRequest) {
     .filter((v) => contractBy.has(v.id) || usage.has(v.id) || payoutBy.has(v.id))
     .map((v) => {
       const contract = contractBy.get(v.id) ?? null;
-      const u = usage.get(v.id) ?? { tokens: 0, requests: 0, last_spend_at: null };
+      const u = usage.get(v.id) ?? { tokens: 0, paid_tokens: 0, requests: 0, last_spend_at: null };
       const preview = contract
         ? {
-            ...computePayout(u.tokens, unitPrice, settings, Number(contract.commission_pct)),
+            ...computePayout(u.paid_tokens, unitPrice, settings, Number(contract.commission_pct)),
             due_date: dueDateFor(month, contract.payment_day),
           }
         : null;
@@ -112,10 +112,11 @@ export async function POST(req: NextRequest) {
     // Dönemle hiç kesişmeyen sözleşmeler atlanır
     .filter((c) => !(c.start_date && c.start_date >= end) && !(c.end_date && c.end_date < start))
     .filter((c) => !locked.has(c.venue_id))
-    // O ay hiç jeton harcanmayan mekana 0 TL'lik kayıt açılmaz
-    .filter((c) => (usage.get(c.venue_id)?.tokens ?? 0) > 0)
+    // O ay hiç ücretli jeton harcanmayan mekana 0 TL'lik kayıt açılmaz
+    .filter((c) => (usage.get(c.venue_id)?.paid_tokens ?? 0) > 0)
     .map((c) => {
-      const tokens = usage.get(c.venue_id)?.tokens ?? 0;
+      // Hakediş yalnızca parayla alınmış jetondan: bedava (grant/demo) jeton ciro değil
+      const tokens = usage.get(c.venue_id)?.paid_tokens ?? 0;
       const commission = Number(c.commission_pct);
       const r = computePayout(tokens, unitPrice, settings, commission);
       const venue = c.venues as unknown as { name: string } | null;

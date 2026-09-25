@@ -49,15 +49,19 @@ export async function getPayoutSettings(): Promise<PayoutSettings> {
   return parsePayoutSettings(data?.value);
 }
 
-export type VenueUsage = { venue_id: string; tokens: number; requests: number; last_spend_at: string | null };
+// tokens: harcanan tüm jeton; paid_tokens: bunun parayla alınmış kısmı (hakediş buna bakar)
+export type VenueUsage = { venue_id: string; tokens: number; paid_tokens: number; requests: number; last_spend_at: string | null };
 
 // [from, to) günleri arasında mekan bazında harcanan jeton
 export async function getVenueUsage(from: string, to: string): Promise<Map<string, VenueUsage>> {
   const { data, error } = await supabaseAdmin.rpc("venue_token_usage", { p_from: from, p_to: to });
   if (error) throw new Error(error.message);
   const map = new Map<string, VenueUsage>();
-  for (const r of (data ?? []) as VenueUsage[]) {
-    map.set(r.venue_id, { ...r, tokens: Number(r.tokens), requests: Number(r.requests) });
+  for (const r of (data ?? []) as (VenueUsage & { paid_tokens?: number })[]) {
+    const tokens = Number(r.tokens);
+    // 0057 uygulanmadan önce paid_tokens gelmez: eski davranış (tüm harcama)
+    const paid = r.paid_tokens == null ? tokens : Number(r.paid_tokens);
+    map.set(r.venue_id, { ...r, tokens, paid_tokens: paid, requests: Number(r.requests) });
   }
   return map;
 }

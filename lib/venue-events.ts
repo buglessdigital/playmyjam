@@ -28,6 +28,11 @@ export async function logVenueEvents(
 ): Promise<void> {
   if (events.length === 0) return;
   const actor = currentActor() ?? null;
+  // Her satır AYNI kolonları taşımalı: toplu yazmada bir satırda olmayan kolon
+  // PostgREST'te NULL'a döner — damgasız bir sunucu olayı player'ın damgalı
+  // olaylarıyla aynı partiye girince "at" NULL oluyor ve bütün parti düşüyordu
+  // (kapanıştaki sessizlik kaydı bu yüzden kayboluyordu).
+  const now = new Date().toISOString();
   const { error } = await supabaseAdmin.from("venue_events").insert(
     events.map((e) => ({
       venue_id: venueId,
@@ -37,7 +42,7 @@ export async function logVenueEvents(
       actor,
       message: e.message.slice(0, 300),
       detail: e.detail ?? null,
-      ...(e.at ? { at: e.at } : {}),
+      at: e.at ?? now,
     }))
   );
   if (error) console.error("[venue-events] yazılamadı:", error.message);

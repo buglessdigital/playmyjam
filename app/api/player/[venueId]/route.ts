@@ -10,7 +10,7 @@ import {
   syncPlayingVideo,
 } from "@/lib/queue";
 import { withActor } from "@/lib/actor";
-import { logVenueEvents, parseClientEvents, type VenueEventInput } from "@/lib/venue-events";
+import { logVenueEvents, parseClientEvents } from "@/lib/venue-events";
 
 // Sahiplik bu süre boyunca heartbeat gelmezse serbest kalır (heartbeat 15 sn'de bir).
 // Panelin "oynatıcı çevrimdışı" eşiğiyle aynı: 45 sn.
@@ -85,16 +85,6 @@ async function isOwner(venueId: string, claimId: string | null): Promise<boolean
   if (!row) return true;
   return row.player_claim === claimId || claimIsStale(row);
 }
-
-// Sağlık kaydı eşikleri (bkz. 0055 venue_events). Heartbeat 5 sn'de bir gelir.
-// Bu kadar sinyal gelmeyip sonra geri gelirse player o süre boyunca susmuş,
-// kapanmış ya da ağ kopmuştur.
-const HEARTBEAT_GAP_MS = 60_000;
-// Player "çalıyor" diyor ama şarkı bu kadar süre ilerlemiyorsa takılmıştır
-const FROZEN_MIN_ELAPSED_MS = 4_000;
-const FROZEN_MAX_ADVANCE_MS = 1_000;
-// Aynı "ilerlemiyor" kaydı en fazla bu sıklıkla düşer
-const FROZEN_DEDUPE_MS = 120_000;
 
 // Kuyruk tetikleyicisi değişikliği kimin yaptığını bu adla kaydeder. Panelden
 // gelenler (manual / çal-duraklat / ses) mekanın bilerek yaptığı işlerdir.
@@ -229,8 +219,11 @@ async function handlePost(
           is_playing: false,
         })
         .eq("venue_id", venueId);
+      // Kapanırken player elindeki son olayları da taşır: pencere müzik
+      // sessizken kapatıldıysa o sessizliğin sonu buradan gelir
       after(
         logVenueEvents(venueId, "player", [
+          ...parseClientEvents(body?.events),
           { kind: "player_closed", severity: "info", message: "Player kapatıldı (sekme/pencere kapandı)" },
         ])
       );
@@ -411,22 +404,10 @@ async function handlePost(
         return reply({ ok: false, claim_lost: true }, { status: 409 });
       }
 
-      // Sağlık kaydı: player'ın biriktirdiği olaylar + önceki sinyale göre
-      // sunucunun çıkardıkları. Önceki satır güncellemeden ÖNCE okunmalı.
+      // Sağlık kaydı: player'ın biriktirdiği olaylar (kontrol dışı sessizlik
+      // ölçümü dahil — bkz. YouTubePlayer trackSilence). Yanıttan sonra yazılır.
       const clientEvents = parseClientEvents(body?.events);
-      const { data: prev } = await supabaseAdmin
-        .from("now_playing")
-        .select("last_heartbeat_at, is_playing, progress_ms, video_id")
-        .eq("venue_id", venueId)
-        .maybeSingle();
-      after(
-        recordHeartbeatHealth(venueId, clientEvents, prev, {
-          presence: body?.presence === true,
-          isPlaying: body?.is_playing === true,
-          progressMs: typeof body?.progress_ms === "number" ? body.progress_ms : 0,
-          videoId: typeof body?.video_id === "string" ? body.video_id : null,
-        })
-      );
+      if (clientEvents.length > 0) after(logVenueEvents(venueId, "player", clientEvents));
 
       // Kuyruk boşken gelen "buradayım" sinyali: çalma durumuna dokunmadan yalnızca
       // sağlık sinyalini tazeler. Müşteri paneli oynatıcının açık olduğunu bundan
@@ -479,71 +460,4 @@ async function handlePost(
     default:
       return reply({ error: "Geçersiz komut" }, { status: 400 });
   }
-}
-
-type PrevBeat = {
-  last_heartbeat_at: string | null;
-  is_playing: boolean | null;
-  progress_ms: number | null;
-  video_id: string | null;
-} | null;
-
-// Heartbeat'in sağlık kaydı kısmı — yanıttan sonra koşar, player'ı bekletmez.
-// Player tamamen çökerse kendi olayını yollayamaz; o yüzden kesintiyi sunucu
-// yakalar: sinyal uzun süre gelmeyip geri geldiğinde süre kaydedilir.
-// (Hiç geri gelmezse super admin sağlık ekranı canlı durumdan "sinyal yok" gösterir.)
-async function recordHeartbeatHealth(
-  venueId: string,
-  clientEvents: VenueEventInput[],
-  prev: PrevBeat,
-  beat: { presence: boolean; isPlaying: boolean; progressMs: number; videoId: string | null }
-) {
-  const events: VenueEventInput[] = [];
-  const now = Date.now();
-  const prevAt = prev?.last_heartbeat_at ? Date.parse(prev.last_heartbeat_at) : null;
-  const elapsed = prevAt === null ? null : now - prevAt;
-
-  if (elapsed !== null && elapsed > HEARTBEAT_GAP_MS) {
-    const seconds = Math.round(elapsed / 1000);
-    events.push({
-      kind: "heartbeat_gap",
-      severity: prev?.is_playing ? "warn" : "info",
-      message: prev?.is_playing
-        ? `Player ${seconds} sn sinyal vermedi (o sırada şarkı çalıyordu)`
-        : `Player ${seconds} sn sinyal vermedi`,
-      detail: { seconds, video_id: prev?.video_id ?? null },
-    });
-  }
-
-  // "Çalıyor" diyen ama ilerlemeyen şarkı
-  if (
-    !beat.presence &&
-    beat.isPlaying &&
-    prev?.is_playing &&
-    elapsed !== null &&
-    elapsed >= FROZEN_MIN_ELAPSED_MS &&
-    elapsed <= HEARTBEAT_GAP_MS &&
-    beat.videoId &&
-    beat.videoId === prev.video_id &&
-    typeof prev.progress_ms === "number" &&
-    beat.progressMs - prev.progress_ms < FROZEN_MAX_ADVANCE_MS
-  ) {
-    const { data: recent } = await supabaseAdmin
-      .from("venue_events")
-      .select("id")
-      .eq("venue_id", venueId)
-      .eq("kind", "progress_frozen")
-      .gt("at", new Date(now - FROZEN_DEDUPE_MS).toISOString())
-      .limit(1);
-    if (!recent || recent.length === 0) {
-      events.push({
-        kind: "progress_frozen",
-        severity: "warn",
-        message: `Player "çalıyor" diyor ama şarkı ilerlemiyor (${Math.round(beat.progressMs / 1000)}. sn'de takılı)`,
-        detail: { video_id: beat.videoId, progress_ms: beat.progressMs },
-      });
-    }
-  }
-
-  await logVenueEvents(venueId, "player", [...clientEvents, ...events]);
 }

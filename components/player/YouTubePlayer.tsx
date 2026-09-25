@@ -139,6 +139,23 @@ const KEEPALIVE_GAIN = 0.004;
 // Bir tur ile bir öncekinin arası bu kadar açıldıysa sekme kısılmış/dondurulmuş
 // demektir: geçen süre bize ait değildir, takılma ölçümü sıfırdan başlar.
 const TICK_THAW_MS = 20_000;
+// KONTROL DIŞI SESSİZLİK (sağlık ekranı): mekan müzik isterken şarkı bu kadar
+// süre ilerlemezse kayda "sessizlik" düşer. Şarkı geçişleri 1-3 sn sürer.
+const SILENCE_MIN_MS = 10_000;
+// Player PLAYING diyor ama konum ilerlemiyor: büyük ihtimalle reklam (ses var).
+// Takılma merdiveninin yeniden yükleme eşiğiyle aynı sabır gösterilir.
+const SILENCE_PLAYING_MIN_MS = 50_000;
+// Sessizlik başlamadan hemen önceki olaylar da sebep sayılır (ör. ağ koptu,
+// şarkı bitti, sıradaki yüklenemedi)
+const SILENCE_CAUSE_LOOKBACK_MS = 5_000;
+type SilenceEnd = "recovered" | "paused" | "sleep" | "closed" | "handoff";
+const SILENCE_END_TEXT: Record<SilenceEnd, string> = {
+  recovered: "müzik kendiliğinden geri geldi",
+  paused: "duraklatılınca bitti",
+  sleep: "cihaz uykuya geçti/kapandı",
+  closed: "player kapatıldı",
+  handoff: "çalma başka cihaza geçti",
+};
 // Takılma bekçisi: "PLAYING/BUFFERING" görünmek çalmak değildir — arka planda
 // yeni video çoğu zaman tam burada, saniye hiç ilerlemeden asılı kalıyor.
 // İlerleme durduktan sonra sırasıyla: dürt → aynı videoyu baştan yükle → pes
@@ -324,10 +341,42 @@ const HEALTH_OUTBOX_LIMIT = 100;
 const HEALTH_BATCH = 30;
 const healthOutbox: HealthEvent[] = [];
 
-function report(kind: string, severity: HealthSeverity, message: string, detail?: Record<string, unknown>) {
+// Kontrol dışı sessizliğin OLASI SEBEPLERİ: sessizlik kapanırken bu olaylardan
+// sessizlik aralığına düşenler sebep olarak kayda eklenir (bkz. trackSilence).
+// Sağlık ekranı yalnızca sessizliği gösterir; bu olaylar tek başına gösterilmez.
+const SILENCE_CAUSE_KINDS = new Set([
+  "network_offline",
+  "network_error",
+  "offline_fallback",
+  "page_frozen",
+  "tab_throttled",
+  "skip_deferred",
+  "stall",
+  "stall_reload",
+  "stall_gave_up",
+  "youtube_error",
+  "transient_skip",
+  "external_pause",
+  "idle_silence",
+  "session_lost",
+]);
+const SILENCE_CAUSE_LIMIT = 60;
+const recentCauses: { at: number; kind: string }[] = [];
+
+function report(
+  kind: string,
+  severity: HealthSeverity,
+  message: string,
+  detail?: Record<string, unknown>,
+  at: number = Date.now()
+) {
   plog(message);
-  healthOutbox.push({ at: Date.now(), kind, severity, message, detail });
+  healthOutbox.push({ at, kind, severity, message, detail });
   if (healthOutbox.length > HEALTH_OUTBOX_LIMIT) healthOutbox.shift();
+  if (SILENCE_CAUSE_KINDS.has(kind)) {
+    recentCauses.push({ at, kind });
+    if (recentCauses.length > SILENCE_CAUSE_LIMIT) recentCauses.shift();
+  }
 }
 
 function takeHealthEvents(): HealthEvent[] {
@@ -770,6 +819,17 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
 
   // Son AÇIK duraklatma niyeti (panel komutu / DB'den gelen duraklat) zamanı
   const explicitPauseAtRef = useRef(0);
+  // Kontrol dışı sessizlik ölçümü (bkz. trackSilence): son GERÇEK ses kanıtı,
+  // bir önceki turdaki konum, açık sessizlik ve Chrome'un sayfayı dondurduğu an
+  const audibleAtRef = useRef(0);
+  const audiblePosRef = useRef<{ videoId: string | null; pos: number }>({ videoId: null, pos: -1 });
+  const silenceRef = useRef<{ id: string; startAt: number; videoId: string | null; playingFrozen: boolean } | null>(
+    null
+  );
+  const silenceTickAtRef = useRef(0);
+  const frozenAtRef = useRef(0);
+  // Kuyruk boşaldığı için sustuk: niyet "dur"a döner ama mekan müzik istiyordu
+  const idleWantedRef = useRef(false);
   // Pencere odağının video iframe'ine geçtiği an: kullanıcının YouTube'un kendi
   // duraklat düğmesine tıkladığını buradan anlarız (iframe içi tıklama üst
   // sayfada olay üretmez, ama odak devrini blur olarak görürüz)
@@ -1603,6 +1663,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           offlineFallbackRef.current = true;
         } else if (!blockedRef.current) {
           report("idle_silence", "error", "Kuyruk boş — player sessizlik ekranına geçti, müzik durdu");
+          // Niyet aşağıda söner ama bu bir duraklatma değil: sessizlik ölçülmeye devam eder
+          idleWantedRef.current = true;
           // Yalnızca gerçekten sıradaki yoksa idle'a düş. Oturum düşmesi ya da
           // sahiplik kaybı "kuyruk boş" değildir; kendi ekranını gösterir.
           endCrossfade();
@@ -2124,6 +2186,114 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       } catch {}
     }
   }, [activePlayer, advance, fadeBusy, advanceBusy, markProgress, keepAliveAlive]);
+
+  // KONTROL DIŞI SESSİZLİĞİ KAPAT: süresi ve o aralıkta görülen olası sebeplerle
+  // birlikte kayda geçer. Başlangıç zamanı da taşınır — başlangıç kaydı yolda
+  // kaybolsa bile sağlık ekranı sessizliği eksiksiz kurabilsin.
+  const closeSilence = useCallback((endedBy: SilenceEnd, endAt: number = Date.now()) => {
+    const open = silenceRef.current;
+    silenceRef.current = null;
+    if (!open) return;
+    const end = Math.max(endAt, open.startAt);
+    const seconds = Math.round((end - open.startAt) / 1000);
+    const causes = [
+      ...new Set(
+        recentCauses
+          .filter((c) => c.at >= open.startAt - SILENCE_CAUSE_LOOKBACK_MS && c.at <= end)
+          .map((c) => c.kind)
+      ),
+    ];
+    report(
+      "silence_end",
+      "error",
+      `Kontrol dışı sessizlik: ${seconds} sn (${SILENCE_END_TEXT[endedBy]})`,
+      {
+        silence_id: open.id,
+        started_at: new Date(open.startAt).toISOString(),
+        seconds,
+        ended_by: endedBy,
+        causes,
+        video_id: open.videoId,
+        playing_frozen: open.playingFrozen,
+      },
+      end
+    );
+  }, []);
+
+  // KONTROL DIŞI SESSİZLİK ÖLÇÜMÜ — sağlık ekranının tek "müzik durdu" kaynağı.
+  // Tek güvenilir ses kanıtı: çalan videonun konumu PLAYING durumunda ilerliyor.
+  // Mekan müzik isterken (niyet "çal" ya da kuyruk boşaldığı için susmuş) bu
+  // kanıt SILENCE_MIN_MS'den uzun gelmezse sessizlik açılır, kanıt geri gelince
+  // kapanır. Bilerek susturmalar sayılmaz: panelden/videodan duraklatma niyeti
+  // söndürür; bilgisayarın uykuya geçmesi ya da kapanması turları tümden
+  // durdurur (Chrome'un kendi dondurmasından farkı: o, freeze olayı yollar).
+  const trackSilence = useCallback(() => {
+    const now = Date.now();
+    const lastTick = silenceTickAtRef.current;
+    silenceTickAtRef.current = now;
+    if (lastTick === 0) {
+      audibleAtRef.current = now;
+      return;
+    }
+    if (blockedRef.current === "claim") {
+      closeSilence("handoff", now);
+      audibleAtRef.current = now;
+      return;
+    }
+    if (now - lastTick > TICK_THAW_MS && frozenAtRef.current < lastTick) {
+      closeSilence("sleep", lastTick);
+      audibleAtRef.current = now;
+      audiblePosRef.current = { videoId: null, pos: -1 };
+      return;
+    }
+
+    const videoId = currentVideoRef.current;
+    if (videoId) idleWantedRef.current = false;
+    if (!desiredPlayingRef.current && !idleWantedRef.current) {
+      // Niyet bu turla bir önceki arasında söndü: sessizlik o anda biter
+      const pausedAt = intentAtRef.current > lastTick ? intentAtRef.current : now;
+      closeSilence("paused", pausedAt);
+      audibleAtRef.current = now;
+      return;
+    }
+
+    let state = -1;
+    let pos = -1;
+    try {
+      const player = activePlayer();
+      if (player) {
+        state = player.getPlayerState();
+        pos = player.getCurrentTime();
+      }
+    } catch {}
+    const playing = !!window.YT && state === window.YT.PlayerState.PLAYING;
+    const prev = audiblePosRef.current;
+    const moved = !!videoId && prev.videoId === videoId && pos >= 0 && prev.pos >= 0 && Math.abs(pos - prev.pos) > 0.3;
+    audiblePosRef.current = { videoId, pos };
+    if (playing && moved) {
+      audibleAtRef.current = now;
+      // Ses bu turla bir öncekinin arasında döndü; konumun ilerlediği kadar geri
+      // sarılan an, geri dönüşün gerçek zamanıdır
+      closeSilence("recovered", Math.max(lastTick, now - Math.round((pos - prev.pos) * 1000)));
+      return;
+    }
+
+    if (silenceRef.current) return;
+    const silentFor = now - audibleAtRef.current;
+    if (silentFor < (playing ? SILENCE_PLAYING_MIN_MS : SILENCE_MIN_MS)) return;
+    const id =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${now}-${Math.random().toString(36).slice(2)}`;
+    silenceRef.current = { id, startAt: audibleAtRef.current, videoId, playingFrozen: playing };
+    report(
+      "silence_start",
+      "error",
+      `Kontrol dışı sessizlik başladı (${Math.round(silentFor / 1000)} sn'dir ses yok)`,
+      { silence_id: id, video_id: videoId, playing_frozen: playing },
+      audibleAtRef.current
+    );
+  }, [activePlayer, closeSilence]);
 
   // Emniyet ağı: Realtime kanalı arka plan sekmesinde sessizce kopabilir ve
   // panelden gelen next/play komutları kaçar — now_playing ile mutabakat kur
@@ -2747,13 +2917,14 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
   // Sahiplik başka cihaza geçtiyse bu sekme derhal susar — çift ses olmasın
   useEffect(() => {
     if (blocked !== "claim") return;
+    closeSilence("handoff");
     desiredPlayingRef.current = false;
     endCrossfade();
     try {
       decksRef.current.a?.pauseVideo();
       decksRef.current.b?.pauseVideo();
     } catch {}
-  }, [blocked, endCrossfade]);
+  }, [blocked, endCrossfade, closeSilence]);
 
   // Oturum düştüyse heartbeat yollamaya devam et: yeniden giriş yapılınca
   // (ör. başka sekmede) ilk başarılı istek engeli kaldırır ve çalma sürer.
@@ -2799,6 +2970,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     // geçici engellerde bekçi çalışmaya devam eder: çalan şarkı kesilmesin.
     if (!started || blocked === "claim") return;
     const beat = () => {
+      trackSilence();
       nudgePlayback();
       enforceVolume();
     };
@@ -2816,7 +2988,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     };
     // Chrome sayfayı gerçekten DONDURDUYSA (Page Lifecycle) bu olay düşer:
     // pencere uygulama olarak kurulduğunda ve arkada kaldığında görülür.
-    const onFreeze = () => report("page_frozen", "warn", "Tarayıcı player sayfasını dondurdu");
+    const onFreeze = () => {
+      frozenAtRef.current = Date.now();
+      report("page_frozen", "warn", "Tarayıcı player sayfasını dondurdu");
+    };
     // Odak video iframe'ine geçtiyse kullanıcı videonun üstüne tıklamış demektir;
     // hemen ardından gelen duraklatma GERÇEK duraklatmadır, geri açılmaz
     const onBlur = () => {
@@ -2849,7 +3024,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       window.removeEventListener("offline", onOffline);
       window.removeEventListener("online", onOnline);
     };
-  }, [started, blocked, nudgePlayback, reconcile, enforceVolume, iframeFocused]);
+  }, [started, blocked, nudgePlayback, reconcile, enforceVolume, iframeFocused, trackSilence]);
 
   // Çalma bekçisi: sıradakini önyükler, geçiş vaktini kollar
   useEffect(() => {
@@ -3137,6 +3312,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           if (!np.video_id && currentVideoRef.current) {
             endCrossfade();
             currentVideoRef.current = null;
+            // Sahne dışarıdan boşaldı (kuyruk bitti): çalıyorduysak sessizlik sürer
+            idleWantedRef.current = desiredPlayingRef.current;
             desiredPlayingRef.current = false;
             setIdle(true);
             pendingVideoRef.current = null;
@@ -3244,7 +3421,15 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
         positionSec,
         playing: desiredPlayingRef.current,
       });
-      const body = JSON.stringify({ action: "release", claim_id: claimId() });
+      // Pencere müzik sessizken kapatılıyorsa sessizlik burada kapanır; bekleyen
+      // sağlık olayları da kapanış isteğiyle birlikte gider (sonraki heartbeat yok)
+      closeSilence("closed");
+      const events = takeHealthEvents();
+      const body = JSON.stringify({
+        action: "release",
+        claim_id: claimId(),
+        ...(events.length > 0 ? { events } : {}),
+      });
       try {
         // sendBeacon kapanış sırasında da teslim edilir; aynı origin olduğu için cookie gider
         if (navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }))) return;
@@ -3282,7 +3467,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       // kendimiz düşürürüz. Gerçek kapanışı zaten pagehide yakalıyor.
       releaseTimerRef.current = setTimeout(release, 300);
     };
-  }, [started, venueDbId, claimId, activePlayer]);
+  }, [started, venueDbId, claimId, activePlayer, closeSilence]);
 
   // DEVRALMA: aynı tarayıcıda çalmayı bizden almış sekme (TV modu) kapandı.
   // Sahipliği kaybedip susmuştuk; müzik mekanda kesilmesin diye dokunuş

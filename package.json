@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "node --test lib/*.test.ts",
     "i18n:translate": "node scripts/i18n-translate.mjs",
-    "seed:catalog": "node scripts/seed-catalog.ts"
+    "seed:catalog": "node scripts/seed-catalog.ts",
+    "check": "npm run lint && npm run typecheck && npm test"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
@@ -34,5 +36,8 @@
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }

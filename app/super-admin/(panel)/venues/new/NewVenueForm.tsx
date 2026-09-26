@@ -56,6 +56,7 @@ export default function NewVenueForm() {
 
   // crypto.getRandomValues() prerender sırasında çağrılamaz — mount sonrası üret
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- tarayıcıda tek seferlik üretim
     setAdminPassword(generatePassword());
   }, []);
 

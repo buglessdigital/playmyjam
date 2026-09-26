@@ -117,7 +117,25 @@ function formatReleaseDate(date: string | null): string {
   return parts[0] ?? date;
 }
 
-export default function SongDetailClient({ venueId, venueDbId, track, requestCost, priorityCost, tokenUnitPrice }: Props) {
+// Şarkı bulunamadıysa ayrı dal: asıl bileşen hep aynı hook'ları aynı sırayla çağırsın
+export default function SongDetailClient(props: Props) {
+  const router = useRouter();
+  const t = useT();
+  if (props.track) return <SongDetail {...props} track={props.track} />;
+  return (
+    <div style={{ background: "#0f0a18", minHeight: "100dvh", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <p style={{ color: "#9ca3af", fontSize: 14, marginBottom: 16 }}>{t.songPage.notFound}</p>
+      <button
+        onClick={() => router.back()}
+        style={{ padding: "10px 20px", borderRadius: 12, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "white", fontSize: 14, cursor: "pointer" }}
+      >
+        {t.songPage.goBack}
+      </button>
+    </div>
+  );
+}
+
+function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, tokenUnitPrice }: Props & { track: TrackDetails }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   // Sayfa misafire açık; sıraya ekleme/istek/favori hesaba bağlı
@@ -334,20 +352,6 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     }
     return idx;
   }, [lyrics, isCurrentlyPlayingThisSong, progress]);
-
-  if (!track) {
-    return (
-      <div style={{ background: "#0f0a18", minHeight: "100dvh", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20 }}>
-        <p style={{ color: "#9ca3af", fontSize: 14, marginBottom: 16 }}>{t.songPage.notFound}</p>
-        <button
-          onClick={() => router.back()}
-          style={{ padding: "10px 20px", borderRadius: 12, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "white", fontSize: 14, cursor: "pointer" }}
-        >
-          {t.songPage.goBack}
-        </button>
-      </div>
-    );
-  }
 
   const toggleFavorite = async () => {
     if (!dbSongId) return;

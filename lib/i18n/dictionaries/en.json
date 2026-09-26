@@ -705,5 +705,15 @@
     "heading": "Approved Requests",
     "desc": "The venue opened these songs one time only. Whoever adds one before the timer ends gets it played — then it disappears.",
     "remaining": "{t} left"
+  },
+  "errorPage": {
+    "title": "Something went wrong",
+    "desc": "An unexpected error occurred while loading this page. Trying again usually fixes it.",
+    "home": "Back to home",
+    "ref": "Error code"
+  },
+  "notFoundPage": {
+    "title": "Page not found",
+    "desc": "The page you are looking for may have moved or never existed. If you are at a venue, try scanning the QR code again."
   }
 }

@@ -610,5 +610,11 @@
   "requestSent.trackHint": "Süreci alttaki şeritten takip et",
   "requestSent.cta": "Anladım",
   "requestSent.costLine": "Onaylanınca {n} jetonla (≈{price}) çaldırırsın",
-  "requestSent.costLinePlain": "Onaylanınca {n} jetonla çaldırırsın"
+  "requestSent.costLinePlain": "Onaylanınca {n} jetonla çaldırırsın",
+  "errorPage.title": "Bir şeyler ters gitti",
+  "errorPage.desc": "Sayfa yüklenirken beklenmeyen bir hata oluştu. Tekrar denemek çoğu zaman yeterli olur.",
+  "errorPage.home": "Ana sayfaya dön",
+  "errorPage.ref": "Hata kodu",
+  "notFoundPage.title": "Sayfa bulunamadı",
+  "notFoundPage.desc": "Aradığın sayfa taşınmış ya da hiç var olmamış olabilir. Mekandaysan karekodu yeniden okutmayı dene."
 }

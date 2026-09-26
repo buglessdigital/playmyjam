@@ -63,6 +63,7 @@ function AuthPageContent({ params }: Props) {
   useEffect(() => {
     const code = searchParams.get("auth_error");
     if (code) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- URL'deki tek seferlik hata kodu okunup temizleniyor
       setError(authErrorMessage(code));
       const next = searchParams.get("next");
       router.replace(next ? `/venue/${venueId}/login?next=${encodeURIComponent(next)}` : `/venue/${venueId}/login`);

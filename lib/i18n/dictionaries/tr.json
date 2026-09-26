@@ -705,5 +705,15 @@
     "heading": "Onaylanan Talepler",
     "desc": "Mekan bu şarkıları tek seferliğine açtı. Süre dolmadan ekleyen çaldırır — sonra listeden düşer.",
     "remaining": "{t} kaldı"
+  },
+  "errorPage": {
+    "title": "Bir şeyler ters gitti",
+    "desc": "Sayfa yüklenirken beklenmeyen bir hata oluştu. Tekrar denemek çoğu zaman yeterli olur.",
+    "home": "Ana sayfaya dön",
+    "ref": "Hata kodu"
+  },
+  "notFoundPage": {
+    "title": "Sayfa bulunamadı",
+    "desc": "Aradığın sayfa taşınmış ya da hiç var olmamış olabilir. Mekandaysan karekodu yeniden okutmayı dene."
   }
 }

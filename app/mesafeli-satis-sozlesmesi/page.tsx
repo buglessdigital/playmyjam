@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { COMPANY } from "@/lib/company-info";
 import BilingualLegal from "@/components/ui/BilingualLegal";
 
@@ -45,9 +46,9 @@ export default function MesafeliSatisPage() {
               Satışa konu ürün, PlayMyJam platformunda şarkı isteği göndermek için kullanılan
               dijital jetonlardır. Jeton paketleri, adetleri ve KDV dahil satış fiyatları sipariş
               anında ödeme sayfasında ve{" "}
-              <a href="/#fiyatlar" className="text-purple-400 underline">
+              <Link href="/#fiyatlar" className="text-purple-400 underline">
                 fiyatlar bölümünde
-              </a>{" "}
+              </Link>{" "}
               gösterilir. Jetonlar gayri maddi (dijital) mal niteliğindedir; fiziksel teslimat
               yapılmaz.
             </p>
@@ -160,9 +161,9 @@ export default function MesafeliSatisPage() {
               The product being sold consists of the digital tokens used to submit song requests on
               the PlayMyJam platform. The token packs, their quantities, and their VAT-inclusive
               sale prices are shown at the time of the order on the payment page and in the{" "}
-              <a href="/#fiyatlar" className="text-purple-400 underline">
+              <Link href="/#fiyatlar" className="text-purple-400 underline">
                 pricing section
-              </a>
+              </Link>
               . Tokens are intangible (digital) goods; no physical delivery is made.
             </p>
           </section>

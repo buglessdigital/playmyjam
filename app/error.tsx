@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
 import { useT } from "@/lib/i18n";
 import StatusScreen, { primaryButtonClass, secondaryButtonClass } from "@/components/ui/StatusScreen";
@@ -17,7 +18,7 @@ export default function RouteError({
   const t = useT();
 
   useEffect(() => {
-    console.error(error);
+    Sentry.captureException(error);
   }, [error]);
 
   return (

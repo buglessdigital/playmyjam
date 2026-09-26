@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
@@ -55,4 +56,15 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Sentry: build sırasında kaynak haritalarını yükler (hata yığınları gerçek
+// dosya/satırı gösterir). SENTRY_AUTH_TOKEN yoksa (yerel build) yükleme atlanır.
+// Olaylar /monitoring üzerinden kendi alan adımızdan geçer — reklam engelleyiciler
+// sentry.io'yu kestiği için aksi halde müşteri hatalarının bir kısmı hiç gelmez.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  tunnelRoute: "/monitoring",
+});

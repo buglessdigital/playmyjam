@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 // Kök layout'un kendisi çökerse devreye girer ve onun yerine geçer: ne
 // LanguageProvider ne globals.css vardır, bu yüzden metin iki dilli ve stil satır içi.
@@ -12,7 +13,7 @@ export default function GlobalError({
   unstable_retry: () => void;
 }) {
   useEffect(() => {
-    console.error(error);
+    Sentry.captureException(error);
   }, [error]);
 
   return (

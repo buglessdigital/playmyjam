@@ -43,3 +43,8 @@ next-env.d.ts
 
 # Avatar kaynak dosyaları (2048px PNG, ~54MB) — üretilmiş webp public/avatars altında
 design/avatar-originals/
+
+# Playwright
+/e2e-results/
+/e2e-report/
+/playwright/.cache/

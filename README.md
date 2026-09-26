@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PlayMyJam
 
-## Getting Started
+Mekanlarda müziği müşterinin seçtiği platform. Müşteri masadaki QR kodu okutur, mekanın listesinden şarkı seçer, jetonla sıraya ekler; mekanın panelindeki oynatıcı şarkıyı çalar.
 
-First, run the development server:
+- **Müşteri paneli** — `/venue/<slug>`: gözat, ara, sıraya ekle, jeton al
+- **Mekan paneli** — `/admin/<slug>`: oynatıcı, kuyruk, playlist'ler, talepler
+- **Super admin** — `/super-admin`: mekanlar, CRM, hakediş, sağlık ekranı, analiz
+
+## Teknoloji
+
+| Katman | Kullanılan |
+|---|---|
+| Uygulama | Next.js 16 (App Router, Cache Components), React 19, Tailwind 4 |
+| Veritabanı + auth + realtime | Supabase (Postgres) |
+| Ödeme | iyzico Checkout Form |
+| Müzik | YouTube IFrame Player |
+| Barındırma | Vercel (fra1) |
+| Hata takibi | Sentry (`lib/sentry-options.ts` — kişisel veri gönderilmez) |
+
+> Next 16'da API'ler eğitim verilerindeki sürümlerden farklı. Kod yazmadan önce `node_modules/next/dist/docs/` altındaki ilgili rehbere bakın (bkz. `AGENTS.md`).
+
+## Ortamlar
+
+| | Production | Preview (deneme) | Yerel |
+|---|---|---|---|
+| Adres | playmyjam.com.tr | `pmj-*.vercel.app` | localhost:3000 |
+| Supabase | prod projesi | `pmj-staging` | `.env.local` |
+| iyzico | canlı | sandbox | `.env.local` |
+| Sentry ortamı | `production` | `preview` | kapalı |
+
+Gizli değerler Vercel ortam değişkenlerinde ve yerelde git'e girmeyen `.env.local` / `.env.new` dosyalarında durur. Preview deploy'ları **asla** prod veritabanına ya da canlı ödemeye bağlanmaz.
+
+## Komutlar
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run dev          # geliştirme sunucusu
+npm run check        # lint + tip kontrolü + birim testleri (CI'da her push'ta çalışır)
+npm run e2e          # uçtan uca testler (test veritabanı + iyzico sandbox)
+npm run db:migrate -- --target staging   # bekleyen migration'ları test DB'ye uygula
+npm run db:migrate -- --target prod      # ...sonra prod'a (onay ister)
+npm run i18n:translate                   # TR sözlükteki yeni metinleri EN'e çevir
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Veritabanı değişiklikleri
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. `supabase/migrations/` altına sıradaki numarayla SQL dosyası ekleyin (`0060_ne_yaptigi.sql`).
+2. `npm run db:migrate -- --target staging` ile test veritabanına uygulayın, Preview deploy'unda deneyin.
+3. `npm run db:migrate -- --target prod --dry` ile prod'da neyin bekleyeceğine bakın, sonra `--dry` olmadan uygulayın.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Her dosya kendi transaction'ında çalışır; hata verirse tamamen geri alınır. Uygulanan dosyalar `supabase_migrations.schema_migrations` tablosunda tutulur. SQL Editor'dan elle DDL çalıştırmayın — çalıştırırsanız aynı değişikliği migration dosyasına da yazın, yoksa test veritabanı prod'dan sapar.
 
-## Learn More
+## Testler
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Birim testleri** (`lib/*.test.ts`, `node --test`): saf iş mantığı — ücret formülü, sıra düzeni, hakediş, şarkı eşleştirme. Ücret formülü SQL ikiziyle migration dosyasından okunarak karşılaştırılır.
+- **Uçtan uca testler** (`e2e/`, Playwright): site test veritabanına bağlı olarak yerelde derlenir, telefon ekranında robot tarayıcı müşteri akışını dener — misafir şarkıya ödeme yapar ve şarkı sıraya girer, reddedilen kartta jeton yüklenmez, oynatıcı kapalıyken ekleme kilitlenir. Her koşu `e2e-test` mekanını sıfırdan kurar. Başarısız testin videosu ve izi `e2e-results/` altında; rapor için `npx playwright show-report e2e-report`.

@@ -214,7 +214,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
   const showRequestHint = !(hasQuery && !artistFilter && results.length === 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#0f0a18]">
+    <div role="dialog" aria-modal="true" aria-label={t.browse.title} className="fixed inset-0 z-50 flex flex-col bg-[#0f0a18]">
       <div className="flex items-center gap-2 px-4 pb-3 pt-12">
         <button
           onClick={artistFilter ? clearArtist : onClose}

@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Kök dizindeki geçici deneme betikleri
     ".tmp-*",
+    // Playwright çıktıları
+    "e2e-report/**",
+    "e2e-results/**",
   ]),
 ]);
 

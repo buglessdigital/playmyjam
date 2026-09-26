@@ -8,7 +8,10 @@ import VenueLayoutClient from "./VenueLayoutClient";
 // Yeni mekanlar ilk istekte render edilip diske kaydedilir (dynamicParams varsayılanı).
 export async function generateStaticParams() {
   const { data } = await supabaseAdmin.from("venues").select("slug");
-  return (data ?? []).map((v: { slug: string }) => ({ venueId: v.slug }));
+  const slugs = ((data ?? []) as { slug: string }[]).map((v) => ({ venueId: v.slug }));
+  // Liste BOŞ olamaz (cacheComponents build hatası verir) — boş test veritabanında
+  // da build alınabilsin diye hiç mekan yoksa bir örnek yeter.
+  return slugs.length > 0 ? slugs : [{ venueId: "ornek" }];
 }
 
 // Kök manifest yerine mekanın kendi manifest'i bağlanır: müşteri "yükle"

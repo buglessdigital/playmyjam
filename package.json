@@ -11,6 +11,7 @@
     "test": "node --test lib/*.test.ts",
     "i18n:translate": "node scripts/i18n-translate.mjs",
     "seed:catalog": "node scripts/seed-catalog.ts",
+    "db:migrate": "node scripts/migrate.ts",
     "check": "npm run lint && npm run typecheck && npm test"
   },
   "dependencies": {
@@ -30,11 +31,13 @@
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "pg": "^8.23.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   },

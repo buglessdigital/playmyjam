@@ -37,6 +37,13 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // Müşteri paneli yalnızca kendi sitemizde çerçevelenebilir: super admin
+        // arayüz analizi ısı haritasını sayfanın canlı görüntüsünün üstüne çiziyor.
+        // Aynı anahtarı sonraki kural ezer (yukarıdaki DENY'ı).
+        source: "/venue/:path*",
+        headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
+      },
+      {
         // Service worker her zaman güncel kalmalı
         source: "/sw.js",
         headers: [

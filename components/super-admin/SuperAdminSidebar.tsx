@@ -29,6 +29,16 @@ const navItems = [
     ),
   },
   {
+    href: "/super-admin/analytics",
+    label: "Arayüz Analizi",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M5 3l12 6.5-5.2 1.3L9.5 16 5 3z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M13 13l6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/super-admin/venues",
     label: "Mekanlar",
     icon: (

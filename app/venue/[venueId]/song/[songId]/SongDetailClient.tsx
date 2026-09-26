@@ -18,6 +18,7 @@ import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { fmt, useT } from "@/lib/i18n";
 import { publishTokenBalance } from "@/lib/token-balance-store";
 import { clearPendingAdd, peekPendingAdd } from "@/lib/pending-add";
+import { trackAction } from "@/lib/ui-track";
 
 type QueueEntry = { song_id: string; priority: boolean; duration_ms: number };
 type NowPlayingInfo = {
@@ -390,6 +391,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
       if (typeof charged === "number" && charged !== cost) {
         setTokenBalance((b) => b + cost - charged);
       }
+      trackAction("song_added", { priority });
       window.dispatchEvent(new Event("pmj-queue-added"));
     } else {
       setTokenBalance((b) => b + cost);
@@ -409,6 +411,7 @@ export default function SongDetailClient({ venueId, venueDbId, track, requestCos
     if (!venueDbId) return;
     if (!(await requireAccount())) return;
     setRequested(true);
+    trackAction("song_requested");
     await fetch(`/api/venue/${venueId}/request`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

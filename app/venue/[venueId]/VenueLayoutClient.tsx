@@ -7,6 +7,7 @@ import LegalFooter from "@/components/ui/LegalFooter";
 import EnablePushPrompt from "@/components/notifications/EnablePushPrompt";
 import NotificationWatcher from "@/components/notifications/NotificationWatcher";
 import RequestStatusBar from "@/components/venue/RequestStatusBar";
+import UiTracker from "@/components/venue/UiTracker";
 
 interface Props {
   children: React.ReactNode;
@@ -34,6 +35,8 @@ function VenueLayoutContent({ children, params }: Props) {
 
   return (
     <>
+      {/* Arayüz analizi giriş/onay ekranları dahil her sayfada (super admin'de okunur) */}
+      <UiTracker venueSlug={venueId} />
       {/* Alt boşluk: 4rem alt gezinme + varsa talep şeridinin ölçülen boyu.
           Şerit sabit konumlu olduğu için yerini kendisi açamaz; boyunu
           --pmj-request-bar'a yazar (bkz. components/venue/RequestStatusBar). */}

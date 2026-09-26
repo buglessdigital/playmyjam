@@ -11,6 +11,7 @@ import type { TokenPackage } from "@/lib/pricing-cache";
 import { currentDict, fmt, useI18n } from "@/lib/i18n";
 import { publishTokenBalance } from "@/lib/token-balance-store";
 import { peekPendingAdd } from "@/lib/pending-add";
+import { trackAction } from "@/lib/ui-track";
 
 // Ödeme sonrası bekleyen şarkıya dönüş gecikmesi — "ödeme başarılı" bilgisi
 // görülecek kadar uzun, akışı kesmeyecek kadar kısa
@@ -279,6 +280,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
         alert(data?.error ?? t.tokens.genericError);
         return;
       }
+      trackAction("checkout_started", { tokens: buyTokens });
       window.location.href = data.paymentPageUrl;
     } catch {
       alert(t.tokens.connectionError);

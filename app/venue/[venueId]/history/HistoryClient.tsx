@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { currentDict, fmt, useT } from "@/lib/i18n";
 import { usePlayerOnline } from "@/lib/use-player-online";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
+import { trackAction } from "@/lib/ui-track";
 
 type PlayedRow = {
   id: string;
@@ -76,6 +77,7 @@ export default function HistoryClient({ venueDbId, venueName, requestCost }: Pro
 
     setAddingIds((s) => { const n = new Set(s); n.delete(songId); return n; });
     if (res.ok) {
+      trackAction("song_added", { priority: false, from: "history" });
       setAddedIds((s) => new Set(s).add(songId));
     } else {
       const data = await res.json().catch(() => null);

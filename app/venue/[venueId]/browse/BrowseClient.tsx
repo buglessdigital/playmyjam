@@ -36,6 +36,7 @@ import {
   type QueueEntry,
   type VenueSong,
 } from "@/components/browse/browse-types";
+import { trackAction } from "@/lib/ui-track";
 
 // Gözat sayfasındaki ana listenin en az bu kadar şarkı göstermesi hedeflenir —
 // mekanın müşteriye açık şarkısı yetmiyorsa doğal olarak daha az olur.
@@ -552,6 +553,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       if (typeof charged === "number" && charged !== cost) {
         setTokenBalance((b) => b + cost - charged);
       }
+      trackAction("song_added", { priority });
       // Onaylı talebin şeridi hakkın tükendiğini görsün (RequestStatusBar)
       window.dispatchEvent(new Event("pmj-queue-added"));
     } else {
@@ -573,6 +575,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
     // Optimistic update
     setRequestedIds((s) => new Set(s).add(song.youtube_video_id));
+    trackAction("song_requested");
 
     await fetch(`/api/venue/${venueId}/request`, {
       method: "POST",
@@ -597,6 +600,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           body: JSON.stringify({ suggested_title: title, suggested_artist: artist, suggested_cover_url: cover }),
         });
         if (res.ok) {
+          trackAction("suggestion_sent");
           // Durum şeridi beklemeden belirsin (bkz. components/venue/RequestStatusBar)
           window.dispatchEvent(new Event("pmj-suggestion-sent"));
           return "ok";

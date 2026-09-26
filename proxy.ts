@@ -178,6 +178,12 @@ export async function proxy(req: NextRequest) {
       if (isPublicPage) {
         return response;
       }
+      // Super admin arayüz analizi ısı haritasını sayfanın önizlemesine çizer:
+      // çerçevede hesap sayfası giriş formuna dönmesin, misafir hâli görünsün.
+      // Veri açılmaz — sayfa kullanıcısız render olur, API'ler yine 401 verir.
+      if (req.headers.get("sec-fetch-dest") === "iframe" && getSuperSession(req)) {
+        return response;
+      }
       const loginUrl = new URL(`/venue/${venueId}/login`, req.url);
       loginUrl.searchParams.set("next", pathname);
       return redirectWithCookies(loginUrl, response);

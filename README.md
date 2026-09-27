@@ -41,6 +41,16 @@ npm run db:migrate -- --target prod      # ...sonra prod'a (onay ister)
 npm run i18n:translate                   # TR sözlükteki yeni metinleri EN'e çevir
 ```
 
+## Çalışma düzeni
+
+`main` korumalıdır: doğrudan push edilmez, her değişiklik bir dal ve Pull Request ile gelir.
+
+1. `git checkout -b <kısa-ad>` ile dal açın, değişikliği commit'leyip dalı push edin.
+2. PR açın. GitHub CI'ı çalıştırır (lint, tip kontrolü, birim ve uçtan uca testler); Vercel test veritabanına bağlı bir deneme sitesi kurar ve linkini PR'a yazar.
+3. CI yeşilse ve deneme sitesi doğruysa PR'ı birleştirin. `main`'e giren kod Vercel tarafından **otomatik olarak** prod'a çıkar; Vercel yayından önce CI'ın geçtiğini ayrıca kontrol eder.
+
+Acil bir durumda son çare olarak `npx vercel deploy --prod` hâlâ çalışır, ama bu yol CI'ı atlar.
+
 ## Veritabanı değişiklikleri
 
 1. `supabase/migrations/` altına sıradaki numarayla SQL dosyası ekleyin (`0060_ne_yaptigi.sql`).

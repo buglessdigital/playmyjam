@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -54,7 +54,7 @@ jobs:
       STAGING_IYZICO_SECRET_KEY: ${{ secrets.STAGING_IYZICO_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm

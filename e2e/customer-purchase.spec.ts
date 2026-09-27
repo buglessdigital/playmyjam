@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { CARDS, payOnIyzico } from "./iyzico";
-import { SONGS, VENUE_SLUG, beatPlayer, customerQueue, latestOrder, seedVenue, walletOf } from "./db";
+import { SONGS, VENUE_SLUG, beatPlayer, customerQueue, latestOrder, nowPlayingVideo, seedVenue, walletOf } from "./db";
 
 // Müşterinin asıl yolu: QR ile gelen misafir hesap açmadan şarkıya dokunur,
 // jetonu yetmediği için doğrudan ödemeye gider, dönüşte şarkı kendiliğinden
@@ -47,6 +47,11 @@ test("misafir şarkıya ödeme yapar, şarkı sıraya girer", async ({ page }) =
   const queued = (await customerQueue(venueId)).find((q) => q.video_id === song.videoId)!;
   expect(queued.user_id).toBe(order!.user_id);
   expect(queued.priority).toBe(false);
+
+  // Mekanda hiçbir şey çalmıyordu: müşterinin şarkısı hemen başlar. Bu iş
+  // yanıttan sonra arka planda (after()) yapılıyor — bitmesini beklemek bir
+  // sonraki testin temiz veritabanına sızmasını da önler.
+  await expect.poll(() => nowPlayingVideo(venueId), { timeout: 20_000 }).toBe(song.videoId);
 
   // Alınan jeton şarkıya harcanır: +1 satın alma, -1 harcama, bakiye sıfır.
   // Ücretli jeton olarak işaretlenmeli — mekan hakedişi buradan hesaplanıyor.

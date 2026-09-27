@@ -72,8 +72,16 @@ if (dupes.length) {
   process.exit(1);
 }
 
-const client = new pg.Client({ connectionString: url });
-await client.connect();
+const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 15_000 });
+try {
+  await client.connect();
+} catch (err) {
+  // Ofis/kafe ağları Postgres portunu (5432) sık sık sessizce engeller: TCP
+  // açılır ama sunucudan hiç yanıt gelmez. Site HTTPS kullandığı için etkilenmez.
+  console.error(`Veritabanına bağlanılamadı: ${(err as Error).message}`);
+  console.error("Ağınız 5432 portunu engelliyor olabilir — başka bir ağdan (ör. telefon hotspot'u) deneyin.");
+  process.exit(1);
+}
 
 try {
   await client.query(`

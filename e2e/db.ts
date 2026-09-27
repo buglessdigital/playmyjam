@@ -130,3 +130,14 @@ export async function customerQueue(venueId: string) {
     status: r.status as string,
   }));
 }
+
+/** Mekanda şu an çalan şarkının YouTube kimliği (yoksa null). */
+export async function nowPlayingVideo(venueId: string): Promise<string | null> {
+  const { data: row, error } = await db
+    .from("now_playing")
+    .select("songs(youtube_video_id)")
+    .eq("venue_id", venueId)
+    .maybeSingle();
+  if (error) throw new Error(`çalan şarkı: ${error.message}`);
+  return (row?.songs as unknown as { youtube_video_id: string } | null)?.youtube_video_id ?? null;
+}

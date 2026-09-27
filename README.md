@@ -38,6 +38,7 @@ npm run check        # lint + tip kontrolü + birim testleri (CI'da her push'ta 
 npm run e2e          # uçtan uca testler (test veritabanı + iyzico sandbox; CI'da da her push'ta)
 npm run db:migrate -- --target staging   # bekleyen migration'ları test DB'ye uygula
 npm run db:migrate -- --target prod      # ...sonra prod'a (onay ister)
+npm run db:diff                          # prod ile test DB'nin yapısını karşılaştır (salt okur)
 npm run i18n:translate                   # TR sözlükteki yeni metinleri EN'e çevir
 ```
 
@@ -57,7 +58,9 @@ Acil bir durumda son çare olarak `npx vercel deploy --prod` hâlâ çalışır,
 2. `npm run db:migrate -- --target staging` ile test veritabanına uygulayın, Preview deploy'unda deneyin.
 3. `npm run db:migrate -- --target prod --dry` ile prod'da neyin bekleyeceğine bakın, sonra `--dry` olmadan uygulayın.
 
-Her dosya kendi transaction'ında çalışır; hata verirse tamamen geri alınır. Uygulanan dosyalar `supabase_migrations.schema_migrations` tablosunda tutulur. SQL Editor'dan elle DDL çalıştırmayın — çalıştırırsanız aynı değişikliği migration dosyasına da yazın, yoksa test veritabanı prod'dan sapar.
+Her dosya kendi transaction'ında çalışır; hata verirse tamamen geri alınır. Uygulanan dosyalar `supabase_migrations.schema_migrations` tablosunda tutulur. SQL Editor'dan elle DDL çalıştırmayın — çalıştırırsanız aynı değişikliği migration dosyasına da yazın, yoksa test veritabanı prod'dan sapar. `npm run db:diff` böyle bir sapmayı yakalar.
+
+Bu araçlar Postgres portunu (5432) kullanır; bazı ofis/kafe ağları bu portu sessizce engeller. "Veritabanına bağlanılamadı" hatasında başka bir ağdan deneyin.
 
 ## Testler
 

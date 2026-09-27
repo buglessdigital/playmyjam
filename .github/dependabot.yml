@@ -1,0 +1,21 @@
+# Bağımlılık güncellemeleri haftalık tek PR'da gelir; CI (lint, testler, e2e)
+# yeşilse birleştirilir. Güvenlik yamaları ayrıca beklemeden açılır.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Istanbul
+    open-pull-requests-limit: 5
+    groups:
+      # Ana sürüm atlamaları (Next, React, Sentry...) ayrı PR'da gelsin —
+      # davranış değiştirebilirler, tek tek bakılmalı
+      kucuk-guncellemeler:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

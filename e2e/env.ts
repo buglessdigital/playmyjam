@@ -25,7 +25,6 @@ function need(name: string): string {
 }
 
 export const E2E = {
-  dbUrl: need("STAGING_DB_URL"),
   /** Test sunucusuna verilecek ortam — .env.local'daki prod/canlı değerleri ezer */
   serverEnv: {
     NEXT_PUBLIC_SUPABASE_URL: need("STAGING_SUPABASE_URL"),

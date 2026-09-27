@@ -1,6 +1,8 @@
 // Test veritabanına doğrudan erişim: tohumlama ve sonuç doğrulama. Yalnızca
-// pmj-staging'e bağlanır (bkz. e2e/env.ts).
-import pg from "pg";
+// pmj-staging'e bağlanır (bkz. e2e/env.ts). Postgres yerine Supabase'in HTTPS
+// API'si kullanılıyor: pooler bağlantısı ağa göre takılabiliyor, CI'a da
+// veritabanı şifresi vermek gerekmiyor.
+import { createClient } from "@supabase/supabase-js";
 import { E2E } from "./env";
 
 export const VENUE_SLUG = "e2e-test";
@@ -13,117 +15,118 @@ export const SONGS = [
   { videoId: "kJQP7kiw5Fk", title: "Despacito", artist: "Luis Fonsi" },
 ];
 
-export async function withDb<T>(fn: (c: pg.Client) => Promise<T>): Promise<T> {
-  const c = new pg.Client({ connectionString: E2E.dbUrl });
-  await c.connect();
-  try {
-    return await fn(c);
-  } finally {
-    await c.end();
-  }
+const db = createClient(E2E.serverEnv.NEXT_PUBLIC_SUPABASE_URL, E2E.serverEnv.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
+function must<T>(res: { data: T; error: { message: string } | null }, what: string): NonNullable<T> {
+  if (res.error || res.data == null) throw new Error(`${what}: ${res.error?.message ?? "boş yanıt"}`);
+  return res.data;
+}
+
+// Silme/güncelleme gibi veri döndürmeyen çağrılar
+function ok(res: { error: { message: string } | null }, what: string) {
+  if (res.error) throw new Error(`${what}: ${res.error.message}`);
 }
 
 /** Test mekanını sıfırdan kurar: önceki koşudan kalan kuyruk/sipariş temizlenir. */
 export async function seedVenue(): Promise<{ venueId: string }> {
-  return withDb(async (c) => {
-    await c.query("begin");
-    try {
-      const { rows } = await c.query<{ id: string }>(
-        `insert into public.venues (slug, name) values ($1, $2)
-         on conflict (slug) do update set name = excluded.name
-         returning id`,
-        [VENUE_SLUG, VENUE_NAME],
-      );
-      const venueId = rows[0].id;
-      await c.query("delete from public.queue where venue_id = $1", [venueId]);
-      await c.query("delete from public.now_playing where venue_id = $1", [venueId]);
-      await c.query("delete from public.payment_orders where venue_id = $1", [venueId]);
+  const venue = must(
+    await db.from("venues").upsert({ slug: VENUE_SLUG, name: VENUE_NAME }, { onConflict: "slug" }).select("id").single(),
+    "mekan",
+  );
+  const venueId = venue.id as string;
 
-      for (const s of SONGS) {
-        const { rows: song } = await c.query<{ id: string }>(
-          `insert into public.songs (youtube_video_id, title, artist, duration_ms)
-           values ($1, $2, $3, 210000)
-           on conflict (youtube_video_id) do update set title = excluded.title
-           returning id`,
-          [s.videoId, s.title, s.artist],
-        );
-        await c.query(
-          `insert into public.venue_songs (venue_id, song_id)
-           select $1, $2 where not exists (
-             select 1 from public.venue_songs where venue_id = $1 and song_id = $2)`,
-          [venueId, song[0].id],
-        );
-      }
-      await c.query("commit");
-      await beatPlayer(venueId, c);
-      return { venueId };
-    } catch (err) {
-      await c.query("rollback");
-      throw err;
-    }
-  });
+  for (const table of ["queue", "now_playing", "payment_orders"]) {
+    ok(await db.from(table).delete().eq("venue_id", venueId), `${table} temizliği`);
+  }
+
+  const songs = must(
+    await db
+      .from("songs")
+      .upsert(
+        SONGS.map((s) => ({ youtube_video_id: s.videoId, title: s.title, artist: s.artist, duration_ms: 210_000 })),
+        { onConflict: "youtube_video_id" },
+      )
+      .select("id"),
+    "şarkılar",
+  );
+  const existing = must(await db.from("venue_songs").select("song_id").eq("venue_id", venueId), "mekan listesi");
+  const have = new Set(existing.map((r) => r.song_id));
+  const missing = songs.filter((s) => !have.has(s.id)).map((s) => ({ venue_id: venueId, song_id: s.id }));
+  if (missing.length) ok(await db.from("venue_songs").insert(missing), "mekan listesine ekleme");
+
+  await beatPlayer(venueId);
+  return { venueId };
 }
 
 /**
  * Oynatıcı açıkmış gibi heartbeat yazar. 45 sn'den bayat heartbeat'te ekleme
  * kilitlenir (lib/player-status.ts) — testler ekleme anından önce tazeler.
  */
-export async function beatPlayer(venueId: string, client?: pg.Client) {
-  const run = (c: pg.Client) =>
-    c.query(
-      `insert into public.now_playing (venue_id, last_heartbeat_at, is_playing)
-       values ($1, now(), false)
-       on conflict (venue_id) do update set last_heartbeat_at = now()`,
-      [venueId],
-    );
-  return client ? run(client) : withDb(run);
+export async function beatPlayer(venueId: string) {
+  ok(
+    await db
+      .from("now_playing")
+      .upsert({ venue_id: venueId, last_heartbeat_at: new Date().toISOString() }, { onConflict: "venue_id" }),
+    "heartbeat",
+  );
 }
 
 /** Oynatıcıyı kapalı gösterir: heartbeat eşiğin (45 sn) çok ötesine çekilir. */
 export async function stopPlayer(venueId: string) {
-  await withDb((c) =>
-    c.query(
-      "update public.now_playing set last_heartbeat_at = now() - interval '10 minutes' where venue_id = $1",
-      [venueId],
-    ),
-  );
+  const stale = new Date(Date.now() - 10 * 60_000).toISOString();
+  ok(await db.from("now_playing").update({ last_heartbeat_at: stale }).eq("venue_id", venueId), "heartbeat");
 }
 
 /** Test başladıktan sonra bu mekanda açılan en son sipariş. */
 export async function latestOrder(venueId: string, since: Date) {
-  return withDb(async (c) => {
-    const { rows } = await c.query<{ id: string; user_id: string; status: string; tokens: number; total: string }>(
-      `select id, user_id, status, tokens, total from public.payment_orders
-        where venue_id = $1 and created_at >= $2 order by created_at desc limit 1`,
-      [venueId, since],
-    );
-    return rows[0] ?? null;
-  });
+  const rows = must(
+    await db
+      .from("payment_orders")
+      .select("id, user_id, status, tokens, total")
+      .eq("venue_id", venueId)
+      .gte("created_at", since.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1),
+    "sipariş",
+  );
+  return (rows[0] as { id: string; user_id: string; status: string; tokens: number; total: number | string }) ?? null;
 }
 
 export async function walletOf(userId: string) {
-  return withDb(async (c) => {
-    const { rows: wallet } = await c.query<{ balance: number; paid_balance: number }>(
-      "select balance, paid_balance from public.user_wallets where user_id = $1",
-      [userId],
-    );
-    const { rows: tx } = await c.query<{ kind: string; amount: number; paid_amount: number }>(
-      "select kind, amount, paid_amount from public.wallet_transactions where user_id = $1 order by created_at",
-      [userId],
-    );
-    return { balance: wallet[0]?.balance ?? 0, paidBalance: wallet[0]?.paid_balance ?? 0, transactions: tx };
-  });
+  // Hiç işlem görmemiş kullanıcının cüzdan satırı olmayabilir
+  const { data: wallet, error } = await db
+    .from("user_wallets")
+    .select("balance, paid_balance")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(`cüzdan: ${error.message}`);
+  const tx = must(
+    await db
+      .from("wallet_transactions")
+      .select("kind, amount, paid_amount")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true }),
+    "cüzdan hareketleri",
+  );
+  return { balance: wallet?.balance ?? 0, paidBalance: wallet?.paid_balance ?? 0, transactions: tx };
 }
 
 /** Mekanın kuyruğunda müşterilerin eklediği satırlar (otomatik doldurma hariç). */
 export async function customerQueue(venueId: string) {
-  return withDb(async (c) => {
-    const { rows } = await c.query<{ video_id: string; user_id: string; priority: boolean; status: string }>(
-      `select s.youtube_video_id as video_id, q.user_id, q.priority, q.status
-         from public.queue q join public.songs s on s.id = q.song_id
-        where q.venue_id = $1 and q.user_id is not null`,
-      [venueId],
-    );
-    return rows;
-  });
+  const rows = must(
+    await db
+      .from("queue")
+      .select("user_id, priority, status, songs(youtube_video_id)")
+      .eq("venue_id", venueId)
+      .not("user_id", "is", null),
+    "kuyruk",
+  );
+  return rows.map((r) => ({
+    video_id: (r.songs as unknown as { youtube_video_id: string }).youtube_video_id,
+    user_id: r.user_id as string,
+    priority: r.priority as boolean,
+    status: r.status as string,
+  }));
 }

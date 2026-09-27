@@ -29,3 +29,40 @@ jobs:
         run: npm run typecheck
       - name: Testler
         run: npm test
+
+  e2e:
+    # Robot tarayıcı müşteri akışını test veritabanı (pmj-staging) + iyzico
+    # sandbox'a karşı dener. Prod'a hiçbir şekilde bağlanmaz.
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Testler aynı test mekanını paylaşıyor — iki koşu aynı anda çalışmasın
+    concurrency:
+      group: e2e-staging
+      cancel-in-progress: false
+    env:
+      STAGING_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+      STAGING_ANON_KEY: ${{ secrets.STAGING_ANON_KEY }}
+      STAGING_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SERVICE_ROLE_KEY }}
+      STAGING_IYZICO_API_KEY: ${{ secrets.STAGING_IYZICO_API_KEY }}
+      STAGING_IYZICO_SECRET_KEY: ${{ secrets.STAGING_IYZICO_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Tarayıcı kurulumu
+        run: npx playwright install --with-deps chromium
+      - name: Uçtan uca testler
+        run: npm run e2e
+      - name: Rapor ve videolar
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-rapor
+          path: |
+            e2e-report/
+            e2e-results/
+          retention-days: 14

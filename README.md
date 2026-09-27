@@ -35,7 +35,7 @@ Gizli değerler Vercel ortam değişkenlerinde ve yerelde git'e girmeyen `.env.l
 ```bash
 npm run dev          # geliştirme sunucusu
 npm run check        # lint + tip kontrolü + birim testleri (CI'da her push'ta çalışır)
-npm run e2e          # uçtan uca testler (test veritabanı + iyzico sandbox)
+npm run e2e          # uçtan uca testler (test veritabanı + iyzico sandbox; CI'da da her push'ta)
 npm run db:migrate -- --target staging   # bekleyen migration'ları test DB'ye uygula
 npm run db:migrate -- --target prod      # ...sonra prod'a (onay ister)
 npm run i18n:translate                   # TR sözlükteki yeni metinleri EN'e çevir
@@ -52,4 +52,4 @@ Her dosya kendi transaction'ında çalışır; hata verirse tamamen geri alını
 ## Testler
 
 - **Birim testleri** (`lib/*.test.ts`, `node --test`): saf iş mantığı — ücret formülü, sıra düzeni, hakediş, şarkı eşleştirme. Ücret formülü SQL ikiziyle migration dosyasından okunarak karşılaştırılır.
-- **Uçtan uca testler** (`e2e/`, Playwright): site test veritabanına bağlı olarak yerelde derlenir, telefon ekranında robot tarayıcı müşteri akışını dener — misafir şarkıya ödeme yapar ve şarkı sıraya girer, reddedilen kartta jeton yüklenmez, oynatıcı kapalıyken ekleme kilitlenir. Her koşu `e2e-test` mekanını sıfırdan kurar. Başarısız testin videosu ve izi `e2e-results/` altında; rapor için `npx playwright show-report e2e-report`.
+- **Uçtan uca testler** (`e2e/`, Playwright): site test veritabanına bağlı olarak yerelde derlenir, telefon ekranında robot tarayıcı müşteri akışını dener — misafir şarkıya ödeme yapar ve şarkı sıraya girer, reddedilen kartta jeton yüklenmez, oynatıcı kapalıyken ekleme kilitlenir. Her koşu `e2e-test` mekanını sıfırdan kurar. GitHub'da `STAGING_*` secret'larıyla her push'ta çalışır; başarısız koşunun raporu ve videosu Actions sayfasında `e2e-rapor` olarak indirilir. Başarısız testin videosu ve izi `e2e-results/` altında; rapor için `npx playwright show-report e2e-report`.

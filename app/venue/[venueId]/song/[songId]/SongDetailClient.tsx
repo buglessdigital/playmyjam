@@ -14,6 +14,7 @@ import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { formatWait, useNowPlayingClock, waitMs } from "@/lib/wait-time";
 import { normalQueuedCount, priorityCostFor } from "@/lib/pricing";
 import { usePlayerOnline } from "@/lib/use-player-online";
+import { coalesce, subscribeVenueLive } from "@/lib/venue-live";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { fmt, useT } from "@/lib/i18n";
 import { publishTokenBalance } from "@/lib/token-balance-store";
@@ -261,20 +262,15 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
 
     fetchState();
 
-    const queueChannel = supabase
-      .channel(`song-queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchState)
-      .subscribe();
-
-    const npChannel = supabase
-      .channel(`song-now-playing:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchState)
-      .subscribe();
+    const refresh = coalesce(fetchState);
+    const unsubscribe = subscribeVenueLive(venueDbId, (event) => {
+      if (event === "queue" || event === "np" || event === "resync") refresh();
+    });
 
     return () => {
       cancelled = true;
-      supabase.removeChannel(queueChannel);
-      supabase.removeChannel(npChannel);
+      refresh.cancel();
+      unsubscribe();
     };
   }, [venueDbId, track, supabase]);
 

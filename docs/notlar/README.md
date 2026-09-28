@@ -78,3 +78,5 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Arayüz analizi](pmj-arayuz-analizi-2026-09.md) — /super-admin/analytics: anonim tık/sayfa kaydı + ısı haritası; 0058 uygulandı, 44d0a9e prod
 - [Profesyonelleşme turu](pmj-profesyonellesme-2026-09.md) — büyük şirket standardı: CI/lint/hata sayfaları + Sentry prod'da; staging + db:migrate + Playwright e2e (CI'da da) hazır; CI/CD TAMAM — artık dal+PR, main korumalı, merge=otomatik prod; sırada CSP
 - [Git akışı: dal + PR](pmj-git-akisi-pr.md) — main korumalı, CI herkese zorunlu; Taner (buglessdigital hesabı) onaysız merge eder, Berkay'ın PR'ları Taner'in onayını bekler
+- [Mekan canlı yayını](pmj-canli-yayin-2026-09.md) — müşteri ekranları `venue-live:<id>` Broadcast'i dinler (postgres_changes değil); 0060 ŞART ve koddan ÖNCE prod'a; 20× az DB isteği
+- [Ölçek eşikleri](pmj-olcek-esikleri-2026-09.md) — Redis/replika/arama servisi/kuyruk ŞİMDİ kurulmaz; her biri hangi ölçümle tetiklenir + dalga öncesi `npm run load:venue`

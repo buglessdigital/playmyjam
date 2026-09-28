@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { resolveVenueDbId } from "@/lib/venue-db-id";
 import { getNotifPref, notify, type NotifPref } from "@/lib/notifications";
 import { currentDict, fmt } from "@/lib/i18n";
+import { coalesce, subscribeVenueLive } from "@/lib/venue-live";
 
 // Venue sayfaları açıkken kuyruğu izler ve tarayıcı bildirimi gönderir:
 // - "nearby": kullanıcının şarkısı sıranın başına geldiğinde (çalmak üzere)
@@ -26,7 +27,7 @@ export default function NotificationWatcher({ venueId }: { venueId: string }) {
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let stop: (() => void) | null = null;
 
     const checkMySongUpNext = async (venueDbId: string, userId: string) => {
       const { data } = await supabase
@@ -68,32 +69,38 @@ export default function NotificationWatcher({ venueId }: { venueId: string }) {
       // Sayfa açıldığında şarkı zaten sıradaysa da haber ver
       checkMySongUpNext(venueRow.id, user.id);
 
-      channel = supabase
-        .channel(`notif:${venueRow.id}:${user.id}`)
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "queue", filter: `venue_id=eq.${venueRow.id}` }, async (payload: { new: unknown }) => {
-          const row = payload.new as { user_id?: string; song_id?: string };
-          // Kendi eklediğin şarkı için kuyruk bildirimi atma
-          if (prefs.current.queue && row.user_id !== user.id && row.song_id) {
-            const { data: song } = await supabase.from("songs").select("title, artist").eq("id", row.song_id).single();
-            if (!cancelled) {
+      // Kuyruk değişikliği mekanın canlı hattından gelir (bkz. lib/venue-live.ts).
+      // Eskiden satır başına postgres_changes olayıydı ve DELETE filtrelenemediği
+      // için BÜTÜN mekanlardaki silmeler her telefona ulaşıyordu.
+      const refreshUpNext = coalesce(() => checkMySongUpNext(venueRow.id, user.id));
+      const unsubscribe = subscribeVenueLive(venueRow.id, (event, payload) => {
+        if (event !== "queue" && event !== "resync") return;
+        refreshUpNext();
+        // Kendi eklediğin şarkı için kuyruk bildirimi atma
+        const added = Array.isArray(payload.added) ? (payload.added as { user_id?: string; song_id?: string }[]) : [];
+        const other = added.find((row) => row.user_id !== user.id && row.song_id);
+        if (event === "queue" && prefs.current.queue && other?.song_id) {
+          void supabase
+            .from("songs")
+            .select("title, artist")
+            .eq("id", other.song_id)
+            .single()
+            .then(({ data: song }: { data: { title: string; artist: string } | null }) => {
+              if (cancelled) return;
               notify(currentDict().notifications.queueTitle, song ? fmt(currentDict().notifications.queueBody, { title: song.title, artist: song.artist }) : currentDict().notifications.queueBodyFallback);
-            }
-          }
-          checkMySongUpNext(venueRow.id, user.id);
-        })
-        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "queue", filter: `venue_id=eq.${venueRow.id}` }, () => {
-          checkMySongUpNext(venueRow.id, user.id);
-        })
-        .on("postgres_changes", { event: "DELETE", schema: "public", table: "queue" }, () => {
-          checkMySongUpNext(venueRow.id, user.id);
-        })
-        .subscribe();
+            });
+        }
+      });
+      stop = () => {
+        refreshUpNext.cancel();
+        unsubscribe();
+      };
     };
     load();
 
     return () => {
       cancelled = true;
-      if (channel) supabase.removeChannel(channel);
+      stop?.();
     };
   }, [venueId]);
 

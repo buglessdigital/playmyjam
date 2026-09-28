@@ -14,6 +14,7 @@ import { publishTokenBalance } from "@/lib/token-balance-store";
 import ProfileChip from "@/components/ui/ProfileChip";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { usePlayerOnline } from "@/lib/use-player-online";
+import { coalesce, subscribeVenueLive } from "@/lib/venue-live";
 import { fmt, useT } from "@/lib/i18n";
 import AddSongSheet from "@/components/browse/AddSongSheet";
 import NowPlayingBanner from "@/components/browse/NowPlayingBanner";
@@ -137,8 +138,6 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       songs: Omit<VenueSong, "play_count" | "in_venue_list"> | null;
     };
 
-    let subscribedOnce = false;
-
     const fetchVenueSongs = async () => {
       // Sayfalı: 1000'i aşan kataloglarda müşteri şarkıların tamamını göremiyordu
       const { data: vSongs } = await fetchAllRows<VenueSongRow>((from, to) =>
@@ -173,20 +172,17 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     // kapattığı bir listenin şarkısını sıralı sanmaya devam ediyordu.
     fetchVenueSongs();
 
-    const channel = supabase
-      .channel(`browse-venue-songs:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "venue_songs", filter: `venue_id=eq.${venueDbId}` }, fetchVenueSongs)
-      .subscribe((status: string) => {
-        // İlk SUBSCRIBED yukarıdaki okumayla aynı ana denk gelir; yalnızca kopup
-        // dönen bağlantılarda (aradaki olaylar kayıp) tazeleme yapılır.
-        if (status === "SUBSCRIBED") {
-          if (subscribedOnce) fetchVenueSongs();
-          subscribedOnce = true;
-        }
-      });
+    // `catalog` yalnızca müşterinin seçebileceği liste değişince gelir; play_count
+    // artışı (her ücretli şarkı bitişi) artık bütün kataloğu yeniden indirtmiyor.
+    // resync: bağlantı kopup döndü ya da sekme uzun süre uyudu, aradakiler kayıp.
+    const refresh = coalesce(fetchVenueSongs, 300, 1500);
+    const unsubscribe = subscribeVenueLive(venueDbId, (event) => {
+      if (event === "catalog" || event === "resync") refresh();
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      refresh.cancel();
+      unsubscribe();
     };
   }, [venueDbId, supabase]);
 
@@ -227,10 +223,10 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
     fetchOneTime();
 
-    const channel = supabase
-      .channel(`browse-one-time:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "one_time_songs", filter: `venue_id=eq.${venueDbId}` }, fetchOneTime)
-      .subscribe();
+    const refreshOneTime = coalesce(fetchOneTime);
+    const unsubscribe = subscribeVenueLive(venueDbId, (event) => {
+      if (event === "one_time" || event === "resync") refreshOneTime();
+    });
 
     // Süresi dolanı listeden düşür (sunucu tarafı zaten reddeder; ekran da yalan
     // söylemesin) ve geri sayımları tazele
@@ -246,7 +242,8 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     return () => {
       cancelled = true;
       clearInterval(sweep);
-      supabase.removeChannel(channel);
+      refreshOneTime.cancel();
+      unsubscribe();
     };
   }, [venueDbId, supabase]);
 
@@ -258,7 +255,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     // son çalınanlar, bakiye, favoriler, bekleme süresi girdileri
     const fetchUserState = async () => {
       // started_at RPC'de yok ama bekleme süresi/ilerleme için şart: DB'deki
-      // progress_ms 15 sn'de bir yazıldığından bayat, started_at ise sabit çapa
+      // progress_ms yazıldığı andan beri bayat, started_at ise sabit çapa
       const [{ data }, { data: npRow }] = await Promise.all([
         supabase.rpc("get_browse_user_state", { p_venue_id: venueDbId }),
         supabase.from("now_playing").select("started_at, is_playing").eq("venue_id", venueDbId).maybeSingle(),
@@ -295,20 +292,17 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
     fetchUserState();
 
-    const qChannel = supabase
-      .channel(`browse-queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchUserState)
-      .subscribe();
-
-    const npChannel = supabase
-      .channel(`browse-now-playing:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchUserState)
-      .subscribe();
+    // Eskiden 5 sn'lik heartbeat dahil her now_playing yazımında okunuyordu;
+    // artık yalnızca kuyruk ya da çalan şarkı gerçekten değişince
+    const refresh = coalesce(fetchUserState);
+    const unsubscribe = subscribeVenueLive(venueDbId, (event) => {
+      if (event === "queue" || event === "np" || event === "resync") refresh();
+    });
 
     return () => {
       cancelled = true;
-      supabase.removeChannel(qChannel);
-      supabase.removeChannel(npChannel);
+      refresh.cancel();
+      unsubscribe();
     };
   }, [venueDbId, supabase]);
 

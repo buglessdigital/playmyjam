@@ -1,0 +1,14 @@
+# Satır sonları her işletim sisteminde LF — Windows'tan gelen CRLF, PR'larda
+# her satırı "değişmiş" gösterir. CI ve Vercel Linux'ta çalışır.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.gif binary
+*.pdf binary
+*.xlsx binary
+*.woff binary
+*.woff2 binary

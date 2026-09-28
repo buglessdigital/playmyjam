@@ -42,13 +42,34 @@ npm run db:diff                          # prod ile test DB'nin yapısını kar�
 npm run i18n:translate                   # TR sözlükteki yeni metinleri EN'e çevir
 ```
 
+## Yeni geliştirici kurulumu
+
+Gerekenler: Node 24, git, GitHub CLI (`gh`), VS Code + Claude Code eklentisi.
+
+- **macOS:** `brew install git gh fnm && fnm install 24 && fnm default 24`
+- **Windows:** her şey WSL2 (Ubuntu) içinde çalışır — `dev` script'i POSIX sözdizimi kullanır, CI ve Vercel de Linux'tur. PowerShell'de (yönetici) `wsl --install -d Ubuntu`, yeniden başlat; Ubuntu'da `git`, [fnm](https://github.com/Schniz/fnm) ile Node 24 ve `gh` kurulur. Proje Linux ev klasörüne klonlanır (`~/`, `/mnt/c` altına değil — orada çok yavaş). VS Code'a **WSL** eklentisi kurulur ve proje Ubuntu terminalinden `code .` ile açılır; Claude Code eklentisi o pencereye kurulur.
+
+```bash
+gh auth login
+git clone https://github.com/buglessdigital/playmyjam.git && cd playmyjam
+npm ci
+npx playwright install --with-deps chromium
+```
+
+Kök klasöre iki dosya gelir (şifre yöneticisinden, git'e girmez):
+
+- `.env.local` — **staging** Supabase + **iyzico sandbox** değerleri. Yerel ortam prod veritabanına ya da canlı ödemeye bağlanmaz.
+- `.env.new` — yalnızca `STAGING_*` satırları (migration ve e2e için).
+
+Doğrulama: `npm run check` ve `npm run e2e` yeşil, `npm run dev` ile http://localhost:3000 açılıyor. Ardından küçük bir deneme PR'ı açılır; akış aşağıdaki gibidir.
+
 ## Çalışma düzeni
 
 `main` korumalıdır: doğrudan push edilmez, her değişiklik bir dal ve Pull Request ile gelir.
 
-1. `git checkout -b <kısa-ad>` ile dal açın, değişikliği commit'leyip dalı push edin.
+1. `git switch main && git pull`, sonra `git switch -c <isim>/<kısa-ad>` ile dal açın, değişikliği commit'leyip dalı push edin.
 2. PR açın. GitHub CI'ı çalıştırır (lint, tip kontrolü, birim ve uçtan uca testler); Vercel test veritabanına bağlı bir deneme sitesi kurar ve linkini PR'a yazar.
-3. CI yeşilse ve deneme sitesi doğruysa PR'ı birleştirin. `main`'e giren kod Vercel tarafından **otomatik olarak** prod'a çıkar; Vercel yayından önce CI'ın geçtiğini ayrıca kontrol eder.
+3. Diğer geliştirici PR'ı inceleyip onaylar (onaysız birleştirilemez). CI yeşilse ve deneme sitesi doğruysa PR'ı birleştirin (squash). `main`'e giren kod Vercel tarafından **otomatik olarak** prod'a çıkar; Vercel yayından önce CI'ın geçtiğini ayrıca kontrol eder.
 
 Acil bir durumda son çare olarak `npx vercel deploy --prod` hâlâ çalışır, ama bu yol CI'ı atlar.
 

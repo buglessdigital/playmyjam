@@ -1,0 +1,80 @@
+# Proje notları
+
+Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migration şart" türü bilgiler. `CLAUDE.md` bu dizini her oturumda yükler; ayrıntı için ilgili dosya okunur.
+
+- Notlarda geçen **"kullanıcı"**, notu yazdıran geliştiricidir (28 Eyl 2026 öncesi hep Taner).
+- Notlar yazıldıkları anı yansıtır; bir dosya/fonksiyon adı öneriye dönüşmeden önce kodda hâlâ var mı bakılır.
+- **Yeni not:** bir dosya = bir bilgi, üstte frontmatter (`name`, `description`, `metadata.type`), ilgili notlara `[[ad]]` bağlantısı; sonra bu dizine tek satır. Yanlış çıkan not silinir, eskiyen güncellenir. Değişiklik PR ile gelir.
+- **Asla** şifre, API anahtarı, token ya da bağlantı adresi yazılmaz — yalnızca nerede durduğu (`.env.new`, Vercel env, Bitwarden).
+
+
+- [Dil tercihi](kullanici-dil-turkce.md) — kullanıcıyla daima Türkçe konuş
+- [Next 16 instant doğrulaması](next16-instant-validation.md) — param'lı route'larda prefetch:'runtime'+samples şart, GSP yetmez
+- [Müşteri paneli hız mimarisi](pmj-perf-rework-2026-07.md) — kabuk cache'li + client RPC; tüm migration'lar uygulandı, DDL sadece kullanıcının SQL Editor'ından
+- [YouTube geçişi](pmj-youtube-migration-2026-07.md) — Spotify temiz kesimle kaldırıldı; IFrame player + /api/search yerel-önce; 0008 migrasyonu + YOUTUBE_API_KEY gerekli
+- [Next 16 updateTag tuzağı](next16-updatetag-route-handlers.md) — route handler'da updateTag 500 verir; revalidateTag(tag, "max") kullan
+- [Auth durumu](pmj-auth-rework-2026-07.md) — müşteri paneli 1 Ağu 2026'da misafire açıldı (login /venue/{slug}/login'e taşındı, 0022 migration şart); güçlendirme turu b4ac86b'de
+- [Resend SMTP](pmj-resend-smtp.md) — auth mailleri noreply@playmyjam.com.tr'den; username sabit "resend", şifre API anahtarı; DNS TurkTicaret'te
+- [Prod env & domain](pmj-prod-env.md) — (Supabase/Vercel hesap bilgisi eskidi, bkz. pmj-supabase-hesabi) prod alias playmyjam.com.tr (+pmj-seven.vercel.app); YOUTUBE_API_KEY + VAPID + IYZICO_* üçlüleri tüm ortamlarda; --yes gereken işler npx vercel@latest ile
+- [Push bildirimi + admin istatistik](pmj-push-stats-2026-07.md) — tamamlandı: 0009 uygulandı, deploy + commit acd3e3c pushlandı; e2e push testi yapılmadı
+- [Global cüzdan + geçmiş](pmj-global-wallet-2026-07.md) — tamamlandı: 0010+0011 uygulandı, 52b788d deploy'da; user_tokens ve 3-arg jeton RPC'leri artık YOK
+- [YouTube kota artışı](pmj-youtube-quota-2026-07.md) — form 23 Tem 2026'da GÖNDERİLDİ (Organization/Bugless Digital, ~100k/gün); yasal sayfalar iki dilli + domain playmyjam.com.tr; YouTube ekibi yanıtı bekleniyor
+- [Tosla İşim başvurusu](pmj-tosla-basvuru-2026-07.md) — şartlar deploy'da (01d448e); playmyjam.com.tr alındı, TRABİS yayılımı tamam + canlı; Tosla formu bekliyor; 0014 SQL kullanıcıda
+- [Jeton rework](pmj-token-rework-2026-07.md) — 9 Ağu 2026'dan beri birim fiyat 20 TL, paket yok; tekli satış paketlerden bağımsız (sanal "single" satırı + paketsiz checkout)
+- [iyzico marka kiti](pmj-iyzico-marka-kiti-2026-07.md) — TAMAM: iyzico ile Öde logosu (tek eksik şart) eklendi, commit 8242b95 deploy'da
+- [iyzico ödeme entegrasyonu](pmj-iyzico-payment-integration-2026-07.md) — TAMAM: Checkout Form akışı deploy'da (0251713), 0017 migration uygulandı; gerçek kartla uçtan uca test henüz yapılmadı
+- [Saatli playlist fikri](pmj-saatli-playlist-fikri.md) — ERTELENDİ: mekan talebi gelirse yapılacak; tasarım kararları (cache/kuyruk/şema) hazır
+- [Keşif motoru fikri](pmj-kesif-motoru-fikri.md) — ERTELENDİ: müzik zevkine göre mekan keşfi; başlama eşikleri + şimdi kurulması gereken kancalar (anon kimlik, çalma geçmişi, QR olayı, KVKK) kararlaştırıldı
+- [Öneri akışı (kotasız kurulum)](pmj-oneri-akisi-2026-08.md) — müşteri araması yerel + serbest metin öneri; 0023 migration ŞART, /api/search artık admin-only
+- [Profil avatarı](pmj-profil-avatar-2026-08.md) — TAMAM: 12 görsel public/avatars/ altına, 0024 (avatar_id) uygulandı, 5d49c49 prod'da
+- [Çalan şarkı kilidi + cooldown](pmj-playing-cooldown-2026-08.md) — TAMAM: 0024+0025 uygulandı, 4375b7d prod'da; sahnedeki şarkı eklenemez, 30 dk artık başlangıçtan
+- [Mekan playlist'leri](pmj-playlists-2026-08.md) — auto-fill sadece aktif playlist'lerden; müşteri tüm katalogdan; 0026 migration ŞART
+- [Mekan başvuru formu](pmj-mekan-basvuru-2026-08.md) — TAMAM: 0028 uygulandı, 20d8c73 prod'da; panelde "Deploy Kontrol" test satırı silinmeli
+- [TR/EN dil desteği](pmj-i18n-2026-08.md) — JSON sözlük + `npm run i18n:translate` (Google API, derleme öncesi); ana sayfa bitti, panel sırada
+- [Playlist otomatik senkron](pmj-playlist-autosync-2026-08.md) — 0041'den beri DAİMA açık (düğme yok); 0029+0041 ŞART, silme YOK, günlük tavan ~1010 birim
+- [Player kapalı kilidi](pmj-player-offline-gate-2026-08.md) — heartbeat 45 sn bayatsa süreler gizli + ekleme kapalı; player boşta da presence heartbeat yollar
+- [Admin giriş bilgileri + Google kurtarma](pmj-admin-google-reset-2026-08.md) — panelden şifre değişimi, Google bağlama, sıfırlama maili; 0030 + RESEND_API_KEY şart
+- [Playlist sıralı çalma](pmj-playlist-rotation-2026-08.md) — aktif listeler DAİMA sırayla; 0032+0033 ŞART; venues'ta kolon bazlı grant tuzağı
+- [Playlist kuyruğu + play tuşu](pmj-playlist-queue-2026-08.md) — "Sıraya ekle" artık Spotify mantığı (çalanın hemen ardına, müşterinin arkasına) + "Sırayı temizle"; kuyruk liste sonuna kadar dolu (cap 500)
+- [Mekan logosu](pmj-venue-logo-2026-08.md) — public "venue-logos" bucket, migration yok, bucket kod tarafından açılıyor
+- [Uzaktan ses kontrolü](pmj-volume-control-2026-08.md) — panelde ses kaydırıcısı; now_playing.volume + 0036 ŞART, iOS'ta etkisiz
+- [Admin ana ekran birleşimi](pmj-admin-home-merge-2026-08.md) — 3 sütun + alt player barı; /playlist sayfası YOK, redirect var
+- [Zorunlu Google bağlama](pmj-google-link-gate-2026-08.md) — yeni mekanlar ilk girişte bağlamadan panele giremez; 0038 ŞART, eski mekanlar muaf
+- [Admin şifre sıfırlama harf duyarsızlığı](pmj-admin-reset-case-2026-08.md) — "mail gitmiyor"un sebebi Resend değil, kullanıcı adı birebir aranıyordu; Mezzanine'ın adı yazım hatalı
+- [Crossfade](pmj-crossfade-2026-08.md) — iki YouTube deck'i A/B; 0039 ŞART, elle atlamada yok, mobilde kapalı
+- [Playlist müşteri aktifliği](pmj-playlist-customer-visibility-2026-08.md) — müşteri yalnızca customer_visible listeleri görür; 0040 ŞART, rayda göz düğmesi, otomatik çalma etkilenmez
+- [Admin paneli hızlandırma](pmj-admin-perf-2026-08.md) — 2 tur: `after()` + iyimser güncelleme, sonra render sıklığı (progress artık state değil, kuyruk sanal, slug→id tek sorgu)
+- [Üyelik onayları](pmj-uyelik-onaylari-2026-08.md) — KVKK+şartlar zorunlu, ticari ileti isteğe bağlı (kanun gereği); 0043 ŞART
+- [Dinamik öncelikli ücret](pmj-dynamic-priority-cost-2026-08.md) — taban + her 3 bekleyen normal şarkıya 1 jeton; 0044 ŞART, formül SQL+lib/pricing.ts ikizi
+- [Supabase custom domain](pmj-supabase-custom-domain-2026-08.md) — auth.playmyjam.com.tr aktif; Google OAuth client play-my-jam-502210 projesinde
+- [Player arka plan kesintisi](pmj-player-background-throttle-2026-08.md) — kesinti sebebi pencerenin kısılması; worker bekçisi + ?debug=1 kayıt paneli
+- [Spotify listesi aktarımı](pmj-spotify-aktarim-2026-08.md) — Soundiiz/TuneMyMusic hedefi YouTube Music olmalı; doğrulandı; şüpheli-işaretleme ekranı rafa kaldırıldı (şikâyet gelirse)
+- [YouTube hesap seçici](pmj-youtube-hesap-secici.md) — tıkla-seç playlist aktarma canlıda; jeton çerezde, gizli listeler senkronsuz
+- [Google OAuth doğrulama + onay ekranı markası](pmj-google-oauth-dogrulama.md) — BEKLEMEDE: marka adı/logo ve doğrulama, Supabase Pro + custom domain alınınca yapılacak (23 Eyl kararı; 4 adımlık sıra dosyada)
+- [Talep onay akışı](pmj-talep-onay-akisi-2026-08.md) — bildirimden onay + 10 dk tek seferlik çalma hakkı; 0045 ŞART, katalog hiç değişmez
+- [Çalınamaz damgası](pmj-unplayable-damga-2026-08.md) — damga sadece 100/101/150; geri alırken snapshot'tan da sil, yoksa şarkı hiç dönmez
+- [Mekana özel panel PWA](pmj-admin-pwa-2026-08.md) — her mekan kendi panelini ayrı uygulama olarak kurar; manifest+ikon proxy'de muaf; manifest head'e inline script ile konuyor (Next body'ye akıtıyordu)
+- [Panel içi mini player](pmj-mini-player-2026-08.md) — müzik artık panel kabuğundaki yüzen kartta; ayrı sekme TV modu
+- [Müşteri onboarding düzeni](pmj-musteri-onboarding-2026-08.md) — açılış GÖZAT, alt menüde JETON AL; anlatım modalı silindi, ilk girişte arama kendiliğinden açılıyor
+- [Görünmez çal düğmesi tuzağı](pmj-hover-gorunmez-dugme-2026-08.md) — Tailwind 4 hover'ı @media(hover:hover) ile sarıyor; dokunmatikte kaplama düğmeler görünmez ama tıklanabilir
+- [Dış katalog araması](pmj-dis-katalog-arama-2026-08.md) — mekan listesi boş dönünce Apple Music + Deezer sonuçları "İste" düğmesiyle çıkar; migration yok
+- [Talep durum şeridi](pmj-talep-durum-seridi-2026-08.md) — onay panelin her sayfasında görünür; İsteklerim sayfası artık profil menüsünde
+- [Realtime publication](pmj-realtime-publication-2026-08.md) — bazı tablolar dashboard'dan açılmış, migration'lara bakarak "kapalı" deme
+- [fillQueue yarışı](pmj-fillqueue-yaris-2026-08.md) — kuyruğa alakasız katalog şarkısı girmesinin sebebi; 0046 kilidi ŞART, fail-open
+- [Akış kısaltma (7→3 tık)](pmj-akis-kisaltma-2026-08.md) — misafir oturumu + şarkıya ödeme; Supabase "Anonymous sign-ins" açılmadan devreye girmez
+- [Telefonda kumanda modu](pmj-telefon-kumanda-modu-2026-08.md) — telefonda panel player kurmaz; karar lib/player-host.ts, localStorage ile çevrilebilir
+- [iyzico kart saklama](pmj-iyzico-kart-saklama-2026-08.md) — yıllık 99 TL eklenti alındı; cardUserKey dokümante değil, 0048 ŞART
+- [Kotasız YouTube mimarisi](pmj-kotasiz-mimari-2026-08.md) — search.list koddan silindi, havuz 11.017 şarkı; kalan iş gerçek cihaz testi
+- [Katalog hasadı](pmj-katalog-hasadi-2026-09.md) — UC→UU hasadı + günlük catalog-new cron'u (0053); elle tur EN FAZLA --budget 3500, cronlar kota istiyor
+- [Supabase projesi](pmj-supabase-hesabi.md) — 17 Eyl 2026 prod quvkscvbsplxkuolvhwe projesine taşındı; Vercel pmj artık jettplaycrm-9116 hesabında; DB şifresi .env.new
+- [İş yönetimi (CRM + hakediş + sözleşme onayı)](pmj-is-yonetimi-2026-09.md) — hakediş formülü, yalnız ücretli jeton; 0050+0051+0057 ŞART; koşullar tamsa 3 belge otomatik mekana gider (tür başlık sonekinde)
+- [Mekan yayılım planı](pmj-yayilim-plani-2026-09.md) — 5→30→…→2000; Pro planlar mekan öncesi son adım, kontrol listesi kararları kayıtlı; 5 mekan için Vercel Hobby + Supabase Free yetmiyor (heartbeat 5 sn, broadcast 1 sn)
+- [Player güvenilirlik turu](pmj-player-guvenilirlik-2026-09.md) — sahiplik kimliği bellekte (sessionStorage DEĞİL), from_video_id, oturum iptalinde çalma izni; c29543b prod
+- [Mekan sayfası (plaket arka yüzü)](pmj-mekan-sayfasi-2026-09.md) — /<slug>/bilgi; 0052 ŞART, 0ff9636 prod'da, hizmet super admin'de açılır, tasarımda reddedilen yönler kayıtlı
+- [iyzico Vercel TLS sorunu](pmj-iyzico-vercel-engel-2026-09.md) — 17-21 Eyl canlı ödeme yoktu: Node 24.20 TLS 1.3 el sıkışması kopuyordu; TLS 1.2 + retry ile çözüldü, 21 Eyl gerçek ödeme başarılı
+- [Metadata tazeleme](pmj-metadata-tazeleme-2026-09.md) — 30 gün kuralı: günde havuz/20 en eski önce, 0054 RPC'leri; 39 bin satır 61 sn
+- [Sağlık ekranı](pmj-saglik-ekrani-2026-09.md) — yalnız kontrol dışı sessizlik (player ölçer) + hatalı sıra; kullanıcının kendi duraklatmasını arıza sanma
+- [songs trigram indeksi](pmj-songs-trigram-2026-09.md) — songs ~830 bin; 0056 uygulandı; indekssiz metin araması timeout verir
+- [Arayüz analizi](pmj-arayuz-analizi-2026-09.md) — /super-admin/analytics: anonim tık/sayfa kaydı + ısı haritası; 0058 uygulandı, 44d0a9e prod
+- [Profesyonelleşme turu](pmj-profesyonellesme-2026-09.md) — büyük şirket standardı: CI/lint/hata sayfaları + Sentry prod'da; staging + db:migrate + Playwright e2e (CI'da da) hazır; CI/CD TAMAM — artık dal+PR, main korumalı, merge=otomatik prod; sırada CSP
+- [Git akışı: dal + PR](pmj-git-akisi-pr.md) — main korumalı; PR'ı API ile aç, yeşilse squash-merge, Vercel otomatik prod'a çıkarır

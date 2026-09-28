@@ -69,7 +69,7 @@ Doğrulama: `npm run check` ve `npm run e2e` yeşil, `npm run dev` ile http://lo
 
 1. `git switch main && git pull`, sonra `git switch -c <isim>/<kısa-ad>` ile dal açın, değişikliği commit'leyip dalı push edin.
 2. PR açın. GitHub CI'ı çalıştırır (lint, tip kontrolü, birim ve uçtan uca testler); Vercel test veritabanına bağlı bir deneme sitesi kurar ve linkini PR'a yazar.
-3. Diğer geliştirici PR'ı inceleyip onaylar (onaysız birleştirilemez). CI yeşilse ve deneme sitesi doğruysa PR'ı birleştirin (squash). `main`'e giren kod Vercel tarafından **otomatik olarak** prod'a çıkar; Vercel yayından önce CI'ın geçtiğini ayrıca kontrol eder.
+3. Berkay'ın PR'larını Taner onaylar (repo sahibi `buglessdigital` hesabı onay kuralından muaftır, CI ise herkese zorunludur). CI yeşilse ve deneme sitesi doğruysa PR'ı birleştirin (squash). `main`'e giren kod Vercel tarafından **otomatik olarak** prod'a çıkar; Vercel yayından önce CI'ın geçtiğini ayrıca kontrol eder.
 
 Acil bir durumda son çare olarak `npx vercel deploy --prod` hâlâ çalışır, ama bu yol CI'ı atlar.
 

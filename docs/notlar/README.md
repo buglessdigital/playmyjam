@@ -77,4 +77,4 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [songs trigram indeksi](pmj-songs-trigram-2026-09.md) — songs ~830 bin; 0056 uygulandı; indekssiz metin araması timeout verir
 - [Arayüz analizi](pmj-arayuz-analizi-2026-09.md) — /super-admin/analytics: anonim tık/sayfa kaydı + ısı haritası; 0058 uygulandı, 44d0a9e prod
 - [Profesyonelleşme turu](pmj-profesyonellesme-2026-09.md) — büyük şirket standardı: CI/lint/hata sayfaları + Sentry prod'da; staging + db:migrate + Playwright e2e (CI'da da) hazır; CI/CD TAMAM — artık dal+PR, main korumalı, merge=otomatik prod; sırada CSP
-- [Git akışı: dal + PR](pmj-git-akisi-pr.md) — main korumalı; PR'ı API ile aç, yeşilse squash-merge, Vercel otomatik prod'a çıkarır
+- [Git akışı: dal + PR](pmj-git-akisi-pr.md) — main korumalı, CI herkese zorunlu; Taner (buglessdigital hesabı) onaysız merge eder, Berkay'ın PR'ları Taner'in onayını bekler

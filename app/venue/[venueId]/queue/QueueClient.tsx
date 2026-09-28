@@ -12,6 +12,7 @@ import ProfileChip from "@/components/ui/ProfileChip";
 import { publishTokenBalance } from "@/lib/token-balance-store";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { usePlayerOnline } from "@/lib/use-player-online";
+import { coalesce, subscribeVenueLive } from "@/lib/venue-live";
 import { fmt, useT } from "@/lib/i18n";
 import {
   fetchManualQueueEntries,
@@ -89,8 +90,8 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     };
 
     // Bekleme süresi kuyruğun tamamını ister; RPC 10 kayıtla sınırlı ve auto-fill'i
-    // de içeriyor. Yalnızca kuyruk değiştiğinde tazelenir — heartbeat'in 15 sn'de
-    // bir tetiklediği now_playing güncellemeleri kuyruğun içeriğini değiştirmez.
+    // de içeriyor. Yalnızca kuyruk değiştiğinde tazelenir — çalan şarkı
+    // değişiklikleri kuyruğun içeriğini değiştirmez.
     const fetchWaitEntries = async () => {
       const entries = await fetchManualQueueEntries(supabase, venueDbId);
       if (!cancelled) setWaitEntries(entries);
@@ -99,23 +100,24 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     fetchState();
     fetchWaitEntries();
 
-    const queueChannel = supabase
-      .channel(`queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, () => {
-        fetchState();
-        fetchWaitEntries();
-      })
-      .subscribe();
-
-    const npChannel = supabase
-      .channel(`now_playing:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchState)
-      .subscribe();
+    // Canlı hat yalnızca anlamlı değişiklikte haber verir (heartbeat değil);
+    // art arda gelenler tek okumaya iner
+    const refreshState = coalesce(fetchState);
+    const refreshWait = coalesce(fetchWaitEntries);
+    const unsubscribe = subscribeVenueLive(venueDbId, (event) => {
+      if (event === "queue" || event === "resync") {
+        refreshState();
+        refreshWait();
+      } else if (event === "np") {
+        refreshState();
+      }
+    });
 
     return () => {
       cancelled = true;
-      supabase.removeChannel(queueChannel);
-      supabase.removeChannel(npChannel);
+      refreshState.cancel();
+      refreshWait.cancel();
+      unsubscribe();
     };
   }, [venueDbId, supabase]);
 

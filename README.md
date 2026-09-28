@@ -87,3 +87,4 @@ Bu araçlar Postgres portunu (5432) kullanır; bazı ofis/kafe ağları bu portu
 
 - **Birim testleri** (`lib/*.test.ts`, `node --test`): saf iş mantığı — ücret formülü, sıra düzeni, hakediş, şarkı eşleştirme. Ücret formülü SQL ikiziyle migration dosyasından okunarak karşılaştırılır.
 - **Uçtan uca testler** (`e2e/`, Playwright): site test veritabanına bağlı olarak yerelde derlenir, telefon ekranında robot tarayıcı müşteri akışını dener — misafir şarkıya ödeme yapar ve şarkı sıraya girer, reddedilen kartta jeton yüklenmez, oynatıcı kapalıyken ekleme kilitlenir. Her koşu `e2e-test` mekanını sıfırdan kurar. GitHub'da `STAGING_*` secret'larıyla her push'ta çalışır; başarısız koşunun raporu ve videosu Actions sayfasında `e2e-rapor` olarak indirilir. Başarısız testin videosu ve izi `e2e-results/` altında; rapor için `npx playwright show-report e2e-report`.
+brky

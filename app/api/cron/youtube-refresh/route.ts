@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { syncPlaylistSources } from "@/lib/playlist-sync";
 import { refreshStaleMetadata, type MetadataRefreshResult } from "@/lib/metadata-refresh";
 import { withActor } from "@/lib/actor";
+import { reportIssue } from "@/lib/ops-log";
 
 // YouTube API veri saklama uyumu (Developer Policy III.E.4): günlük cron.
 // 1) 30 günden eski search_cache satırları silinir.
@@ -36,17 +37,36 @@ async function handleGET(req: NextRequest) {
     .delete()
     .lt("cached_at", cutoff);
 
-  // Mekan sağlık kaydı (0055) 30 günden eskisini tutmaz
-  const { error: eventsErr } = await supabaseAdmin
-    .from("venue_events")
-    .delete()
-    .lt("at", cutoff);
+  // Mekan sağlık kaydı (0055) ve Sorunlar ekranının kayıtları (0061) 30 günden
+  // eskisini tutmaz
+  const [{ error: eventsErr }, { error: pushLogErr }, { error: systemLogErr }] = await Promise.all([
+    supabaseAdmin.from("venue_events").delete().lt("at", cutoff),
+    supabaseAdmin.from("push_deliveries").delete().lt("created_at", cutoff),
+    supabaseAdmin.from("system_events").delete().lt("at", cutoff),
+  ]);
+  const cleanupErr = cacheErr ?? eventsErr ?? pushLogErr ?? systemLogErr;
+  if (cleanupErr) {
+    await reportIssue({
+      area: "cron",
+      kind: "cleanup_failed",
+      severity: "warn",
+      message: "Günlük temizlik (30 gün kuralı) tamamlanamadı",
+      error: cleanupErr,
+    });
+  }
 
   let refresh: MetadataRefreshResult;
   try {
     refresh = await refreshStaleMetadata(startedAt + REFRESH_TIME_BUDGET_MS);
   } catch (err) {
     const message = err instanceof Error ? err.message : "refresh failed";
+    await reportIssue({
+      area: "cron",
+      kind: "metadata_refresh_failed",
+      severity: "error",
+      message: "Günlük metadata tazeleme çöktü — playlist senkronu da bugün çalışmadı",
+      error: err,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
   const quotaExceeded = refresh.stopped === "quota";
@@ -62,13 +82,28 @@ async function handleGET(req: NextRequest) {
       });
     } catch (err) {
       syncError = err instanceof Error ? err.message : "playlist sync failed";
+      await reportIssue({
+        area: "cron",
+        kind: "playlist_sync_failed",
+        severity: "error",
+        message: "Günlük playlist senkronu çöktü — mekan listelerine yeni şarkılar gelmedi",
+        error: err,
+      });
     }
+  } else {
+    await reportIssue({
+      area: "cron",
+      kind: "quota_exhausted",
+      severity: "warn",
+      message: "YouTube kotası metadata tazelemede doldu — playlist senkronu yarına kaldı",
+    });
   }
 
   return NextResponse.json({
     ok: true,
     cache_cleanup: cacheErr ? cacheErr.message : "done",
     events_cleanup: eventsErr ? eventsErr.message : "done",
+    ops_cleanup: pushLogErr?.message ?? systemLogErr?.message ?? "done",
     metadata_refresh: refresh,
     playlist_sync: sync,
     playlist_sync_error: syncError,

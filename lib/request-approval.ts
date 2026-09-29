@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendPushToUser, sendPushToVenueAdmins } from "@/lib/push";
+import { reportIssue } from "@/lib/ops-log";
 import { signRequestActionToken } from "@/lib/session";
 import { pickBestMatch } from "@/lib/song-match";
 import { getVideoDetails, YouTubeQuotaError, type TrackDetails } from "@/lib/youtube";
@@ -268,7 +269,17 @@ export async function approveSuggestion(
       body: `${resolved.title} — ${resolved.artist}. 10 dakika içinde jetonunla sıraya ekle, sonra hakkın düşer.`,
       url: slug ? `/venue/${slug}/browse?song=${resolved.youtube_video_id}` : "/",
       tag: `req-${request.id}`,
-    }).catch(() => {});
+    }, { kind: "request_approved", venueId: request.venue_id }).catch((err) =>
+      reportIssue({
+        area: "push",
+        kind: "request_approved_failed",
+        severity: "error",
+        message: `"Şarkın onaylandı" bildirimi gönderilemedi: ${resolved.title} — ${resolved.artist}`,
+        venueId: request.venue_id,
+        detail: { request_id: request.id, user_id: request.user_id },
+        error: err,
+      })
+    );
   }
 
   return {
@@ -293,7 +304,17 @@ export async function rejectSuggestion(request: SuggestionRow): Promise<void> {
       title: "Talebin bu sefer olmadı",
       body: `${request.suggested_title} — mekan şu an bu şarkıyı çalmak istemedi.`,
       tag: `req-${request.id}`,
-    }).catch(() => {});
+    }, { kind: "request_rejected", venueId: request.venue_id }).catch((err) =>
+      reportIssue({
+        area: "push",
+        kind: "request_rejected_failed",
+        severity: "warn",
+        message: `"Talebin olmadı" bildirimi gönderilemedi: ${request.suggested_title}`,
+        venueId: request.venue_id,
+        detail: { request_id: request.id, user_id: request.user_id },
+        error: err,
+      })
+    );
   }
 }
 
@@ -347,9 +368,20 @@ export async function notifyAdminsOfRequest(params: {
     ...(known ? { actions: [{ action: "approve", title: "Onayla" }] } : {}),
     data: { requestId: params.requestId, token },
   },
+    { kind: "request_new" },
     // Karar penceresi kapandıktan sonra düşen bildirim işe yaramaz
     { ttl: Math.ceil(REQUEST_DECISION_MS / 1000) }
-  ).catch(() => {});
+  ).catch((err) =>
+    reportIssue({
+      area: "push",
+      kind: "request_new_failed",
+      severity: "error",
+      message: `Mekana "yeni şarkı talebi" bildirimi gönderilemedi: ${params.title} — ${params.artist}`,
+      venueId: params.venueId,
+      detail: { request_id: params.requestId },
+      error: err,
+    })
+  );
 }
 
 /** Süresi dolmuş bekleyen talepleri kapatır (fırsat buldukça çağrılır). */

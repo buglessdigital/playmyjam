@@ -29,6 +29,16 @@ const navItems = [
     ),
   },
   {
+    href: "/super-admin/issues",
+    label: "Sorunlar",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M10.3 4.2L2.8 17.5A2 2 0 004.5 20.5h15a2 2 0 001.7-3L13.7 4.2a2 2 0 00-3.4 0z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M12 9.5v4.5M12 17h.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/super-admin/analytics",
     label: "Arayüz Analizi",
     icon: (

@@ -9,6 +9,8 @@ import {
   jumpPlaylistCursorTo,
 } from "@/lib/queue-fill";
 import { sendPushToUser } from "@/lib/push";
+import { reportIssue } from "@/lib/ops-log";
+import { runInBackground } from "@/lib/background";
 import { purgeUnplayableSong } from "@/lib/playlist";
 import { shouldKeepStage } from "@/lib/stage-clock";
 
@@ -176,7 +178,7 @@ async function advanceToNext(
     // Sıra boş yakalandıysa dolumu bekleyip bir kez daha dene — mekan listesinde
     // şarkı olduğu sürece "kuyruk boş" dönmemeli, çalma hiç durmamalı
     if (retryAfterFill) {
-      await fillQueue(venueId).catch(() => {});
+      await fillQueue(venueId).catch((err) => reportFillFailure(venueId, err));
       return advanceToNext(venueId, false, skips, force);
     }
     await supabaseAdmin
@@ -187,7 +189,7 @@ async function advanceToNext(
   }
 
   // Replenish queue after consuming a song — fire-and-forget
-  fillQueue(venueId).catch(() => {});
+  fillQueue(venueId).catch((err) => reportFillFailure(venueId, err));
 
   type SongInfo = {
     youtube_video_id: string;
@@ -247,27 +249,56 @@ async function advanceToNext(
   return { started: true, video_id: song.youtube_video_id, song_id: nextItem.song_id };
 }
 
-// Şarkının sahibine push: uygulama kapalıyken de "şarkın çalıyor" ulaşsın —
-// fire-and-forget. Venue sayfaları slug ile çözümlenir; bildirim URL'i için slug'ı çek.
+// Otomatik doldurma başarısızsa ilerletme yine sürer (fail-open) ama iz kalsın:
+// kuyruğun beklenmedik boşalmasının ilk bakılacak yeri
+function reportFillFailure(venueId: string, err: unknown): Promise<void> {
+  return reportIssue({
+    area: "queue",
+    kind: "fill_failed",
+    severity: "warn",
+    message: "Kuyruk otomatik doldurulamadı",
+    venueId,
+    error: err,
+  });
+}
+
+// Şarkının sahibine push: uygulama kapalıyken de "şarkın çalıyor" ulaşsın.
+// Yanıtı bekletmez; eskiden sahipsiz bir promise'ti ve yarıda kalabiliyordu.
 function notifySongOwner(
   venueId: string,
   userId: string | null,
   song: { title: string; artist: string; album_cover_url?: string | null }
 ): void {
   if (!userId) return;
-  (async () => {
-    const { data: venue } = await supabaseAdmin
-      .from("venues")
-      .select("slug")
-      .eq("id", venueId)
-      .single();
-    await sendPushToUser(userId, {
-      title: "Şarkın çalıyor! 🎵",
-      body: `${song.title} — ${song.artist} şu an sahnede`,
-      icon: song.album_cover_url ?? undefined,
-      url: venue?.slug ? `/venue/${venue.slug}/queue` : "/",
-    });
-  })().catch(() => {});
+  runInBackground(async () => {
+    try {
+      const { data: venue } = await supabaseAdmin
+        .from("venues")
+        .select("slug")
+        .eq("id", venueId)
+        .single();
+      await sendPushToUser(
+        userId,
+        {
+          title: "Şarkın çalıyor! 🎵",
+          body: `${song.title} — ${song.artist} şu an sahnede`,
+          icon: song.album_cover_url ?? undefined,
+          url: venue?.slug ? `/venue/${venue.slug}/queue` : "/",
+        },
+        { kind: "song_playing", venueId }
+      );
+    } catch (err) {
+      await reportIssue({
+        area: "push",
+        kind: "song_playing_failed",
+        severity: "error",
+        message: `"Şarkın çalıyor" bildirimi hazırlanamadı: ${song.title} — ${song.artist}`,
+        venueId,
+        detail: { user_id: userId },
+        error: err,
+      });
+    }
+  });
 }
 
 export type PlayNowResult = {
@@ -472,7 +503,7 @@ async function playSongNowLocked(
 
   // Boşalan yer (ve playlist atlamasında tamamen boşaltılan otomatik blok)
   // doldurulur: imleç yeni yerinde olduğu için liste kaldığı noktadan devam eder.
-  if (!options?.deferQueueWork) await fillQueue(venueId).catch(() => {});
+  if (!options?.deferQueueWork) await fillQueue(venueId).catch((err) => reportFillFailure(venueId, err));
 
   notifySongOwner(venueId, rowUserId, song);
 
@@ -657,7 +688,7 @@ async function syncPlayingVideoLocked(
   }
 
   await supabaseAdmin.from("now_playing").update(npPatch).eq("venue_id", venueId);
-  fillQueue(venueId).catch(() => {});
+  fillQueue(venueId).catch((err) => reportFillFailure(venueId, err));
   return { ok: true, matched: !!row };
 }
 

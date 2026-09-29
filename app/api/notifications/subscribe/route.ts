@@ -45,7 +45,8 @@ export async function POST(req: NextRequest) {
         title: "Bildirimler açık 🔔",
         body: "Talebin onaylandığında sana haber vereceğiz.",
         tag: "pmj-push-test",
-      }
+      },
+      { audience: "customer", recipientId: userId }
     );
   }
 

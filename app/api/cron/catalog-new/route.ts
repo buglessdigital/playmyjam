@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { refreshCatalogNewReleases } from "@/lib/catalog-new";
+import { reportIssue } from "@/lib/ops-log";
 
 // Günlük "yeni çıkanlar" turu — bkz. lib/catalog-new.ts. youtube-refresh'ten
 // ayrı tutuldu: ikisi 300 sn'lik süreyi paylaşmasın. Bu tur kota sıfırlanmadan
@@ -17,6 +18,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "catalog refresh failed";
+    await reportIssue({
+      area: "cron",
+      kind: "catalog_new_failed",
+      severity: "error",
+      message: "Günlük yeni çıkanlar turu çöktü — kataloğa yeni şarkı eklenmedi",
+      error: err,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

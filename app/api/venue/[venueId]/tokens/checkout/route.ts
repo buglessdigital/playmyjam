@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createCheckoutForm, type CheckoutFormInitializeRequest } from "@/lib/iyzico";
+import { reportIssue } from "@/lib/ops-log";
 import { hasVenueSession } from "@/lib/venue-auth-cookie";
 
 const MAX_TOKENS = 1000;
@@ -118,6 +119,14 @@ export async function POST(
     .select("id")
     .single();
   if (orderError || !order) {
+    await reportIssue({
+      area: "payment",
+      kind: "order_create_failed",
+      severity: "error",
+      message: "Jeton siparişi oluşturulamadı — müşteri ödemeye geçemedi",
+      venueId: venue.id,
+      error: orderError,
+    });
     return NextResponse.json({ error: "Sipariş oluşturulamadı" }, { status: 500 });
   }
 
@@ -195,6 +204,14 @@ export async function POST(
         .from("payment_orders")
         .update({ status: "failed", raw_response: result })
         .eq("id", order.id);
+      await reportIssue({
+        area: "payment",
+        kind: "checkout_rejected",
+        severity: "error",
+        message: `iyzico ödeme formunu açmadı: ${result.errorMessage ?? result.status}`,
+        venueId: venue.id,
+        detail: { order_id: order.id },
+      });
       return NextResponse.json({ error: result.errorMessage ?? "Ödeme başlatılamadı" }, { status: 502 });
     }
 
@@ -202,6 +219,15 @@ export async function POST(
   } catch (err) {
     console.error("iyzico checkout initialize hatası:", err);
     await supabaseAdmin.from("payment_orders").update({ status: "failed" }).eq("id", order.id);
+    await reportIssue({
+      area: "payment",
+      kind: "checkout_failed",
+      severity: "error",
+      message: "iyzico'ya ulaşılamadı — ödeme formu açılamadı",
+      venueId: venue.id,
+      detail: { order_id: order.id },
+      error: err,
+    });
     return NextResponse.json({ error: "Ödeme başlatılamadı" }, { status: 502 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { retrieveCheckoutForm, verifyCheckoutFormSignature } from "@/lib/iyzico";
+import { reportIssue } from "@/lib/ops-log";
 
 // iyzico, ödeme sonrası kullanıcının tarayıcısını bu adrese POST ile geri gönderir
 // (form-urlencoded `token`). Bu token asla direkt güvenilmez — gerçek durum
@@ -12,6 +13,12 @@ export async function POST(req: NextRequest) {
 
   if (typeof token !== "string" || !token) {
     console.error("iyzico callback: token eksik", Object.fromEntries(form?.entries() ?? []));
+    await reportIssue({
+      area: "payment",
+      kind: "callback_no_token",
+      severity: "error",
+      message: "iyzico dönüşünde ödeme jetonu yoktu — müşteri ödeme sonucunu göremedi",
+    });
     return NextResponse.redirect(new URL("/?payment=fail", origin), 303);
   }
 
@@ -20,6 +27,13 @@ export async function POST(req: NextRequest) {
     result = await retrieveCheckoutForm(token);
   } catch (err) {
     console.error("iyzico callback: retrieveCheckoutForm hatası", err);
+    await reportIssue({
+      area: "payment",
+      kind: "retrieve_failed",
+      severity: "error",
+      message: "iyzico'dan ödeme sonucu sorgulanamadı — ödeme alınmış olabilir, iyzico panelinden kontrol et",
+      error: err,
+    });
     return NextResponse.redirect(new URL("/?payment=fail", origin), 303);
   }
 
@@ -47,6 +61,13 @@ export async function POST(req: NextRequest) {
 
   if (!order) {
     console.error("iyzico callback: sipariş bulunamadı", { orderId, result });
+    await reportIssue({
+      area: "payment",
+      kind: "order_not_found",
+      severity: "error",
+      message: `iyzico dönüşündeki sipariş bulunamadı (${orderId ?? "kimlik yok"}) — ödeme durumu: ${result.paymentStatus ?? result.status}`,
+      detail: { order_id: orderId, payment_id: result.paymentId, status: result.status, payment_status: result.paymentStatus },
+    });
     return NextResponse.redirect(new URL("/?payment=fail", origin), 303);
   }
 
@@ -80,14 +101,36 @@ export async function POST(req: NextRequest) {
       if (cardKeyError) {
         // Jeton yükleme bundan etkilenmemeli: sadece "tek tık" konforu kaybolur
         console.error("iyzico callback: cardUserKey kaydedilemedi", cardKeyError);
+        await reportIssue({
+          area: "payment",
+          kind: "card_key_save_failed",
+          severity: "warn",
+          message: "Saklı kart anahtarı profile yazılamadı (jeton yüklemesi etkilenmedi)",
+          venueId: order.venue_id,
+          detail: { order_id: order.id },
+          error: cardKeyError,
+        });
       }
     }
 
-    await supabaseAdmin.rpc("confirm_payment_order", {
+    const { error: confirmError } = await supabaseAdmin.rpc("confirm_payment_order", {
       p_order_id: order.id,
       p_iyzico_payment_id: result.paymentId,
       p_raw: result,
     });
+    if (confirmError) {
+      // Para çekildi ama jeton yüklenmemiş olabilir: elle düzeltme gerektirir
+      console.error("iyzico callback: confirm_payment_order hatası", confirmError);
+      await reportIssue({
+        area: "payment",
+        kind: "confirm_failed",
+        severity: "error",
+        message: `Ödeme alındı ama jeton yüklenemedi — sipariş ${order.id} elle kontrol edilmeli`,
+        venueId: order.venue_id,
+        detail: { order_id: order.id, payment_id: result.paymentId, user_id: order.user_id },
+        error: confirmError,
+      });
+    }
     return NextResponse.redirect(new URL(`${tokensPath}?payment=success`, origin), 303);
   }
 
@@ -96,6 +139,18 @@ export async function POST(req: NextRequest) {
     signatureOk,
     status: result.status,
     paymentStatus: result.paymentStatus,
+  });
+
+  // Kart reddi müşteri tarafı bir durum (uyarı); imza uyuşmazlığı bizim sorunumuz
+  await reportIssue({
+    area: "payment",
+    kind: signatureOk ? "payment_declined" : "signature_mismatch",
+    severity: signatureOk ? "warn" : "error",
+    message: signatureOk
+      ? `Ödeme başarısız: ${result.errorMessage ?? result.paymentStatus ?? result.status}`
+      : "iyzico yanıt imzası doğrulanamadı — ödeme reddedildi sayıldı",
+    venueId: order.venue_id,
+    detail: { order_id: order.id, status: result.status, payment_status: result.paymentStatus, error_code: result.errorCode },
   });
 
   await supabaseAdmin

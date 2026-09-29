@@ -79,6 +79,18 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
+// Teslim onayı (push_deliveries, 0061): sunucu bildirimin gerçekten ekrana
+// düştüğünü ve dokunulduğunu buradan öğrenir. Onay gitmese de bildirim etkilenmez.
+function ackDelivery(deliveryId, event) {
+  if (typeof deliveryId !== "string" || !deliveryId) return Promise.resolve();
+  return fetch("/api/push/ack", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: deliveryId, event }),
+    keepalive: true,
+  }).catch(() => {});
+}
+
 // Web push. Şarkı talebi bildirimlerinde yük ayrıca onay/ret düğmelerini
 // (actions) ve imzalı kararı taşır — bkz. lib/request-approval.ts.
 self.addEventListener("push", (event) => {
@@ -89,6 +101,7 @@ self.addEventListener("push", (event) => {
   } catch {
     data = { title: "PlayMyJam", body: event.data.text() };
   }
+  const deliveryId = data.data?.deliveryId;
   event.waitUntil(
     self.registration.showNotification(data.title ?? "PlayMyJam", {
       body: data.body ?? "",
@@ -100,7 +113,7 @@ self.addEventListener("push", (event) => {
       // ve karar ekranı sayfada gösterilir (aynı sonuç, bir dokunuş fazla).
       actions: Array.isArray(data.actions) ? data.actions : undefined,
       data: { url: data.url ?? "/", ...(data.data ?? {}) },
-    })
+    }).then(() => ackDelivery(deliveryId, "shown"))
   );
 });
 
@@ -155,20 +168,22 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const payload = event.notification.data ?? {};
   const targetUrl = payload.url ?? "/";
+  const acked = ackDelivery(payload.deliveryId, "clicked");
 
   if (event.action === "approve" || event.action === "reject") {
-    event.waitUntil(decideRequest(event.action, payload));
+    event.waitUntil(Promise.all([decideRequest(event.action, payload), acked]));
     return;
   }
 
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+  const opened = self.clients
+    .matchAll({ type: "window", includeUncontrolled: true })
+    .then((clients) => {
       const existing = clients.find((client) => "focus" in client);
       if (existing) {
         existing.focus();
         return existing.navigate(targetUrl);
       }
       return self.clients.openWindow(targetUrl);
-    })
-  );
+    });
+  event.waitUntil(Promise.all([opened, acked]));
 });

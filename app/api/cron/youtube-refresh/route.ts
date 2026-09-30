@@ -70,6 +70,19 @@ async function handleGET(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
   const quotaExceeded = refresh.stopped === "quota";
+  if (refresh.failed > 0) {
+    await reportIssue({
+      area: "cron",
+      kind: "metadata_refresh_partial",
+      severity: refresh.stopped === "db" ? "error" : "warn",
+      message:
+        refresh.stopped === "db"
+          ? "Metadata tazeleme veritabanı hataları yüzünden yarıda kaldı"
+          : "Metadata tazelemede bazı satırlar yazılamadı, yarın tekrar denenecek",
+      detail: { failed: refresh.failed, refreshed: refresh.refreshed, target: refresh.target },
+      error: refresh.writeError,
+    });
+  }
 
   // 3) Playlist senkronu. Kota zaten dolduysa hiç denenmez — dokunulmayan
   //    kaynakların sırası bozulmadan yarına devreder.

@@ -21,8 +21,17 @@ const MIN_AGE_DAYS = 7;
 // Adaylar tek RPC ile dilim dilim alınır (0054 stale_song_video_ids); 20 bin
 // aday ~2 sn, API rolünün sorgu sınırı 8 sn.
 const CANDIDATE_SLICE = 20_000;
-// Tek toplu yazmanın satır sayısı
+// Parti boyu (videos.list 20 çağrı)
 const CHUNK = 1_000;
+// Tek refresh_song_metadata çağrısının satır sayısı. 0056'nın iki trigram
+// (GIN) indeksi her güncellemeye yazıyor: 30 Eyl 2026 ölçümü 1.000 satır
+// 5,7-13 sn (8 sn sınırına takıldı), 250 satır 0,5-0,85 sn.
+const WRITE_CHUNK = 250;
+// Yazılamayan dilim bir kez yeniden denenir, yine olmazsa atlanır: satırlar
+// en eski kaldığı için ertesi gün ilk sırada gelir. Eskiden tek zaman aşımı
+// günün tamamını (ve ardındaki playlist senkronunu) düşürüyordu. Bu kadar
+// dilim düşerse veritabanı gerçekten sorunlu demektir, tur durur.
+const MAX_FAILED_WRITES = 4;
 // Paralel işlenen parti sayısı. Sıralı gidince 1.000 satır ~5 sn sürüyordu
 // (videos.list ~1,5, yazma ~2,7 sn); 4 paralel yazma + hasat aynı anda
 // veritabanını sorgu sınırına dayadı, 3'te kalındı.
@@ -36,8 +45,11 @@ export type MetadataRefreshResult = {
   refreshed: number;
   delisted: number;
   purged: number;
+  // Yazılamayıp atlanan satırlar (bkz. MAX_FAILED_WRITES)
+  failed: number;
+  writeError: string | null;
   units: number;
-  stopped: "done" | "time" | "quota";
+  stopped: "done" | "time" | "quota" | "db";
   // Adım süreleri (ms) — 300 sn'ye sığıp sığmadığını izlemek için
   ms: { count: number; select: number; youtube: number; write: number; purge: number };
 };
@@ -72,9 +84,20 @@ export async function refreshStaleMetadata(deadline: number): Promise<MetadataRe
   const pool = count ?? 0;
   const target = Math.min(MAX_BATCH, Math.max(MIN_BATCH, Math.ceil(pool / CYCLE_DAYS)));
   const result: MetadataRefreshResult = {
-    pool, target, refreshed: 0, delisted: 0, purged: 0, units: 0, stopped: "done", ms,
+    pool, target, refreshed: 0, delisted: 0, purged: 0, failed: 0, writeError: null, units: 0, stopped: "done", ms,
   };
   const cutoff = new Date(Date.now() - MIN_AGE_DAYS * 86_400_000).toISOString();
+  let failedWrites = 0;
+
+  // Tek dilim yazma: bir kez yeniden dener, olmazsa null döner (atlandı)
+  async function writeSlice(slice: Row[]): Promise<{ song_id: string }[] | null> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data, error } = await supabaseAdmin.rpc("refresh_song_metadata", { p_rows: slice });
+      if (!error) return (data ?? []) as { song_id: string }[];
+      result.writeError = `metadata yazılamadı: ${error.message}`;
+    }
+    return null;
+  }
 
   // Tek parti: videos.list → toplu yazma → gömülemeyenleri kataloglardan düşürme
   async function processChunk(ids: string[]) {
@@ -89,22 +112,30 @@ export async function refreshStaleMetadata(deadline: number): Promise<MetadataRe
       }
     });
 
+    // Yanıtta dönmeyen video silinmiş/gizlenmiş: metadata artık doğrulanamaz,
+    // gömülemez işaretlenir ki arama ve otomatik dolum önermesin
     const rows: Row[] = ids.map((id) => {
       const m = meta.get(id);
-      // Yanıtta dönmeyen video silinmiş/gizlenmiş: metadata artık doğrulanamaz,
-      // gömülemez işaretlenir ki arama ve otomatik dolum önermesin
-      if (!m) {
-        result.delisted++;
-        return { youtube_video_id: id, embeddable: false };
-      }
-      result.refreshed++;
-      return { youtube_video_id: id, ...m };
+      return m ? { youtube_video_id: id, ...m } : { youtube_video_id: id, embeddable: false };
     });
 
     const unplayable = await timed("write", async () => {
-      const { data, error } = await supabaseAdmin.rpc("refresh_song_metadata", { p_rows: rows });
-      if (error) throw new Error(`metadata yazılamadı: ${error.message}`);
-      return (data ?? []) as { song_id: string }[];
+      const out: { song_id: string }[] = [];
+      for (let i = 0; i < rows.length && result.stopped === "done"; i += WRITE_CHUNK) {
+        const slice = rows.slice(i, i + WRITE_CHUNK);
+        const written = await writeSlice(slice);
+        if (!written) {
+          result.failed += slice.length;
+          if (++failedWrites >= MAX_FAILED_WRITES) result.stopped = "db";
+          continue;
+        }
+        for (const r of slice) {
+          if (meta.get(r.youtube_video_id)) result.refreshed++;
+          else result.delisted++;
+        }
+        out.push(...written);
+      }
+      return out;
     });
 
     // Hak sahibi embed'i kapatmış ya da video kalkmış: mekan kataloglarından düşür
@@ -116,8 +147,8 @@ export async function refreshStaleMetadata(deadline: number): Promise<MetadataRe
     });
   }
 
-  while (result.refreshed + result.delisted < target) {
-    const remaining = target - result.refreshed - result.delisted;
+  while (result.refreshed + result.delisted + result.failed < target) {
+    const remaining = target - result.refreshed - result.delisted - result.failed;
     const candidates = await timed("select", async () => {
       const { data, error } = await supabaseAdmin.rpc("stale_song_video_ids", {
         p_cutoff: cutoff,

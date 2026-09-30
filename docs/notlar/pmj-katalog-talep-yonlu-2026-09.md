@@ -1,0 +1,12 @@
+---
+name: pmj-katalog-talep-yonlu-2026-09
+description: Katalog neden bilindik şarkıda boş çıkıyor (30 Eyl 2026) — hacim değil kapsama sorunu; isimden kanal bulma forHandle ile 1 birim
+metadata:
+  type: project
+---
+
+30 Eyl 2026: havuz 884 bin şarkıya çıkmıştı ama kullanıcı aradığı bilindik şarkıları bulamıyordu. Ölçüm (42 bilindik şarkı) %83 isabet verdi; kaçanların tamamı **güncel Türkçe pop/rap** (Semicenk, Sefo, Motive, Zeynep Bastık, Manuş Baba, Sıla). Sebep: hasat bir sanatçının diskografisini ancak **kanal kimliğini** bilirse çekiyor, kimlik de "şarkı hangi kanaldan geldi" üzerinden öğreniliyor. Topic kanalı hasat edilmiş 1.636 sanatçının diskografisi tam (kataloğun %89'u), 23.560 sanatçının ise ortalama 4 şarkısı var. Türk plak şirketi kanallarından gelen 18.969 sanatçının yalnızca 266'sının kendi kanalı havuzda görünüyor — şarkı "netd müzik"ten geldiği için sanatçının kanalı hiç kaydedilmiyor.
+
+**Why:** Kataloğu büyütmek ≠ kapsamak. Arz yönlü hasat (Topic + plak şirketi) hacmi 37 katına çıkardı ama talep edilen isimleri getirmedi. Vevo hasadı (4.639 kanal, ~70.000 birim, 3 hafta) da bu boşluğu kapatmıyor: eksik güncel Türk sanatçıları Vevo'da değil.
+
+**How to apply:** (1) İsimden kanal bulmak `scripts/find-artist-channels.ts` (`npm run find:channels`): `channels.list?forHandle` **1 birim**, sanatçı başına en çok 2 tahmin (slug + slugofficial). Ölçüm: 622 denemede 325 kanal, 1.032 birim — isabet ~%76, sanatçı başına 1,33 birim. `search.list` ASLA kullanılmaz: 100 birim/sanatçı, 1000 sanatçı = 10 günlük kotanın tamamı. (2) Handle tahmini namesake'e düşebildiği için kanal adı sanatçı adıyla karşılaştırılır (`isMatch`); "1 video"lu kanallar kabul edilir, zararı 1-2 birim ve hasat süzgeci çöpü eliyor. (3) "X & Y", "feat." içeren adlar atlanır — ortak kaydın kanalı yoktur, boşuna birim. (4) Hedef listesi `scripts/.tr-artists.csv` (en çok dinlenen, Topic'siz Türk sanatçıları). (5) **Sıradaki iş:** boş arama kaydı YOK — müşteri arayıp bulamayınca, serbest metin önerisi göndermedikçe iz kalmıyor. Kayıt eklenirse katalog tahminle değil talep sıralamasıyla büyür; elde hâlihazırda 80 çözülmemiş öneri var (Tankurt Manas 5 kez). (6) Ayrı tuzak: "mor ve ötesi – Cambaz" istenip reddedilmiş ama şarkı katalogda VAR — bulunamama şikâyetinin bir kısmı katalog boşluğu değil arama/eşleştirme olabilir, ölçülmedi. Bkz. [[pmj-katalog-hasadi-2026-09]], [[pmj-oneri-akisi-2026-08]].

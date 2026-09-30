@@ -10,3 +10,5 @@ metadata:
 **Why:** Eski kod "havuz/30, en çok 5000" diyordu ama PostgREST 1.000'de kestiği için günde 1.000 satır tazeleniyordu; havuz hasatla ~780 bine çıktı, ~512 bin satırın 30 günü 19-21 Ekim'e denk geliyordu. YouTube kota başvurusunun uyum incelemesi bu kuralı kontrol ediyor.
 
 **How to apply:** (1) PostgREST'ten >1.000 satır lazımsa dizi döndüren RPC kullan. (2) 4 paralel yazma + hasat aynı anda API rolünün 8 sn sorgu sınırına dayadı → 3. (3) Her turda baştan okumak, tazelenen satırların ölü indeks kayıtları yüzünden yavaşlıyor — aday listesini baştan al. Cron yanıtındaki `metadata_refresh.ms` adım sürelerini gösterir. Bkz. [[pmj-katalog-hasadi-2026-09]], [[pmj-youtube-quota-2026-07]].
+
+**30 Eyl 2026:** 29 Eyl hiç, 30 Eyl yalnız 2.000 satır tazelendi — Sentry "metadata yazılamadı: statement timeout". Sebep 0056'nın iki trigram (GIN) indeksi: her güncelleme onlara da yazıyor, 1.000 satırlık tek çağrı 5,7-13 sn sürdü (250 satır 0,5-0,85 sn). Yazma artık 250'lik dilimlerle (`WRITE_CHUNK`). songs'a yeni indeks eklerken toplu yazmaları yeniden ölç. Bkz. [[pmj-songs-trigram-2026-09]].

@@ -21,8 +21,12 @@ const MIN_AGE_DAYS = 7;
 // Adaylar tek RPC ile dilim dilim alınır (0054 stale_song_video_ids); 20 bin
 // aday ~2 sn, API rolünün sorgu sınırı 8 sn.
 const CANDIDATE_SLICE = 20_000;
-// Tek toplu yazmanın satır sayısı
+// Parti boyu (videos.list 20 çağrı)
 const CHUNK = 1_000;
+// Tek refresh_song_metadata çağrısının satır sayısı. 0056'nın iki trigram
+// (GIN) indeksi her güncellemeye yazıyor: 30 Eyl 2026 ölçümü 1.000 satır
+// 5,7-13 sn (8 sn sınırına takıldı), 250 satır 0,5-0,85 sn.
+const WRITE_CHUNK = 250;
 // Paralel işlenen parti sayısı. Sıralı gidince 1.000 satır ~5 sn sürüyordu
 // (videos.list ~1,5, yazma ~2,7 sn); 4 paralel yazma + hasat aynı anda
 // veritabanını sorgu sınırına dayadı, 3'te kalındı.
@@ -102,9 +106,15 @@ export async function refreshStaleMetadata(deadline: number): Promise<MetadataRe
     });
 
     const unplayable = await timed("write", async () => {
-      const { data, error } = await supabaseAdmin.rpc("refresh_song_metadata", { p_rows: rows });
-      if (error) throw new Error(`metadata yazılamadı: ${error.message}`);
-      return (data ?? []) as { song_id: string }[];
+      const out: { song_id: string }[] = [];
+      for (let i = 0; i < rows.length; i += WRITE_CHUNK) {
+        const { data, error } = await supabaseAdmin.rpc("refresh_song_metadata", {
+          p_rows: rows.slice(i, i + WRITE_CHUNK),
+        });
+        if (error) throw new Error(`metadata yazılamadı: ${error.message}`);
+        out.push(...((data ?? []) as { song_id: string }[]));
+      }
+      return out;
     });
 
     // Hak sahibi embed'i kapatmış ya da video kalkmış: mekan kataloglarından düşür

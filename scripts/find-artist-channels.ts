@@ -5,6 +5,8 @@
  *   npm run find:channels -- --dry            # ne yapacağını yazar
  *   npm run find:channels -- --budget 1500    # kotanın bir kısmını harca
  *   npm run find:channels -- --limit 300      # ilk 300 sanatçı
+ *   npm run find:channels -- --from-requests  # çözülmemiş müşteri talepleri
+ *   npm run find:channels -- --names-file x   # satır başına bir sanatçı adı
  *
  * NEDEN VAR
  * Hasat (seed-catalog.ts) bir sanatçının diskografisini ancak kanal kimliğini
@@ -39,6 +41,8 @@ const flag = (name: string, fallback: string) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : fallback;
 };
 const BUDGET = Number(flag("budget", "1500"));
+const FROM_REQUESTS = args.includes("--from-requests");
+const NAMES_FILE = flag("names-file", "");
 const LIMIT = Number(flag("limit", "1000"));
 
 function loadEnvLocal() {
@@ -133,7 +137,29 @@ function isMatch(artist: string, channel: Channel): boolean {
 
 /* ---------- ana akış ---------- */
 
+// Havuzda HİÇ olmayan sanatçı, havuzdan çıkarılan hedef listesine giremez —
+// tam da aranıp bulunamayanlar onlar. Bu yüzden iki dış kaynak var: elle isim
+// listesi ve müşterinin karşılıksız kalmış serbest metin önerileri.
+async function fromRequests(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("song_requests")
+    .select("suggested_artist")
+    .is("song_id", null)
+    .not("suggested_artist", "is", null);
+  if (error) throw new Error(`song_requests okunamadı: ${error.message}`);
+  const names = new Set<string>();
+  for (const row of data ?? []) {
+    const name = (row.suggested_artist as string | null)?.trim();
+    if (name) names.add(name);
+  }
+  return [...names];
+}
+
 async function targets(): Promise<string[]> {
+  if (NAMES_FILE) {
+    return readFileSync(NAMES_FILE, "utf8").split("\n").map((l) => l.trim()).filter(Boolean).slice(0, LIMIT);
+  }
+  if (FROM_REQUESTS) return (await fromRequests()).slice(0, LIMIT);
   const { data, error } = await supabase.rpc("tr_artists_without_channel", { limit_count: LIMIT });
   if (!error && Array.isArray(data)) return data as string[];
   // RPC yoksa dosyadan: psql ile çıkarılmış "ad|izlenme" listesi

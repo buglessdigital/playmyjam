@@ -39,6 +39,17 @@ const navItems = [
     ),
   },
   {
+    href: "/super-admin/catalog",
+    label: "Katalog",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M9 18V5l10-2v13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.8" />
+        <circle cx="16" cy="16" r="3" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    ),
+  },
+  {
     href: "/super-admin/analytics",
     label: "Arayüz Analizi",
     icon: (

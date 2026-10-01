@@ -232,7 +232,7 @@ function write(found: Array<{ artist: string; channel: Channel }>) {
 main()
   .then(({ found, stats }) => {
     write(found);
-    report(stats, found.length);
+    report(stats);
   })
   .catch((err) => {
     if (err instanceof BudgetExhausted) {
@@ -243,7 +243,7 @@ main()
     process.exit(1);
   });
 
-function report(stats: Record<string, number>, yazilan: number) {
+function report(stats: Record<string, number>) {
   console.log("\nBitti");
   console.log(`  denenen sanatçı : ${stats.denenen}`);
   console.log(`  atlanan (ortak/kısa ad): ${stats.atlanan}`);

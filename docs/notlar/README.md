@@ -82,3 +82,4 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Ölçek eşikleri](pmj-olcek-esikleri-2026-09.md) — Redis/replika/arama servisi/kuyruk ŞİMDİ kurulmaz; her biri hangi ölçümle tetiklenir + dalga öncesi `npm run load:venue`
 - [Sorunlar ekranı](pmj-sorunlar-ekrani-2026-09.md) — /super-admin/issues: bildirim akıbeti (gönderildi≠göründü, sw.js onayı) + ödeme/cron/sunucu hataları, Sentry'ye de gider; 0061 ŞART
 - [Katalog: talep yönlü kapsama](pmj-katalog-talep-yonlu-2026-09.md) — hacim değil kapsama sorunu; isimden kanal `forHandle` ile 1 birim, search.list ASLA
+- [Katalog ekranı](pmj-katalog-ekrani-2026-10.md) — /super-admin/catalog: havuzda arama + hasat ilerleme çubuğu; 0064+0065 ŞART, arama en az 3 harf

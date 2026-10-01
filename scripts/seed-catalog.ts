@@ -288,6 +288,81 @@ async function syncStateToDb(state: SeedState) {
   }
 }
 
+/* ---------- tur kaydı (super admin Katalog ekranı) ---------- */
+
+// Betik geliştiricinin makinesinde çalışıyor; ilerlemesi paylaşılan bir yere
+// yazılmazsa ekran turu gösteremez (bkz. 0064). Yazma hataları turu DÜŞÜRMEZ:
+// ilerleme kaydı işin kendisi değil, onun seyir defteri.
+let runId: number | null = null;
+let lastBeat = 0;
+
+async function runStart(listsTotal: number) {
+  if (DRY_RUN) return;
+  try {
+    const { data, error } = await retry("tur kaydı", () =>
+      supabase
+        .from("catalog_runs")
+        .insert({ budget: BUDGET, lists_total: listsTotal, status: "running" })
+        .select("id")
+        .single()
+    );
+    if (error) throw new Error(error.message);
+    runId = (data as { id: number }).id;
+  } catch (err) {
+    console.log(`  (tur kaydı açılamadı: ${err instanceof Error ? err.message : err})`);
+  }
+}
+
+// Her listeden sonra çağrılır ama en çok 5 saniyede bir yazar: 500 küçük liste
+// işlenen bir turda her satır için istek atmak işi yavaşlatır.
+async function runBeat(currentList: string | null, force = false) {
+  if (runId === null) return;
+  const now = Date.now();
+  if (!force && now - lastBeat < 5000) return;
+  lastBeat = now;
+  try {
+    await retry("tur kaydı", () =>
+      supabase
+        .from("catalog_runs")
+        .update({
+          units_spent: unitsSpent,
+          lists_done: stats.playlists,
+          lists_deferred: stats.deferred,
+          songs_added: stats.upserted,
+          current_list: currentList,
+          heartbeat_at: new Date().toISOString(),
+        })
+        .eq("id", runId)
+    );
+  } catch {
+    // sessiz: bir sonraki nabız zaten yeniden dener
+  }
+}
+
+async function runFinish(status: string, note: string) {
+  if (runId === null) return;
+  try {
+    await retry("tur kaydı", () =>
+      supabase
+        .from("catalog_runs")
+        .update({
+          status,
+          note,
+          units_spent: unitsSpent,
+          lists_done: stats.playlists,
+          lists_deferred: stats.deferred,
+          songs_added: stats.upserted,
+          current_list: null,
+          finished_at: new Date().toISOString(),
+          heartbeat_at: new Date().toISOString(),
+        })
+        .eq("id", runId)
+    );
+  } catch (err) {
+    console.log(`  (tur kaydı kapatılamadı: ${err instanceof Error ? err.message : err})`);
+  }
+}
+
 // playlists.list — 1 birim / 50 liste. Turun en ucuz adımı ve en büyük tasarrufu.
 // Yanıtta dönmeyen kimlik silinmiş/gizlenmiş listedir; state'e bakılmadan denenir
 // ve asıl hatayı playlistItems verir.
@@ -555,6 +630,8 @@ async function main() {
       `bütçe ${BUDGET} birim${DRY_RUN ? " (KURU ÇALIŞMA)" : ""}\n`
   );
 
+  await runStart(todo.length);
+
   for (const playlistId of todo) {
     // Şarkılar liste sonunda yazılıyor: bütçe listenin ortasında biterse okunan
     // sayfalar çöpe gider (19 binlik bir listede ~380 birim). Başlamadan önce en
@@ -565,6 +642,7 @@ async function main() {
       continue;
     }
     try {
+      await runBeat(playlistId);
       await seedPlaylist(playlistId, counts, state);
     } catch (err) {
       // Bütçe/kota dışındaki hatalar TEK listeyi düşürür, turu değil: silinmiş
@@ -618,11 +696,22 @@ async function seedPlaylist(playlistId: string, counts: Map<string, number>, sta
 }
 
 main()
-  .then(() => report("Bitti"))
-  .catch((err) => {
-    if (err instanceof BudgetExhausted) return report(`Bütçe doldu (${BUDGET} birim)`);
-    if (err instanceof QuotaExhausted) return report("Günlük YouTube kotası doldu");
-    console.error(`\nHata: ${err instanceof Error ? err.message : err}`);
+  .then(async () => {
+    await runFinish("done", "sıra tükendi");
+    report("Bitti");
+  })
+  .catch(async (err) => {
+    if (err instanceof BudgetExhausted) {
+      await runFinish("budget", `bütçe doldu (${BUDGET} birim)`);
+      return report(`Bütçe doldu (${BUDGET} birim)`);
+    }
+    if (err instanceof QuotaExhausted) {
+      await runFinish("quota", "günlük YouTube kotası doldu");
+      return report("Günlük YouTube kotası doldu");
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    await runFinish("error", message.slice(0, 300));
+    console.error(`\nHata: ${message}`);
     report("Yarıda kesildi");
     process.exit(1);
   });

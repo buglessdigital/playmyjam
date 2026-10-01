@@ -528,15 +528,24 @@ async function main() {
   const fromChannels = channels.length > 0 ? await expandChannels(channels, counts) : [];
   const playlistIds = [...new Set([...playlists, ...harvested, ...fromChannels])];
 
+  // Bir kez sonuna kadar okunmuş liste ELLE hasatta bir daha açılmaz — şarkı
+  // sayısı değişmiş olsa bile. Değişim demeti küçük (kanala 10 video eklenmiş)
+  // ama liste baştan okunuyor: 30 Eyl turunda Seyhan 11.531 şarkı için 230,
+  // Poll 8.429 şarkı için 170 birim yaktı ve toplam 3 yeni şarkı çıktı.
+  // Yeni yüklemeleri almak günlük catalog-new cron'unun işi: o en yeni
+  // sayfadan başlar ve bilinen şarkıya gelince durur. Elle hasadın işi hiç
+  // okunmamış kanallar. Tamamı yeniden okunacaksa --force.
   const todo = playlistIds.filter((id) => {
-    const seen = state[id];
-    const now = counts.get(id);
-    if (!FORCE && seen !== undefined && now !== undefined && seen === now) {
+    if (!FORCE && state[id] !== undefined) {
       stats.unchanged++;
       return false;
     }
     return true;
   });
+
+  // Küçük listeler önce: bütçe büyük bir kanala takılıp onlarca küçük kanalı
+  // bekletmesin (sığmayan liste zaten sonraki tura kalıyor).
+  todo.sort((a, b) => (counts.get(a) ?? 0) - (counts.get(b) ?? 0));
 
   console.log(
     `${playlistIds.length} playlist` +

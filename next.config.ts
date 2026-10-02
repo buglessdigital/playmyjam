@@ -4,6 +4,10 @@ import { withSentryConfig } from "@sentry/nextjs/config";
 const nextConfig: NextConfig = {
   cacheComponents: true,
   images: {
+    // Vercel'in görsel optimizasyonu kapalı: her farklı kapak × genişlik ayrı
+    // "transformation" sayılıyor ve büyük katalogda Hobby kotasını (5K/ay)
+    // aşıp hesabı duraklattı. YouTube kapakları zaten küçük, sıkıştırılmış JPG.
+    unoptimized: true,
     remotePatterns: [
       // YouTube video thumbnail'ları (kapak görseli olarak kullanılıyor)
       { protocol: "https", hostname: "i.ytimg.com" },

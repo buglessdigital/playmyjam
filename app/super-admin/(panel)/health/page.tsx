@@ -9,7 +9,7 @@ import type { HealthIncident } from "@/app/api/super-admin/health/route";
 // sayılmaz) ve hatalı sıra (müşteri isteği sırası geldiği hâlde çalmadı).
 // Ayrıntı: app/api/super-admin/health/route.ts.
 
-type Tab = "silence" | "order";
+type Tab = "silence" | "queue" | "order";
 
 type VenueHealth = {
   id: string;
@@ -20,7 +20,7 @@ type VenueHealth = {
   last24h: { silence: number; order: number };
 };
 
-type HealthResponse = { now: string; venues: VenueHealth[]; incidents: HealthIncident[] };
+type HealthResponse = { now: string; venues: VenueHealth[]; incidents: HealthIncident[]; suppressed: number };
 
 const REFRESH_MS = 15_000;
 // Panelin "oynatıcı çevrimdışı" eşiğiyle aynı
@@ -28,22 +28,14 @@ const OFFLINE_MS = 45_000;
 const RED = "#f87171";
 const MUTED = "#6b7280";
 
-// Sessizlik sırasında player'ın gördüğü olaylar → sade dilde olası sebep
+// Sessizliğin öncelikli sebebi (route.ts primaryCause) → sade dil
 const CAUSE_TEXT: Record<string, string> = {
-  network_offline: "mekanın interneti koptu",
-  network_error: "player sunucuya ulaşamadı",
-  offline_fallback: "player sunucuya ulaşamadı",
-  page_frozen: "tarayıcı player sayfasını dondurdu",
-  tab_throttled: "tarayıcı player sayfasını dondurdu",
-  skip_deferred: "pencere arkadaydı, tarayıcı şarkıyı başlatmadı",
-  stall: "şarkı YouTube'dan yüklenemedi",
-  stall_reload: "şarkı YouTube'dan yüklenemedi",
-  stall_gave_up: "şarkı YouTube'dan yüklenemedi",
-  youtube_error: "YouTube şarkıyı çalmadı (hata)",
-  transient_skip: "YouTube şarkıyı çalmadı (hata)",
+  network: "mekan cihazının interneti koptu",
+  session: "mekan oturumu düştü",
+  youtube: "şarkı YouTube'dan yüklenemedi",
+  frozen: "tarayıcı player sayfasını dondurdu",
   external_pause: "müzik dışarıdan duraklatıldı (YouTube / medya tuşu)",
-  idle_silence: "kuyruk boşaldı",
-  session_lost: "mekan oturumu düştü",
+  queue_empty: "kuyruk boşaldı",
 };
 
 const END_TEXT: Record<string, string> = {
@@ -56,10 +48,6 @@ const END_TEXT: Record<string, string> = {
   unknown: "Bitişi kaydedilemedi (player kapandı ya da çöktü)",
 };
 
-function causeText(causes: string[]): string | null {
-  const texts = [...new Set(causes.map((c) => CAUSE_TEXT[c]).filter(Boolean))];
-  return texts.length > 0 ? texts.join(", ") : null;
-}
 
 function duration(seconds: number): string {
   if (seconds < 60) return `${seconds} sn`;
@@ -143,18 +131,20 @@ function HealthPageContent() {
   );
   const activeVenues = (data?.venues ?? []).filter((v) => v.status === "active");
   const incidents = data?.incidents ?? [];
-  const silences = incidents.filter((i) => i.type === "silence");
+  const allSilences = incidents.filter((i) => i.type === "silence");
+  const silences = allSilences.filter((i) => !i.queue_empty);
+  const queueEmpty = allSilences.filter((i) => i.queue_empty);
   const orders = incidents.filter((i) => i.type === "order");
-  const shown = tab === "silence" ? silences : orders;
+  const shown = tab === "silence" ? silences : tab === "queue" ? queueEmpty : orders;
   const ongoingBy = new Map(
-    silences.filter((i) => i.type === "silence" && i.ended_by === "ongoing").map((i) => [i.venue_id, i])
+    allSilences.filter((i) => i.type === "silence" && i.ended_by === "ongoing").map((i) => [i.venue_id, i])
   );
 
   return (
     <div className="p-4 md:p-8 max-w-6xl">
       <PageHeader
         title="Sağlık"
-        subtitle="Yalnızca iki şey: müziğin kontrol dışı durması ve müşteri isteklerinin sırasının bozulması. Bilerek duraklatma ve bilgisayarın kapatılması sayılmaz. Ekran 15 sn'de bir yenilenir."
+        subtitle="Yalnızca iki şey: müziğin kontrol dışı durması ve müşteri isteklerinin sırasının bozulması. Bilerek duraklatma, bilgisayarın uyuması/kapatılması ve uyandıktan sonraki ilk 90 sn sayılmaz. Ekran 15 sn'de bir yenilenir."
       />
 
       {error && <ErrorBox>{error}</ErrorBox>}
@@ -196,6 +186,7 @@ function HealthPageContent() {
           onChange={setTab}
           options={[
             { key: "silence", label: "Kontrol dışı sessizlik", count: silences.length, color: silences.length ? RED : undefined },
+            { key: "queue", label: "Kuyruk boş", count: queueEmpty.length },
             { key: "order", label: "Hatalı sıra", count: orders.length, color: orders.length ? RED : undefined },
           ]}
         />
@@ -220,17 +211,34 @@ function HealthPageContent() {
         </div>
       </div>
 
+      {tab === "silence" && !!data?.suppressed && (
+        <p className="mb-3 text-xs text-[#6b7280]">
+          Bilgisayar uykudan uyandıktan sonraki ilk 90 sn&apos;deki {data.suppressed} kısa sessizlik sayılmadı
+          (Wi-Fi yeniden bağlanırken şarkı baştan yükleniyor).
+        </p>
+      )}
+      {tab === "queue" && queueEmpty.length > 0 && (
+        <p className="mb-3 text-xs text-[#6b7280]">
+          Çalacak şarkı kalmadığı için müzik durdu. Arıza değil, ayar: mekanın aktif playlist&apos;i yok ya da bitti.
+        </p>
+      )}
+
       {data && shown.length === 0 ? (
         <Empty>
           {tab === "silence"
             ? "Bu aralıkta kontrol dışı sessizlik yok — müzik istendiği sürece çaldı."
-            : "Bu aralıkta sıra hatası yok — müşteri istekleri sırasıyla çaldı."}
+            : tab === "queue"
+              ? "Bu aralıkta kuyruk hiç tükenmedi."
+              : "Bu aralıkta sıra hatası yok — müşteri istekleri sırasıyla çaldı."}
         </Empty>
       ) : (
         <Card className="divide-y divide-white/5">
           {shown.map((i) => (
             <div key={i.id} className="flex gap-3 px-4 py-3">
-              <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: RED }} />
+              <span
+                className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                style={{ background: i.type === "silence" && i.queue_empty ? MUTED : RED }}
+              />
               <div className="min-w-0 flex-1">
                 {i.type === "silence" ? (
                   <>
@@ -240,14 +248,14 @@ function HealthPageContent() {
                     </p>
                     <p className="mt-1 text-xs text-[#9ca3af] break-words">
                       Olası sebep:{" "}
-                      {causeText(i.causes) ??
+                      {(i.cause && CAUSE_TEXT[i.cause]) ??
                         (i.playing_frozen
                           ? "player çalıyor görünüyordu ama şarkı ilerlemedi"
                           : i.ended_by === "ongoing"
                             ? "sessizlik bitince yazılacak"
                             : i.ended_by === "unknown"
                               ? "bilinmiyor (bitiş kaydı gelmedi)"
-                              : "player bir aksilik görmedi")}
+                              : "kayıtta sebep yok")}
                     </p>
                     <p className="mt-1 text-xs text-[#6b7280]">
                       {clock(i.started_at)}

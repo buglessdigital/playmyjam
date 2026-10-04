@@ -73,7 +73,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Mekan sayfası (plaket arka yüzü)](pmj-mekan-sayfasi-2026-09.md) — /<slug>/bilgi; 0052 ŞART, 0ff9636 prod'da, hizmet super admin'de açılır, tasarımda reddedilen yönler kayıtlı
 - [iyzico Vercel TLS sorunu](pmj-iyzico-vercel-engel-2026-09.md) — 17-21 Eyl canlı ödeme yoktu: Node 24.20 TLS 1.3 el sıkışması kopuyordu; TLS 1.2 + retry ile çözüldü, 21 Eyl gerçek ödeme başarılı
 - [Metadata tazeleme](pmj-metadata-tazeleme-2026-09.md) — 30 gün kuralı: günde havuz/20 en eski önce, 0054 RPC'leri; 0066 kapsayan indeks ŞART (aday okuma soğuk önbellekte timeout)
-- [Sağlık ekranı](pmj-saglik-ekrani-2026-09.md) — yalnız kontrol dışı sessizlik (player ölçer) + hatalı sıra; kullanıcının kendi duraklatmasını arıza sanma
+- [Sağlık ekranı](pmj-saglik-ekrani-2026-09.md) — yalnız kontrol dışı sessizlik (player ölçer) + hatalı sıra; uyanmadan sonraki 90 sn sayılmaz, kuyruk boş ayrı sekme; kullanıcının kendi duraklatmasını arıza sanma
 - [songs trigram indeksi](pmj-songs-trigram-2026-09.md) — songs ~830 bin; 0056 uygulandı; indekssiz metin araması timeout verir
 - [Arayüz analizi](pmj-arayuz-analizi-2026-09.md) — /super-admin/analytics: anonim tık/sayfa kaydı + ısı haritası; 0058 uygulandı, 44d0a9e prod
 - [Profesyonelleşme turu](pmj-profesyonellesme-2026-09.md) — büyük şirket standardı: CI/lint/hata sayfaları + Sentry prod'da; staging + db:migrate + Playwright e2e (CI'da da) hazır; CI/CD TAMAM — artık dal+PR, main korumalı, merge=otomatik prod; sırada CSP

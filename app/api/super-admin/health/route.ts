@@ -20,7 +20,16 @@ const LIVE_MS = 45_000;
 // milisaniyeler sonra) atlanmış sayılmaz — yarış, sıra hatası değil
 const ORDER_RACE_MS = 3_000;
 
+// Bilgisayar uykudan uyanınca (player'ın "sekme kısıldı/dondu" kaydı) Wi-Fi
+// yeniden bağlanıyor, YouTube şarkıyı baştan tamponluyor; kapak kapalı Mac
+// ayrıca ~15 dk'da bir birkaç saniyeliğine uyanıyor. Bu sürede başlayıp yine bu
+// sürede biten ya da cihazın yeniden uyumasıyla biten sessizlik arıza değildir
+// (4 Eki 2026: Biralem'in 31 sessizliğinin 12'si buydu). Player 4 Eki'den beri
+// aynı süre boyunca sessizlik açmıyor; bu filtre eski kayıtlar için.
+const WAKE_GRACE_MS = 90_000;
+
 const SILENCE_KINDS = ["silence_start", "silence_end"];
+const WAKE_KINDS = ["tab_throttled"];
 const ORDER_KINDS = ["out_of_order", "never_played"];
 
 type EventRow = {
@@ -43,7 +52,11 @@ export type HealthIncident =
       seconds: number | null;
       // recovered | paused | sleep | closed | handoff | ongoing | unknown
       ended_by: string;
-      causes: string[];
+      // Öncelikli tek sebep (bkz. primaryCause) — null: kayıtta sebep yok
+      cause: string | null;
+      // Çalan şarkı yokken başladı: kuyruk tükenmiş. Arıza değil, ayar
+      // (aktif playlist yok ya da liste bitti) — ekranda ayrı sekmede
+      queue_empty: boolean;
       song: string | null;
       playing_frozen: boolean;
     }
@@ -59,6 +72,24 @@ export type HealthIncident =
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 
+// Sessizlik aralığında görülen olaylardan EN açıklayıcı olanı. Hepsini yan yana
+// yazmak ("internet koptu, sekme dondu, kuyruk boşaldı, şarkı yüklenemedi")
+// okunmuyordu; zincirin başındaki sebep yeter: internet kopunca şarkı da
+// yüklenemez, sıradaki de alınamaz ("kuyruk boşaldı" görünür).
+const CAUSE_PRIORITY: [string, string[]][] = [
+  ["network", ["network_offline", "network_error", "offline_fallback"]],
+  ["session", ["session_lost"]],
+  ["youtube", ["youtube_error", "transient_skip", "stall", "stall_reload", "stall_gave_up"]],
+  ["frozen", ["page_frozen", "tab_throttled", "skip_deferred"]],
+  ["external_pause", ["external_pause"]],
+  ["queue_empty", ["idle_silence"]],
+];
+
+function primaryCause(causes: string[]): string | null {
+  for (const [cause, kinds] of CAUSE_PRIORITY) if (kinds.some((k) => causes.includes(k))) return cause;
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   if (!getSuperSession(req)) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
@@ -72,7 +103,7 @@ export async function GET(req: NextRequest) {
   let feed = supabaseAdmin
     .from("venue_events")
     .select("id, venue_id, at, kind, actor, message, detail")
-    .in("kind", [...SILENCE_KINDS, ...ORDER_KINDS])
+    .in("kind", [...SILENCE_KINDS, ...ORDER_KINDS, ...WAKE_KINDS])
     .gte("at", new Date(since).toISOString())
     .order("at", { ascending: false })
     .limit(EVENT_LIMIT);
@@ -150,7 +181,25 @@ export async function GET(req: NextRequest) {
   const songBy = new Map((songsRes.data ?? []).map((s) => [s.youtube_video_id, `${s.title} — ${s.artist}`]));
   const skippedAddedAt = new Map((skippedRes.data ?? []).map((q) => [q.id, Date.parse(q.added_at)]));
 
+  // Uyanma anları, mekan başına (sessizlik başlangıcına göre aranır)
+  const wakesByVenue = new Map<string, number[]>();
+  for (const e of rows) {
+    if (!WAKE_KINDS.includes(e.kind)) continue;
+    const list = wakesByVenue.get(e.venue_id) ?? [];
+    list.push(Date.parse(e.at));
+    wakesByVenue.set(e.venue_id, list);
+  }
+  // Başlangıçtan önceki (ya da aynı turdaki) en yakın uyanma, tolerans içindeyse
+  const wakeBefore = (venue: string, start: number): number | null => {
+    let best: number | null = null;
+    for (const w of wakesByVenue.get(venue) ?? []) {
+      if (w <= start + 1_000 && start - w <= WAKE_GRACE_MS && (best === null || w > best)) best = w;
+    }
+    return best;
+  };
+
   const incidents: HealthIncident[] = [];
+  let suppressed = 0;
 
   for (const [sid, s] of silences) {
     const endDetail = s.end?.detail ?? null;
@@ -161,6 +210,19 @@ export async function GET(req: NextRequest) {
     if (s.end) endedBy = str(endDetail?.ended_by) ?? "unknown";
     else if (isLive(s.venue) && Date.parse(startedAt) === latestStartByVenue.get(s.venue)) endedBy = "ongoing";
     else endedBy = "unknown";
+
+    const wake = wakeBefore(s.venue, Date.parse(startedAt));
+    if (wake !== null) {
+      const endAt = s.end ? Date.parse(s.end.at) : null;
+      if (endedBy === "sleep" || (endAt !== null && endAt <= wake + WAKE_GRACE_MS)) {
+        suppressed++;
+        continue;
+      }
+    }
+
+    const causes = Array.isArray(endDetail?.causes)
+      ? (endDetail.causes as unknown[]).filter((c): c is string => typeof c === "string")
+      : [];
     incidents.push({
       type: "silence",
       id: sid,
@@ -174,7 +236,8 @@ export async function GET(req: NextRequest) {
             ? Math.round((now - Date.parse(startedAt)) / 1000)
             : null,
       ended_by: endedBy,
-      causes: Array.isArray(endDetail?.causes) ? (endDetail.causes as unknown[]).filter((c): c is string => typeof c === "string") : [],
+      cause: primaryCause(causes),
+      queue_empty: !videoId,
       song: videoId ? songBy.get(videoId) ?? null : null,
       playing_frozen: endDetail?.playing_frozen === true || s.start?.detail?.playing_frozen === true,
     });
@@ -202,7 +265,7 @@ export async function GET(req: NextRequest) {
   const day = now - 86_400_000;
   const counts = new Map<string, { silence: number; order: number }>();
   for (const i of incidents) {
-    if (at(i) < day) continue;
+    if (at(i) < day || (i.type === "silence" && i.queue_empty)) continue;
     const c = counts.get(i.venue_id) ?? { silence: 0, order: 0 };
     c[i.type === "silence" ? "silence" : "order"]++;
     counts.set(i.venue_id, c);
@@ -225,5 +288,7 @@ export async function GET(req: NextRequest) {
       };
     }),
     incidents,
+    // Uyanma toleransıyla gizlenen kayıt sayısı (ekranda şeffaflık için)
+    suppressed,
   });
 }

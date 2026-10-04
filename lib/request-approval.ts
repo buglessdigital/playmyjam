@@ -300,9 +300,12 @@ export async function rejectSuggestion(request: SuggestionRow): Promise<void> {
     .eq("status", "pending");
 
   if (request.user_id && request.suggested_title) {
+    // Bildirime dokunan müşteri doğrudan aramaya düşer, başka şarkı seçer
+    const slug = await slugFor(request.venue_id);
     await sendPushToUser(request.user_id, {
       title: "Talebin bu sefer olmadı",
-      body: `${request.suggested_title} — mekan şu an bu şarkıyı çalmak istemedi.`,
+      body: `${request.suggested_title} — mekan şu an bu şarkıyı çalmak istemedi. Başka bir şarkı seçebilirsin.`,
+      url: slug ? `/venue/${slug}/browse?search=1` : "/",
       tag: `req-${request.id}`,
     }, { kind: "request_rejected", venueId: request.venue_id }).catch((err) =>
       reportIssue({

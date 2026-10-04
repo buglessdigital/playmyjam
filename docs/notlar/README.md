@@ -58,7 +58,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Müşteri onboarding düzeni](pmj-musteri-onboarding-2026-08.md) — açılış GÖZAT, alt menüde JETON AL; anlatım modalı silindi, ilk girişte arama kendiliğinden açılıyor
 - [Görünmez çal düğmesi tuzağı](pmj-hover-gorunmez-dugme-2026-08.md) — Tailwind 4 hover'ı @media(hover:hover) ile sarıyor; dokunmatikte kaplama düğmeler görünmez ama tıklanabilir
 - [Dış katalog araması](pmj-dis-katalog-arama-2026-08.md) — mekan listesi boş dönünce Apple Music + Deezer sonuçları "İste" düğmesiyle çıkar; migration yok
-- [Talep durum şeridi](pmj-talep-durum-seridi-2026-08.md) — onay panelin her sayfasında görünür; İsteklerim sayfası artık profil menüsünde
+- [Talep durum şeridi](pmj-talep-durum-seridi-2026-08.md) — onay (yeşil) ve red (kırmızı, aramaya götürür) panelin her sayfasında görünür; İsteklerim sayfası artık profil menüsünde
 - [Realtime publication](pmj-realtime-publication-2026-08.md) — bazı tablolar dashboard'dan açılmış, migration'lara bakarak "kapalı" deme
 - [fillQueue yarışı](pmj-fillqueue-yaris-2026-08.md) — kuyruğa alakasız katalog şarkısı girmesinin sebebi; 0046 kilidi ŞART, fail-open
 - [Akış kısaltma (7→3 tık)](pmj-akis-kisaltma-2026-08.md) — misafir oturumu + şarkıya ödeme; Supabase "Anonymous sign-ins" açılmadan devreye girmez

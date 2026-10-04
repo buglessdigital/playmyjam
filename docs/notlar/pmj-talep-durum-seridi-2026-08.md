@@ -1,6 +1,6 @@
 ---
 name: pmj-talep-durum-seridi-2026-08
-description: Talep onayı panelin her sayfasında şeritle görünür; müşteri İsteklerim sayfası profil menüsünden erişilir (16 Ağu 2026)
+description: Talep onayı (yeşil) ve reddi (kırmızı) panelin her sayfasında şeritle görünür; müşteri İsteklerim sayfası profil menüsünden erişilir (16 Ağu 2026)
 metadata: 
   node_type: memory
   type: project
@@ -24,6 +24,14 @@ değildi** — profil menüsüne "İsteklerim" girişi eklendi. Alt gezinmede is
 sekmesi yok (Sıra / Şarkı Seç / Jeton), o yüzden rozet oraya konulamıyor.
 
 Migration yok. Commit 34ca0c8 prod'da.
+
+**Red durumu (5 Eki 2026):** önceden reddedilen talep şeritten sessizce
+kayboluyordu. Artık şerit kırmızıya döner ("Talebin reddedildi" + "Başka Şarkı
+Ara"); basınca gözat sayfasında arama açılır (`?search=1` ya da sayfadaysa
+`pmj-open-search` olayı). Red şeridi `resolved_at`'ten 15 dk sonra ya da ✕ ile
+kapanır (kapatılanlar localStorage `pmj-dismissed-rejections`). Öncelik:
+onaylı > bekleyen > reddedilen. Red push'u zaten vardı, artık dokununca aynı
+aramaya götürüyor (`url` eklendi).
 
 Açık kalan fikir: çaldırma penceresini onay anında değil, müşteri uygulamayı
 açınca başlatmak (tavanlı) — `song_requests.seen_at` kolonu gerektirir, ürün

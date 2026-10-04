@@ -365,7 +365,11 @@
     "approvedCountdown": "{t} left to play it",
     "addCta": "Add to Queue",
     "pendingHelp": "The venue hasn't approved your request yet. If they do, this bar turns green and you can add the song to the queue right here.",
-    "seeAll": "My requests"
+    "seeAll": "My requests",
+    "rejectedTitle": "Your request was declined",
+    "rejectedLine": "The venue chose not to play this song right now",
+    "rejectedCta": "Find Another Song",
+    "dismiss": "Dismiss"
   },
   "requestSent": {
     "title": "If the venue approves, you can add it to the queue",

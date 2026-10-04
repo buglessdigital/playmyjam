@@ -468,6 +468,23 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     if (takeFirstVisit(venueId)) setSearchOpen(true);
   }, [venueId]);
 
+  // Talebi reddedilen müşteri başka şarkı arasın: şerit / red bildirimi
+  // ?search=1 ile buraya getirir, zaten buradaysak olay yollar
+  // (bkz. RequestStatusBar). Parametre okununca adresten silinir ki yenileme
+  // aramayı tekrar açmasın.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("search") === "1") {
+      url.searchParams.delete("search");
+      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- adresteki tek seferlik açılış isteği
+      setSearchOpen(true);
+    }
+    const onSignal = () => setSearchOpen(true);
+    window.addEventListener("pmj-open-search", onSignal);
+    return () => window.removeEventListener("pmj-open-search", onSignal);
+  }, []);
+
   // Jeton almaya gidip dönen müşteri şarkıyı baştan aramasın: gidilirken saklanan
   // şarkının ekleme kartı bir kez kendiliğinden açılır (bkz. lib/pending-add.ts).
   // Ekleme yapılmaz — son dokunuş yine müşteride.

@@ -365,7 +365,11 @@
     "approvedCountdown": "Çaldırmak için {t} kaldı",
     "addCta": "Sıraya Ekle",
     "pendingHelp": "Mekan talebini henüz onaylamadı. Onaylanırsa bu şerit yeşile döner ve şarkıyı buradan sıraya ekleyebilirsin.",
-    "seeAll": "İsteklerim"
+    "seeAll": "İsteklerim",
+    "rejectedTitle": "Talebin reddedildi",
+    "rejectedLine": "Mekan bu şarkıyı şu an çalmak istemedi",
+    "rejectedCta": "Başka Şarkı Ara",
+    "dismiss": "Kapat"
   },
   "requestSent": {
     "title": "Mekan onaylarsa sıraya ekleyebilirsin",

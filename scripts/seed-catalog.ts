@@ -739,7 +739,14 @@ async function seedPlaylist(playlistId: string, counts: Map<string, number>, sta
 
 main()
   .then(async () => {
-    await runFinish("done", "sıra tükendi");
+    // "done" = döngü sonuna geldi. Bütçeye sığmayan liste varsa sıra TÜKENMEDİ,
+    // ertelendi — ekranda "sıra tükendi" yazması yanıltıcı olur.
+    await runFinish(
+      "done",
+      stats.deferred > 0
+        ? `${stats.deferred} liste bütçeye sığmadı, sonraki tura kaldı`
+        : "sıra tükendi"
+    );
     report("Bitti");
   })
   .catch(async (err) => {

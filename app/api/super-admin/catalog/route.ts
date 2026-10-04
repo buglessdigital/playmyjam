@@ -41,6 +41,7 @@ export type CatalogRun = {
   lists_deferred: number;
   songs_added: number;
   current_list: string | null;
+  last_songs: string[] | null;
   note: string | null;
 };
 

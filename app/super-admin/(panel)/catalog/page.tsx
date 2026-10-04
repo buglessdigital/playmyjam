@@ -287,6 +287,19 @@ function RunCard({ run }: { run: CatalogRun }) {
         </div>
       </div>
 
+      {run.last_songs && run.last_songs.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[#6b7280] text-xs mb-1.5">Son eklenenler</p>
+          <ul className="text-[#d1d5db] text-sm space-y-0.5">
+            {run.last_songs.map((s, i) => (
+              <li key={`${s}-${i}`} className="truncate">
+                {s}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {run.status === "stale" && (
         <p className="text-xs mt-3" style={{ color: "#ef4444" }}>
           Betik {dakika(nabizYas)} önce sustu — tur bitmeden kesilmiş (oturum kapanmış olabilir).

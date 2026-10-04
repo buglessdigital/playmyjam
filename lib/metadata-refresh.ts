@@ -149,13 +149,20 @@ export async function refreshStaleMetadata(deadline: number): Promise<MetadataRe
 
   while (result.refreshed + result.delisted + result.failed < target) {
     const remaining = target - result.refreshed - result.delisted - result.failed;
+    // Bir kez yeniden denenir: ilk deneme soğuk önbellekte sınıra dayanırsa
+    // okuduğu sayfalar ikinciyi hızlandırır (4 Eki 2026: 7,9 sn → 0,13 sn).
+    // Asıl çözüm 0066'nın kapsayan indeksi.
     const candidates = await timed("select", async () => {
-      const { data, error } = await supabaseAdmin.rpc("stale_song_video_ids", {
-        p_cutoff: cutoff,
-        p_limit: Math.min(CANDIDATE_SLICE, remaining),
-      });
-      if (error) throw new Error(`adaylar okunamadı: ${error.message}`);
-      return (data ?? []) as string[];
+      let message = "";
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const { data, error } = await supabaseAdmin.rpc("stale_song_video_ids", {
+          p_cutoff: cutoff,
+          p_limit: Math.min(CANDIDATE_SLICE, remaining),
+        });
+        if (!error) return (data ?? []) as string[];
+        message = error.message;
+      }
+      throw new Error(`adaylar okunamadı: ${message}`);
     });
     if (candidates.length === 0) break;
 

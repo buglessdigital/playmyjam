@@ -55,22 +55,24 @@ async function handleGET(req: NextRequest) {
     });
   }
 
-  let refresh: MetadataRefreshResult;
+  // Tazeleme çökse de playlist senkronu çalışır: ikisi bağımsız, eskiden tek
+  // aday okuma hatası mekan listelerine yeni şarkı gelmesini de durduruyordu
+  let refresh: MetadataRefreshResult | null = null;
+  let refreshError: string | null = null;
   try {
     refresh = await refreshStaleMetadata(startedAt + REFRESH_TIME_BUDGET_MS);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "refresh failed";
+    refreshError = err instanceof Error ? err.message : "refresh failed";
     await reportIssue({
       area: "cron",
       kind: "metadata_refresh_failed",
       severity: "error",
-      message: "Günlük metadata tazeleme çöktü — playlist senkronu da bugün çalışmadı",
+      message: "Günlük metadata tazeleme çöktü, yarın en eskiden devam edecek",
       error: err,
     });
-    return NextResponse.json({ error: message }, { status: 500 });
   }
-  const quotaExceeded = refresh.stopped === "quota";
-  if (refresh.failed > 0) {
+  const quotaExceeded = refresh?.stopped === "quota";
+  if (refresh && refresh.failed > 0) {
     await reportIssue({
       area: "cron",
       kind: "metadata_refresh_partial",
@@ -113,11 +115,12 @@ async function handleGET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    ok: true,
+    ok: refreshError === null,
     cache_cleanup: cacheErr ? cacheErr.message : "done",
     events_cleanup: eventsErr ? eventsErr.message : "done",
     ops_cleanup: pushLogErr?.message ?? systemLogErr?.message ?? "done",
     metadata_refresh: refresh,
+    metadata_refresh_error: refreshError,
     playlist_sync: sync,
     playlist_sync_error: syncError,
   });

@@ -223,6 +223,7 @@ async function expandChannels(
         fromThis++;
       }
       pageToken = data.nextPageToken;
+      await runBeat(null);
     } while (pageToken);
 
     console.log(`  kanal ${channelId}: ${fromThis} liste bulundu`);
@@ -406,6 +407,8 @@ async function currentItemCounts(playlistIds: string[]): Promise<Map<string, num
         counts.set(item.id, item.contentDetails.itemCount);
       }
     }
+    // Hazırlık dakikalarca sürüyor; nabız atılmazsa ekran turu "kesildi" sanır
+    await runBeat(null);
   }
   return counts;
 }
@@ -584,6 +587,7 @@ async function harvestUploadPlaylists(): Promise<string[]> {
     lastId = data[data.length - 1].id as string;
   }
 
+  await runBeat(null);
   const uploads = [...channels].map((id) => `UU${id.slice(2)}`);
   stats.harvested = uploads.length;
   console.log(

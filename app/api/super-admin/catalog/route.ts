@@ -100,7 +100,10 @@ async function loadStats(): Promise<CatalogStats> {
 // alınır; 5 saniyelik yoklamalarda hiç çağrılmaz.
 async function countArtists(): Promise<number | null> {
   const { data, error } = await supabaseAdmin.rpc("catalog_artist_count");
-  if (error) return null; // RPC yoksa ekran sanatçı sayısını göstermez, patlamaz
+  if (error) {
+    console.error("[katalog] sanatçı sayımı:", error.code, error.message, error.details);
+    return null;
+  }
   return typeof data === "number" ? data : null;
 }
 

@@ -41,6 +41,7 @@ export type CatalogRun = {
   lists_deferred: number;
   songs_added: number;
   current_list: string | null;
+  last_songs: string[] | null;
   note: string | null;
 };
 
@@ -58,8 +59,14 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q")?.trim() ?? "";
   if (q) return NextResponse.json({ songs: await search(q) });
 
-  const withArtists = req.nextUrl.searchParams.get("full") === "1";
-  const [stats, runs] = await Promise.all([loadStats(withArtists), loadRuns()]);
+  // Sanatçı sayısı AYRI uç: aynı yanıtta dönerse şarkı ve liste sayıları hazır
+  // olduğu hâlde onu bekler. Sayım yavaşladığında (0067 öncesi 8 sn sürüp zaman
+  // aşımına düşüyordu) bütün ekran o kadar geç doluyordu.
+  if (req.nextUrl.searchParams.get("artists") === "1") {
+    return NextResponse.json({ artists: await countArtists() });
+  }
+
+  const [stats, runs] = await Promise.all([loadStats(), loadRuns()]);
   return NextResponse.json({ stats, runs });
 }
 
@@ -79,23 +86,18 @@ async function search(q: string): Promise<CatalogSong[]> {
   return (data ?? []) as CatalogSong[];
 }
 
-async function loadStats(withArtists: boolean): Promise<CatalogStats> {
+async function loadStats(): Promise<CatalogStats> {
   // Şarkı sayısı 900 bini aştı: "exact" sayım her yoklamada tabloyu tarar,
   // ekran 5 saniyede bir yokluyor. Gövdesiz tahmini sayım yeter.
-  const [songs, lists, artists] = await Promise.all([
+  const [songs, lists] = await Promise.all([
     supabaseAdmin.from("songs").select("id", { count: "estimated", head: true }),
     supabaseAdmin.from("catalog_sources").select("playlist_id", { count: "estimated", head: true }),
-    withArtists ? countArtists() : Promise.resolve(null),
   ]);
-  return {
-    songs: songs.count ?? 0,
-    listsDone: lists.count ?? 0,
-    artists,
-  };
+  return { songs: songs.count ?? 0, listsDone: lists.count ?? 0, artists: null };
 }
 
-// Farklı sanatçı sayısı 900 bin satırda saniyeler sürüyor: yalnızca sayfa ilk
-// açılışında (full=1) istenir, yoklamalarda hiç çağrılmaz.
+// Farklı sanatçı sayısı yalnızca sayfa ilk açılışında, kendi isteğiyle (artists=1)
+// alınır; 5 saniyelik yoklamalarda hiç çağrılmaz.
 async function countArtists(): Promise<number | null> {
   const { data, error } = await supabaseAdmin.rpc("catalog_artist_count");
   if (error) return null; // RPC yoksa ekran sanatçı sayısını göstermez, patlamaz

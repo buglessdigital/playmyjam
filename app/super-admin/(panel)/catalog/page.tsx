@@ -63,24 +63,33 @@ export default function CatalogPage() {
   const [query, setQuery] = useState("");
   const [songs, setSongs] = useState<CatalogSong[] | null>(null);
 
-  // İlk açılışta sanatçı sayısı da istenir (pahalı sayım), yoklamalarda değil.
+  // Durum (şarkı/liste sayısı + turlar) 5 sn'de bir yoklanır. Sanatçı sayısı
+  // AYRI ve tek sefer: aynı isteğe konunca hazır olan sayılar da onu bekliyor
+  // ve ekran saniyelerce boş kalıyordu.
   // Promise zinciri (async/await değil): setState effect gövdesinde senkron
   // çağrılmış sayılmasın — panelin diğer ekranları da bu deseni kullanıyor.
   useEffect(() => {
     let alive = true;
-    const load = (full: boolean) =>
-      api<{ stats: CatalogStats; runs: CatalogRun[] }>(`/api/super-admin/catalog${full ? "?full=1" : ""}`)
+    const load = () =>
+      api<{ stats: CatalogStats; runs: CatalogRun[] }>("/api/super-admin/catalog")
         .then((data) => {
           if (!alive) return;
-          setStats((prev) => ({ ...data.stats, artists: data.stats.artists ?? prev?.artists ?? null }));
+          setStats((prev) => ({ ...data.stats, artists: prev?.artists ?? null }));
           setRuns(data.runs);
           setError(null);
         })
         .catch((err) => {
           if (alive) setError(err instanceof Error ? err.message : "Durum alınamadı");
         });
-    load(true);
-    const timer = setInterval(() => load(false), POLL_MS);
+    load();
+    api<{ artists: number | null }>("/api/super-admin/catalog?artists=1")
+      .then((d) => {
+        if (alive && d.artists != null) setStats((prev) => (prev ? { ...prev, artists: d.artists } : prev));
+      })
+      .catch(() => {
+        // sanatçı sayısı gösterge satırı; gelmezse ekranın geri kalanı çalışır
+      });
+    const timer = setInterval(load, POLL_MS);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -286,6 +295,19 @@ function RunCard({ run }: { run: CatalogRun }) {
           <p className="text-[#d1d5db] font-mono text-xs truncate">{run.current_list ?? "—"}</p>
         </div>
       </div>
+
+      {run.last_songs && run.last_songs.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[#6b7280] text-xs mb-1.5">Son eklenenler</p>
+          <ul className="text-[#d1d5db] text-sm space-y-0.5">
+            {run.last_songs.map((s, i) => (
+              <li key={`${s}-${i}`} className="truncate">
+                {s}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {run.status === "stale" && (
         <p className="text-xs mt-3" style={{ color: "#ef4444" }}>

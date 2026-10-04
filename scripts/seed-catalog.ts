@@ -295,14 +295,21 @@ async function syncStateToDb(state: SeedState) {
 // ilerleme kaydı işin kendisi değil, onun seyir defteri.
 let runId: number | null = null;
 let lastBeat = 0;
+// Ekranda "şu an ne ekleniyor" satırı: son eklenen birkaç başlık
+const lastSongs: string[] = [];
+const LAST_SONGS_KEEP = 8;
 
-async function runStart(listsTotal: number) {
+// Tur kaydı EN BAŞTA açılır. Eskiden liste hazırlığından (hasat + sayım)
+// sonra açılıyordu; o hazırlık dakikalarca sürüyor ve 4 Eki turunda tam orada
+// ağ hatasıyla çöktü — ekranda hiçbir iz kalmadı, "henüz tur yok" yazıyordu.
+// Kaç liste olduğu o an bilinmiyor; lists_total hazırlık bitince yazılır.
+async function runStart() {
   if (DRY_RUN) return;
   try {
     const { data, error } = await retry("tur kaydı", () =>
       supabase
         .from("catalog_runs")
-        .insert({ budget: BUDGET, lists_total: listsTotal, status: "running" })
+        .insert({ budget: BUDGET, status: "running", note: "liste hazırlanıyor" })
         .select("id")
         .single()
     );
@@ -315,6 +322,17 @@ async function runStart(listsTotal: number) {
 
 // Her listeden sonra çağrılır ama en çok 5 saniyede bir yazar: 500 küçük liste
 // işlenen bir turda her satır için istek atmak işi yavaşlatır.
+async function runTotal(listsTotal: number) {
+  if (runId === null) return;
+  try {
+    await retry("tur kaydı", () =>
+      supabase.from("catalog_runs").update({ lists_total: listsTotal, note: null }).eq("id", runId)
+    );
+  } catch {
+    // sessiz: nabız zaten yeniden deneyecek
+  }
+}
+
 async function runBeat(currentList: string | null, force = false) {
   if (runId === null) return;
   const now = Date.now();
@@ -330,6 +348,7 @@ async function runBeat(currentList: string | null, force = false) {
           lists_deferred: stats.deferred,
           songs_added: stats.upserted,
           current_list: currentList,
+          last_songs: lastSongs,
           heartbeat_at: new Date().toISOString(),
         })
         .eq("id", runId)
@@ -371,10 +390,17 @@ async function currentItemCounts(playlistIds: string[]): Promise<Map<string, num
   for (let i = 0; i < playlistIds.length; i += 50) {
     const batch = playlistIds.slice(i, i + 50);
     spend(1);
-    const data = await api<{ items?: Array<{ id?: string; contentDetails?: { itemCount?: number } }> }>(
-      "playlists",
-      { part: "contentDetails", id: batch.join(","), maxResults: "50" }
-    );
+    // Ön sayım 1.700 listede 34 isteğe çıkıyor; yeniden denemeler de tükenirse
+    // TEK demet yüzünden tur düşmesin. Sayısı bilinmeyen liste "değişmiş"
+    // sayılır, yani en fazla bir kez fazladan okunur.
+    let data: { items?: Array<{ id?: string; contentDetails?: { itemCount?: number } }> };
+    try {
+      data = await api("playlists", { part: "contentDetails", id: batch.join(","), maxResults: "50" });
+    } catch (err) {
+      if (err instanceof BudgetExhausted || err instanceof QuotaExhausted) throw err;
+      console.log(`  ön sayım demeti atlandı: ${err instanceof Error ? err.message.split("\n")[0] : err}`);
+      continue;
+    }
     for (const item of data.items ?? []) {
       if (item.id && typeof item.contentDetails?.itemCount === "number") {
         counts.set(item.id, item.contentDetails.itemCount);
@@ -578,6 +604,8 @@ async function main() {
     process.exit(1);
   }
 
+  await runStart();
+
   // --force yalnızca atlamayı kapatır; kayıtları silmez. Eskiden boş state ile
   // başlıyor ve ilk yazışta diğer listelerin tüm kayıtlarını siliyordu.
   const state = readState();
@@ -630,7 +658,7 @@ async function main() {
       `bütçe ${BUDGET} birim${DRY_RUN ? " (KURU ÇALIŞMA)" : ""}\n`
   );
 
-  await runStart(todo.length);
+  await runTotal(todo.length);
 
   for (const playlistId of todo) {
     // Şarkılar liste sonunda yazılıyor: bütçe listenin ortasında biterse okunan
@@ -673,6 +701,10 @@ async function seedPlaylist(playlistId: string, counts: Map<string, number>, sta
   if (unknown.length > 0) {
     const rows = await fetchRows(unknown);
     await upsert(rows);
+    for (const row of rows.slice(-LAST_SONGS_KEEP)) {
+      lastSongs.unshift(`${row.artist} — ${row.title}`);
+    }
+    lastSongs.length = Math.min(lastSongs.length, LAST_SONGS_KEEP);
     console.log(
       `  ${playlistId}: ${ids.length} şarkı → ${rows.length} yeni kayıt (${unitsSpent} birim harcandı)`
     );

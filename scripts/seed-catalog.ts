@@ -223,6 +223,7 @@ async function expandChannels(
         fromThis++;
       }
       pageToken = data.nextPageToken;
+      await runBeat();
     } while (pageToken);
 
     console.log(`  kanal ${channelId}: ${fromThis} liste bulundu`);
@@ -298,6 +299,9 @@ let lastBeat = 0;
 // Ekranda "şu an ne ekleniyor" satırı: son eklenen birkaç başlık
 const lastSongs: string[] = [];
 const LAST_SONGS_KEEP = 8;
+// Nabzı atan her yer hangi listede olduğumuzu bilmiyor (sayfa okuma, videos.list);
+// liste adı burada tutulur, runBeat oradan okur.
+let currentList: string | null = null;
 
 // Tur kaydı EN BAŞTA açılır. Eskiden liste hazırlığından (hasat + sayım)
 // sonra açılıyordu; o hazırlık dakikalarca sürüyor ve 4 Eki turunda tam orada
@@ -333,7 +337,7 @@ async function runTotal(listsTotal: number) {
   }
 }
 
-async function runBeat(currentList: string | null, force = false) {
+async function runBeat(force = false) {
   if (runId === null) return;
   const now = Date.now();
   if (!force && now - lastBeat < 5000) return;
@@ -406,6 +410,8 @@ async function currentItemCounts(playlistIds: string[]): Promise<Map<string, num
         counts.set(item.id, item.contentDetails.itemCount);
       }
     }
+    // Hazırlık dakikalarca sürüyor; nabız atılmazsa ekran turu "kesildi" sanır
+    await runBeat();
   }
   return counts;
 }
@@ -456,6 +462,7 @@ async function playlistVideoIds(playlistId: string): Promise<{ ids: string[]; tr
       if (item.contentDetails?.videoId) ids.push(item.contentDetails.videoId);
     }
     pageToken = data.nextPageToken;
+    await runBeat();
   } while (pageToken && ids.length < MAX_PER_PLAYLIST);
 
   return { ids: [...new Set(ids)], truncated: !!pageToken };
@@ -491,6 +498,7 @@ async function fetchRows(videoIds: string[]): Promise<SongRow[]> {
       if (row) rows.push(row);
       else stats.filtered++;
     }
+    await runBeat();
   }
   return rows;
 }
@@ -584,6 +592,7 @@ async function harvestUploadPlaylists(): Promise<string[]> {
     lastId = data[data.length - 1].id as string;
   }
 
+  await runBeat();
   const uploads = [...channels].map((id) => `UU${id.slice(2)}`);
   stats.harvested = uploads.length;
   console.log(
@@ -670,7 +679,6 @@ async function main() {
       continue;
     }
     try {
-      await runBeat(playlistId);
       await seedPlaylist(playlistId, counts, state);
     } catch (err) {
       // Bütçe/kota dışındaki hatalar TEK listeyi düşürür, turu değil: silinmiş
@@ -684,6 +692,8 @@ async function main() {
 
 // Tek listenin tüm işi. Hatası çağırana gider, orada tek liste olarak yutulur.
 async function seedPlaylist(playlistId: string, counts: Map<string, number>, state: SeedState) {
+  currentList = playlistId;
+  await runBeat(true);
   const { ids, truncated } = await playlistVideoIds(playlistId);
   stats.playlists++;
   stats.seenIds += ids.length;
@@ -729,7 +739,14 @@ async function seedPlaylist(playlistId: string, counts: Map<string, number>, sta
 
 main()
   .then(async () => {
-    await runFinish("done", "sıra tükendi");
+    // "done" = döngü sonuna geldi. Bütçeye sığmayan liste varsa sıra TÜKENMEDİ,
+    // ertelendi — ekranda "sıra tükendi" yazması yanıltıcı olur.
+    await runFinish(
+      "done",
+      stats.deferred > 0
+        ? `${stats.deferred} liste bütçeye sığmadı, sonraki tura kaldı`
+        : "sıra tükendi"
+    );
     report("Bitti");
   })
   .catch(async (err) => {

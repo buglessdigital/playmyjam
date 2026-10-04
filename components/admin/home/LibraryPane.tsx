@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import FitTitle from "./FitTitle";
+import ListActionsMenu from "./ListActionsMenu";
 import ListCover from "./ListCover";
 import SongRowMenu from "./SongRowMenu";
 import { ALL, formatDur, type Library } from "./useLibrary";
@@ -134,12 +135,8 @@ export default function LibraryPane({
     setQueued,
     playNow,
     setShuffle,
-    setCustomerVisible,
-    syncNow,
-    syncingId,
     syncNote,
     setSyncNote,
-    deleteList,
   } = lib;
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -328,26 +325,6 @@ export default function LibraryPane({
                   {queuedSongs > 0 ? "Sıradan çıkar" : "Sıraya Ekle"}
                 </button>
 
-                {/* Müşteri aktifliği (0040): kapalıyken listenin şarkıları müşteri
-                    panelinde hiç görünmez. Otomatik çalmayı etkilemez — pasif
-                    liste sırası gelince yine çalar. */}
-                <button
-                  onClick={() => setCustomerVisible(selectedList, !selectedList.customer_visible)}
-                  aria-pressed={selectedList.customer_visible}
-                  className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
-                  style={{
-                    background: selectedList.customer_visible ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.08)",
-                    color: selectedList.customer_visible ? "#93c5fd" : "#9ca3af",
-                  }}
-                  title={
-                    selectedList.customer_visible
-                      ? "Müşteriye açık — bu listedeki şarkılar müşteri panelinde görünür ve jetonla istenebilir. Kapatmak için tıklayın"
-                      : "Müşteriye kapalı — bu listedeki şarkılar müşteride görünmez. Otomatik çalmaya devam eder. Açmak için tıklayın"
-                  }
-                >
-                  {selectedList.customer_visible ? "Müşteriye açık" : "Müşteriye kapalı"}
-                </button>
-
                 {/* "Tek seferlik" düğmesi kalktı: artık kural her listede aynı —
                     turunu bitiren liste kuyruktan düşer, kuyrukta kalan son liste
                     ise baştan çalmaya devam eder. */}
@@ -381,38 +358,24 @@ export default function LibraryPane({
                     />
                   )}
                 </button>
-                {/* Senkron her YouTube listesinde daima açık — açma/kapama
-                    düğmesi yok. Kalan tek düğme "şimdi güncelle": mekan
-                    günlük cron'u beklemeden elle tetiklemek isteyebilir. */}
-                {selectedSource && (
-                  <button
-                    onClick={() => syncNow(selectedList)}
-                    disabled={syncingId !== null}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg disabled:opacity-40"
-                    style={{ background: "rgba(255,255,255,0.08)" }}
-                    title="YouTube'dan şimdi güncelle"
+                {/* Sık kullanılmayan liste işlemleri: müşteri görünürlüğü,
+                    YouTube'dan güncelle, ad değiştir, sil */}
+                <ListActionsMenu
+                  list={selectedList}
+                  lib={lib}
+                  hasSource={!!selectedSource}
+                  onRename={onRename}
+                />
+                {/* Görünürlük menüde; kapalıyken gözden kaçmasın diye rozet */}
+                {!selectedList.customer_visible && (
+                  <span
+                    className="text-[11px] px-2 py-1 rounded-md font-semibold"
+                    style={{ background: "rgba(255,255,255,0.06)", color: "#9ca3af" }}
+                    title="Bu listedeki şarkılar müşteride görünmez; otomatik çalmaya devam eder. Açmak için ⋯ menüsü"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={syncingId === selectedList.id ? "animate-spin" : ""}>
-                      <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
+                    Müşteriye kapalı
+                  </span>
                 )}
-                <button
-                  onClick={onRename}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg"
-                  style={{ background: "rgba(255,255,255,0.08)" }}
-                  title="Yeniden adlandır"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4z" stroke="#9ca3af" strokeWidth="1.8" strokeLinejoin="round" /></svg>
-                </button>
-                <button
-                  onClick={() => deleteList(selectedList)}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg"
-                  style={{ background: "rgba(239,68,68,0.1)" }}
-                  title="Listeyi sil"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                </button>
                 <span className="w-px h-6 bg-white/10 mx-0.5" />
               </>
             )}

@@ -178,6 +178,42 @@ play'lenince arkasına 8 rastgele katalog şarkısı giriyordu: listenin bütün
 boşluğu katalogdan dolduruyordu. Kısa liste artık yalnızca kendi şarkılarıyla
 döner. Commit 8c88617, 22 Eyl prod'da.
 
+**5 Eki 2026 — sıradan "şimdi çal" üstündekileri ATLAR (Spotify):** kuyruk
+panelinde bir satırın play tuşuna basınca o satırın üstündeki admin/otomatik
+satırlar `status='removed'` olur, seçilenin bir altındaki "sıradaki" olur
+(`playSongNowLocked`, yalnız `queueId` yolu; panel `usePlayback.playNow`'da
+iyimser aynısını yapar). Müşteri satırları ASLA atlanmaz — yerinde kalır, önce
+onlar çalar. Atlanan otomatik satırların tüketimi geri alınmaz: liste onları bu
+turda geçmiş sayar. Migration YOK.
+
+**5 Eki 2026 (2) — yeni turda sıra deliği (Biralem, Move):** sıralı liste
+taraması kuyruktaki şarkıyı ATLAYIP ilerisinden alıyordu. Kuyruk liste sonuna
+kadar dolu olduğu için yeni tur eski turun şarkıları hâlâ kuyruktayken başlıyor;
+bir turda eksik kalan şarkı (Move, 30 Eyl'den beri) sonraki turda kendi yerine
+değil sıranın çok önüne yazılıp orada tüketiliyor, kendi yerinde (Ara Beni
+Lütfen → Move → Yamore) hiç çıkmıyordu — her turda kendini yeniden üretiyordu.
+Artık `scanSequential` (lib/rotation-order.ts, testli): aynı listenin otomatik
+satırında/sahnede bekleyen şarkıda tarama DURUR; elle/müşteri satırında
+bekleyen şarkı bu turda tüketilmiş sayılır (startPlaylistFrom'un baş dolumu da).
+Karıştırmalı listeler eski davranışta. Sağlık ekranının "Hatalı sıra"sı bunu
+GÖRMEZ: yalnız müşteri isteklerinin sırasını ölçer. Migration YOK.
+Aynı gün: rayın "Çalıyor X/N" sayacı başa sarmadan sonra 0'a düşüyordu (kuyruk
+sonraki turu da tuttuğu için bekleyen > tüketilen). Sıralı çalan listede sayı
+artık çalan şarkının listedeki yerinden (`usePlayback.playingListAnchor` →
+`useLibrary.playedByList`); karıştırmalıda eski formül. Sıraya eklenen
+listenin bloğundan şarkı çalarken rayda sarı rozetin yanında "Çalıyor 3/114"
+(`usePlayback.manualStage` → `useLibrary.manualPlaying`).
+
+**5 Eki 2026 (3) — sıraya eklenen listenin İÇİNDEN çalma:** liste bloğu
+kuyruktayken (ya da sahnedeyken) o listeden şarkıya basmak genel "listenin
+ortasından çal" yoluna düşüyordu: liste çalan liste oluyor, eski çalan liste
+raydan düşüyor, ama elle eklenen blok kuyrukta kaldığından sıra "bloğun kalanı →
+listenin otomatik devamı" diye iki kopya halinde karışıyordu (rayda "sırada"
+yok, sağda "SIRAYA EKLENEN LİSTE" var). Artık `hasManualBlock` → `playSongNow(
+{manualBlock:true})` + `jumpManualBlock`: blok seçilen şarkının devamından
+yeniden kurulup şeridin başına alınır, çalan liste ve otomatik bloğu
+dokunulmaz. Sahneye çıkan satır admin/kaynak=liste olur.
+
 **Tuzak:** 0037 SQL ŞART ve kod deploy'undan ÖNCE çalıştırılmalı. Backfill
 mevcut `is_active` listeleri `sort_order` ile kuyruğa yazdığı için SQL tek
 başına davranışı değiştirmez.

@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { runSingleFlight } from "@/lib/queue-lock";
-import { orderFromResume } from "@/lib/rotation-order";
+import { orderFromResume, scanSequential } from "@/lib/rotation-order";
 import { withActor } from "@/lib/actor";
 
 // Kuyruk artık "10 şarkılık kayan pencere" DEĞİL: sıradaki listeler bitip başa
@@ -19,7 +19,7 @@ const COOLDOWN_MS = 30 * 60 * 1000;
 // PostgREST `in(...)` filtresi URL'e gömülür; 500 uuid tek istekte sığmaz.
 const IN_CHUNK = 100;
 
-function chunk<T>(list: T[], size = IN_CHUNK): T[][] {
+export function chunk<T>(list: T[], size = IN_CHUNK): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
   return out;
@@ -42,6 +42,9 @@ type EligibilityContext = {
   catalogEligible: Set<string>;
   // Şu anda kuyrukta bekleyen / sahnede olan şarkılar — tekrar eklenemez
   excludeIds: Set<string>;
+  // excludeIds'in OTOMATİK kısmı: kuyrukta otomatik satırı duran ya da sahnede
+  // otomatik çalan şarkılar. Sıralı liste bunlara gelince durur (scanSequential).
+  inFlightIds: Set<string>;
   // Son 30 dk içinde müşteri isteğiyle çalmış şarkılar (0025)
   cooldownIds: Set<string>;
   // Kuyrukta BEKLEYEN otomatik satırların listeleri. Şarkıları tükenmiş olsa da
@@ -411,8 +414,39 @@ async function pickFromRotation(
       }
     }
 
-    // Kuyrukta bekleyen / sahnedeki şarkı şimdilik eklenemez ama TÜKETİLMEZ:
-    // müşteri istediği için orada olabilir, listenin ilerlemesini bozmaz.
+    // Sıralı liste: kuyruktaki şarkıya gelince ATLAYIP İLERİDEN ALMAZ —
+    // otomatik satırıysa bekler, elle/müşteri satırıysa tüketilmiş sayar
+    // (bkz. scanSequential). Atlamak, turda eksik kalan şarkıyı sonraki turda
+    // sıranın önüne sıçratıyordu (5 Eki 2026, Biralem).
+    if (!playlist.shuffle) {
+      const scan = scanSequential(
+        remaining.filter((id) => ctx.catalogEligible.has(id) && !taken.has(id)),
+        (id) => {
+          if (ctx.inFlightIds.has(id)) return "inFlight";
+          if (ctx.excludeIds.has(id)) return "held";
+          const soon = ctx.queuedNow + picks.length < QUEUE_FLOOR;
+          return soon && ctx.cooldownIds.has(id) ? "skip" : "pick";
+        },
+        capacity - picks.length
+      );
+      for (const id of scan.consumedHeld) {
+        alreadyConsumed.add(id);
+        consumed.push({ playlist_id: playlist.id, song_id: id, cycle });
+      }
+      for (const id of scan.picks) {
+        picks.push({ songId: id, playlistId: playlist.id });
+        taken.add(id);
+        alreadyConsumed.add(id);
+        consumed.push({ playlist_id: playlist.id, song_id: id, cycle });
+      }
+      // Bekleyen şarkı boşalınca liste buradan sürer; sıradaki listeye geçip
+      // araya onun şarkılarını sokmak da sırayı bozardı.
+      if (scan.blocked) break;
+      continue;
+    }
+
+    // Karıştırmalı liste: kuyrukta bekleyen / sahnedeki şarkı şimdilik
+    // eklenemez ama TÜKETİLMEZ; sıra kavramı olmadığı için atlamak zararsız.
     let candidates = remaining.filter(
       (id) => ctx.catalogEligible.has(id) && !ctx.excludeIds.has(id) && !taken.has(id)
     );
@@ -551,7 +585,7 @@ async function runFill(venueId: string): Promise<void> {
         .eq("status", "queued"),
       supabaseAdmin
         .from("queue")
-        .select("song_id, user_id, source_playlist_id")
+        .select("song_id, user_id, added_by, source_playlist_id")
         .eq("venue_id", venueId)
         .eq("status", "playing")
         .limit(1)
@@ -619,6 +653,10 @@ async function runFill(venueId: string): Promise<void> {
   // Song IDs already in queue — don't add duplicates. Exclude the playing song.
   const excludeIds = new Set(queued.map((r) => r.song_id));
   if (playingNow?.song_id) excludeIds.add(playingNow.song_id);
+  const inFlightIds = new Set(
+    queued.filter((r) => r.added_by === AUTO_ADDED_BY).map((r) => r.song_id)
+  );
+  if (playingNow?.song_id && playingNow.added_by === AUTO_ADDED_BY) inFlightIds.add(playingNow.song_id);
 
   const cooldownIds = new Set(
     (recentUserPlays ?? [])
@@ -654,6 +692,7 @@ async function runFill(venueId: string): Promise<void> {
     await pickFromRotation(venueId, capacity, {
       catalogEligible,
       excludeIds,
+      inFlightIds,
       cooldownIds,
       pendingLists,
       playingList: playingNow?.source_playlist_id ?? null,
@@ -864,6 +903,98 @@ export async function enqueueManual(
 }
 
 /**
+ * Liste şu an "sıraya eklenen liste" olarak mı çalınıyor: kuyrukta (ya da
+ * sahnede) o listenin elle eklenmiş bloğundan satır var mı.
+ */
+export async function hasManualBlock(venueId: string, playlistId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from("queue")
+    .select("id")
+    .eq("venue_id", venueId)
+    .in("status", ["queued", "playing"])
+    .is("user_id", null)
+    .eq("added_by", ADMIN_ADDED_BY)
+    .eq("source_playlist_id", playlistId)
+    .limit(1);
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Sıraya eklenen listenin İÇİNDEN bir şarkı çalındı (5 Eki 2026): liste
+ * "çalan liste" olmaz, sıraya eklenen blok olarak kalır — yalnızca blok o
+ * şarkının devamından (sıralı listede listenin sonuna kadar) yeniden kurulur ve
+ * şeridin başına alınır. Çalan liste ve otomatik bloğu olduğu gibi kalır; blok
+ * bitince eski liste kaldığı yerden sürer.
+ *
+ * Önceden bu tıklama genel "listenin ortasından çal" yoluna düşüyordu: liste
+ * çalan liste oluyor, eski çalan liste raydan düşüyor, ama elle eklenmiş blok
+ * kuyrukta kaldığı için sıra "blokta kalanlar → listenin otomatik devamı" diye
+ * iki kopya halinde karışıyordu.
+ *
+ * Şeritteki satırlar yeniden yazılır (eskiler 'removed', yenileri tek insert):
+ * öteki sıraya eklenen listeler sıralarını korur, bu listenin arkasına geçer.
+ */
+export async function jumpManualBlock(
+  venueId: string,
+  playlistId: string,
+  songId: string
+): Promise<void> {
+  const bandTop = MANUAL_LIST_BASE + MANUAL_BAND_SIZE;
+  const [{ data: laneData }, ordered] = await Promise.all([
+    supabaseAdmin
+      .from("queue")
+      .select("id, song_id, source_playlist_id, position")
+      .eq("venue_id", venueId)
+      .eq("status", "queued")
+      .is("user_id", null)
+      .eq("added_by", ADMIN_ADDED_BY)
+      .gt("position", MANUAL_LIST_BASE)
+      .lt("position", bandTop)
+      .order("position", { ascending: true }),
+    orderedEligibleSongs(venueId, playlistId),
+  ]);
+  const lane = laneData ?? [];
+  const block = lane.filter((r) => r.source_playlist_id === playlistId);
+  const others = lane.filter((r) => r.source_playlist_id !== playlistId);
+
+  // Sıralı liste: seçilen şarkının ardından listenin sonuna kadar. Karıştırmalı
+  // listede (ya da şarkı artık listede değilse) bloğun kalan sırası korunur.
+  const at = ordered.shuffle ? -1 : ordered.ids.indexOf(songId);
+  const tail =
+    at >= 0
+      ? ordered.ids.slice(at + 1)
+      : block.map((r) => r.song_id).filter((id) => id !== songId);
+
+  const next = [
+    ...tail.map((id) => ({ song_id: id, source_playlist_id: playlistId })),
+    ...others.map((r) => ({ song_id: r.song_id, source_playlist_id: r.source_playlist_id })),
+  ].slice(0, MANUAL_BAND_SIZE - 1);
+
+  if (lane.length > 0) {
+    await Promise.all(
+      chunk(lane.map((r) => r.id)).map((ids) =>
+        supabaseAdmin.from("queue").update({ status: "removed" }).in("id", ids).eq("status", "queued")
+      )
+    );
+  }
+  if (next.length === 0) return;
+  const { error } = await supabaseAdmin.from("queue").insert(
+    next.map((r, i) => ({
+      venue_id: venueId,
+      song_id: r.song_id,
+      user_id: null,
+      added_by: ADMIN_ADDED_BY,
+      tokens_spent: 0,
+      priority: false,
+      position: MANUAL_LIST_BASE + 1 + i,
+      status: "queued",
+      source_playlist_id: r.source_playlist_id,
+    }))
+  );
+  if (error) throw new Error(error.message);
+}
+
+/**
  * "Sırayı temizle": yalnızca ELLE eklenmiş satırları düşürür. Çalan listenin
  * otomatik şarkılarına, müşterinin jetonla aldığı sıraya ve sahnedeki şarkıya
  * dokunmaz. playlistId verilirse yalnızca o listeden eklenmiş blok silinir.
@@ -1045,16 +1176,24 @@ export async function startPlaylistFrom(
   // Kuyruk müşteri istekleriyle tavana dayanmışsa daha az (ya da hiç) yazılır;
   // tavanı aşan satırları zaten sonraki dolum buduyor.
   const head = Math.min(HEAD_FILL, Math.max(0, QUEUE_CAP - kept.length));
+  // Elle eklenen / müşteri satırında bekleyen şarkı o satırla çalacak: bu turda
+  // tüketilmiş sayılır. Atlanıp tüketilmeden bırakılsaydı boşaldığında sıranın
+  // önüne sıçrardı (bkz. scanSequential).
   const picks: string[] = [];
+  const held: string[] = [];
   for (const id of ordered.ids) {
     if (picks.length >= head) break;
-    if (consumedSet.has(id) || exclude.has(id)) continue;
+    if (consumedSet.has(id)) continue;
+    if (exclude.has(id)) {
+      if (!ordered.shuffle) held.push(id);
+      continue;
+    }
     // 30 dk kilidi yalnızca YAKIN sıraya uygulanır (bkz. pickFromRotation)
     if (kept.length + picks.length < QUEUE_FLOOR && cooldownIds.has(id)) continue;
     picks.push(id);
   }
 
-  const allConsumed = [...consumed, ...picks];
+  const allConsumed = [...consumed, ...held, ...picks];
 
   // --- 2. TUR: kuyruğun başı, tüketim ve imleç -----------------------------
   await Promise.all([

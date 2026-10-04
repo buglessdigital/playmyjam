@@ -67,6 +67,8 @@ export function useLibrary(
   initialListId: string = ALL,
   playback?: {
     playingListId: string | null;
+    playingListAnchor: { listId: string; videoId: string; onStage: boolean } | null;
+    manualStage: { listId: string; videoId: string } | null;
     pendingByList: Record<string, number>;
     manualByList: Record<string, number>;
     manualListOrder: string[];
@@ -383,14 +385,48 @@ export function useLibrary(
   // Ekrandaki "çalındı" sayısı: kuyruğa yazılmış (consumed) eksi hâlâ kuyrukta
   // bekleyen. Kuyruk listenin sonuna kadar dolduğu için çıplak consumed listeyi
   // daha ilk anda "40/40" gösterirdi.
+  //
+  // Sıralı ÇALAN listede bu formül başa sarmadan sonra bozuluyor: kuyruk sonraki
+  // turun şarkılarını da tuttuğu için bekleyenler tüketilenleri geçiyor ve sayaç
+  // 0'a düşüyordu. Orada sayı çalan şarkının listedeki yerinden okunur — sahnede
+  // listenin 56. şarkısı varsa 56 (sahnede başka şarkı varsa sıradakinden bir
+  // eksik). Karıştırmalı listede sıra kavramı yok, eski formül kalır.
+  // Videonun listedeki yeri (0'dan): kendinden önce kaç şarkı var. Liste
+  // pozisyonları ardışık olmayabilir, o yüzden sayılır.
+  const indexInList = useCallback(
+    (listId: string, videoId: string): number | null => {
+      const order = positions[listId];
+      const song = songs.find((s) => s.youtube_video_id === videoId);
+      const at = song && order ? order[song.id] : undefined;
+      if (!order || at === undefined) return null;
+      return Object.values(order).filter((pos) => pos < at).length;
+    },
+    [positions, songs]
+  );
+
   const playedByList = useMemo(() => {
     const pending = playback?.pendingByList ?? {};
     const map: Record<string, number> = {};
     for (const [id, n] of Object.entries(consumed)) {
       map[id] = Math.max(0, n - (pending[id] ?? 0));
     }
+    const anchor = playback?.playingListAnchor;
+    const list = anchor ? playlists.find((p) => p.id === anchor.listId) : null;
+    const before = anchor ? indexInList(anchor.listId, anchor.videoId) : null;
+    if (anchor && list && !list.shuffle && before !== null) {
+      map[anchor.listId] = before + (anchor.onStage ? 1 : 0);
+    }
     return map;
-  }, [consumed, playback?.pendingByList]);
+  }, [consumed, playback?.pendingByList, playback?.playingListAnchor, playlists, indexInList]);
+
+  // Sıraya eklenen listenin bloğundan şarkı çalıyorsa: hangi liste, kaçıncı
+  // şarkı (1'den). Blok listenin sırasıyla yazıldığı için listedeki yer budur.
+  const manualPlaying = useMemo(() => {
+    const stage = playback?.manualStage;
+    if (!stage) return null;
+    const before = indexInList(stage.listId, stage.videoId);
+    return before === null ? null : { listId: stage.listId, at: before + 1 };
+  }, [playback?.manualStage, indexInList]);
 
   const selectedList = useMemo(
     () => playlists.find((p) => p.id === selectedId) ?? null,
@@ -996,6 +1032,7 @@ export function useLibrary(
     coversByList,
     catalogCovers,
     consumed: playedByList,
+    manualPlaying,
     // Liste başına ELLE sıraya eklenmiş, hâlâ bekleyen şarkı sayısı. Raydaki
     // "sırada" durumu artık playlist satırından değil kuyruktan okunur.
     queuedByList: playback?.manualByList ?? {},

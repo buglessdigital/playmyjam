@@ -35,7 +35,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Player kapalı kilidi](pmj-player-offline-gate-2026-08.md) — heartbeat 45 sn bayatsa süreler gizli + ekleme kapalı; player boşta da presence heartbeat yollar
 - [Admin giriş bilgileri + Google kurtarma](pmj-admin-google-reset-2026-08.md) — panelden şifre değişimi, Google bağlama, sıfırlama maili; 0030 + RESEND_API_KEY şart
 - [Playlist sıralı çalma](pmj-playlist-rotation-2026-08.md) — aktif listeler DAİMA sırayla; 0032+0033 ŞART; venues'ta kolon bazlı grant tuzağı
-- [Playlist kuyruğu + play tuşu](pmj-playlist-queue-2026-08.md) — "Sıraya ekle" artık Spotify mantığı (çalanın hemen ardına, müşterinin arkasına) + "Sırayı temizle"; kuyruk liste sonuna kadar dolu (cap 500)
+- [Playlist kuyruğu + play tuşu](pmj-playlist-queue-2026-08.md) — "Sıraya ekle" Spotify mantığı (çalanın hemen ardına, müşterinin arkasına) + "Sırayı temizle"; sıradan "şimdi çal" üstündekileri atlar (müşteri hariç); kuyruk liste sonuna kadar dolu (cap 500)
 - [Mekan logosu](pmj-venue-logo-2026-08.md) — public "venue-logos" bucket, migration yok, bucket kod tarafından açılıyor
 - [Uzaktan ses kontrolü](pmj-volume-control-2026-08.md) — panelde ses kaydırıcısı; now_playing.volume + 0036 ŞART, iOS'ta etkisiz
 - [Admin ana ekran birleşimi](pmj-admin-home-merge-2026-08.md) — 3 sütun + alt player barı; /playlist sayfası YOK, redirect var

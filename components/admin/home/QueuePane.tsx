@@ -543,7 +543,7 @@ export default function QueuePane({
                     title={
                       currentIsCustomer
                         ? "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez"
-                        : "Şimdi çal — çalan şarkı kesilir"
+                        : "Şimdi çal — çalan şarkı kesilir, üstündekiler atlanır"
                     }
                   >
                     {currentIsCustomer ? (

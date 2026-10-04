@@ -119,6 +119,7 @@ export default function LibraryPane({
     queuedByList,
     currentList,
     consumed,
+    manualPlaying,
     countFor,
     visibleSongs,
     loading,
@@ -184,7 +185,9 @@ export default function LibraryPane({
     ? "Mekanın tüm şarkıları — müşteriler hangi liste sırada olursa olsun bu havuzun tamamından seçebilir"
     : isPlaying
       ? `Şu an çalıyor — bu turda ${consumed[selectedList.id] ?? 0}/${countFor(selectedList.id)} şarkı çalındı`
-      : queuedSongs > 0
+      : manualPlaying?.listId === selectedList.id
+        ? `Sıraya eklenen bu listeden çalıyor — ${manualPlaying.at}/${countFor(selectedList.id)}. şarkı, bitince eski liste kaldığı yerden devam eder`
+        : queuedSongs > 0
         ? `Sırada ${queuedSongs} şarkı — çalan şarkıdan sonra bu liste çalacak, bitince eski liste kaldığı yerden devam eder`
         : "Sırada değil — şarkıları müşteri yine de seçebilir, otomatik çalmaz";
 

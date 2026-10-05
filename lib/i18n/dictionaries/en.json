@@ -508,6 +508,7 @@
     "infoLinkEmail": "We sent a verification link to {email}. Once you confirm it, your tokens and history are linked to this account.",
     "errGoogleStart": "Couldn't start the Google sign-in. Please try again.",
     "errGoogleLink": "Google account can't be linked right now. Your tokens are safe — you can create your account with the email and password below.",
+    "infoIdentityExists": "You already have a PlayMyJam account with this Google account. Tap Continue with Google and pick the same account; your tokens and history will move to that account.",
     "headingLead": "Let's get this party",
     "headingAccent": "started",
     "sub": "You need an account to play songs, buy tokens, and save your favorites. However, you don't need to log in to view the queue.",

@@ -23,7 +23,7 @@ type SearchArtist = {
   songCount: number;
 };
 
-export type SuggestResult = "ok" | "duplicate" | "auth" | "limit" | "error";
+export type SuggestResult = "ok" | "duplicate" | "auth" | "limit" | "paused" | "error";
 
 interface Props {
   venueSongMap: Map<string, VenueSong>;
@@ -661,7 +661,9 @@ function SuggestBox({
       return;
     }
     if (result === "auth") return; // giriş ekranına yönlendirildi
-    setError(result === "limit" ? t.suggest.limitError : t.suggest.sendError);
+    setError(
+      result === "limit" ? t.suggest.limitError : result === "paused" ? t.addsPaused.cannotAdd : t.suggest.sendError
+    );
   };
 
   const spacing = variant === "empty" ? "mt-8" : "mt-5";

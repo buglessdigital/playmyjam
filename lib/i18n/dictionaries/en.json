@@ -197,6 +197,13 @@
     "desc": "No music is playing right now, so songs can't be added — we don't want your tokens to go to waste. The queue and wait times come back once the player is online.",
     "cannotAdd": "Songs can't be added while the player is offline"
   },
+  "addsPaused": {
+    "badge": "Queue closed",
+    "short": "Closed",
+    "title": "The venue isn't taking new songs right now",
+    "desc": "The venue has stopped new song requests as closing time approaches. Songs already in the queue will keep playing.",
+    "cannotAdd": "The venue isn't taking new songs right now"
+  },
   "songModal": {
     "addedBy": "Added by",
     "tokensSpent": "Tokens Spent",

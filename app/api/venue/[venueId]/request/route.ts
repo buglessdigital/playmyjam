@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { parseSongInput, parseSuggestionInput } from "@/lib/validate";
 import { hasVenueSession } from "@/lib/venue-auth-cookie";
 import { consumeRateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { isCustomerAddsPaused } from "@/lib/customer-adds";
 import {
   REQUEST_DECISION_MS,
   expireStaleRequests,
@@ -34,6 +35,21 @@ export async function POST(
   // Oturum açık olmak yetmez: bu mekanın giriş ekranından geçilmiş olmalı
   if (!hasVenueSession(req, venueId, userId)) {
     return NextResponse.json({ error: "Bu mekana giriş yapmalısın" }, { status: 403 });
+  }
+
+  // Mekan müşteri eklemelerini kapattıysa (kapanışa yakın, 0072) talep de
+  // alınmaz: onaylansa bile çalacak vakit yok. Kolon yoksa (0072 öncesi)
+  // okuma hatası kapıyı kapatmaz.
+  const { data: pauseVenue } = await supabaseAdmin.from("venues").select("id").eq("slug", venueId).maybeSingle();
+  if (pauseVenue) {
+    const { data: pauseRow } = await supabaseAdmin
+      .from("now_playing")
+      .select("customer_adds_paused_at")
+      .eq("venue_id", pauseVenue.id)
+      .maybeSingle();
+    if (isCustomerAddsPaused((pauseRow as { customer_adds_paused_at: string | null } | null)?.customer_adds_paused_at)) {
+      return NextResponse.json({ error: "Mekan şu an yeni şarkı almıyor", code: "adds_paused" }, { status: 409 });
+    }
   }
 
   const body = await req.json().catch(() => null);

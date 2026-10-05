@@ -508,6 +508,7 @@
     "infoLinkEmail": "Doğrulama bağlantısı {email} adresine gönderildi. Onayladığında jetonların ve geçmişin bu hesaba bağlanır.",
     "errGoogleStart": "Google ile giriş başlatılamadı. Lütfen tekrar deneyin.",
     "errGoogleLink": "Google hesabı şu an bağlanamıyor. Jetonların duruyor — aşağıdaki e-posta ve şifreyle hesabını oluşturabilirsin.",
+    "infoIdentityExists": "Bu Google hesabıyla zaten bir PlayMyJam hesabın var. Google ile devam et'e basıp aynı hesabı seç; jetonların ve geçmişin o hesaba taşınacak.",
     "headingLead": "Hadi partiyi",
     "headingAccent": "başlatalım",
     "sub": "Şarkı çaldırmak, jeton almak ve favorilerini kaydetmek için hesabın gerekiyor. Kuyruğa bakmak içinse giriş yapmana gerek yok.",

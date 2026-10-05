@@ -61,7 +61,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Talep durum şeridi](pmj-talep-durum-seridi-2026-08.md) — onay (yeşil) ve red (kırmızı, aramaya götürür) panelin her sayfasında görünür; İsteklerim sayfası artık profil menüsünde
 - [Realtime publication](pmj-realtime-publication-2026-08.md) — bazı tablolar dashboard'dan açılmış, migration'lara bakarak "kapalı" deme
 - [fillQueue yarışı](pmj-fillqueue-yaris-2026-08.md) — kuyruğa alakasız katalog şarkısı girmesinin sebebi; 0046 kilidi ŞART, fail-open
-- [Akış kısaltma (7→3 tık)](pmj-akis-kisaltma-2026-08.md) — misafir oturumu + şarkıya ödeme; Supabase "Anonymous sign-ins" açılmadan devreye girmez
+- [Akış kısaltma (7→3 tık)](pmj-akis-kisaltma-2026-08.md) — misafir oturumu + şarkıya ödeme; Supabase "Anonymous sign-ins" açılmadan devreye girmez; Google bağlama "Allow manual linking" ister, kayıtlı Google seçilirse misafir o hesaba birleşir (0071 ŞART)
 - [Telefonda kumanda modu](pmj-telefon-kumanda-modu-2026-08.md) — telefonda panel player kurmaz; karar lib/player-host.ts, localStorage ile çevrilebilir
 - [iyzico kart saklama](pmj-iyzico-kart-saklama-2026-08.md) — yıllık 99 TL eklenti alındı; cardUserKey dokümante değil, 0048 ŞART
 - [Kotasız YouTube mimarisi](pmj-kotasiz-mimari-2026-08.md) — search.list koddan silindi, havuz 11.017 şarkı; kalan iş gerçek cihaz testi

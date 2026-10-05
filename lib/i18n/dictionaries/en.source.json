@@ -374,6 +374,7 @@
   "login.infoSignup": "{email} adresine bir onay e-postası gönderildi. E-postanızdaki bağlantıya tıkladığınızda oturumunuz otomatik açılacak.",
   "login.errGoogleStart": "Google ile giriş başlatılamadı. Lütfen tekrar deneyin.",
   "login.errGoogleLink": "Google hesabı şu an bağlanamıyor. Jetonların duruyor — aşağıdaki e-posta ve şifreyle hesabını oluşturabilirsin.",
+  "login.infoIdentityExists": "Bu Google hesabıyla zaten bir PlayMyJam hesabın var. Google ile devam et'e basıp aynı hesabı seç; jetonların ve geçmişin o hesaba taşınacak.",
   "login.headingLead": "Hadi partiyi",
   "login.headingAccent": "başlatalım",
   "login.sub": "Şarkı çaldırmak, jeton almak ve favorilerini kaydetmek için hesabın gerekiyor. Kuyruğa bakmak içinse giriş yapmana gerek yok.",

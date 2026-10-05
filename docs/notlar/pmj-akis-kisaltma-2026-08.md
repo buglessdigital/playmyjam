@@ -29,7 +29,21 @@ eski hâline (giriş ekranı) düşer — bozulmaz, sadece hızlanmaz.
 Misafirin cüzdanı cihazda mahsur kalmasın diye: profil sayfasında "Hesabını bağla"
 kartı; login ekranı misafir oturumunda `signUp` yerine `updateUser`, Google için
 `signInWithOAuth` yerine `linkIdentity` kullanıyor (yeni kullanıcı açılsa cüzdan
-eski kimlikte kalırdı).
+eski kimlikte kalırdı). **Bunun için de ŞART:** Authentication → Sign In /
+Providers → "Allow manual linking" AÇIK olmalı; kapalıyken `linkIdentity`
+Google'a gitmeden "Manual linking is disabled" döner ve ekranda "Google hesabı
+şu an bağlanamıyor" uyarısı çıkar (5 Eki 2026'da prod'da kapalı bulundu, açıldı).
+
+Seçilen Google hesabının zaten PlayMyJam hesabı varsa Supabase bağlamayı
+reddeder ve callback'e `code` yerine `error_code=identity_already_exists` gelir.
+O anda istek hâlâ misafir oturumunu taşıdığı için callback bir birleştirme bileti
+keser (`create_guest_merge_ticket`, httpOnly `pmj_guest_merge` çerezi, 15 dk).
+Giriş ekranı Google düğmesini normal girişe çevirir; mevcut hesapla dönüşte
+`merge_guest_account` misafirin cüzdanını (balance + paid_balance) toplar ve
+ledger/sipariş/sıra/talep/favori/push satırlarının user_id'sini taşır
+(kopyalanmaz, hakediş bozulmaz). **0071 ŞART** — yoksa giriş yine olur ama jeton
+misafirde kalır ve Sorunlar ekranına `auth/merge_ticket_failed` düşer. E-posta
+ile kayıtta aynı "zaten var" durumu için birleştirme YOK.
 
 KVKK/şartlar onayı: giriş ekranından geçilmediği için ekleme kartında
 `ConsentNotice` (kutu yok, eylemle kabul) + `record_consents` RPC misafir oturumu

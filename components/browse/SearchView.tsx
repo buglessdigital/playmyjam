@@ -9,9 +9,10 @@ import { fmt, useT } from "@/lib/i18n";
 import LangToggle from "@/components/ui/LangToggle";
 import type { DiscoverTrack } from "@/lib/discover";
 import { matchesTokens, searchTokens, songHaystack } from "@/lib/search-match";
+import { fold } from "@/lib/song-match";
 
 const MAX_RECENT = 8;
-// Mekan listesi boş dönünce dış katalog aramasına gitmeden önceki bekleme:
+// Dış katalog aramasına gitmeden önceki bekleme:
 // her tuşta istek çıkmasın, kullanıcı yazmayı bıraksın
 const DISCOVER_DEBOUNCE_MS = 350;
 
@@ -42,9 +43,11 @@ interface Props {
 }
 
 // Arama önce mekanın kendi listesi üzerinde çalışır (YouTube'a çıkılmaz).
-// Mekan listesinden hiç sonuç çıkmazsa arama dış kataloğa düşer
-// (bkz. /api/discover — Apple Music + Deezer, kotasız): müşteri aradığı şarkıyı
-// yine de listede görür ve tek dokunuşla ister. Seçim serbest metin talebe
+// Mekan listesinin sonuçları en üstte durur; altında her zaman dış katalog
+// sonuçları gelir (bkz. /api/discover — Apple Music + Deezer, kotasız): müşteri
+// aradığı şarkı listede olmasa da onu sonuçlarda görür ve tek dokunuşla ister.
+// Listede zaten olan şarkılar dış sonuçlardan ayıklanır ("Manga" aramasında
+// listedeki tek şarkı üstte, Manga'nın diğer şarkıları altta "İste" ile). Seçim serbest metin talebe
 // dönüşür, mekanın istekler bölümüne düşer. Metin okumayan müşteri de
 // "listede yoksa isteyebiliyorum"u böyle anlıyor — yazıdan değil, sonuçtan.
 //
@@ -174,16 +177,34 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
 
   const hasQuery = query.trim().length > 0;
 
-  // Dış katalog yalnızca mekan listesi boş döndüğünde devreye girer
+  // Dış katalog her aramada devreye girer — mekan listesinde sonuç olsa da
+  // aranan şarkı onlardan biri olmayabilir
   const trimmedQuery = deferredQuery.trim();
-  const needsDiscover = !artistFilter && trimmedQuery.length >= 2 && results.length === 0;
+  const needsDiscover = !artistFilter && trimmedQuery.length >= 2;
 
   // Sonuçlar ait oldukları sorguyla birlikte tutulur: "yükleniyor" ve "boşalt"
   // ayrı state gerektirmeden buradan türetilir (effect içinde setState yok).
   const [discoverState, setDiscoverState] = useState<{ query: string; tracks: DiscoverTrack[] } | null>(null);
   const discoverReady = discoverState?.query === trimmedQuery;
-  const discover = needsDiscover && discoverReady ? discoverState.tracks : [];
   const discoverLoading = needsDiscover && !discoverReady;
+
+  // Mekan listesinde zaten olan şarkı dış sonuçlarda ikinci kez "İste" ile
+  // çıkmasın: başlık listedeki bir şarkının başlığında, sanatçı da o şarkının
+  // başlık+sanatçısında geçiyorsa aynı şarkı sayılır (YouTube başlıkları
+  // "(Official Video)", "(Remix)" gibi eklerle uzun geliyor — birebir eşitlik yetmez)
+  const discover = useMemo<DiscoverTrack[]>(() => {
+    if (!needsDiscover || !discoverReady) return [];
+    const venueSongs: { title: string; text: string }[] = [];
+    for (const s of venueSongMap.values()) {
+      if (s.in_venue_list) venueSongs.push({ title: fold(s.title), text: songHaystack(s) });
+    }
+    return (discoverState?.tracks ?? []).filter((track) => {
+      const title = fold(track.title);
+      const artist = fold(primaryArtist(track.artist));
+      if (!title) return true;
+      return !venueSongs.some((v) => v.title.includes(title) && (!artist || v.text.includes(artist)));
+    });
+  }, [needsDiscover, discoverReady, discoverState, venueSongMap]);
 
   useEffect(() => {
     if (!needsDiscover) return;
@@ -402,7 +423,15 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
               />
             ))}
 
-            {/* Sonuç var ama aradığı bu değilse: aynı öneri kutusu, katlanmış halde */}
+            {/* Listede olmayan ama dış katalogda bulunan şarkılar — "İste" ile */}
+            <DiscoverResults
+              loading={discoverLoading}
+              tracks={discover}
+              onSuggest={onSuggest}
+              onInteract={() => saveRecent(query)}
+            />
+
+            {/* Dış katalogda da yoksa: aynı öneri kutusu, katlanmış halde */}
             {suggestOpen ? (
               <SuggestBox variant="inline" defaultTitle={query.trim()} defaultArtist="" onSuggest={onSuggest} />
             ) : (
@@ -464,7 +493,7 @@ function ArtistStrip({ artists, onSelect }: { artists: SearchArtist[]; onSelect:
   );
 }
 
-// Mekan listesinden sonuç çıkmadığında gösterilen dış katalog sonuçları.
+// Dış katalog sonuçları: mekan listesi sonuçlarının altında (ya da liste boşsa tek başına).
 // Satırlar mekan listesindekilerle aynı görünür — fark yalnızca aksiyonda:
 // "Ekle" yerine "İste". Müşterinin okuması gereken bir açıklama kalmıyor.
 function DiscoverResults({

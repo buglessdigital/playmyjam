@@ -14,6 +14,7 @@ import { publishTokenBalance } from "@/lib/token-balance-store";
 import ProfileChip from "@/components/ui/ProfileChip";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { usePlayerOnline } from "@/lib/use-player-online";
+import { useCustomerAddsPaused } from "@/lib/use-customer-adds";
 import { coalesce, subscribeVenueLive } from "@/lib/venue-live";
 import { fmt, useT } from "@/lib/i18n";
 import AddSongSheet from "@/components/browse/AddSongSheet";
@@ -100,6 +101,16 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   // Oynatıcı kapalıyken ekleme kapalı ve süreler gizli — ilk okuma gelene kadar
   // (null) açık varsayılır ki yanlış uyarı çakmasın
   const playerOffline = usePlayerOnline(venueDbId) === false;
+  // Mekan kapanışa yakın müşteri eklemelerini kapatmış olabilir (0072).
+  // Ekleme kilidi ikisinden biri; süreler yalnızca oynatıcıya bakar.
+  const addsPaused = useCustomerAddsPaused(venueDbId);
+  const addsLocked = playerOffline || addsPaused;
+  // Kart açıkken mekan eklemeleri kapatırsa kart kapanır — jeton yüklemeye
+  // uğraşan müşteri sonradan reddedilmesin
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- dış durum değişince kartı kapat
+    if (addsPaused) setSelectedSong(null);
+  }, [addsPaused]);
 
   useEffect(() => {
     // getSession reads from local cache — no network round-trip
@@ -413,13 +424,13 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
   const actionFor = useCallback(
     (song: DisplaySong) =>
-      getSongActionState(song, { queuedSongIds, recentlyPlayedAt: recentlyPlayedIds, playingSongId, addedIds, requestedIds, playerOffline }),
-    [queuedSongIds, recentlyPlayedIds, playingSongId, addedIds, requestedIds, playerOffline]
+      getSongActionState(song, { queuedSongIds, recentlyPlayedAt: recentlyPlayedIds, playingSongId, addedIds, requestedIds, playerOffline, addsPaused }),
+    [queuedSongIds, recentlyPlayedIds, playingSongId, addedIds, requestedIds, playerOffline, addsPaused]
   );
 
   // Şansına bırak: cooldown'da/kuyrukta olmayan listeden rastgele bir şarkıyla sheet'i aç
   const luckyPick = useCallback(async () => {
-    if (playerOffline) return;
+    if (addsLocked) return;
     const eligible = catalogSongs.filter((s) => s.in_venue_list && actionFor(s).kind === "add");
     if (eligible.length === 0) return;
     // Şarkı hesap adımından ÖNCE seçilir: misafir oturumu açılamayıp giriş
@@ -430,7 +441,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       return;
     }
     setSelectedSong(pick);
-  }, [catalogSongs, actionFor, requireAccount, playerOffline, venueId]);
+  }, [catalogSongs, actionFor, requireAccount, addsLocked, venueId]);
 
   const openSong = useCallback(
     (song: DisplaySong) => router.push(`/venue/${venueId}/song/${song.youtube_video_id}`),
@@ -442,7 +453,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     async (song: DisplaySong) => {
       // Oynatıcı kapalıyken sheet hiç açılmaz: eklenen şarkı çalmayacağı için
       // jeton boşa gider (aynı kural sunucuda /api/queue içinde)
-      if (playerOffline) return;
+      if (addsLocked) return;
       // Hesabı olmayan için misafir oturumu sessizce açılır ve kart aynı
       // dokunuşta gelir. Yalnızca o da olmazsa giriş ekranına gidilir; hangi
       // şarkı için gidildiği saklanır (bkz. lib/pending-add.ts).
@@ -452,7 +463,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       }
       setSelectedSong(song);
     },
-    [requireAccount, playerOffline, venueId]
+    [requireAccount, addsLocked, venueId]
   );
 
   // İLK ZİYARET: mekana yeni giren kişiye anlatım metni okutulmaz, doğrudan işin
@@ -490,7 +501,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   // Ekleme yapılmaz — son dokunuş yine müşteride.
   const pendingAddCheckedRef = useRef(false);
   useEffect(() => {
-    if (!stateLoaded || pendingAddCheckedRef.current || playerOffline) return;
+    if (!stateLoaded || pendingAddCheckedRef.current || addsLocked) return;
     if (venueSongMap.size === 0) return;
     pendingAddCheckedRef.current = true;
     const pending = takePendingAdd(venueId);
@@ -498,7 +509,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     const song = venueSongMap.get(pending.videoId);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- jeton dönüşündeki tek seferlik açılış
     if (song) setSelectedSong(song);
-  }, [stateLoaded, playerOffline, venueSongMap, venueId]);
+  }, [stateLoaded, addsLocked, venueSongMap, venueId]);
 
   // Talep şeridi zaten gözat sayfasındayken "Sıraya Ekle"ye basıldığında sayfa
   // yeniden mount olmaz — kart bu olayla açılır (bkz. RequestStatusBar).
@@ -510,7 +521,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   }, []);
 
   useEffect(() => {
-    if (!addSignal || playerOffline) return;
+    if (!addSignal || addsLocked) return;
     const pending = peekPendingAdd(venueId);
     if (!pending) return;
     // Yeni onaylanan tek seferlik şarkı listeye realtime ile düşüyor; henüz
@@ -520,7 +531,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     clearPendingAdd(venueId);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- şeritten gelen tek seferlik açılış
     setSelectedSong(song);
-  }, [addSignal, playerOffline, venueSongMap, venueId]);
+  }, [addSignal, addsLocked, venueSongMap, venueId]);
 
   // Alt gezinmedeki jeton rozeti bu sayfanın okuduğu bakiyeyi kullanır (ayrı sorgu yok)
   useEffect(() => {
@@ -617,6 +628,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           return "ok";
         }
         if (res.status === 429) return "limit";
+        if (res.status === 409) return "paused";
         if (res.status === 401 || res.status === 403) return "auth";
         return "error";
       } catch {
@@ -632,6 +644,8 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   // Misafirse talep giriş öncesi saklanır: hesabına girip gözat sayfasına
   // döndüğünde kendiliğinden gönderilir, kullanıcı aramayı baştan yapmaz.
   const handleSuggest = useCallback(async (title: string, artist: string, cover?: string): Promise<SuggestResult> => {
+    // Kapanışa yakın talep de alınmaz (aynı kural sunucuda)
+    if (addsPaused) return "paused";
     if (!(await requireAccount(`/venue/${venueId}/browse`))) {
       savePendingSuggestion(venueId, title, artist, cover);
       return "auth";
@@ -650,7 +664,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       setSentModal({ title, artist });
     }
     return result;
-  }, [venueId, requireAccount, router, sendSuggestion]);
+  }, [venueId, requireAccount, router, sendSuggestion, addsPaused]);
 
   // Bildirim izni verilmiş ama sunucuda abonelik kaydı yoksa geri yaz.
   // (Kayıt kaybolduğunda kullanıcı bunu ancak beklediği bildirim gelmeyince
@@ -795,11 +809,15 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       </div>
 
       <div className="pt-4">
-        {playerOffline && (
+        {playerOffline ? (
           <div className="mb-6 px-5">
             <PlayerOfflineNotice />
           </div>
-        )}
+        ) : addsPaused ? (
+          <div className="mb-6 px-5">
+            <PlayerOfflineNotice reason="paused" />
+          </div>
+        ) : null}
 
         {!selectedArtist && nowPlayingSong && nowPlaying && (
           <div className="mb-6 px-5">

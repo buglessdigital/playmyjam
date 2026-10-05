@@ -197,6 +197,13 @@
     "desc": "Şu an müzik çalmıyor, bu yüzden şarkı eklenemez — jetonun boşa gitmesin. Oynatıcı açılınca sıra ve bekleme süreleri geri gelir.",
     "cannotAdd": "Oynatıcı kapalıyken şarkı eklenemez"
   },
+  "addsPaused": {
+    "badge": "Sıra kapalı",
+    "short": "Kapalı",
+    "title": "Mekan şu an yeni şarkı almıyor",
+    "desc": "Mekan kapanışa yaklaştığı için sıraya şarkı eklemeyi durdurdu. Sıradaki şarkılar çalmaya devam ediyor.",
+    "cannotAdd": "Mekan şu an yeni şarkı almıyor"
+  },
   "browse": {
     "title": "Şarkı Seç",
     "balanceAria": "Jeton bakiyen — jeton yükle",

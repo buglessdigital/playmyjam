@@ -84,3 +84,4 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Katalog: talep yönlü kapsama](pmj-katalog-talep-yonlu-2026-09.md) — hacim değil kapsama sorunu; isimden kanal `forHandle` ile 1 birim, search.list ASLA
 - [Katalog ekranı](pmj-katalog-ekrani-2026-10.md) — /super-admin/catalog: havuzda arama + hasat ilerleme çubuğu; 0064+0065 ŞART, arama en az 3 harf
 - [Vercel görsel kotası](pmj-vercel-gorsel-kotasi.md) — 2 Eki 2026 hesap Image Optimization (6.7K/5K) yüzünden duraklatıldı → Pro + `images.unoptimized: true`
+- [Müşteri eklemelerini kapatma](pmj-musteri-ekleme-kapatma-2026-10.md) — panelde "Sırada" başlığındaki anahtar; now_playing.customer_adds_paused_at, 12 saatte kendiliğinden açılır; 0072 ŞART

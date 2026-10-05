@@ -12,6 +12,7 @@ import ProfileChip from "@/components/ui/ProfileChip";
 import { publishTokenBalance } from "@/lib/token-balance-store";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { usePlayerOnline } from "@/lib/use-player-online";
+import { useCustomerAddsPaused } from "@/lib/use-customer-adds";
 import { coalesce, subscribeVenueLive } from "@/lib/venue-live";
 import { fmt, useT } from "@/lib/i18n";
 import {
@@ -66,6 +67,9 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
   // Oynatıcı kapalıyken süreler donmuş olur: bekleme/ilerleme gösterilmez.
   // İlk okuma gelene kadar (null) açık varsayılır — yanlış uyarı çakmasın.
   const playerOffline = usePlayerOnline(venueDbId) === false;
+  // Mekan kapanışa yakın müşteri eklemelerini kapatmış olabilir (0072) — sıra
+  // ve süreler görünmeye devam eder, yalnızca "Şarkı Ekle" kalkar
+  const addsPaused = useCustomerAddsPaused(venueDbId);
 
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000);
@@ -258,11 +262,15 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
         </div>
       </div>
 
-      {playerOffline && (
+      {playerOffline ? (
         <div className="mx-5 mb-4">
           <PlayerOfflineNotice />
         </div>
-      )}
+      ) : addsPaused ? (
+        <div className="mx-5 mb-4">
+          <PlayerOfflineNotice reason="paused" />
+        </div>
+      ) : null}
 
       {/* Bekleme süreleri yalnızca oynatıcı canlıyken anlamlı — kapalıyken sıra ilerlemiyor */}
       {!playerOffline && (
@@ -458,7 +466,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
           bir şerit kuyruk satırlarının üstüne binip okunmaz hale geliyordu.
           Talep şeridi de aynı köşede duruyor — buton onun da üstüne çıkar
           (bkz. components/venue/RequestStatusBar). */}
-      {!playerOffline && (
+      {!playerOffline && !addsPaused && (
       <div
         className="fixed left-0 right-0 px-5 z-40 flex justify-end pointer-events-none"
         style={{ bottom: "calc(4rem + var(--pmj-request-bar, 0px))" }}

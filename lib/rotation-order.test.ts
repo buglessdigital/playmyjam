@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { orderFromResume, resumeIndexOf } from "./rotation-order.ts";
+import { orderFromResume, resumeIndexOf, scanSequential } from "./rotation-order.ts";
 
 // #0..#101, gerçek listenin uzunluğu
 const list = Array.from({ length: 102 }, (_, i) => `s${i}`);
@@ -80,4 +80,33 @@ test("tek şarkılık liste kendini tekrar eder", () => {
 
 test("boş liste çökertmez", () => {
   assert.deepEqual(orderFromResume([], ["s1"], new Set(["s1"])), []);
+});
+
+test("5 Eki hatası: turda eksik kalan şarkı sonraki turda sıranın önüne sıçramaz", () => {
+  // Yeni tur başlıyor (defter sıfırlandı). Eski turun #100..#110'u hâlâ
+  // kuyrukta (aynı listenin otomatik satırları), #102 (Move) eski turda
+  // eksik kaldığı için kuyrukta YOK.
+  const songs = Array.from({ length: 111 }, (_, i) => `s${i}`);
+  const inQueue = new Set(songs.slice(100, 111).filter((id) => id !== "s102"));
+  const { picks, blocked } = scanSequential(
+    songs,
+    (id) => (inQueue.has(id) ? "inFlight" : "pick"),
+    500
+  );
+  // #0..#99 alınır, #100'de durur: Move (#102) #101'in ÖNÜNE geçemez
+  assert.deepEqual(picks, songs.slice(0, 100));
+  assert.equal(blocked, true);
+  assert.ok(!picks.includes("s102"), "Move kendi sırasını beklemeli");
+});
+
+test("elle eklenen/müşteri satırındaki şarkı tüketilir, tarama sürer", () => {
+  const songs = ["a", "b", "c", "d"];
+  const res = scanSequential(
+    songs,
+    (id) => (id === "b" ? "held" : id === "c" ? "skip" : "pick"),
+    10
+  );
+  assert.deepEqual(res.picks, ["a", "d"]);
+  assert.deepEqual(res.consumedHeld, ["b"]);
+  assert.equal(res.blocked, false);
 });

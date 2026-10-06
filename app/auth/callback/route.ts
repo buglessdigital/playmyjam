@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { setVenueAuthCookie } from "@/lib/venue-auth-cookie";
+import { reportIssue } from "@/lib/ops-log";
+
+// Misafir → mevcut hesap birleştirme bileti (0071); yalnız bu route okur
+const MERGE_COOKIE = "pmj_guest_merge";
 
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = req.nextUrl;
@@ -20,10 +24,6 @@ export async function GET(req: NextRequest) {
       ? rawNext
       : `/venue/${venueId}/browse`;
   const loginUrl = `/venue/${venueId}/login`;
-
-  if (!code) {
-    return NextResponse.redirect(new URL(`${loginUrl}?auth_error=missing_params`, origin));
-  }
 
   // Tek-response deseni: Supabase'in yazdığı session cookie'leri doğrudan
   // dönen redirect response'una gitsin — aksi halde ilk denemede sb-* cookie'leri
@@ -45,11 +45,69 @@ export async function GET(req: NextRequest) {
     }
   );
 
+  if (!code) {
+    // Misafir Google'ı bağlamak istedi ama o Google hesabının zaten bir
+    // PlayMyJam hesabı var. İstek hâlâ misafir oturumunu taşıyor: birleştirme
+    // biletini ŞİMDİ kes, müşteri mevcut hesabıyla girince callback tüketsin.
+    if (searchParams.get("error_code") === "identity_already_exists") {
+      // Yanıt RPC'den ÖNCE kurulur: oturum tazelenirse yeni çerezler buna yazılsın
+      response = NextResponse.redirect(
+        new URL(`${loginUrl}?auth_error=identity_exists&next=${encodeURIComponent(nextPath)}`, origin)
+      );
+      const { data: ticket, error: ticketError } = await supabase.rpc("create_guest_merge_ticket");
+      if (!ticketError && ticket) {
+        response.cookies.set(MERGE_COOKIE, String(ticket), {
+          path: "/auth/callback",
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: 900,
+        });
+      } else {
+        await reportIssue({
+          area: "auth",
+          kind: "merge_ticket_failed",
+          severity: "error",
+          message: "Misafir birleştirme bileti kesilemedi",
+          venueId,
+          error: ticketError,
+        });
+      }
+      clearPendingOauthCookies(response);
+      return response;
+    }
+    response = NextResponse.redirect(new URL(`${loginUrl}?auth_error=missing_params`, origin));
+    clearPendingOauthCookies(response);
+    return response;
+  }
+
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error || !data.session) {
     response = NextResponse.redirect(new URL(`${loginUrl}?auth_error=oauth_failed`, origin));
     clearPendingOauthCookies(response);
     return response;
+  }
+
+  // Misafirden mevcut hesaba geçiş: biletteki misafirin cüzdanı ve geçmişi bu
+  // hesaba taşınır (0071). Hata girişi durdurmaz — jetonlar misafirde kalır,
+  // Sorunlar ekranına düşer.
+  const mergeTicket = req.cookies.get(MERGE_COOKIE)?.value;
+  if (mergeTicket && !data.session.user.is_anonymous) {
+    const { data: merged, error: mergeError } = await supabase.rpc("merge_guest_account", {
+      p_ticket: mergeTicket,
+    });
+    if (mergeError || merged?.merged !== true) {
+      await reportIssue({
+        area: "auth",
+        kind: "guest_merge_failed",
+        severity: mergeError ? "error" : "warn",
+        message: "Misafir hesabı mevcut hesaba birleştirilemedi",
+        venueId,
+        detail: { result: merged ?? null },
+        error: mergeError,
+      });
+    }
+    response.cookies.delete({ name: MERGE_COOKIE, path: "/auth/callback" });
   }
 
   // Kayıt ekranındaki onay kutuları Google'a giderken çerezle taşındı (0043);

@@ -43,7 +43,8 @@ export async function POST(req: NextRequest) {
         title: "Bildirimler açık 🔔",
         body: "Müşteri şarkı talebi gönderdiğinde buraya düşecek.",
         tag: "pmj-push-test",
-      }
+      },
+      { audience: "admin", recipientId: session.admin_id, venueId: session.venue_id }
     );
   }
 

@@ -7,10 +7,10 @@ import * as Sentry from "@sentry/nextjs";
 // LanguageProvider ne globals.css vardır, bu yüzden metin iki dilli ve stil satır içi.
 export default function GlobalError({
   error,
-  unstable_retry,
+  retry,
 }: {
   error: Error & { digest?: string };
-  unstable_retry: () => void;
+  retry: () => void;
 }) {
   useEffect(() => {
     Sentry.captureException(error);
@@ -28,7 +28,7 @@ export default function GlobalError({
             </p>
             <button
               type="button"
-              onClick={() => unstable_retry()}
+              onClick={() => retry()}
               style={{ marginTop: 16, padding: "10px 20px", borderRadius: 12, border: "none", background: "#9333ea", color: "white", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
             >
               Tekrar dene / Try again

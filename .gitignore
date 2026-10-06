@@ -48,3 +48,6 @@ design/avatar-originals/
 /e2e-results/
 /e2e-report/
 /playwright/.cache/
+
+# maplibre worker — derleme öncesi node_modules'tan kopyalanır (scripts/copy-maplibre-worker.mjs)
+/public/vendor/maplibre/

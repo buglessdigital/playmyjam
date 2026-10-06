@@ -166,6 +166,7 @@
   "panelNav": {
     "queue": "KUYRUK",
     "browse": "ŞARKI SEÇ",
+    "map": "MEKANLAR",
     "tokens": "JETON AL",
     "profileAria": "Profilim"
   },
@@ -196,6 +197,13 @@
     "title": "Mekanın oynatıcısı kapalı",
     "desc": "Şu an müzik çalmıyor, bu yüzden şarkı eklenemez — jetonun boşa gitmesin. Oynatıcı açılınca sıra ve bekleme süreleri geri gelir.",
     "cannotAdd": "Oynatıcı kapalıyken şarkı eklenemez"
+  },
+  "addsPaused": {
+    "badge": "Sıra kapalı",
+    "short": "Kapalı",
+    "title": "Mekan şu an yeni şarkı almıyor",
+    "desc": "Mekan kapanışa yaklaştığı için sıraya şarkı eklemeyi durdurdu. Sıradaki şarkılar çalmaya devam ediyor.",
+    "cannotAdd": "Mekan şu an yeni şarkı almıyor"
   },
   "browse": {
     "title": "Şarkı Seç",
@@ -365,7 +373,11 @@
     "approvedCountdown": "Çaldırmak için {t} kaldı",
     "addCta": "Sıraya Ekle",
     "pendingHelp": "Mekan talebini henüz onaylamadı. Onaylanırsa bu şerit yeşile döner ve şarkıyı buradan sıraya ekleyebilirsin.",
-    "seeAll": "İsteklerim"
+    "seeAll": "İsteklerim",
+    "rejectedTitle": "Talebin reddedildi",
+    "rejectedLine": "Mekan bu şarkıyı şu an çalmak istemedi",
+    "rejectedCta": "Başka Şarkı Ara",
+    "dismiss": "Kapat"
   },
   "requestSent": {
     "title": "Mekan onaylarsa sıraya ekleyebilirsin",
@@ -504,6 +516,7 @@
     "infoLinkEmail": "Doğrulama bağlantısı {email} adresine gönderildi. Onayladığında jetonların ve geçmişin bu hesaba bağlanır.",
     "errGoogleStart": "Google ile giriş başlatılamadı. Lütfen tekrar deneyin.",
     "errGoogleLink": "Google hesabı şu an bağlanamıyor. Jetonların duruyor — aşağıdaki e-posta ve şifreyle hesabını oluşturabilirsin.",
+    "infoIdentityExists": "Bu Google hesabıyla zaten bir PlayMyJam hesabın var. Google ile devam et'e basıp aynı hesabı seç; jetonların ve geçmişin o hesaba taşınacak.",
     "headingLead": "Hadi partiyi",
     "headingAccent": "başlatalım",
     "sub": "Şarkı çaldırmak, jeton almak ve favorilerini kaydetmek için hesabın gerekiyor. Kuyruğa bakmak içinse giriş yapmana gerek yok.",
@@ -711,6 +724,48 @@
     "desc": "Sayfa yüklenirken beklenmeyen bir hata oluştu. Tekrar denemek çoğu zaman yeterli olur.",
     "home": "Ana sayfaya dön",
     "ref": "Hata kodu"
+  },
+  "venueMap": {
+    "title": "Mekanlar",
+    "subtitle": "PlayMyJam'li mekanlar",
+    "loading": "Harita yükleniyor…",
+    "empty": "Henüz haritada mekan yok",
+    "loadError": "Harita yüklenemedi",
+    "retry": "Tekrar dene",
+    "youAreHere": "Buradasın",
+    "nowPlaying": "Şimdi çalıyor",
+    "notPlaying": "Şu an müzik çalmıyor",
+    "upNext": "Sıradaki 10 şarkı",
+    "upNextEmpty": "Sırada bekleyen şarkı yok",
+    "priority": "Öncelikli",
+    "topSongs": "En çok çalınanlar",
+    "lastDays": "Son {days} gün",
+    "topSongsEmpty": "Henüz yeterli çalma geçmişi yok",
+    "plays": "{n} kez",
+    "topGenre": "En çok çalan tür",
+    "genreEmpty": "Tür bilgisi hazırlanıyor",
+    "directions": "Yol tarifi",
+    "cardError": "Mekan bilgisi alınamadı",
+    "dragHint": "Daha fazlası için yukarı kaydır",
+    "genres": {
+      "electronic": "Elektronik",
+      "pop": "Pop",
+      "turkishPop": "Türkçe Pop",
+      "hiphop": "Hip-Hop / Rap",
+      "rock": "Rock / Alternatif",
+      "arabesk": "Arabesk",
+      "folk": "Halk Müziği",
+      "tsm": "Türk Sanat Müziği",
+      "jazz": "Caz",
+      "rnb": "R&B / Soul",
+      "latin": "Latin",
+      "reggae": "Reggae",
+      "blues": "Blues",
+      "classical": "Klasik",
+      "soundtrack": "Film Müziği",
+      "singer": "Söz-Yazar",
+      "world": "Dünya Müziği"
+    }
   },
   "notFoundPage": {
     "title": "Sayfa bulunamadı",

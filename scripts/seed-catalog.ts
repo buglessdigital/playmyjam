@@ -223,6 +223,7 @@ async function expandChannels(
         fromThis++;
       }
       pageToken = data.nextPageToken;
+      await runBeat();
     } while (pageToken);
 
     console.log(`  kanal ${channelId}: ${fromThis} liste bulundu`);
@@ -288,6 +289,103 @@ async function syncStateToDb(state: SeedState) {
   }
 }
 
+/* ---------- tur kaydı (super admin Katalog ekranı) ---------- */
+
+// Betik geliştiricinin makinesinde çalışıyor; ilerlemesi paylaşılan bir yere
+// yazılmazsa ekran turu gösteremez (bkz. 0064). Yazma hataları turu DÜŞÜRMEZ:
+// ilerleme kaydı işin kendisi değil, onun seyir defteri.
+let runId: number | null = null;
+let lastBeat = 0;
+// Ekranda "şu an ne ekleniyor" satırı: son eklenen birkaç başlık
+const lastSongs: string[] = [];
+const LAST_SONGS_KEEP = 8;
+// Nabzı atan her yer hangi listede olduğumuzu bilmiyor (sayfa okuma, videos.list);
+// liste adı burada tutulur, runBeat oradan okur.
+let currentList: string | null = null;
+
+// Tur kaydı EN BAŞTA açılır. Eskiden liste hazırlığından (hasat + sayım)
+// sonra açılıyordu; o hazırlık dakikalarca sürüyor ve 4 Eki turunda tam orada
+// ağ hatasıyla çöktü — ekranda hiçbir iz kalmadı, "henüz tur yok" yazıyordu.
+// Kaç liste olduğu o an bilinmiyor; lists_total hazırlık bitince yazılır.
+async function runStart() {
+  if (DRY_RUN) return;
+  try {
+    const { data, error } = await retry("tur kaydı", () =>
+      supabase
+        .from("catalog_runs")
+        .insert({ budget: BUDGET, status: "running", note: "liste hazırlanıyor" })
+        .select("id")
+        .single()
+    );
+    if (error) throw new Error(error.message);
+    runId = (data as { id: number }).id;
+  } catch (err) {
+    console.log(`  (tur kaydı açılamadı: ${err instanceof Error ? err.message : err})`);
+  }
+}
+
+// Her listeden sonra çağrılır ama en çok 5 saniyede bir yazar: 500 küçük liste
+// işlenen bir turda her satır için istek atmak işi yavaşlatır.
+async function runTotal(listsTotal: number) {
+  if (runId === null) return;
+  try {
+    await retry("tur kaydı", () =>
+      supabase.from("catalog_runs").update({ lists_total: listsTotal, note: null }).eq("id", runId)
+    );
+  } catch {
+    // sessiz: nabız zaten yeniden deneyecek
+  }
+}
+
+async function runBeat(force = false) {
+  if (runId === null) return;
+  const now = Date.now();
+  if (!force && now - lastBeat < 5000) return;
+  lastBeat = now;
+  try {
+    await retry("tur kaydı", () =>
+      supabase
+        .from("catalog_runs")
+        .update({
+          units_spent: unitsSpent,
+          lists_done: stats.playlists,
+          lists_deferred: stats.deferred,
+          songs_added: stats.upserted,
+          current_list: currentList,
+          last_songs: lastSongs,
+          heartbeat_at: new Date().toISOString(),
+        })
+        .eq("id", runId)
+    );
+  } catch {
+    // sessiz: bir sonraki nabız zaten yeniden dener
+  }
+}
+
+async function runFinish(status: string, note: string) {
+  if (runId === null) return;
+  try {
+    await retry("tur kaydı", () =>
+      supabase
+        .from("catalog_runs")
+        .update({
+          status,
+          note,
+          units_spent: unitsSpent,
+          lists_done: stats.playlists,
+          lists_deferred: stats.deferred,
+          songs_added: stats.upserted,
+          current_list: null,
+          finished_at: new Date().toISOString(),
+          heartbeat_at: new Date().toISOString(),
+        })
+        .eq("id", runId)
+    );
+  } catch (err) {
+    console.log(`  (tur kaydı kapatılamadı: ${err instanceof Error ? err.message : err})`);
+  }
+}
+
 // playlists.list — 1 birim / 50 liste. Turun en ucuz adımı ve en büyük tasarrufu.
 // Yanıtta dönmeyen kimlik silinmiş/gizlenmiş listedir; state'e bakılmadan denenir
 // ve asıl hatayı playlistItems verir.
@@ -296,15 +394,24 @@ async function currentItemCounts(playlistIds: string[]): Promise<Map<string, num
   for (let i = 0; i < playlistIds.length; i += 50) {
     const batch = playlistIds.slice(i, i + 50);
     spend(1);
-    const data = await api<{ items?: Array<{ id?: string; contentDetails?: { itemCount?: number } }> }>(
-      "playlists",
-      { part: "contentDetails", id: batch.join(","), maxResults: "50" }
-    );
+    // Ön sayım 1.700 listede 34 isteğe çıkıyor; yeniden denemeler de tükenirse
+    // TEK demet yüzünden tur düşmesin. Sayısı bilinmeyen liste "değişmiş"
+    // sayılır, yani en fazla bir kez fazladan okunur.
+    let data: { items?: Array<{ id?: string; contentDetails?: { itemCount?: number } }> };
+    try {
+      data = await api("playlists", { part: "contentDetails", id: batch.join(","), maxResults: "50" });
+    } catch (err) {
+      if (err instanceof BudgetExhausted || err instanceof QuotaExhausted) throw err;
+      console.log(`  ön sayım demeti atlandı: ${err instanceof Error ? err.message.split("\n")[0] : err}`);
+      continue;
+    }
     for (const item of data.items ?? []) {
       if (item.id && typeof item.contentDetails?.itemCount === "number") {
         counts.set(item.id, item.contentDetails.itemCount);
       }
     }
+    // Hazırlık dakikalarca sürüyor; nabız atılmazsa ekran turu "kesildi" sanır
+    await runBeat();
   }
   return counts;
 }
@@ -355,6 +462,7 @@ async function playlistVideoIds(playlistId: string): Promise<{ ids: string[]; tr
       if (item.contentDetails?.videoId) ids.push(item.contentDetails.videoId);
     }
     pageToken = data.nextPageToken;
+    await runBeat();
   } while (pageToken && ids.length < MAX_PER_PLAYLIST);
 
   return { ids: [...new Set(ids)], truncated: !!pageToken };
@@ -390,6 +498,7 @@ async function fetchRows(videoIds: string[]): Promise<SongRow[]> {
       if (row) rows.push(row);
       else stats.filtered++;
     }
+    await runBeat();
   }
   return rows;
 }
@@ -483,6 +592,7 @@ async function harvestUploadPlaylists(): Promise<string[]> {
     lastId = data[data.length - 1].id as string;
   }
 
+  await runBeat();
   const uploads = [...channels].map((id) => `UU${id.slice(2)}`);
   stats.harvested = uploads.length;
   console.log(
@@ -502,6 +612,8 @@ async function main() {
     );
     process.exit(1);
   }
+
+  await runStart();
 
   // --force yalnızca atlamayı kapatır; kayıtları silmez. Eskiden boş state ile
   // başlıyor ve ilk yazışta diğer listelerin tüm kayıtlarını siliyordu.
@@ -528,15 +640,24 @@ async function main() {
   const fromChannels = channels.length > 0 ? await expandChannels(channels, counts) : [];
   const playlistIds = [...new Set([...playlists, ...harvested, ...fromChannels])];
 
+  // Bir kez sonuna kadar okunmuş liste ELLE hasatta bir daha açılmaz — şarkı
+  // sayısı değişmiş olsa bile. Değişim demeti küçük (kanala 10 video eklenmiş)
+  // ama liste baştan okunuyor: 30 Eyl turunda Seyhan 11.531 şarkı için 230,
+  // Poll 8.429 şarkı için 170 birim yaktı ve toplam 3 yeni şarkı çıktı.
+  // Yeni yüklemeleri almak günlük catalog-new cron'unun işi: o en yeni
+  // sayfadan başlar ve bilinen şarkıya gelince durur. Elle hasadın işi hiç
+  // okunmamış kanallar. Tamamı yeniden okunacaksa --force.
   const todo = playlistIds.filter((id) => {
-    const seen = state[id];
-    const now = counts.get(id);
-    if (!FORCE && seen !== undefined && now !== undefined && seen === now) {
+    if (!FORCE && state[id] !== undefined) {
       stats.unchanged++;
       return false;
     }
     return true;
   });
+
+  // Küçük listeler önce: bütçe büyük bir kanala takılıp onlarca küçük kanalı
+  // bekletmesin (sığmayan liste zaten sonraki tura kalıyor).
+  todo.sort((a, b) => (counts.get(a) ?? 0) - (counts.get(b) ?? 0));
 
   console.log(
     `${playlistIds.length} playlist` +
@@ -545,6 +666,8 @@ async function main() {
       ` · ${stats.unchanged} değişmemiş, ${todo.length} taranacak · ` +
       `bütçe ${BUDGET} birim${DRY_RUN ? " (KURU ÇALIŞMA)" : ""}\n`
   );
+
+  await runTotal(todo.length);
 
   for (const playlistId of todo) {
     // Şarkılar liste sonunda yazılıyor: bütçe listenin ortasında biterse okunan
@@ -569,6 +692,8 @@ async function main() {
 
 // Tek listenin tüm işi. Hatası çağırana gider, orada tek liste olarak yutulur.
 async function seedPlaylist(playlistId: string, counts: Map<string, number>, state: SeedState) {
+  currentList = playlistId;
+  await runBeat(true);
   const { ids, truncated } = await playlistVideoIds(playlistId);
   stats.playlists++;
   stats.seenIds += ids.length;
@@ -586,6 +711,10 @@ async function seedPlaylist(playlistId: string, counts: Map<string, number>, sta
   if (unknown.length > 0) {
     const rows = await fetchRows(unknown);
     await upsert(rows);
+    for (const row of rows.slice(-LAST_SONGS_KEEP)) {
+      lastSongs.unshift(`${row.artist} — ${row.title}`);
+    }
+    lastSongs.length = Math.min(lastSongs.length, LAST_SONGS_KEEP);
     console.log(
       `  ${playlistId}: ${ids.length} şarkı → ${rows.length} yeni kayıt (${unitsSpent} birim harcandı)`
     );
@@ -609,11 +738,29 @@ async function seedPlaylist(playlistId: string, counts: Map<string, number>, sta
 }
 
 main()
-  .then(() => report("Bitti"))
-  .catch((err) => {
-    if (err instanceof BudgetExhausted) return report(`Bütçe doldu (${BUDGET} birim)`);
-    if (err instanceof QuotaExhausted) return report("Günlük YouTube kotası doldu");
-    console.error(`\nHata: ${err instanceof Error ? err.message : err}`);
+  .then(async () => {
+    // "done" = döngü sonuna geldi. Bütçeye sığmayan liste varsa sıra TÜKENMEDİ,
+    // ertelendi — ekranda "sıra tükendi" yazması yanıltıcı olur.
+    await runFinish(
+      "done",
+      stats.deferred > 0
+        ? `${stats.deferred} liste bütçeye sığmadı, sonraki tura kaldı`
+        : "sıra tükendi"
+    );
+    report("Bitti");
+  })
+  .catch(async (err) => {
+    if (err instanceof BudgetExhausted) {
+      await runFinish("budget", `bütçe doldu (${BUDGET} birim)`);
+      return report(`Bütçe doldu (${BUDGET} birim)`);
+    }
+    if (err instanceof QuotaExhausted) {
+      await runFinish("quota", "günlük YouTube kotası doldu");
+      return report("Günlük YouTube kotası doldu");
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    await runFinish("error", message.slice(0, 300));
+    console.error(`\nHata: ${message}`);
     report("Yarıda kesildi");
     process.exit(1);
   });

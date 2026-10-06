@@ -14,6 +14,8 @@ import { publishTokenBalance } from "@/lib/token-balance-store";
 import ProfileChip from "@/components/ui/ProfileChip";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { usePlayerOnline } from "@/lib/use-player-online";
+import { useCustomerAddsPaused } from "@/lib/use-customer-adds";
+import { coalesce, subscribeVenueLive } from "@/lib/venue-live";
 import { fmt, useT } from "@/lib/i18n";
 import AddSongSheet from "@/components/browse/AddSongSheet";
 import NowPlayingBanner from "@/components/browse/NowPlayingBanner";
@@ -99,6 +101,16 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   // Oynatıcı kapalıyken ekleme kapalı ve süreler gizli — ilk okuma gelene kadar
   // (null) açık varsayılır ki yanlış uyarı çakmasın
   const playerOffline = usePlayerOnline(venueDbId) === false;
+  // Mekan kapanışa yakın müşteri eklemelerini kapatmış olabilir (0072).
+  // Ekleme kilidi ikisinden biri; süreler yalnızca oynatıcıya bakar.
+  const addsPaused = useCustomerAddsPaused(venueDbId);
+  const addsLocked = playerOffline || addsPaused;
+  // Kart açıkken mekan eklemeleri kapatırsa kart kapanır — jeton yüklemeye
+  // uğraşan müşteri sonradan reddedilmesin
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- dış durum değişince kartı kapat
+    if (addsPaused) setSelectedSong(null);
+  }, [addsPaused]);
 
   useEffect(() => {
     // getSession reads from local cache — no network round-trip
@@ -137,8 +149,6 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       songs: Omit<VenueSong, "play_count" | "in_venue_list"> | null;
     };
 
-    let subscribedOnce = false;
-
     const fetchVenueSongs = async () => {
       // Sayfalı: 1000'i aşan kataloglarda müşteri şarkıların tamamını göremiyordu
       const { data: vSongs } = await fetchAllRows<VenueSongRow>((from, to) =>
@@ -173,20 +183,17 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     // kapattığı bir listenin şarkısını sıralı sanmaya devam ediyordu.
     fetchVenueSongs();
 
-    const channel = supabase
-      .channel(`browse-venue-songs:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "venue_songs", filter: `venue_id=eq.${venueDbId}` }, fetchVenueSongs)
-      .subscribe((status: string) => {
-        // İlk SUBSCRIBED yukarıdaki okumayla aynı ana denk gelir; yalnızca kopup
-        // dönen bağlantılarda (aradaki olaylar kayıp) tazeleme yapılır.
-        if (status === "SUBSCRIBED") {
-          if (subscribedOnce) fetchVenueSongs();
-          subscribedOnce = true;
-        }
-      });
+    // `catalog` yalnızca müşterinin seçebileceği liste değişince gelir; play_count
+    // artışı (her ücretli şarkı bitişi) artık bütün kataloğu yeniden indirtmiyor.
+    // resync: bağlantı kopup döndü ya da sekme uzun süre uyudu, aradakiler kayıp.
+    const refresh = coalesce(fetchVenueSongs, 300, 1500);
+    const unsubscribe = subscribeVenueLive(venueDbId, (event) => {
+      if (event === "catalog" || event === "resync") refresh();
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      refresh.cancel();
+      unsubscribe();
     };
   }, [venueDbId, supabase]);
 
@@ -227,10 +234,10 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
     fetchOneTime();
 
-    const channel = supabase
-      .channel(`browse-one-time:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "one_time_songs", filter: `venue_id=eq.${venueDbId}` }, fetchOneTime)
-      .subscribe();
+    const refreshOneTime = coalesce(fetchOneTime);
+    const unsubscribe = subscribeVenueLive(venueDbId, (event) => {
+      if (event === "one_time" || event === "resync") refreshOneTime();
+    });
 
     // Süresi dolanı listeden düşür (sunucu tarafı zaten reddeder; ekran da yalan
     // söylemesin) ve geri sayımları tazele
@@ -246,7 +253,8 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     return () => {
       cancelled = true;
       clearInterval(sweep);
-      supabase.removeChannel(channel);
+      refreshOneTime.cancel();
+      unsubscribe();
     };
   }, [venueDbId, supabase]);
 
@@ -258,7 +266,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     // son çalınanlar, bakiye, favoriler, bekleme süresi girdileri
     const fetchUserState = async () => {
       // started_at RPC'de yok ama bekleme süresi/ilerleme için şart: DB'deki
-      // progress_ms 15 sn'de bir yazıldığından bayat, started_at ise sabit çapa
+      // progress_ms yazıldığı andan beri bayat, started_at ise sabit çapa
       const [{ data }, { data: npRow }] = await Promise.all([
         supabase.rpc("get_browse_user_state", { p_venue_id: venueDbId }),
         supabase.from("now_playing").select("started_at, is_playing").eq("venue_id", venueDbId).maybeSingle(),
@@ -295,20 +303,17 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
     fetchUserState();
 
-    const qChannel = supabase
-      .channel(`browse-queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchUserState)
-      .subscribe();
-
-    const npChannel = supabase
-      .channel(`browse-now-playing:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchUserState)
-      .subscribe();
+    // Eskiden 5 sn'lik heartbeat dahil her now_playing yazımında okunuyordu;
+    // artık yalnızca kuyruk ya da çalan şarkı gerçekten değişince
+    const refresh = coalesce(fetchUserState);
+    const unsubscribe = subscribeVenueLive(venueDbId, (event) => {
+      if (event === "queue" || event === "np" || event === "resync") refresh();
+    });
 
     return () => {
       cancelled = true;
-      supabase.removeChannel(qChannel);
-      supabase.removeChannel(npChannel);
+      refresh.cancel();
+      unsubscribe();
     };
   }, [venueDbId, supabase]);
 
@@ -419,13 +424,13 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
 
   const actionFor = useCallback(
     (song: DisplaySong) =>
-      getSongActionState(song, { queuedSongIds, recentlyPlayedAt: recentlyPlayedIds, playingSongId, addedIds, requestedIds, playerOffline }),
-    [queuedSongIds, recentlyPlayedIds, playingSongId, addedIds, requestedIds, playerOffline]
+      getSongActionState(song, { queuedSongIds, recentlyPlayedAt: recentlyPlayedIds, playingSongId, addedIds, requestedIds, playerOffline, addsPaused }),
+    [queuedSongIds, recentlyPlayedIds, playingSongId, addedIds, requestedIds, playerOffline, addsPaused]
   );
 
   // Şansına bırak: cooldown'da/kuyrukta olmayan listeden rastgele bir şarkıyla sheet'i aç
   const luckyPick = useCallback(async () => {
-    if (playerOffline) return;
+    if (addsLocked) return;
     const eligible = catalogSongs.filter((s) => s.in_venue_list && actionFor(s).kind === "add");
     if (eligible.length === 0) return;
     // Şarkı hesap adımından ÖNCE seçilir: misafir oturumu açılamayıp giriş
@@ -436,7 +441,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       return;
     }
     setSelectedSong(pick);
-  }, [catalogSongs, actionFor, requireAccount, playerOffline, venueId]);
+  }, [catalogSongs, actionFor, requireAccount, addsLocked, venueId]);
 
   const openSong = useCallback(
     (song: DisplaySong) => router.push(`/venue/${venueId}/song/${song.youtube_video_id}`),
@@ -448,7 +453,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     async (song: DisplaySong) => {
       // Oynatıcı kapalıyken sheet hiç açılmaz: eklenen şarkı çalmayacağı için
       // jeton boşa gider (aynı kural sunucuda /api/queue içinde)
-      if (playerOffline) return;
+      if (addsLocked) return;
       // Hesabı olmayan için misafir oturumu sessizce açılır ve kart aynı
       // dokunuşta gelir. Yalnızca o da olmazsa giriş ekranına gidilir; hangi
       // şarkı için gidildiği saklanır (bkz. lib/pending-add.ts).
@@ -458,7 +463,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       }
       setSelectedSong(song);
     },
-    [requireAccount, playerOffline, venueId]
+    [requireAccount, addsLocked, venueId]
   );
 
   // İLK ZİYARET: mekana yeni giren kişiye anlatım metni okutulmaz, doğrudan işin
@@ -474,12 +479,29 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     if (takeFirstVisit(venueId)) setSearchOpen(true);
   }, [venueId]);
 
+  // Talebi reddedilen müşteri başka şarkı arasın: şerit / red bildirimi
+  // ?search=1 ile buraya getirir, zaten buradaysak olay yollar
+  // (bkz. RequestStatusBar). Parametre okununca adresten silinir ki yenileme
+  // aramayı tekrar açmasın.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("search") === "1") {
+      url.searchParams.delete("search");
+      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- adresteki tek seferlik açılış isteği
+      setSearchOpen(true);
+    }
+    const onSignal = () => setSearchOpen(true);
+    window.addEventListener("pmj-open-search", onSignal);
+    return () => window.removeEventListener("pmj-open-search", onSignal);
+  }, []);
+
   // Jeton almaya gidip dönen müşteri şarkıyı baştan aramasın: gidilirken saklanan
   // şarkının ekleme kartı bir kez kendiliğinden açılır (bkz. lib/pending-add.ts).
   // Ekleme yapılmaz — son dokunuş yine müşteride.
   const pendingAddCheckedRef = useRef(false);
   useEffect(() => {
-    if (!stateLoaded || pendingAddCheckedRef.current || playerOffline) return;
+    if (!stateLoaded || pendingAddCheckedRef.current || addsLocked) return;
     if (venueSongMap.size === 0) return;
     pendingAddCheckedRef.current = true;
     const pending = takePendingAdd(venueId);
@@ -487,7 +509,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     const song = venueSongMap.get(pending.videoId);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- jeton dönüşündeki tek seferlik açılış
     if (song) setSelectedSong(song);
-  }, [stateLoaded, playerOffline, venueSongMap, venueId]);
+  }, [stateLoaded, addsLocked, venueSongMap, venueId]);
 
   // Talep şeridi zaten gözat sayfasındayken "Sıraya Ekle"ye basıldığında sayfa
   // yeniden mount olmaz — kart bu olayla açılır (bkz. RequestStatusBar).
@@ -499,7 +521,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   }, []);
 
   useEffect(() => {
-    if (!addSignal || playerOffline) return;
+    if (!addSignal || addsLocked) return;
     const pending = peekPendingAdd(venueId);
     if (!pending) return;
     // Yeni onaylanan tek seferlik şarkı listeye realtime ile düşüyor; henüz
@@ -509,7 +531,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
     clearPendingAdd(venueId);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- şeritten gelen tek seferlik açılış
     setSelectedSong(song);
-  }, [addSignal, playerOffline, venueSongMap, venueId]);
+  }, [addSignal, addsLocked, venueSongMap, venueId]);
 
   // Alt gezinmedeki jeton rozeti bu sayfanın okuduğu bakiyeyi kullanır (ayrı sorgu yok)
   useEffect(() => {
@@ -606,6 +628,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           return "ok";
         }
         if (res.status === 429) return "limit";
+        if (res.status === 409) return "paused";
         if (res.status === 401 || res.status === 403) return "auth";
         return "error";
       } catch {
@@ -621,6 +644,8 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   // Misafirse talep giriş öncesi saklanır: hesabına girip gözat sayfasına
   // döndüğünde kendiliğinden gönderilir, kullanıcı aramayı baştan yapmaz.
   const handleSuggest = useCallback(async (title: string, artist: string, cover?: string): Promise<SuggestResult> => {
+    // Kapanışa yakın talep de alınmaz (aynı kural sunucuda)
+    if (addsPaused) return "paused";
     if (!(await requireAccount(`/venue/${venueId}/browse`))) {
       savePendingSuggestion(venueId, title, artist, cover);
       return "auth";
@@ -639,7 +664,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       setSentModal({ title, artist });
     }
     return result;
-  }, [venueId, requireAccount, router, sendSuggestion]);
+  }, [venueId, requireAccount, router, sendSuggestion, addsPaused]);
 
   // Bildirim izni verilmiş ama sunucuda abonelik kaydı yoksa geri yaz.
   // (Kayıt kaybolduğunda kullanıcı bunu ancak beklediği bildirim gelmeyince
@@ -784,11 +809,15 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       </div>
 
       <div className="pt-4">
-        {playerOffline && (
+        {playerOffline ? (
           <div className="mb-6 px-5">
             <PlayerOfflineNotice />
           </div>
-        )}
+        ) : addsPaused ? (
+          <div className="mb-6 px-5">
+            <PlayerOfflineNotice reason="paused" />
+          </div>
+        ) : null}
 
         {!selectedArtist && nowPlayingSong && nowPlaying && (
           <div className="mb-6 px-5">

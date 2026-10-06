@@ -155,6 +155,7 @@ function AdminDashboardContent({ params }: Props) {
           className={`${pane === "queue" ? "flex" : "hidden"} lg:flex flex-col min-h-0 h-full lg:border-l border-white/10`}
         >
           <QueuePane
+            venueDbId={venueDbId}
             playback={playback}
             onAddSong={() => setModal("addQueue")}
             contextName={lib.currentList?.name ?? null}

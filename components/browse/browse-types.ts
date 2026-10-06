@@ -58,6 +58,7 @@ export type SongActionState =
   | { kind: "cooldown"; mins: number }
   /** Mekanın oynatıcısı kapalı — şarkı çalmayacağı için ekleme kapatılır */
   | { kind: "offline" }
+  | { kind: "paused" }
   | { kind: "playing" }
   | { kind: "add" }
   | { kind: "added" }
@@ -73,6 +74,8 @@ export type SongActionContext = {
   requestedIds: Set<string>;
   /** Oynatıcı çevrimdışıysa ekleme kapalı (bkz. lib/player-status.ts) */
   playerOffline?: boolean;
+  /** Mekan müşteri eklemelerini kapattıysa ekleme kapalı (bkz. lib/customer-adds.ts) */
+  addsPaused?: boolean;
 };
 
 export function getCooldown(
@@ -100,12 +103,15 @@ export function getSongActionState(song: DisplaySong, ctx: SongActionContext): S
   if (song.in_venue_list === true) {
     // Oynatıcı kapalıyken şarkı çalmaz: eklemeye izin verip jetonu yakmayalım
     if (ctx.playerOffline) return { kind: "offline" };
+    if (ctx.addsPaused) return { kind: "paused" };
     const cd = getCooldown(song, ctx);
     if (cd.reason === "playing") return { kind: "playing" };
     if (cd.remainingMs > 0) return { kind: "cooldown", mins: Math.ceil(cd.remainingMs / 60000) };
     return ctx.addedIds.has(song.youtube_video_id) ? { kind: "added" } : { kind: "add" };
   }
-  return ctx.requestedIds.has(song.youtube_video_id) ? { kind: "requested" } : { kind: "request" };
+  if (ctx.requestedIds.has(song.youtube_video_id)) return { kind: "requested" };
+  // Kapanışa yakın talep de alınmaz — onaylansa bile çalacak vakit yok
+  return ctx.addsPaused ? { kind: "paused" } : { kind: "request" };
 }
 
 export function actionStatesEqual(a: SongActionState, b: SongActionState): boolean {

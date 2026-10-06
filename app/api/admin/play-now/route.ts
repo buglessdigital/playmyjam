@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { playSongNow } from "@/lib/queue";
-import { runFillUnlocked, startPlaylistFrom, withFillLock } from "@/lib/queue-fill";
+import {
+  hasManualBlock,
+  jumpManualBlock,
+  runFillUnlocked,
+  startPlaylistFrom,
+  withFillLock,
+} from "@/lib/queue-fill";
 import { withActor } from "@/lib/actor";
 
 // Panelden "şimdi çal": sahnedeki şarkı yarıda kesilir, seçilen şarkı başlar.
@@ -32,6 +38,9 @@ async function handlePOST(req: NextRequest) {
   // Kuyruk satırı çalınırken imleç taşınmaz: kuyruğun geri kalanı olduğu gibi
   // devam etmeli.
   const targetList = queueId ? null : playlistId;
+  // Liste "sıraya eklenen liste" olarak çalıyorsa (bloğu kuyrukta/sahnede)
+  // tıklama o bloğun içinde atlamadır: çalan liste değişmez (jumpManualBlock).
+  const manualBlock = targetList ? await hasManualBlock(session.venue_id, targetList) : false;
 
   // Senkron kalan tek iş sahne; kuyruk temizliği, imleç ve dolum (onlarca DB
   // turu) yanıttan sonra koşar — düğme bekletmesin, kuyruk Realtime ile düzelir.
@@ -41,6 +50,7 @@ async function handlePOST(req: NextRequest) {
       queueId: queueId || undefined,
       songId: songId || undefined,
       playlistId: targetList,
+      manualBlock,
     },
     { deferQueueWork: true }
   );
@@ -65,7 +75,8 @@ async function handlePOST(req: NextRequest) {
       // dolar (bkz. 0047).
       await withFillLock(session.venue_id, async () => {
         if (targetList && playedSongId) {
-          await startPlaylistFrom(session.venue_id, targetList, playedSongId);
+          if (manualBlock) await jumpManualBlock(session.venue_id, targetList, playedSongId);
+          else await startPlaylistFrom(session.venue_id, targetList, playedSongId);
         }
         await runFillUnlocked(session.venue_id);
       });

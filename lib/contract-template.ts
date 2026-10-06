@@ -289,7 +289,7 @@ ${parties(venueName, c)}
 3. MEKAN'IN BEYAN VE TAAHHÜTLERİ
 
 Mekan;
-3.1. İşletmesinde umuma açık müzik kullanımı için gereken meslek birliği izinlerini (başta MESAM, MSG, MÜYORBİR ve MÜ-YAP olmak üzere ilgili tüm meslek birlikleri) almış olduğunu ya da Platform'u kullanmaya başlamadan önce alacağını,
+3.1. İşletmesinde umuma açık müzik kullanımı için gereken meslek birliği izinlerini (eser sahipleri adına MESAM ve MSG, fonogram yapımcıları adına MÜ-YAP, icracı sanatçılar adına MÜYORBİR ve MÜZİKBİR olmak üzere ilgili tüm meslek birliklerinden, doğrudan ya da ortak lisanslama birimi aracılığıyla) almış olduğunu ya da Platform'u kullanmaya başlamadan önce alacağını,
 3.2. Bu izinleri Sözleşme süresince geçerli tutacağını; izinlerden herhangi birinin sona ermesi, askıya alınması ya da iptali hâlinde durumu derhal ${COMPANY.brand}'a bildireceğini ve izin yeniden alınana kadar Platform'u kullanmayacağını,
 3.3. ${COMPANY.brand}'ın talebi üzerine izin belgelerinin suretlerini 7 gün içinde ibraz edeceğini,
 3.4. Platform üzerinden erişilen içerikleri indirmeyeceğini, kaydetmeyeceğini, çoğaltmayacağını ve Platform dışında kullanmayacağını; üçüncü taraf platformların kullanım koşullarını ihlal edecek teknik müdahalelerde bulunmayacağını,

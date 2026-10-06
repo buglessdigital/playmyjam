@@ -32,7 +32,12 @@ dokununca kapanır.
   (e2e) kopya yapılmaz; harita orada çizilmez. Ayrıca maplibre CSS'i kapsayıcıyı
   `position: relative` yapıyor — boyutu dış kutu taşımalı.
 - Kart API'si `/api/venue-map/[slug]` CDN'de 20 sn; iğne listesi kabukta `"use cache"` +
-  `venues-list` tag'i.
+  `venues-list` tag'i. Aynı mekanın kartı örnek içinde 5 sn paylaşılır, aynı sanatçının
+  iTunes araması tek uçuş — olmadan 100 kişilik soğuk sürüde kart 2,6-3,9 sn sürüyordu.
+- **Yük testi** `npm run load:map -- --base <url>` (staging verisi kurar, `--cleanup` siler).
+  6 Eki 2026, yerel `next start` + staging, CDN'siz (üst sınır): 100 kişi 0 hata, soğuk sürü
+  kartı ~0,6 sn, akışta p50 ~4 ms / p95 ~230 ms; 500 kişi 150 istek/sn 0 hata. RPC 20 bin
+  çalmada ~25 ms (ağ hariç).
 
 **Why:** Müşteri başka PlayMyJam mekanlarını ve müzik zevklerini görsün (keşif motoru
 fikrinin ilk adımı, bkz. [[pmj-kesif-motoru-fikri]]).

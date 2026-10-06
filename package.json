@@ -16,6 +16,7 @@
     "db:migrate": "node scripts/migrate.ts",
     "db:diff": "node scripts/db-diff.ts",
     "load:venue": "node scripts/load-venue.ts",
+    "load:map": "node scripts/load-map.ts",
     "check": "npm run lint && npm run typecheck && npm test",
     "e2e": "playwright test",
     "find:channels": "node scripts/find-artist-channels.ts"

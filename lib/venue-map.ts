@@ -83,7 +83,32 @@ function toSong(s: SongJoin): MapSong | null {
   return s ? { title: s.title, artist: s.artist, cover: s.album_cover_url } : null;
 }
 
-export async function getVenueMapCard(slug: string): Promise<VenueMapCard | null> {
+// Aynı mekanın kartı aynı anda çok kişi tarafından istenirse (QR'ı okutan
+// kalabalık) bir kez hesaplanıp paylaşılır. Fluid Compute bir örneği eşzamanlı
+// isteklere kullandığı için bu, CDN'in önündeki ilk dalgayı tek sorguya indirir.
+// Yük testinde (scripts/load-map.ts) 100 eşzamanlı ilk açılış bu olmadan her
+// biri ayrı iTunes araması yapıp 2,6-3,9 sn bekliyordu.
+const CARD_SHARE_MS = 5_000;
+const inflight = new Map<string, { at: number; card: Promise<VenueMapCard | null> }>();
+
+export function getVenueMapCard(slug: string): Promise<VenueMapCard | null> {
+  const now = Date.now();
+  const hit = inflight.get(slug);
+  if (hit && now - hit.at < CARD_SHARE_MS) return hit.card;
+
+  const card = buildVenueMapCard(slug).catch((err) => {
+    inflight.delete(slug); // hata paylaşılmasın, sonraki istek yeniden denesin
+    throw err;
+  });
+  inflight.set(slug, { at: now, card });
+  // Eski girdiler birikmesin (mekan sayısı kadar, ama yine de)
+  if (inflight.size > 500) {
+    for (const [k, v] of inflight) if (now - v.at >= CARD_SHARE_MS) inflight.delete(k);
+  }
+  return card;
+}
+
+async function buildVenueMapCard(slug: string): Promise<VenueMapCard | null> {
   const { data: venue } = await supabaseAdmin
     .from("venues")
     .select("id, slug, name, tagline, logo_url, maps_url, status, latitude, longitude")

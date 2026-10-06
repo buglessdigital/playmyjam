@@ -50,7 +50,19 @@ export async function readArtistGenres(
 
 type ItunesSong = { artistName?: string; primaryGenreName?: string };
 
-async function lookupGenre(artist: string): Promise<string | null | undefined> {
+// Aynı sanatçı aynı anda birden çok kartta aranırsa iTunes'a tek istek gider
+const lookups = new Map<string, Promise<string | null | undefined>>();
+
+function lookupGenre(artist: string): Promise<string | null | undefined> {
+  const key = artistKey(artist);
+  const running = lookups.get(key);
+  if (running) return running;
+  const p = fetchGenre(artist).finally(() => lookups.delete(key));
+  lookups.set(key, p);
+  return p;
+}
+
+async function fetchGenre(artist: string): Promise<string | null | undefined> {
   const params = new URLSearchParams({
     term: artist,
     entity: "song",

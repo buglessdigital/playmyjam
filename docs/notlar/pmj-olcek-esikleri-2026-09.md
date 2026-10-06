@@ -25,3 +25,12 @@ ve sabit maliyet, yanlış yere optimizasyon riski.
 **How to apply:** Yeni mekan dalgasından (5→30→100…) önce `npm run load:venue`'yu
 o dalganın telefon sayısıyla staging'de koştur ve Supabase/Vercel metriklerine bak;
 tabloda eşiği aşan satır varsa o iş sıraya girer. "Şimdiden kuralım" önerisi gelirse bu karara dayan.
+
+**6 Eki 2026 — 30 eşzamanlı player testi (`npm run load:players`, staging):** 30 mekan ×
+(player + panel) + mekan başına 5 telefon, şarkı geçişleri gerçek `playNextFromQueue` ile.
+Dağınık tempo (5 dk, 200 geçiş) ve fırtına (hepsi aynı saniyede, 171 geçiş): geçiş hatası
+0, `busy` 0, heartbeat p95 ~155 ms, geçiş p95 ≤720 ms, bitiş→yeni şarkı player'da p95 <1 sn,
+broadcast kaybı 0, kanal hatası 0, DB bağlantısı sabit 25. 30 mekanda tablodaki hiçbir eşik
+tetiklenmiyor. Ölçülmeyen: Vercel fonksiyon katmanı (heartbeat sorguları doğrudan DB'ye gitti).
+Maliyet notu: player-bus 1 sn'lik broadcast'i 30 mekanda günde 12 saatle ayda ~39M Realtime
+mesajı eder — bozulma değil fatura kalemi; mesaj kotası aşılırsa ilk kısılacak şey STATE_BEAT_MS.

@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     ".tmp-*",
     // Playwright çıktıları
     "e2e-report/**",
+    // node_modules'tan kopyalanan maplibre worker'ı (scripts/copy-maplibre-worker.mjs)
+    "public/vendor/**",
     "e2e-results/**",
   ]),
 ]);

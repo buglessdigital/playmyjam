@@ -333,6 +333,29 @@ async function handlePost(
       return reply({ ok: true, volume });
     }
 
+    // Panelden müşteri eklemelerini kapat/aç (0072). Ses üretmez, claim aranmaz.
+    // Kapatma anı yazılır; 12 saat sonra kendiliğinden düşer (lib/customer-adds.ts).
+    case "customer_adds": {
+      if (typeof body?.paused !== "boolean") return reply({ error: "paused gerekli" }, { status: 400 });
+      const pausedAt = body.paused ? new Date().toISOString() : null;
+      const { error } = await supabaseAdmin
+        .from("now_playing")
+        .update({ customer_adds_paused_at: pausedAt })
+        .eq("venue_id", venueId);
+      if (error) {
+        console.error("[player] müşteri ekleme durumu yazılamadı:", error.message);
+        return reply({ error: "Kaydedilemedi" }, { status: 500 });
+      }
+      after(
+        logVenueEvents(venueId, "player", [
+          body.paused
+            ? { kind: "customer_adds_paused", severity: "info", message: "Müşteri eklemeleri panelden kapatıldı" }
+            : { kind: "customer_adds_resumed", severity: "info", message: "Müşteri eklemeleri panelden açıldı" },
+        ])
+      );
+      return reply({ ok: true, paused_at: pausedAt });
+    }
+
     // Panelden crossfade süresi (0-12000 ms; 0 = kapalı). Ses seviyesiyle aynı
     // yol: now_playing'e yazılır, player Realtime ile duyar.
     case "crossfade": {

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import MiniPlayerSlot from "@/components/admin/MiniPlayerSlot";
+import CustomerAddsToggle from "./CustomerAddsToggle";
 import { formatTime, isManualRow, isMovable, useProgress, type Playback } from "./usePlayback";
 
 // Sahnedeki şarkının çubuğu + süreleri: saniyede dört kez tazelenen tek parça.
@@ -252,11 +253,13 @@ const groupKey = (g: QueueGroup) => (g.kind === "manual-list" ? `manual-list:${g
 
 /** Ana ekranın sağ sütunu: şu an çalan + sıradaki şarkılar. */
 export default function QueuePane({
+  venueDbId,
   playback,
   onAddSong,
   contextName,
   playlistNames,
 }: {
+  venueDbId: string;
   playback: Playback;
   onAddSong: () => void;
   /** Otomatik bloğun başlığında yazan çalan liste adı */
@@ -352,6 +355,8 @@ export default function QueuePane({
               </button>
             </div>
           </div>
+
+          <CustomerAddsToggle venueDbId={venueDbId} />
 
           <div className="flex items-center gap-3 flex-wrap text-[#6b7280] text-[10px] mt-2">
             <span className="flex items-center gap-1.5">
@@ -543,7 +548,7 @@ export default function QueuePane({
                     title={
                       currentIsCustomer
                         ? "Müşterinin eklediği şarkı çalıyor — yarıda kesilemez"
-                        : "Şimdi çal — çalan şarkı kesilir"
+                        : "Şimdi çal — çalan şarkı kesilir, üstündekiler atlanır"
                     }
                   >
                     {currentIsCustomer ? (

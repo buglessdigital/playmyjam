@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendPushToUser } from "@/lib/push";
+import { reportIssue } from "@/lib/ops-log";
+import { runInBackground } from "@/lib/background";
 import { pickBestMatch, suggestionMatchesSong } from "@/lib/song-match";
 
 // Serbest metin öneriler (song_id boş song_requests satırları) ile mekan
@@ -70,25 +72,40 @@ export async function resolveMatchingSuggestions(
     )
   );
 
-  // Bildirim ateşle-unut: mekan slug'ı bildirim bağlantısı için gerekli
-  (async () => {
-    const { data: venue } = await supabaseAdmin
-      .from("venues")
-      .select("slug")
-      .eq("id", venueId)
-      .single();
-    await Promise.all(
-      matched
-        .filter(({ suggestion }) => suggestion.user_id)
-        .map(({ suggestion, song }) =>
-          sendPushToUser(suggestion.user_id!, {
-            title: "Önerin listeye eklendi! 🎉",
-            body: `${song.title} — ${song.artist} artık sıraya eklenebilir`,
-            url: venue?.slug ? `/venue/${venue.slug}/browse` : "/",
-          })
-        )
-    );
-  })().catch(() => {});
+  // Bildirim yanıtı bekletmez: mekan slug'ı bildirim bağlantısı için gerekli
+  runInBackground(async () => {
+    try {
+      const { data: venue } = await supabaseAdmin
+        .from("venues")
+        .select("slug")
+        .eq("id", venueId)
+        .single();
+      await Promise.all(
+        matched
+          .filter(({ suggestion }) => suggestion.user_id)
+          .map(({ suggestion, song }) =>
+            sendPushToUser(
+              suggestion.user_id!,
+              {
+                title: "Önerin listeye eklendi! 🎉",
+                body: `${song.title} — ${song.artist} artık sıraya eklenebilir`,
+                url: venue?.slug ? `/venue/${venue.slug}/browse` : "/",
+              },
+              { kind: "suggestion_added", venueId }
+            )
+          )
+      );
+    } catch (err) {
+      await reportIssue({
+        area: "push",
+        kind: "suggestion_added_failed",
+        severity: "warn",
+        message: `"Önerin listeye eklendi" bildirimleri gönderilemedi (${matched.length} öneri)`,
+        venueId,
+        error: err,
+      });
+    }
+  });
 
   return matched.length;
 }

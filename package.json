@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/copy-maplibre-worker.mjs",
     "dev": "NODE_OPTIONS='--max-http-header-size=32768' next dev",
+    "prebuild": "node scripts/copy-maplibre-worker.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -14,8 +16,10 @@
     "db:migrate": "node scripts/migrate.ts",
     "db:diff": "node scripts/db-diff.ts",
     "load:venue": "node scripts/load-venue.ts",
+    "load:map": "node scripts/load-map.ts",
     "check": "npm run lint && npm run typecheck && npm test",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "find:channels": "node scripts/find-artist-channels.ts"
   },
   "dependencies": {
     "@sentry/nextjs": "^11.0.0",
@@ -25,6 +29,7 @@
     "bcryptjs": "^3.0.3",
     "iyzipay": "^2.0.69",
     "lucide-react": "^1.16.0",
+    "maplibre-gl": "^6.12.0",
     "next": "16.3.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",

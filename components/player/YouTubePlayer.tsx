@@ -148,6 +148,12 @@ const SILENCE_PLAYING_MIN_MS = 50_000;
 // Sessizlik başlamadan hemen önceki olaylar da sebep sayılır (ör. ağ koptu,
 // şarkı bitti, sıradaki yüklenemedi)
 const SILENCE_CAUSE_LOOKBACK_MS = 5_000;
+// Cihaz uykudan uyandıktan sonra bu süre sessizlik açılmaz: Wi-Fi yeniden
+// bağlanıyor, YouTube şarkıyı baştan tamponluyor; kapak kapalı Mac de ~15 dk'da
+// bir birkaç saniyeliğine uyanıp yeniden uyuyor. 4 Eki 2026'ya kadar bu anlar
+// sağlık ekranına arıza diye düşüyordu. Süre dolduğunda hâlâ ses yoksa
+// sessizlik uyanma anından başlatılır — gerçek kesinti eksiksiz sayılır.
+const WAKE_GRACE_MS = 90_000;
 type SilenceEnd = "recovered" | "paused" | "sleep" | "closed" | "handoff";
 const SILENCE_END_TEXT: Record<SilenceEnd, string> = {
   recovered: "müzik kendiliğinden geri geldi",
@@ -828,6 +834,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
   );
   const silenceTickAtRef = useRef(0);
   const frozenAtRef = useRef(0);
+  const wakeGraceUntilRef = useRef(0);
   // Kuyruk boşaldığı için sustuk: niyet "dur"a döner ama mekan müzik istiyordu
   const idleWantedRef = useRef(false);
   // Pencere odağının video iframe'ine geçtiği an: kullanıcının YouTube'un kendi
@@ -2243,6 +2250,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     if (now - lastTick > TICK_THAW_MS && frozenAtRef.current < lastTick) {
       closeSilence("sleep", lastTick);
       audibleAtRef.current = now;
+      wakeGraceUntilRef.current = now + WAKE_GRACE_MS;
       audiblePosRef.current = { videoId: null, pos: -1 };
       return;
     }
@@ -2278,7 +2286,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       return;
     }
 
-    if (silenceRef.current) return;
+    if (silenceRef.current || now < wakeGraceUntilRef.current) return;
     const silentFor = now - audibleAtRef.current;
     if (silentFor < (playing ? SILENCE_PLAYING_MIN_MS : SILENCE_MIN_MS)) return;
     const id =

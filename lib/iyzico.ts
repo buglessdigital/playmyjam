@@ -73,6 +73,7 @@ export interface CheckoutFormInitializeResult {
 
 export interface CheckoutFormRetrieveResult {
   status: string;
+  errorCode?: string;
   errorMessage?: string;
   paymentStatus: string;
   paymentId: string;

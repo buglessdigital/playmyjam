@@ -78,6 +78,23 @@ export default function BottomNav({ venueId }: BottomNavProps) {
       ),
     },
     {
+      // Anlaşmalı mekanlar haritası — misafire açık (bkz. proxy PUBLIC_VENUE_SEGMENTS)
+      label: t.panelNav.map,
+      segment: "map",
+      href: `/venue/${venueId}/map`,
+      icon: (active: boolean) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0113 0c0 5.4-6.5 11-6.5 11z"
+            stroke={active ? "#e91e8c" : "#6b7280"}
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <circle cx="12" cy="10" r="2.5" stroke={active ? "#e91e8c" : "#6b7280"} strokeWidth="1.8" />
+        </svg>
+      ),
+    },
+    {
       // Yeni kullanıcının takıldığı yer jeton almaktı: profil menüsünün altından
       // çıkarılıp alt gezinmeye alındı. Profil artık sayfa başlıklarının sağ üstünde.
       // ?tab=1: jeton sayfası sekmeden açıldığını bilsin (geri okunu göstermez).

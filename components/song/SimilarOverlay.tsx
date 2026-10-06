@@ -29,6 +29,8 @@ interface Props {
   addedIds: Set<string>;
   /** Mekanın oynatıcısı kapalı — ekleme kapatılır (bkz. lib/player-status.ts) */
   playerOffline?: boolean;
+  /** Mekan müşteri eklemelerini kapatmış (bkz. lib/customer-adds.ts) */
+  addsPaused?: boolean;
   onOpenSong: (song: DisplaySong) => void;
   onAddSong: (song: VenueSong, cooldown: Cooldown) => void;
   onClose: () => void;
@@ -43,7 +45,7 @@ type VenueSongRow = {
 };
 
 export default function SimilarOverlay({
-  venueDbId, track, queuedSongIds, playingSongId, addedIds, playerOffline = false, onOpenSong, onAddSong, onClose,
+  venueDbId, track, queuedSongIds, playingSongId, addedIds, playerOffline = false, addsPaused = false, onOpenSong, onAddSong, onClose,
 }: Props) {
   const t = useT();
   const supabase = useMemo(() => createClient(), []);
@@ -136,10 +138,10 @@ export default function SimilarOverlay({
 
   // Sahnedeki şarkı da eklenemez (request_song 'playing' ile reddeder) — "Çalıyor" rozeti
   const actionFor = (song: VenueSong): SongActionState =>
-    getSongActionState(song, { queuedSongIds, recentlyPlayedAt, playingSongId, addedIds, requestedIds: new Set(), playerOffline });
+    getSongActionState(song, { queuedSongIds, recentlyPlayedAt, playingSongId, addedIds, requestedIds: new Set(), playerOffline, addsPaused });
 
   const handleAdd = (song: VenueSong) => {
-    if (playerOffline) return;
+    if (playerOffline || addsPaused) return;
     onAddSong(song, getCooldown(song, { queuedSongIds, recentlyPlayedAt, playingSongId }));
   };
 

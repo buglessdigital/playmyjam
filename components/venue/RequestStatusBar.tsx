@@ -22,11 +22,39 @@ import { fmt, useT } from "@/lib/i18n";
 // yüzden tek başına güvenilmez; (2) aktif talep varken 15 sn'lik yoklama;
 // (3) sekmeye geri dönüldüğünde anında. Yoklama yalnızca ekranda gösterilecek
 // bir satır varken döner — boştaysa hiç sorgu çıkmaz.
+//
+// Red de şeritte görünür (kırmızı): önceden reddedilen talep sessizce
+// kayboluyordu, müşteri beklemeye devam ediyordu. Kırmızı şerit REJECT_SHOW_MS
+// boyunca ya da müşteri kapatana / "Başka Şarkı Ara"ya basana kadar durur.
+
+// Reddedilen talep şeritte en fazla bu kadar kalır
+const REJECT_SHOW_MS = 15 * 60 * 1000;
+// Kapatılan red şeritleri — sayfa yenilenince geri gelmesin
+const DISMISSED_KEY = "pmj-dismissed-rejections";
+
+function readDismissed(): string[] {
+  try {
+    const raw = localStorage.getItem(DISMISSED_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDismissed(ids: string[]) {
+  try {
+    // Yalnızca son birkaç kimlik yeter; 15 dk sonra satır zaten görünmüyor
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify(ids.slice(-20)));
+  } catch {
+    // depolama kapalıysa kapatma yalnızca bu oturumda geçerli
+  }
+}
 
 type ActiveRequest = {
   id: string;
   status: string;
   expires_at: string | null;
+  resolved_at: string | null;
   play_deadline: string | null;
   suggested_title: string | null;
   suggested_artist: string | null;
@@ -56,6 +84,11 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
   const [tick, setTick] = useState(() => Date.now());
   // Onaylanmamış talepte şeridin altına açılan açıklama
   const [expanded, setExpanded] = useState(false);
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage sunucuda yok, bağlandıktan sonra okunur
+    setDismissed(readDismissed());
+  }, []);
 
   // İsteklerim sayfası aynı bilgiyi zaten ayrıntılı gösteriyor — çift geri sayım olmasın
   const onRequestsPage = pathname === `/venue/${venueId}/requests`;
@@ -65,15 +98,23 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
       const { data } = await supabase
         .from("song_requests")
         .select(
-          "id, status, expires_at, play_deadline, suggested_title, suggested_artist, songs(youtube_video_id, title, artist, album_cover_url), one_time_songs(consumed_at)"
+          "id, status, expires_at, resolved_at, play_deadline, suggested_title, suggested_artist, songs(youtube_video_id, title, artist, album_cover_url), one_time_songs(consumed_at)"
         )
         .eq("user_id", userId)
         .eq("venue_id", venueDbId)
         .not("suggested_title", "is", null)
-        .in("status", ["pending", "accepted"])
+        .in("status", ["pending", "accepted", "rejected"])
         .order("requested_at", { ascending: false })
         .limit(5);
-      setRows((data ?? []) as unknown as ActiveRequest[]);
+      // Eski redler hiç gösterilmeyecek — tutulursa yoklama boşuna döner
+      const now = Date.now();
+      setRows(
+        ((data ?? []) as unknown as ActiveRequest[]).filter(
+          (r) =>
+            r.status !== "rejected" ||
+            (r.resolved_at && now - new Date(r.resolved_at).getTime() < REJECT_SHOW_MS)
+        )
+      );
     },
     [supabase]
   );
@@ -167,10 +208,19 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
   const pending = rows.find(
     (r) => r.status === "pending" && (!r.expires_at || new Date(r.expires_at).getTime() > tick)
   );
-  const row = approved ?? pending;
+  const rejected = rows.find(
+    (r) =>
+      r.status === "rejected" &&
+      r.resolved_at &&
+      tick - new Date(r.resolved_at).getTime() < REJECT_SHOW_MS &&
+      !dismissed.includes(r.id)
+  );
+  // Yeni bir talep beklerken eski red onun önüne geçmesin
+  const row = approved ?? pending ?? rejected;
   if (onRequestsPage || !row) return null;
 
   const isApproved = row === approved;
+  const isRejected = row === rejected;
   const deadline = isApproved ? row.play_deadline : row.expires_at;
   const left = deadline ? new Date(deadline).getTime() - tick : 0;
   const title = row.songs?.title ?? row.suggested_title ?? "";
@@ -192,7 +242,27 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
     }
   };
 
+  const dismiss = () => {
+    const next = [...dismissed, row.id];
+    setDismissed(next);
+    writeDismissed(next);
+  };
+
+  // Reddedildi: başka şarkı seçsin diye gözat sayfasında arama açılır
+  const openSearch = () => {
+    dismiss();
+    if (pathname === `/venue/${venueId}/browse`) {
+      window.dispatchEvent(new Event("pmj-open-search"));
+    } else {
+      router.push(`/venue/${venueId}/browse?search=1`);
+    }
+  };
+
   const handleClick = () => {
+    if (isRejected) {
+      openSearch();
+      return;
+    }
     if (isApproved && videoId) {
       openAddSheet();
       return;
@@ -208,15 +278,20 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
         className={`overflow-hidden rounded-2xl border backdrop-blur-md ${
           isApproved
             ? "border-[#22c55e]/40 shadow-[0_10px_30px_-14px_rgba(34,197,94,0.9)]"
-            : "border-[#fbbf24]/30"
+            : isRejected
+              ? "border-[#ef4444]/40 shadow-[0_10px_30px_-14px_rgba(239,68,68,0.9)]"
+              : "border-[#fbbf24]/30"
         }`}
         style={{
           background: isApproved
             ? "linear-gradient(120deg, rgba(34,197,94,0.22), rgba(15,10,24,0.96) 65%)"
-            : "linear-gradient(120deg, rgba(251,191,36,0.14), rgba(15,10,24,0.96) 65%)",
+            : isRejected
+              ? "linear-gradient(120deg, rgba(239,68,68,0.22), rgba(15,10,24,0.96) 65%)"
+              : "linear-gradient(120deg, rgba(251,191,36,0.14), rgba(15,10,24,0.96) 65%)",
         }}
       >
-        <button type="button" onClick={handleClick} className="flex w-full items-center gap-3 px-3 py-2.5 text-left">
+        <div className="flex items-center">
+        <button type="button" onClick={handleClick} className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left">
         <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-white/10">
           {cover ? (
             <Image src={cover} alt="" width={40} height={40} sizes="40px" className="h-full w-full object-cover" />
@@ -228,15 +303,17 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className={`text-[11px] font-bold ${isApproved ? "text-[#22c55e]" : "text-[#fbbf24]"}`}>
-            {isApproved ? t.requestBar.approvedTitle : t.requestBar.pendingTitle}
+          <p className={`text-[11px] font-bold ${isApproved ? "text-[#22c55e]" : isRejected ? "text-[#f87171]" : "text-[#fbbf24]"}`}>
+            {isApproved ? t.requestBar.approvedTitle : isRejected ? t.requestBar.rejectedTitle : t.requestBar.pendingTitle}
           </p>
           <p className="truncate text-xs text-white">
             {title}
             {artist ? <span className="text-[#9ca3af]"> · {artist}</span> : null}
           </p>
           <p className="mt-0.5 text-[11px] text-[#9ca3af]">
-            {fmt(isApproved ? t.requestBar.approvedCountdown : t.requestBar.pendingCountdown, { t: clock(left) })}
+            {isRejected
+              ? t.requestBar.rejectedLine
+              : fmt(isApproved ? t.requestBar.approvedCountdown : t.requestBar.pendingCountdown, { t: clock(left) })}
           </p>
         </div>
 
@@ -247,6 +324,13 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
           >
             {t.requestBar.addCta}
           </span>
+        ) : isRejected ? (
+          <span
+            className="flex h-9 shrink-0 items-center rounded-full px-3.5 text-xs font-bold text-white"
+            style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)" }}
+          >
+            {t.requestBar.rejectedCta}
+          </span>
         ) : (
           <svg
             className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
@@ -256,9 +340,20 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
           </svg>
         )}
         </button>
+        {isRejected && (
+          <button
+            type="button"
+            onClick={dismiss}
+            aria-label={t.requestBar.dismiss}
+            className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#9ca3af]"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </button>
+        )}
+        </div>
 
         {/* Onaylanmamış talep: neyi beklediğini ve ne kadar kaldığını burada söyler */}
-        {!isApproved && expanded && (
+        {!isApproved && !isRejected && expanded && (
           <div className="border-t border-white/10 px-3 py-2.5">
             <p className="text-[11px] leading-relaxed text-[#d6c9a8]">{t.requestBar.pendingHelp}</p>
             <Link

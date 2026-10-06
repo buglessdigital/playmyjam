@@ -32,6 +32,8 @@ function VenueLayoutContent({ children, params }: Props) {
   const isLoginPage =
     pathname === `/venue/${venueId}/login` || pathname === `/venue/${venueId}/onay`;
   const isQueuePage = pathname === `/venue/${venueId}/queue`;
+  // Harita tam ekran (sabit konumlu): altında kayan yasal alt bilgi olmasın
+  const isMapPage = pathname === `/venue/${venueId}/map`;
 
   return (
     <>
@@ -45,7 +47,7 @@ function VenueLayoutContent({ children, params }: Props) {
         style={isLoginPage ? undefined : { paddingBottom: "calc(4rem + var(--pmj-request-bar, 0px))" }}
       >
         {children}
-        <LegalFooter hidePayment={isQueuePage} />
+        {!isMapPage && <LegalFooter hidePayment={isQueuePage} />}
       </main>
       {!isLoginPage && (
         <>

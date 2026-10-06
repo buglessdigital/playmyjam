@@ -15,6 +15,17 @@ updates:
       # davranış değiştirebilirler, tek tek bakılmalı
       kucuk-guncellemeler:
         update-types: [minor, patch]
+    ignore:
+      # @types/node, çalışma ortamının (Vercel + CI: Node 24) ana sürümünde kalır
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+      # ESLint 10: eslint-plugin-react (eslint-config-next üzerinden) kırılıyor.
+      # TypeScript 7: typescript-eslint desteklemiyor. İkisi de eslint-config-next
+      # ve typescript-eslint destek verince elle yükseltilir (6 Eki 2026).
+      - dependency-name: "eslint"
+        update-types: [version-update:semver-major]
+      - dependency-name: "typescript"
+        update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: /
     schedule:

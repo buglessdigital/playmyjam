@@ -17,6 +17,7 @@
     "db:diff": "node scripts/db-diff.ts",
     "load:venue": "node scripts/load-venue.ts",
     "load:map": "node scripts/load-map.ts",
+    "load:players": "node scripts/load-players.ts",
     "check": "npm run lint && npm run typecheck && npm test",
     "e2e": "playwright test",
     "find:channels": "node scripts/find-artist-channels.ts"
@@ -38,8 +39,7 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/node": "^20",
+    "@types/node": "^24.19.1",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",

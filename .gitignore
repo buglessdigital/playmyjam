@@ -51,3 +51,6 @@ design/avatar-originals/
 
 # maplibre worker — derleme öncesi node_modules'tan kopyalanır (scripts/copy-maplibre-worker.mjs)
 /public/vendor/maplibre/
+
+# YouTube uyum incelemesine giden yanıt taslakları — demo hesap bilgisi içerir, repoya girmez
+/docs/youtube-compliance-reply-*.md

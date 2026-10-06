@@ -86,3 +86,4 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Vercel görsel kotası](pmj-vercel-gorsel-kotasi.md) — 2 Eki 2026 hesap Image Optimization (6.7K/5K) yüzünden duraklatıldı → Pro + `images.unoptimized: true`
 - [Müşteri eklemelerini kapatma](pmj-musteri-ekleme-kapatma-2026-10.md) — panelde "Sırada" başlığındaki anahtar; now_playing.customer_adds_paused_at, 12 saatte kendiliğinden açılır; 0072 ŞART
 - [Mekanlar haritası](pmj-mekan-haritasi-2026-10.md) — müşteri alt menüsünde MEKANLAR; konum super admin'de Google Maps linkinden, koordinatsız mekan görünmez; tür iTunes'tan; 0073 ŞART; maplibre worker public/'e kopyalanıyor
+- [Avukat görüşü (telif/lisans)](pmj-hukuki-gorus-2026-10.md) — müzik bizde saklanmadıkça telif riski yok, MESAM/MÜYAP mekanın işi, YouTube gri alan, jeton = oyun jetonu modeli (araştırılacak); ses/video dosyası ASLA saklanmaz

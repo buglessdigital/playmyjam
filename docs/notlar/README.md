@@ -85,3 +85,4 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Katalog ekranı](pmj-katalog-ekrani-2026-10.md) — /super-admin/catalog: havuzda arama + hasat ilerleme çubuğu; 0064+0065 ŞART, arama en az 3 harf
 - [Vercel görsel kotası](pmj-vercel-gorsel-kotasi.md) — 2 Eki 2026 hesap Image Optimization (6.7K/5K) yüzünden duraklatıldı → Pro + `images.unoptimized: true`
 - [Müşteri eklemelerini kapatma](pmj-musteri-ekleme-kapatma-2026-10.md) — panelde "Sırada" başlığındaki anahtar; now_playing.customer_adds_paused_at, 12 saatte kendiliğinden açılır; 0072 ŞART
+- [Mekanlar haritası](pmj-mekan-haritasi-2026-10.md) — müşteri alt menüsünde MEKANLAR; konum super admin'de Google Maps linkinden, koordinatsız mekan görünmez; tür iTunes'tan; 0073 ŞART; maplibre worker public/'e kopyalanıyor

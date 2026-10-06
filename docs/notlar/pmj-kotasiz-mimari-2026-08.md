@@ -54,4 +54,4 @@ Developer Policy III.E.4'ün 30 günlük tazeleme yükümlülüğü. Kullanıcı
 autosync düğmeye çevrilebilir.
 
 **Not:** Bu iş yalnızca kota sorununu çözüyor; ticari mekân lisansı / jetonla
-erişim meselesi ayrı ve çözülmedi.
+erişim meselesi ayrı. Avukat görüşü için bkz. [[pmj-hukuki-gorus-2026-10]].

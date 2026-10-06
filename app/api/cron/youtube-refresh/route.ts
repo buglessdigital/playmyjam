@@ -81,7 +81,7 @@ async function handleGET(req: NextRequest) {
         refresh.stopped === "db"
           ? "Metadata tazeleme veritabanı hataları yüzünden yarıda kaldı"
           : "Metadata tazelemede bazı satırlar yazılamadı, yarın tekrar denenecek",
-      detail: { failed: refresh.failed, refreshed: refresh.refreshed, target: refresh.target },
+      detail: { failed: refresh.failed, retries: refresh.writeRetries, refreshed: refresh.refreshed, target: refresh.target },
       error: refresh.writeError,
     });
   }

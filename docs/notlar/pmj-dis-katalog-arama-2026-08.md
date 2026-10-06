@@ -1,6 +1,6 @@
 ---
 name: pmj-dis-katalog-arama-2026-08
-description: "Müşteri araması mekan listesinde boş dönünce Apple Music + Deezer'dan sonuç gösterip talebe çevirir (16 Ağu 2026)"
+description: "Müşteri araması mekan listesi sonuçlarının altında Apple Music + Deezer'dan sonuç gösterip talebe çevirir (16 Ağu 2026; 5 Eki 2026'dan beri her aramada)"
 metadata: 
   node_type: memory
   type: project
@@ -8,8 +8,10 @@ metadata:
   modified: 2026-08-16T15:56:03.795Z
 ---
 
-Müşteri arama ekranı (`components/browse/SearchView.tsx`) mekan listesinden **hiç**
-sonuç çıkmazsa `/api/discover?q=` çağırır; dönen kayıtlar normal şarkı satırı gibi
+Müşteri arama ekranı (`components/browse/SearchView.tsx`) 2+ harfli **her** aramada
+`/api/discover?q=` çağırır (5 Eki 2026'ya kadar yalnız mekan listesi boş dönünce —
+"manga" aramasında listedeki tek şarkı çıkıp grubun diğer şarkıları hiç görünmüyordu).
+Mekan listesi sonuçları üstte, dış sonuçlar altta; dönen kayıtlar normal şarkı satırı gibi
 listelenir ama düğmesi "İste"dir ve mevcut serbest metin talep akışını
 (`onSuggest` → `/api/venue/[venueId]/request`) tetikler. Amaç: "listede yoksa
 isteyebilirsin" yazısını okumayan müşteri bunu sonuçtan anlasın.
@@ -21,6 +23,11 @@ müzik servisiyle eşleştirilmesine kapalı). YouTube search.list de seçilmedi
 sorgu başına ~100 birim.
 
 Kritik ayrıntılar:
+- Listede zaten olan şarkı dış sonuçlardan ayıklanır: dış başlık listedeki bir
+  başlığın **içinde** geçiyor + ana sanatçı tutuyorsa aynı sayılır (YouTube
+  başlıkları ekli geliyor). Bedeli: listede yalnız remix'i olan şarkının aslı da
+  gizlenir ("Cevapsız Sorular (Mahmut Orhan Remix)" → aslı çıkmaz). Şikâyet
+  gelirse kural daraltılır.
 - Sıralama **RRF** (`1/(10+sıra)` toplamı). Düz "iki kaynakta da var" sayımı
   cover sürümlerini aslın üstüne çıkarıyordu.
 - **Boş sonuç önbelleğe alınmaz** (bellek cache'i de, CDN başlığı da kısa) —

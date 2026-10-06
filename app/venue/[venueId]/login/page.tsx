@@ -54,6 +54,9 @@ function AuthPageContent({ params }: Props) {
   const [isGuest, setIsGuest] = useState(false);
   const [continueLoading, setContinueLoading] = useState(false);
   const [consents, setConsents] = useState(EMPTY_CONSENTS);
+  // Misafirin seçtiği Google hesabı zaten kayıtlı: Google düğmesi bağlamak
+  // yerine o hesapla giriş yapar
+  const [mergeIntoExisting, setMergeIntoExisting] = useState(false);
   const t = useT();
 
   // Hesap gerektiren bir eylem buraya yönlendirdiyse giriş sonrası oraya dönülür
@@ -62,9 +65,17 @@ function AuthPageContent({ params }: Props) {
   // Callback/confirm route'larından gelen hata kodunu göster, URL'den temizle
   useEffect(() => {
     const code = searchParams.get("auth_error");
-    if (code) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- URL'deki tek seferlik hata kodu okunup temizleniyor
+    if (code === "identity_exists") {
+      // Hata değil, yönlendirme: Google düğmesi artık bağlamaz, giriş yapar;
+      // callback misafirin jetonlarını o hesaba taşır (0071)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- URL'deki tek seferlik kod okunup temizleniyor
+      setMergeIntoExisting(true);
+      setIsLogin(true);
+      setInfo(currentDict().login.infoIdentityExists);
+    } else if (code) {
       setError(authErrorMessage(code));
+    }
+    if (code) {
       const next = searchParams.get("next");
       router.replace(next ? `/venue/${venueId}/login?next=${encodeURIComponent(next)}` : `/venue/${venueId}/login`);
     }
@@ -340,7 +351,7 @@ function AuthPageContent({ params }: Props) {
     };
     // Misafir kimliği varsa Google hesabı ONA bağlanır: yeni kullanıcı açılsaydı
     // cüzdan ve geçmiş eski kimlikte kalırdı (bkz. lib/guest-session.ts).
-    const guest = await isGuestAccount();
+    const guest = !mergeIntoExisting && (await isGuestAccount());
     const { error } = guest
       ? await supabase.auth.linkIdentity({ provider: "google", options: oauthOptions })
       : await supabase.auth.signInWithOAuth({ provider: "google", options: oauthOptions });

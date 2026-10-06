@@ -35,7 +35,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Player kapalı kilidi](pmj-player-offline-gate-2026-08.md) — heartbeat 45 sn bayatsa süreler gizli + ekleme kapalı; player boşta da presence heartbeat yollar
 - [Admin giriş bilgileri + Google kurtarma](pmj-admin-google-reset-2026-08.md) — panelden şifre değişimi, Google bağlama, sıfırlama maili; 0030 + RESEND_API_KEY şart
 - [Playlist sıralı çalma](pmj-playlist-rotation-2026-08.md) — aktif listeler DAİMA sırayla; 0032+0033 ŞART; venues'ta kolon bazlı grant tuzağı
-- [Playlist kuyruğu + play tuşu](pmj-playlist-queue-2026-08.md) — "Sıraya ekle" artık Spotify mantığı (çalanın hemen ardına, müşterinin arkasına) + "Sırayı temizle"; kuyruk liste sonuna kadar dolu (cap 500)
+- [Playlist kuyruğu + play tuşu](pmj-playlist-queue-2026-08.md) — "Sıraya ekle" Spotify mantığı (çalanın hemen ardına, müşterinin arkasına) + "Sırayı temizle"; sıradan "şimdi çal" üstündekileri atlar (müşteri hariç); kuyruk liste sonuna kadar dolu (cap 500)
 - [Mekan logosu](pmj-venue-logo-2026-08.md) — public "venue-logos" bucket, migration yok, bucket kod tarafından açılıyor
 - [Uzaktan ses kontrolü](pmj-volume-control-2026-08.md) — panelde ses kaydırıcısı; now_playing.volume + 0036 ŞART, iOS'ta etkisiz
 - [Admin ana ekran birleşimi](pmj-admin-home-merge-2026-08.md) — 3 sütun + alt player barı; /playlist sayfası YOK, redirect var
@@ -57,22 +57,22 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Panel içi mini player](pmj-mini-player-2026-08.md) — müzik artık panel kabuğundaki yüzen kartta; ayrı sekme TV modu
 - [Müşteri onboarding düzeni](pmj-musteri-onboarding-2026-08.md) — açılış GÖZAT, alt menüde JETON AL; anlatım modalı silindi, ilk girişte arama kendiliğinden açılıyor
 - [Görünmez çal düğmesi tuzağı](pmj-hover-gorunmez-dugme-2026-08.md) — Tailwind 4 hover'ı @media(hover:hover) ile sarıyor; dokunmatikte kaplama düğmeler görünmez ama tıklanabilir
-- [Dış katalog araması](pmj-dis-katalog-arama-2026-08.md) — mekan listesi boş dönünce Apple Music + Deezer sonuçları "İste" düğmesiyle çıkar; migration yok
-- [Talep durum şeridi](pmj-talep-durum-seridi-2026-08.md) — onay panelin her sayfasında görünür; İsteklerim sayfası artık profil menüsünde
+- [Dış katalog araması](pmj-dis-katalog-arama-2026-08.md) — mekan listesi sonuçlarının altında her aramada Apple Music + Deezer sonuçları "İste" düğmesiyle çıkar; migration yok
+- [Talep durum şeridi](pmj-talep-durum-seridi-2026-08.md) — onay (yeşil) ve red (kırmızı, aramaya götürür) panelin her sayfasında görünür; İsteklerim sayfası artık profil menüsünde
 - [Realtime publication](pmj-realtime-publication-2026-08.md) — bazı tablolar dashboard'dan açılmış, migration'lara bakarak "kapalı" deme
 - [fillQueue yarışı](pmj-fillqueue-yaris-2026-08.md) — kuyruğa alakasız katalog şarkısı girmesinin sebebi; 0046 kilidi ŞART, fail-open
-- [Akış kısaltma (7→3 tık)](pmj-akis-kisaltma-2026-08.md) — misafir oturumu + şarkıya ödeme; Supabase "Anonymous sign-ins" açılmadan devreye girmez
+- [Akış kısaltma (7→3 tık)](pmj-akis-kisaltma-2026-08.md) — misafir oturumu + şarkıya ödeme; Supabase "Anonymous sign-ins" açılmadan devreye girmez; Google bağlama "Allow manual linking" ister, kayıtlı Google seçilirse misafir o hesaba birleşir (0071 ŞART)
 - [Telefonda kumanda modu](pmj-telefon-kumanda-modu-2026-08.md) — telefonda panel player kurmaz; karar lib/player-host.ts, localStorage ile çevrilebilir
 - [iyzico kart saklama](pmj-iyzico-kart-saklama-2026-08.md) — yıllık 99 TL eklenti alındı; cardUserKey dokümante değil, 0048 ŞART
 - [Kotasız YouTube mimarisi](pmj-kotasiz-mimari-2026-08.md) — search.list koddan silindi, havuz 11.017 şarkı; kalan iş gerçek cihaz testi
 - [Katalog hasadı](pmj-katalog-hasadi-2026-09.md) — UC→UU hasadı + günlük catalog-new cron'u (0053); elle tur EN FAZLA --budget 3500, cronlar kota istiyor
-- [Supabase projesi](pmj-supabase-hesabi.md) — 17 Eyl 2026 prod quvkscvbsplxkuolvhwe projesine taşındı; Vercel pmj artık jettplaycrm-9116 hesabında; DB şifresi .env.new
+- [Supabase projesi](pmj-supabase-hesabi.md) — 17 Eyl 2026 prod quvkscvbsplxkuolvhwe projesine taşındı; 6 Eki'den beri Supabase MCP "playmyjam" org'una bağlı (prod+staging); Vercel pmj artık jettplaycrm-9116 hesabında; DB şifresi .env.new
 - [İş yönetimi (CRM + hakediş + sözleşme onayı)](pmj-is-yonetimi-2026-09.md) — hakediş formülü, yalnız ücretli jeton; 0050+0051+0057 ŞART; koşullar tamsa 3 belge otomatik mekana gider (tür başlık sonekinde)
 - [Mekan yayılım planı](pmj-yayilim-plani-2026-09.md) — 5→30→…→2000; Pro planlar mekan öncesi son adım, kontrol listesi kararları kayıtlı; 5 mekan için Vercel Hobby + Supabase Free yetmiyor (heartbeat 5 sn, broadcast 1 sn)
 - [Player güvenilirlik turu](pmj-player-guvenilirlik-2026-09.md) — sahiplik kimliği bellekte (sessionStorage DEĞİL), from_video_id, oturum iptalinde çalma izni; c29543b prod
 - [Mekan sayfası (plaket arka yüzü)](pmj-mekan-sayfasi-2026-09.md) — /<slug>/bilgi; 0052 ŞART, 0ff9636 prod'da, hizmet super admin'de açılır, tasarımda reddedilen yönler kayıtlı
 - [iyzico Vercel TLS sorunu](pmj-iyzico-vercel-engel-2026-09.md) — 17-21 Eyl canlı ödeme yoktu: Node 24.20 TLS 1.3 el sıkışması kopuyordu; TLS 1.2 + retry ile çözüldü, 21 Eyl gerçek ödeme başarılı
-- [Metadata tazeleme](pmj-metadata-tazeleme-2026-09.md) — 30 gün kuralı: günde havuz/20 en eski önce, 0054 RPC'leri; 0066 kapsayan indeks ŞART (aday okuma soğuk önbellekte timeout)
+- [Metadata tazeleme](pmj-metadata-tazeleme-2026-09.md) — 30 gün kuralı: günde havuz/20 en eski önce, 0054 RPC'leri; 0066 kapsayan indeks ŞART; yazma timeout'unda dilim bölünerek yeniden denenir (6 Eki)
 - [Sağlık ekranı](pmj-saglik-ekrani-2026-09.md) — yalnız kontrol dışı sessizlik (player ölçer) + hatalı sıra; uyanmadan sonraki 90 sn sayılmaz, kuyruk boş ayrı sekme; kullanıcının kendi duraklatmasını arıza sanma
 - [songs trigram indeksi](pmj-songs-trigram-2026-09.md) — songs ~830 bin; 0056 uygulandı; indekssiz metin araması timeout verir
 - [Arayüz analizi](pmj-arayuz-analizi-2026-09.md) — /super-admin/analytics: anonim tık/sayfa kaydı + ısı haritası; 0058 uygulandı, 44d0a9e prod
@@ -84,3 +84,5 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Katalog: talep yönlü kapsama](pmj-katalog-talep-yonlu-2026-09.md) — hacim değil kapsama sorunu; isimden kanal `forHandle` ile 1 birim, search.list ASLA
 - [Katalog ekranı](pmj-katalog-ekrani-2026-10.md) — /super-admin/catalog: havuzda arama + hasat ilerleme çubuğu; 0064+0065 ŞART, arama en az 3 harf
 - [Vercel görsel kotası](pmj-vercel-gorsel-kotasi.md) — 2 Eki 2026 hesap Image Optimization (6.7K/5K) yüzünden duraklatıldı → Pro + `images.unoptimized: true`
+- [Müşteri eklemelerini kapatma](pmj-musteri-ekleme-kapatma-2026-10.md) — panelde "Sırada" başlığındaki anahtar; now_playing.customer_adds_paused_at, 12 saatte kendiliğinden açılır; 0072 ŞART
+- [Mekanlar haritası](pmj-mekan-haritasi-2026-10.md) — müşteri alt menüsünde MEKANLAR; konum super admin'de Google Maps linkinden, koordinatsız mekan görünmez; tür iTunes'tan; 0073 ŞART; maplibre worker public/'e kopyalanıyor

@@ -166,6 +166,7 @@
   "panelNav": {
     "queue": "QUEUE",
     "browse": "PICK A SONG",
+    "map": "VENUES",
     "tokens": "BUY TOKENS",
     "profileAria": "My profile"
   },
@@ -196,6 +197,13 @@
     "title": "This venue's player is offline",
     "desc": "No music is playing right now, so songs can't be added — we don't want your tokens to go to waste. The queue and wait times come back once the player is online.",
     "cannotAdd": "Songs can't be added while the player is offline"
+  },
+  "addsPaused": {
+    "badge": "Queue closed",
+    "short": "Closed",
+    "title": "The venue isn't taking new songs right now",
+    "desc": "The venue has stopped new song requests as closing time approaches. Songs already in the queue will keep playing.",
+    "cannotAdd": "The venue isn't taking new songs right now"
   },
   "songModal": {
     "addedBy": "Added by",
@@ -365,7 +373,11 @@
     "approvedCountdown": "{t} left to play it",
     "addCta": "Add to Queue",
     "pendingHelp": "The venue hasn't approved your request yet. If they do, this bar turns green and you can add the song to the queue right here.",
-    "seeAll": "My requests"
+    "seeAll": "My requests",
+    "rejectedTitle": "Your request was declined",
+    "rejectedLine": "The venue chose not to play this song right now",
+    "rejectedCta": "Find Another Song",
+    "dismiss": "Dismiss"
   },
   "requestSent": {
     "title": "If the venue approves, you can add it to the queue",
@@ -504,6 +516,7 @@
     "infoLinkEmail": "We sent a verification link to {email}. Once you confirm it, your tokens and history are linked to this account.",
     "errGoogleStart": "Couldn't start the Google sign-in. Please try again.",
     "errGoogleLink": "Google account can't be linked right now. Your tokens are safe — you can create your account with the email and password below.",
+    "infoIdentityExists": "You already have a PlayMyJam account with this Google account. Tap Continue with Google and pick the same account; your tokens and history will move to that account.",
     "headingLead": "Let's get this party",
     "headingAccent": "started",
     "sub": "You need an account to play songs, buy tokens, and save your favorites. However, you don't need to log in to view the queue.",
@@ -711,6 +724,48 @@
     "desc": "An unexpected error occurred while loading this page. Trying again usually fixes it.",
     "home": "Back to home",
     "ref": "Error code"
+  },
+  "venueMap": {
+    "title": "Venues",
+    "subtitle": "Venues with PlayMyJam",
+    "loading": "Loading map…",
+    "empty": "No venues on the map yet",
+    "loadError": "Couldn't load the map",
+    "retry": "Try again",
+    "youAreHere": "You're here",
+    "nowPlaying": "Now playing",
+    "notPlaying": "No music playing right now",
+    "upNext": "Next 10 songs",
+    "upNextEmpty": "No songs waiting in the queue",
+    "priority": "Priority",
+    "topSongs": "Most played",
+    "lastDays": "Last {days} days",
+    "topSongsEmpty": "Not enough play history yet",
+    "plays": "{n}×",
+    "topGenre": "Top genre",
+    "genreEmpty": "Genre info is being prepared",
+    "directions": "Directions",
+    "cardError": "Couldn't load venue info",
+    "dragHint": "Swipe up for more",
+    "genres": {
+      "electronic": "Electronic",
+      "pop": "Pop",
+      "turkishPop": "Turkish Pop",
+      "hiphop": "Hip-Hop / Rap",
+      "rock": "Rock / Alternative",
+      "arabesk": "Arabesque",
+      "folk": "Turkish Folk",
+      "tsm": "Turkish Classical",
+      "jazz": "Jazz",
+      "rnb": "R&B / Soul",
+      "latin": "Latin",
+      "reggae": "Reggae",
+      "blues": "Blues",
+      "classical": "Classical",
+      "soundtrack": "Soundtrack",
+      "singer": "Singer-Songwriter",
+      "world": "World"
+    }
   },
   "notFoundPage": {
     "title": "Page not found",

@@ -32,6 +32,7 @@ export default function PlaylistRail({
     currentList,
     playNow,
     consumed,
+    manualPlaying,
     songs,
     viewId,
     setSelectedId: selectList,
@@ -216,7 +217,12 @@ export default function PlaylistRail({
                         {` · Çalıyor ${done}/${total}`}
                       </span>
                     )}
-                    {!filtering && !isCurrent && queuedSongs > 0 && (
+                    {!filtering && !isCurrent && manualPlaying?.listId === p.id && (
+                      <span style={{ color: "#fbbf24", fontWeight: 600 }}>
+                        {` · Çalıyor ${manualPlaying.at}/${total}`}
+                      </span>
+                    )}
+                    {!filtering && !isCurrent && manualPlaying?.listId !== p.id && queuedSongs > 0 && (
                       <span style={{ color: "#fbbf24", fontWeight: 600 }}>
                         {` · Sırada ${queuedSongs} şarkı`}
                       </span>

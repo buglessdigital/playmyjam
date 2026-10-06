@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -53,7 +53,7 @@ jobs:
       STAGING_IYZICO_API_KEY: ${{ secrets.STAGING_IYZICO_API_KEY }}
       STAGING_IYZICO_SECRET_KEY: ${{ secrets.STAGING_IYZICO_SECRET_KEY }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -65,7 +65,7 @@ jobs:
         run: npm run e2e
       - name: Rapor ve videolar
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-rapor
           path: |

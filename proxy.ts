@@ -46,8 +46,8 @@ async function getVenueSession(
 }
 
 // Hesap gerektirmeyen müşteri sayfaları — mekanı QR'dan açan biri giriş
-// yapmadan kuyruğu, katalogu ve şarkı detaylarını görebilir.
-const PUBLIC_VENUE_SEGMENTS = ["/queue", "/browse", "/song"];
+// yapmadan kuyruğu, katalogu, şarkı detaylarını ve mekanlar haritasını görebilir.
+const PUBLIC_VENUE_SEGMENTS = ["/queue", "/browse", "/song", "/map"];
 
 // Redirect response'una session cookie'lerini taşı: refresh token rotasyonu tek
 // kullanımlık olduğundan, tazelenen cookie'ler redirect'te kaybolursa oturum düşer.
@@ -128,7 +128,7 @@ export async function proxy(req: NextRequest) {
   }
 
   // Müşteri route koruması. Mekanın vitrinini görmek için giriş gerekmez:
-  // kuyruk, gözat ve şarkı detayı misafire açık. Hesap gerektiren sayfalar
+  // kuyruk, gözat, şarkı detayı ve harita misafire açık. Hesap gerektiren sayfalar
   // (jeton, favori, geçmiş, istekler, profil, ayarlar) login'e yönlendirir.
   const venueMatch = pathname.match(/^\/venue\/([^/]+)(\/.*)?$/);
   if (venueMatch) {

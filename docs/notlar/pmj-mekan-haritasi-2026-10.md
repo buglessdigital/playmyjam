@@ -20,6 +20,7 @@ dokununca kapanır.
   > `@lat,lng` (harita merkezi) > `?q=`. Sayfa GÖVDESİNE bakılmaz: oradaki merkez Google'ın
   sunucu IP'sine göre varsayılanı (Galata linki havalimanını verdi). Çıkmazsa elle enlem/boylam.
   Yalnız Google alan adlarına istek (SSRF). Sunucu fra1 → çerez onayı çerezi gönderiliyor.
+  **Tarayıcı User-Agent GÖNDERME:** kısa link tarayıcıya 302 yerine JS ara sayfası (200) veriyor.
 - **Tür** `lib/artist-genre.ts`: iTunes `entity=song&attribute=artistTerm` ile sanatçının
   şarkılarının en sık `primaryGenreName`'i (sanatçı aramasından isabetli). Aileler
   `lib/genres.ts` (Dance/House/Electronic → Elektronik). Kart açılırken bilinen pay <%50

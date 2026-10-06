@@ -95,9 +95,9 @@ const MAX_HOPS = 6;
 const TIMEOUT_MS = 5000;
 
 const HEADERS = {
-  // Masaüstü tarayıcısı gibi görünmezsek Google uygulama yönlendirme sayfası döndürüyor
-  "User-Agent":
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+  // Tarayıcı kimliği GÖNDERİLMEZ: maps.app.goo.gl tarayıcıya 302 yerine JS'li ara
+  // sayfa (200) döndürüyor, koordinatlı adrese hiç varılmıyor (denendi, 6 Eki 2026)
+  "User-Agent": "PlayMyJam/1.0 (+https://playmyjam.com.tr)",
   "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
   // Sunucu Frankfurt'ta (fra1): AB çerez onayı ekranına düşmesin
   Cookie: "CONSENT=YES+cb; SOCS=CAI",

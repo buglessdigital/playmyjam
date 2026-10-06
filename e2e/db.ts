@@ -141,3 +141,23 @@ export async function nowPlayingVideo(venueId: string): Promise<string | null> {
   if (error) throw new Error(`çalan şarkı: ${error.message}`);
   return (row?.songs as unknown as { youtube_video_id: string } | null)?.youtube_video_id ?? null;
 }
+
+/**
+ * Başka bir müşteri şarkı eklemiş gibi kuyruğa doğrudan satır yazar — ekranın
+ * değişikliği kendiliğinden (yeniden yüklemeden) görmesini sınamak için.
+ */
+export async function queueSongDirectly(venueId: string, videoId: string, addedBy = "Canlı Test") {
+  const song = must(await db.from("songs").select("id").eq("youtube_video_id", videoId).single(), "şarkı");
+  ok(
+    await db.from("queue").insert({
+      venue_id: venueId,
+      song_id: song.id,
+      status: "queued",
+      priority: false,
+      position: 1,
+      added_by: addedBy,
+      tokens_spent: 0,
+    }),
+    "kuyruğa ekleme",
+  );
+}

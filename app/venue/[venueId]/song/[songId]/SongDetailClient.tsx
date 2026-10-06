@@ -14,6 +14,8 @@ import { useVenueGate, venueLoginPath } from "@/lib/venue-gate";
 import { formatWait, useNowPlayingClock, waitMs } from "@/lib/wait-time";
 import { normalQueuedCount, priorityCostFor } from "@/lib/pricing";
 import { usePlayerOnline } from "@/lib/use-player-online";
+import { useCustomerAddsPaused } from "@/lib/use-customer-adds";
+import { coalesce, subscribeVenueLive } from "@/lib/venue-live";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { fmt, useT } from "@/lib/i18n";
 import { publishTokenBalance } from "@/lib/token-balance-store";
@@ -143,6 +145,9 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
   const t = useT();
   // Oynatıcı kapalıyken süre gösterilmez ve ekleme kapatılır (bkz. lib/player-status.ts)
   const playerOffline = usePlayerOnline(venueDbId) === false;
+  // Mekan kapanışa yakın müşteri eklemelerini (ve talepleri) kapatmış olabilir (0072)
+  const addsPaused = useCustomerAddsPaused(venueDbId);
+  const addsLocked = playerOffline || addsPaused;
 
   const [loaded, setLoaded] = useState(false);
   const [dbSongId, setDbSongId] = useState<string | null>(null);
@@ -155,6 +160,11 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [requested, setRequested] = useState(false);
   const [sheetTarget, setSheetTarget] = useState<SheetTarget | null>(null);
+  // Kart açıkken mekan eklemeleri kapatırsa kart kapanır (bkz. gözat sayfası)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- dış durum değişince kartı kapat
+    if (addsPaused) setSheetTarget(null);
+  }, [addsPaused]);
   const [similarOpen, setSimilarOpen] = useState(false);
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   // Sahnedeki şarkı (auto dahil): kuyruğun 'playing' satırı — request_song'ın baktığı yer
@@ -261,20 +271,15 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
 
     fetchState();
 
-    const queueChannel = supabase
-      .channel(`song-queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, fetchState)
-      .subscribe();
-
-    const npChannel = supabase
-      .channel(`song-now-playing:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchState)
-      .subscribe();
+    const refresh = coalesce(fetchState);
+    const unsubscribe = subscribeVenueLive(venueDbId, (event) => {
+      if (event === "queue" || event === "np" || event === "resync") refresh();
+    });
 
     return () => {
       cancelled = true;
-      supabase.removeChannel(queueChannel);
-      supabase.removeChannel(npChannel);
+      refresh.cancel();
+      unsubscribe();
     };
   }, [venueDbId, track, supabase]);
 
@@ -444,7 +449,7 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
   };
 
   const openSheetFor = async (song: VenueSong, cd: Cooldown) => {
-    if (playerOffline) return;
+    if (addsLocked) return;
     if (!(await requireAccount())) return;
     setSheetTarget({ songId: song.id, song, cooldown: cd });
   };
@@ -469,7 +474,7 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
   // ücret ödeme sırasında kuyruk kalabalıklaştığı için artmış olabilir) kart açılır.
   const pendingAddCheckedRef = useRef(false);
   useEffect(() => {
-    if (!loaded || pendingAddCheckedRef.current || !track || !dbSongId || playerOffline) return;
+    if (!loaded || pendingAddCheckedRef.current || !track || !dbSongId || addsLocked) return;
     pendingAddCheckedRef.current = true;
     const pending = peekPendingAdd(venueId);
     if (pending?.videoId !== track.youtube_video_id) return;
@@ -495,7 +500,7 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
     // handleAdd her render'da yeniden kuruluyor; bağımlılığa eklemek etkiyi
     // gereksiz yere tetiklerdi — tek seferlik olduğu ref ile zaten garanti.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, track, dbSongId, playerOffline, cooldown, venueId, tokenBalance, dynamicPriorityCost, requestCost]);
+  }, [loaded, track, dbSongId, addsLocked, cooldown, venueId, tokenBalance, dynamicPriorityCost, requestCost]);
 
   if (!loaded) {
     // Kullanıcı durumu henüz gelmedi (~100-150 ms) — yanlış durum göstermemek için nötr
@@ -506,8 +511,8 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
     centerDisabled = true;
     centerIcon = <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#6b7280" strokeWidth="2.5" strokeLinecap="round" /></svg>;
   } else if (inVenueList) {
-    // Oynatıcı kapalı: eklenen şarkı çalmayacağı için buton kapalı (jeton yanmasın)
-    if (playerOffline) {
+    // Oynatıcı kapalı ya da mekan eklemeleri kapatmış: buton kapalı (jeton yanmasın)
+    if (addsLocked) {
       centerDisabled = true;
       centerBg = "rgba(251,191,36,0.15)";
       centerIcon = <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 3v9" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /><path d="M6.5 6.5a8 8 0 1011 0" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /></svg>;
@@ -532,7 +537,11 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
       centerIcon = <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#0f0a18" strokeWidth="3" strokeLinecap="round" /></svg>;
     }
   } else {
-    if (requested) {
+    if (addsPaused && !requested) {
+      centerDisabled = true;
+      centerBg = "rgba(251,191,36,0.15)";
+      centerIcon = <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 3v9" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /><path d="M6.5 6.5a8 8 0 1011 0" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /></svg>;
+    } else if (requested) {
       centerDisabled = true;
       centerBg = "rgba(251,191,36,0.25)";
       centerIcon = <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fbbf24" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
@@ -549,6 +558,8 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
     ? t.songPage.notInVenueList
     : inVenueList && playerOffline
     ? t.playerOffline.cannotAdd
+    : addsPaused && !(inVenueList ? added : requested)
+    ? t.addsPaused.cannotAdd
     : isPlayingNow
     ? t.songPage.onStage
     : isOnCooldown
@@ -641,6 +652,11 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
           <p style={{ color: "#9ca3af", fontSize: 15, margin: "4px 0 0" }}>{track.artist}</p>
 
           {/* Bekleme süreleri yalnızca oynatıcı canlıyken anlamlı */}
+          {addsPaused && !playerOffline && (
+            <div style={{ marginTop: 14 }}>
+              <PlayerOfflineNotice compact reason="paused" />
+            </div>
+          )}
           {playerOffline ? (
             <div style={{ marginTop: 14 }}>
               <PlayerOfflineNotice compact />
@@ -875,6 +891,7 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
           playingSongId={playingSongId}
           addedIds={addedIds}
           playerOffline={playerOffline}
+          addsPaused={addsPaused}
           onOpenSong={openSongPage}
           onAddSong={openSheetFor}
           onClose={() => setSimilarOpen(false)}

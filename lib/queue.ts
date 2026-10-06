@@ -4,11 +4,14 @@ import {
   ADMIN_ADDED_BY,
   AUTO_ADDED_BY,
   AUTO_POSITION_BASE,
+  chunk,
   clearAutoQueue,
   fillQueue,
   jumpPlaylistCursorTo,
 } from "@/lib/queue-fill";
 import { sendPushToUser } from "@/lib/push";
+import { reportIssue } from "@/lib/ops-log";
+import { runInBackground } from "@/lib/background";
 import { purgeUnplayableSong } from "@/lib/playlist";
 import { shouldKeepStage } from "@/lib/stage-clock";
 
@@ -176,7 +179,7 @@ async function advanceToNext(
     // Sıra boş yakalandıysa dolumu bekleyip bir kez daha dene — mekan listesinde
     // şarkı olduğu sürece "kuyruk boş" dönmemeli, çalma hiç durmamalı
     if (retryAfterFill) {
-      await fillQueue(venueId).catch(() => {});
+      await fillQueue(venueId).catch((err) => reportFillFailure(venueId, err));
       return advanceToNext(venueId, false, skips, force);
     }
     await supabaseAdmin
@@ -187,7 +190,7 @@ async function advanceToNext(
   }
 
   // Replenish queue after consuming a song — fire-and-forget
-  fillQueue(venueId).catch(() => {});
+  fillQueue(venueId).catch((err) => reportFillFailure(venueId, err));
 
   type SongInfo = {
     youtube_video_id: string;
@@ -247,27 +250,56 @@ async function advanceToNext(
   return { started: true, video_id: song.youtube_video_id, song_id: nextItem.song_id };
 }
 
-// Şarkının sahibine push: uygulama kapalıyken de "şarkın çalıyor" ulaşsın —
-// fire-and-forget. Venue sayfaları slug ile çözümlenir; bildirim URL'i için slug'ı çek.
+// Otomatik doldurma başarısızsa ilerletme yine sürer (fail-open) ama iz kalsın:
+// kuyruğun beklenmedik boşalmasının ilk bakılacak yeri
+function reportFillFailure(venueId: string, err: unknown): Promise<void> {
+  return reportIssue({
+    area: "queue",
+    kind: "fill_failed",
+    severity: "warn",
+    message: "Kuyruk otomatik doldurulamadı",
+    venueId,
+    error: err,
+  });
+}
+
+// Şarkının sahibine push: uygulama kapalıyken de "şarkın çalıyor" ulaşsın.
+// Yanıtı bekletmez; eskiden sahipsiz bir promise'ti ve yarıda kalabiliyordu.
 function notifySongOwner(
   venueId: string,
   userId: string | null,
   song: { title: string; artist: string; album_cover_url?: string | null }
 ): void {
   if (!userId) return;
-  (async () => {
-    const { data: venue } = await supabaseAdmin
-      .from("venues")
-      .select("slug")
-      .eq("id", venueId)
-      .single();
-    await sendPushToUser(userId, {
-      title: "Şarkın çalıyor! 🎵",
-      body: `${song.title} — ${song.artist} şu an sahnede`,
-      icon: song.album_cover_url ?? undefined,
-      url: venue?.slug ? `/venue/${venue.slug}/queue` : "/",
-    });
-  })().catch(() => {});
+  runInBackground(async () => {
+    try {
+      const { data: venue } = await supabaseAdmin
+        .from("venues")
+        .select("slug")
+        .eq("id", venueId)
+        .single();
+      await sendPushToUser(
+        userId,
+        {
+          title: "Şarkın çalıyor! 🎵",
+          body: `${song.title} — ${song.artist} şu an sahnede`,
+          icon: song.album_cover_url ?? undefined,
+          url: venue?.slug ? `/venue/${venue.slug}/queue` : "/",
+        },
+        { kind: "song_playing", venueId }
+      );
+    } catch (err) {
+      await reportIssue({
+        area: "push",
+        kind: "song_playing_failed",
+        severity: "error",
+        message: `"Şarkın çalıyor" bildirimi hazırlanamadı: ${song.title} — ${song.artist}`,
+        venueId,
+        detail: { user_id: userId },
+        error: err,
+      });
+    }
+  });
 }
 
 export type PlayNowResult = {
@@ -287,6 +319,10 @@ type PlayNowTarget = {
   // Şarkı bir playlist satırından seçildiyse: imleç o listenin o noktasına taşınır
   // ve devamı (5, 6, 7...) sıraya girer.
   playlistId?: string | null;
+  // Şarkı "sıraya eklenen liste"nin içinden seçildi: sahneye çıkan yeni satır o
+  // listenin elle eklenmiş bloğuna ait sayılır (added_by admin), liste çalan
+  // liste olmaz (bkz. jumpManualBlock).
+  manualBlock?: boolean;
 };
 
 // "Bu şarkıyı ŞİMDİ çal": sahnedeki şarkı yarıda kesilir ve seçilen şarkı başlar.
@@ -336,7 +372,7 @@ async function playSongNowLocked(
   // hedefin kendisi ve (katalog yolunda) şarkının kuyrukta bekleyen satırı.
   // Ardışık yapıldığında düğme üç ağ turu bekliyordu ve şarkı gözle görülür
   // biçimde geç başlıyordu.
-  const [{ data: playingRows }, targetRow, existingRow] = await Promise.all([
+  const [{ data: playingRows }, targetRow, existingRow, { data: queuedRows }] = await Promise.all([
     supabaseAdmin
       .from("queue")
       .select("id, song_id, user_id")
@@ -362,9 +398,16 @@ async function playSongNowLocked(
     // kez çalmasın diye o satır sahneye alınır (yenisi açılmaz).
     target.queueId || !target.songId
       ? Promise.resolve({ data: null })
-      : supabaseAdmin
-          .from("queue")
-          .select("id, user_id")
+      : (target.manualBlock && target.playlistId
+          ? // Blok içi atlama: yalnızca o listenin elle eklenmiş satırı
+            // devralınır, başka listenin otomatik kopyası değil
+            supabaseAdmin
+              .from("queue")
+              .select("id, user_id")
+              .eq("added_by", ADMIN_ADDED_BY)
+              .eq("source_playlist_id", target.playlistId)
+          : supabaseAdmin.from("queue").select("id, user_id")
+        )
           .eq("venue_id", venueId)
           .eq("song_id", target.songId)
           .eq("status", "queued")
@@ -374,6 +417,20 @@ async function playSongNowLocked(
           .order("id", { ascending: true })
           .limit(1)
           .maybeSingle(),
+    // Kuyruk satırı çalınırken (Spotify gibi) onun ÜSTÜNDEKİ satırlar atlanır;
+    // hangileri olduğunu bilmek için bekleyen sıra, playNextFromQueue ile
+    // BİREBİR aynı sıralamayla okunur.
+    target.queueId
+      ? supabaseAdmin
+          .from("queue")
+          .select("id, user_id")
+          .eq("venue_id", venueId)
+          .eq("status", "queued")
+          .order("priority", { ascending: false })
+          .order("position", { ascending: true })
+          .order("added_at", { ascending: true })
+          .order("id", { ascending: true })
+      : Promise.resolve({ data: null }),
   ]);
 
   const playing = playingRows ?? [];
@@ -420,18 +477,32 @@ async function playSongNowLocked(
   // Playlist'in ortasından seçildiyse: bekleyen otomatik satırlar düşer, imleç bu
   // noktaya taşınır, dolum aşağıda listenin DEVAMINDAN yapılır. Müşteri istekleri
   // ve adminin elle eklediği satırlar bu temizlikten etkilenmez.
-  if (target.playlistId && !options?.deferQueueWork) {
+  if (target.playlistId && !target.manualBlock && !options?.deferQueueWork) {
     await clearAutoQueue(venueId);
     await jumpPlaylistCursorTo(venueId, target.playlistId, song.id);
   }
 
+  // Sıradan seçilen şarkının üstündekiler atlanır: seçilen şarkıdan sonraki
+  // satır "sıradaki" olur. Müşterinin jetonla aldığı satırlar ASLA atlanmaz —
+  // yerlerinde kalır ve önce onlar çalar. Atlanan otomatik satırlar rotasyon
+  // defterinde tüketilmiş kalır (geri alınmaz): liste onları bu turda geçmiş
+  // sayar ve seçilen şarkının devamından sürer.
+  let skippedIds: string[] = [];
+  if (target.queueId && rowId) {
+    const ordered = (queuedRows ?? []) as { id: string; user_id: string | null }[];
+    const idx = ordered.findIndex((r) => r.id === rowId);
+    if (idx > 0) {
+      skippedIds = ordered.slice(0, idx).filter((r) => r.user_id === null).map((r) => r.id);
+    }
+  }
+
   const now = new Date().toISOString();
 
-  // ÜÇ YAZMA DA BİRBİRİNDEN BAĞIMSIZ (farklı satırlar), tek turda gider:
+  // YAZMALAR BİRBİRİNDEN BAĞIMSIZ (farklı satırlar), tek turda gider:
   //  1) kesilen şarkı kapanır — started_at'e dokunulmaz, 30 dk kilidinin çapası
   //     şarkının fiilen başladığı andır (0025),
   //  2) hedef satır sahneye çıkar (yoksa yeni satır açılır),
-  //  3) now_playing yeni videoyu gösterir.
+  //  3) now_playing yeni videoyu gösterir,
   await Promise.all([
     playing.length > 0
       ? supabaseAdmin
@@ -450,7 +521,7 @@ async function playSongNowLocked(
           venue_id: venueId,
           song_id: song.id,
           user_id: null,
-          added_by: target.playlistId ? AUTO_ADDED_BY : ADMIN_ADDED_BY,
+          added_by: target.playlistId && !target.manualBlock ? AUTO_ADDED_BY : ADMIN_ADDED_BY,
           tokens_spent: 0,
           priority: false,
           position: AUTO_POSITION_BASE,
@@ -468,11 +539,19 @@ async function playSongNowLocked(
         started_at: now,
       })
       .eq("venue_id", venueId),
+    // 4) atlanan satırlar sıradan düşer (paneldeki tekil "kaldır" ile aynı durum)
+    ...chunk(skippedIds).map((ids) =>
+      supabaseAdmin
+        .from("queue")
+        .update({ status: "removed" })
+        .in("id", ids)
+        .eq("status", "queued")
+    ),
   ]);
 
   // Boşalan yer (ve playlist atlamasında tamamen boşaltılan otomatik blok)
   // doldurulur: imleç yeni yerinde olduğu için liste kaldığı noktadan devam eder.
-  if (!options?.deferQueueWork) await fillQueue(venueId).catch(() => {});
+  if (!options?.deferQueueWork) await fillQueue(venueId).catch((err) => reportFillFailure(venueId, err));
 
   notifySongOwner(venueId, rowUserId, song);
 
@@ -657,7 +736,7 @@ async function syncPlayingVideoLocked(
   }
 
   await supabaseAdmin.from("now_playing").update(npPatch).eq("venue_id", venueId);
-  fillQueue(venueId).catch(() => {});
+  fillQueue(venueId).catch((err) => reportFillFailure(venueId, err));
   return { ok: true, matched: !!row };
 }
 

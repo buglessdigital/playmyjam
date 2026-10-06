@@ -6,6 +6,7 @@ import { playNextFromQueue } from "@/lib/queue";
 import { fillQueue } from "@/lib/queue-fill";
 import { hasVenueSession } from "@/lib/venue-auth-cookie";
 import { isPlayerOnline } from "@/lib/player-status";
+import { isCustomerAddsPaused } from "@/lib/customer-adds";
 import { withActor } from "@/lib/actor";
 
 async function handlePOST(req: NextRequest) {
@@ -40,14 +41,32 @@ async function handlePOST(req: NextRequest) {
 
   // Oynatıcı kapalıyken ekleme yapılmaz: şarkı çalmayacağı için jeton boşa gider.
   // Tazelik eşiği müşteri arayüzüyle aynı (bkz. lib/player-status.ts).
-  const { data: heartbeatRow } = await supabaseAdmin
+  // Aynı satırda mekanın "müşteri eklemeleri kapalı" damgası da var (0072).
+  // 0072 uygulanmadan deploy edilirse kolon yoktur: select'in tamamı düşüp
+  // "player kapalı" sanılmasın diye eski kolonla yeniden okunur.
+  type GateRow = { last_heartbeat_at: string | null; customer_adds_paused_at?: string | null };
+  let gate = await supabaseAdmin
     .from("now_playing")
-    .select("last_heartbeat_at")
+    .select("last_heartbeat_at, customer_adds_paused_at")
     .eq("venue_id", venue_id)
     .maybeSingle();
-  if (!isPlayerOnline((heartbeatRow as { last_heartbeat_at: string | null } | null)?.last_heartbeat_at)) {
+  if (gate.error) {
+    gate = await supabaseAdmin
+      .from("now_playing")
+      .select("last_heartbeat_at")
+      .eq("venue_id", venue_id)
+      .maybeSingle();
+  }
+  const gateRow = gate.data as GateRow | null;
+  if (!isPlayerOnline(gateRow?.last_heartbeat_at)) {
     return NextResponse.json(
       { error: "Mekanın oynatıcısı şu an kapalı — şarkı eklenemez", code: "player_offline" },
+      { status: 409 }
+    );
+  }
+  if (isCustomerAddsPaused(gateRow?.customer_adds_paused_at)) {
+    return NextResponse.json(
+      { error: "Mekan şu an yeni şarkı almıyor", code: "adds_paused" },
       { status: 409 }
     );
   }

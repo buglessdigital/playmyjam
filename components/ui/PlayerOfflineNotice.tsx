@@ -6,9 +6,19 @@ import { useT } from "@/lib/i18n";
  * Mekanın oynatıcısı kapalıyken müşteri panelinde gösterilen uyarı. Süreler ve
  * ekleme akışı bu durumda gizlendiği için müşteri neden olduğunu buradan görür
  * (bkz. lib/player-status.ts).
+ *
+ * `reason="paused"`: oynatıcı açık ama mekan müşteri eklemelerini kapatmış
+ * (kapanışa yakın, bkz. lib/customer-adds.ts) — aynı kutu, farklı metin.
  */
-export default function PlayerOfflineNotice({ compact = false }: { compact?: boolean }) {
+export default function PlayerOfflineNotice({
+  compact = false,
+  reason = "offline",
+}: {
+  compact?: boolean;
+  reason?: "offline" | "paused";
+}) {
   const t = useT();
+  const copy = reason === "paused" ? t.addsPaused : t.playerOffline;
 
   return (
     <div
@@ -26,9 +36,9 @@ export default function PlayerOfflineNotice({ compact = false }: { compact?: boo
       </svg>
       <div>
         <p className="text-sm font-semibold" style={{ color: "#fbbf24" }}>
-          {t.playerOffline.title}
+          {copy.title}
         </p>
-        {!compact && <p className="mt-0.5 text-xs text-[#d97706]">{t.playerOffline.desc}</p>}
+        {!compact && <p className="mt-0.5 text-xs text-[#d97706]">{copy.desc}</p>}
       </div>
     </div>
   );

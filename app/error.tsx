@@ -10,10 +10,10 @@ import StatusScreen, { primaryButtonClass, secondaryButtonClass } from "@/compon
 // hatalarında mesaj gizlenir; digest, Vercel loglarındaki kayıtla eşleştirmek içindir.
 export default function RouteError({
   error,
-  unstable_retry,
+  retry,
 }: {
   error: Error & { digest?: string };
-  unstable_retry: () => void;
+  retry: () => void;
 }) {
   const t = useT();
 
@@ -28,7 +28,7 @@ export default function RouteError({
       desc={t.errorPage.desc}
       footnote={error.digest ? `${t.errorPage.ref}: ${error.digest}` : undefined}
     >
-      <button type="button" onClick={() => unstable_retry()} className={primaryButtonClass}>
+      <button type="button" onClick={() => retry()} className={primaryButtonClass}>
         {t.common.retry}
       </button>
       <Link href="/" className={secondaryButtonClass}>

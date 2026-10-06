@@ -799,7 +799,12 @@ export function usePlayback(venueDbId: string) {
       );
       if (target.queue_id) {
         leavingRef.current = { id: target.queue_id, at: Date.now() };
-        setQueue((prev) => prev.filter((q) => q.id !== target.queue_id));
+        // Spotify gibi: seçilenin üstündeki satırlar da atlanır (müşterininkiler
+        // hariç) — sunucu aynı kuralı uygular (bkz. lib/queue.ts playSongNow).
+        setQueue((prev) => {
+          const idx = prev.findIndex((q) => q.id === target.queue_id);
+          return prev.filter((q, i) => i > idx || (i < idx && q.user_id !== null));
+        });
       }
     }
 
@@ -954,6 +959,28 @@ export function usePlayback(venueDbId: string) {
     return queue.find((q) => q.source_playlist_id)?.source_playlist_id ?? null;
   }, [playingRow, queue]);
 
+  // Çalan listenin "turda neredeyiz" çapası: sahnedeki otomatik şarkı, o yoksa
+  // (müşteri/elle eklenen şarkı çalıyorsa) listenin kuyrukta bekleyen ilk
+  // otomatik satırı. Rayın "Çalıyor 56/111" sayısı sıralı listede buradan
+  // hesaplanır (bkz. useLibrary.playedByList).
+  const playingListAnchor = useMemo(() => {
+    if (!playingListId) return null;
+    const stageVideo = nowPlaying?.video_id ?? null;
+    if (playingRow?.source_playlist_id === playingListId && playingRow.added_by === "auto" && stageVideo) {
+      return { listId: playingListId, videoId: stageVideo, onStage: true };
+    }
+    const next = queue.find((q) => q.source_playlist_id === playingListId && q.added_by === "auto");
+    return next ? { listId: playingListId, videoId: next.songs.youtube_video_id, onStage: false } : null;
+  }, [playingListId, playingRow, nowPlaying?.video_id, queue]);
+
+  // Sahnedeki şarkı "sıraya eklenen liste" bloğundansa o liste ve video: rayda
+  // sarı rozetin yanında "Çalıyor 3/114" yazması için (bkz. useLibrary).
+  const manualStage = useMemo(() => {
+    const stageVideo = nowPlaying?.video_id ?? null;
+    if (playingRow?.added_by !== "admin" || !playingRow.source_playlist_id || !stageVideo) return null;
+    return { listId: playingRow.source_playlist_id, videoId: stageVideo };
+  }, [playingRow, nowPlaying?.video_id]);
+
   // Liste başına kuyrukta BEKLEYEN şarkı sayısı. Kuyruk artık listenin sonuna
   // kadar dolduğu için "bu listeden kaç şarkı çaldı" ancak bununla bulunur:
   // tüketilen (kuyruğa yazılan) eksi hâlâ bekleyen (bkz. useLibrary.consumed).
@@ -1013,6 +1040,8 @@ export function usePlayback(venueDbId: string) {
     queue,
     queuedVideoIds,
     playingListId,
+    playingListAnchor,
+    manualStage,
     pendingByList,
     manualByList,
     manualListOrder,

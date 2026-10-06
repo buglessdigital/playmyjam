@@ -37,8 +37,10 @@ export default function SongActionButton({ state, size, onAdd, onRequest }: Prop
     );
   }
 
-  // Oynatıcı kapalı: ekleme butonu yerine sessiz bir rozet — dokunulacak bir şey yok
-  if (state.kind === "offline") {
+  // Oynatıcı kapalı ya da mekan eklemeleri kapatmış: ekleme butonu yerine sessiz
+  // bir rozet — dokunulacak bir şey yok
+  if (state.kind === "offline" || state.kind === "paused") {
+    const copy = state.kind === "paused" ? t.addsPaused : t.playerOffline;
     const icon = (
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
         <path d="M12 3v9" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" />
@@ -47,9 +49,9 @@ export default function SongActionButton({ state, size, onAdd, onRequest }: Prop
     );
     if (size === "card") {
       return (
-        <div className="flex h-7 items-center gap-1 rounded-full bg-black/60 px-2 backdrop-blur-sm" title={t.playerOffline.title}>
+        <div className="flex h-7 items-center gap-1 rounded-full bg-black/60 px-2 backdrop-blur-sm" title={copy.title}>
           {icon}
-          <span className="text-[11px] font-semibold" style={{ color: "#fbbf24" }}>{t.playerOffline.short}</span>
+          <span className="text-[11px] font-semibold" style={{ color: "#fbbf24" }}>{copy.short}</span>
         </div>
       );
     }
@@ -57,10 +59,10 @@ export default function SongActionButton({ state, size, onAdd, onRequest }: Prop
       <div
         className="flex h-8 items-center justify-center gap-[3px] rounded-[10px] px-2"
         style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)" }}
-        title={t.playerOffline.title}
+        title={copy.title}
       >
         {icon}
-        <span className="text-[11px] font-semibold" style={{ color: "#fbbf24" }}>{t.playerOffline.short}</span>
+        <span className="text-[11px] font-semibold" style={{ color: "#fbbf24" }}>{copy.short}</span>
       </div>
     );
   }

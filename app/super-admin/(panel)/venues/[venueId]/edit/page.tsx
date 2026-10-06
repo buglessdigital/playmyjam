@@ -19,6 +19,9 @@ type VenueData = {
   request_cost: number;
   priority_cost: number;
   hub_enabled: boolean;
+  maps_url?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   venue_admins: { id: string; username: string }[];
 };
 
@@ -70,6 +73,11 @@ function EditVenueForm() {
   const [requestCost, setRequestCost] = useState("1");
   const [priorityCost, setPriorityCost] = useState("2");
   const [hubEnabled, setHubEnabled] = useState(false);
+  const [mapsUrl, setMapsUrl] = useState("");
+  const [lat, setLat] = useState("");
+  const [lng, setLng] = useState("");
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -92,6 +100,9 @@ function EditVenueForm() {
         setRequestCost(String(v.request_cost ?? 1));
         setPriorityCost(String(v.priority_cost ?? 2));
         setHubEnabled(v.hub_enabled === true);
+        setMapsUrl(v.maps_url ?? "");
+        setLat(v.latitude == null ? "" : String(v.latitude));
+        setLng(v.longitude == null ? "" : String(v.longitude));
       })
       .catch(() => setError("Mekan bilgileri yüklenemedi"))
       .finally(() => setLoading(false));
@@ -115,6 +126,9 @@ function EditVenueForm() {
           requestCost: Number(requestCost),
           priorityCost: Number(priorityCost),
           hubEnabled,
+          mapsUrl,
+          latitude: lat,
+          longitude: lng,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -130,6 +144,33 @@ function EditVenueForm() {
       setSaving(false);
     }
   };
+
+  // Linkten koordinat — kaydetmeden önce görüp kontrol edebilmek için
+  const resolveLocation = async () => {
+    if (!mapsUrl.trim() || resolving) return;
+    setResolving(true);
+    setResolveError("");
+    try {
+      const res = await fetch("/api/super-admin/maps-resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: mapsUrl }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setResolveError(data?.error ?? "Konum bulunamadı");
+        return;
+      }
+      setLat(String(data.lat));
+      setLng(String(data.lng));
+    } catch {
+      setResolveError("Bağlantı hatası, tekrar deneyin");
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const hasCoords = lat.trim() !== "" && lng.trim() !== "";
 
   if (loading) return <div className="p-8 text-center text-[#6b7280] text-sm">Yükleniyor...</div>;
 
@@ -259,6 +300,76 @@ function EditVenueForm() {
               >
                 Aç
               </a>
+            </div>
+          )}
+        </div>
+
+        {/* Müşteri panelindeki Mekanlar haritası. Konumu olmayan mekan
+            haritada görünmez (test mekanları bu yüzden boş bırakılır). */}
+        <div className="rounded-2xl border border-white/10 p-5 flex flex-col gap-4" style={{ background: "rgba(255,255,255,0.03)" }}>
+          <p className="text-white text-sm font-semibold">Harita Konumu</p>
+          <p className="text-[#6b7280] text-xs -mt-2">
+            Google Maps&apos;te mekanı aç → Paylaş → Bağlantıyı kopyala, buraya yapıştır ve
+            &quot;Konumu bul&quot;a bas. Bulamazsa haritada mekanın üstüne sağ tıklayıp en üstteki
+            koordinatı kopyala, enlem/boylam alanlarına gir. Konumu boş olan mekan müşteri
+            haritasında görünmez.
+          </p>
+          <div>
+            <label className="block text-[#9ca3af] text-xs mb-1.5">Google Maps linki</label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={mapsUrl}
+                onChange={(e) => {
+                  setMapsUrl(e.target.value);
+                  // Link değişti: eski koordinat yeni linkle karışmasın
+                  setLat("");
+                  setLng("");
+                  setResolveError("");
+                }}
+                placeholder="https://maps.app.goo.gl/..."
+                className="flex-1 min-w-0 rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "white" }}
+              />
+              <button
+                type="button"
+                onClick={resolveLocation}
+                disabled={!mapsUrl.trim() || resolving}
+                className="shrink-0 px-3 py-2.5 rounded-xl text-xs font-medium transition-all disabled:opacity-50"
+                style={{ background: "rgba(255,255,255,0.08)", color: "#9ca3af" }}
+              >
+                {resolving ? "Aranıyor..." : "Konumu bul"}
+              </button>
+            </div>
+            {resolveError && <p className="text-red-400 text-xs mt-1.5">{resolveError}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Enlem" value={lat} onChange={setLat} placeholder="38.4237" mono />
+            <Field label="Boylam" value={lng} onChange={setLng} placeholder="27.1428" mono />
+          </div>
+          {hasCoords && (
+            <div className="flex items-center gap-2">
+              <a
+                href={`https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 rounded-xl px-3 py-2.5 text-xs font-medium text-center"
+                style={{ background: "rgba(255,255,255,0.08)", color: "#9ca3af" }}
+              >
+                Konumu Google&apos;da kontrol et
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  setMapsUrl("");
+                  setLat("");
+                  setLng("");
+                }}
+                className="shrink-0 rounded-xl px-3 py-2.5 text-xs font-medium"
+                style={{ background: "rgba(239,68,68,0.12)", color: "#f87171" }}
+              >
+                Haritadan kaldır
+              </button>
             </div>
           )}
         </div>

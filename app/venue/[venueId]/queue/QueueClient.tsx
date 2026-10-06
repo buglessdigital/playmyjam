@@ -12,6 +12,8 @@ import ProfileChip from "@/components/ui/ProfileChip";
 import { publishTokenBalance } from "@/lib/token-balance-store";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { usePlayerOnline } from "@/lib/use-player-online";
+import { useCustomerAddsPaused } from "@/lib/use-customer-adds";
+import { coalesce, subscribeVenueLive } from "@/lib/venue-live";
 import { fmt, useT } from "@/lib/i18n";
 import {
   fetchManualQueueEntries,
@@ -65,6 +67,9 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
   // Oynatıcı kapalıyken süreler donmuş olur: bekleme/ilerleme gösterilmez.
   // İlk okuma gelene kadar (null) açık varsayılır — yanlış uyarı çakmasın.
   const playerOffline = usePlayerOnline(venueDbId) === false;
+  // Mekan kapanışa yakın müşteri eklemelerini kapatmış olabilir (0072) — sıra
+  // ve süreler görünmeye devam eder, yalnızca "Şarkı Ekle" kalkar
+  const addsPaused = useCustomerAddsPaused(venueDbId);
 
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000);
@@ -89,8 +94,8 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     };
 
     // Bekleme süresi kuyruğun tamamını ister; RPC 10 kayıtla sınırlı ve auto-fill'i
-    // de içeriyor. Yalnızca kuyruk değiştiğinde tazelenir — heartbeat'in 15 sn'de
-    // bir tetiklediği now_playing güncellemeleri kuyruğun içeriğini değiştirmez.
+    // de içeriyor. Yalnızca kuyruk değiştiğinde tazelenir — çalan şarkı
+    // değişiklikleri kuyruğun içeriğini değiştirmez.
     const fetchWaitEntries = async () => {
       const entries = await fetchManualQueueEntries(supabase, venueDbId);
       if (!cancelled) setWaitEntries(entries);
@@ -99,23 +104,24 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
     fetchState();
     fetchWaitEntries();
 
-    const queueChannel = supabase
-      .channel(`queue:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue", filter: `venue_id=eq.${venueDbId}` }, () => {
-        fetchState();
-        fetchWaitEntries();
-      })
-      .subscribe();
-
-    const npChannel = supabase
-      .channel(`now_playing:${venueDbId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "now_playing", filter: `venue_id=eq.${venueDbId}` }, fetchState)
-      .subscribe();
+    // Canlı hat yalnızca anlamlı değişiklikte haber verir (heartbeat değil);
+    // art arda gelenler tek okumaya iner
+    const refreshState = coalesce(fetchState);
+    const refreshWait = coalesce(fetchWaitEntries);
+    const unsubscribe = subscribeVenueLive(venueDbId, (event) => {
+      if (event === "queue" || event === "resync") {
+        refreshState();
+        refreshWait();
+      } else if (event === "np") {
+        refreshState();
+      }
+    });
 
     return () => {
       cancelled = true;
-      supabase.removeChannel(queueChannel);
-      supabase.removeChannel(npChannel);
+      refreshState.cancel();
+      refreshWait.cancel();
+      unsubscribe();
     };
   }, [venueDbId, supabase]);
 
@@ -256,11 +262,15 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
         </div>
       </div>
 
-      {playerOffline && (
+      {playerOffline ? (
         <div className="mx-5 mb-4">
           <PlayerOfflineNotice />
         </div>
-      )}
+      ) : addsPaused ? (
+        <div className="mx-5 mb-4">
+          <PlayerOfflineNotice reason="paused" />
+        </div>
+      ) : null}
 
       {/* Bekleme süreleri yalnızca oynatıcı canlıyken anlamlı — kapalıyken sıra ilerlemiyor */}
       {!playerOffline && (
@@ -456,7 +466,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
           bir şerit kuyruk satırlarının üstüne binip okunmaz hale geliyordu.
           Talep şeridi de aynı köşede duruyor — buton onun da üstüne çıkar
           (bkz. components/venue/RequestStatusBar). */}
-      {!playerOffline && (
+      {!playerOffline && !addsPaused && (
       <div
         className="fixed left-0 right-0 px-5 z-40 flex justify-end pointer-events-none"
         style={{ bottom: "calc(4rem + var(--pmj-request-bar, 0px))" }}

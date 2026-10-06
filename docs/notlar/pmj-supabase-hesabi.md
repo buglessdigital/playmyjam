@@ -1,6 +1,6 @@
 ---
 name: pmj-supabase-hesabi
-description: PMJ Supabase projesinin ref'i rtvnbhifqxdeljijxtpe; Claude'a bağlı Supabase hesabında (Bugless Digital org) DEĞİL
+description: PMJ prod Supabase ref quvkscvbsplxkuolvhwe (17 Eyl'den beri), staging cvjfizeekepxzltqqumm; ikisi de "playmyjam" org'unda ve 6 Eki 2026'dan beri claude.ai Supabase bağlayıcısından erişilebilir
 metadata:
   type: reference
 ---
@@ -15,3 +15,6 @@ PMJ'nin Supabase projesi: ref `rtvnbhifqxdeljijxtpe` (auth.playmyjam.com.tr bu a
 - Auth: Google (client PlayMyJam Web, yeni secret eklendi), anonymous açık, SMTP Resend, URL config kullanıcıda yapıldı.
 - Vercel: pmj projesi artık `jettplaycrm-9116` hesabında (team_1KuLn6iwUWHBSMd5URmDFsWT, eski bugless-digital değil); CLI o hesapla girişli. 3 Supabase env değiştirildi, prod deploy pmj-o1o5ogopv canlı.
 - Açık işler: DB şifresi + service_role sohbette paylaşıldı → rotate; Google'daki eski secret silinebilir; custom domain yok (Pro gerekir); DDL artık psql ile doğrudan yapılabiliyor (libpq brew'de, NEW_DB_URL).
+
+**6 Eki 2026 — Supabase MCP bağlandı.** claude.ai Supabase bağlayıcısı (hesap düzeyinde; masaüstü uygulaması veya claude.ai → Settings → Connectors) "playmyjam" org'una (`stzpouydrmymksftcpyg`) bağlandı: PMJ (`quvkscvbsplxkuolvhwe`) + pmj-staging (`cvjfizeekepxzltqqumm`) görünüyor; `execute_sql` ve `query_logs` (postgres_logs dahil) çalışıyor. Önceki bağlantı boş "taneryildirim" org'unu seçmişti — OAuth ekranında org seçimi yapılıyor, yanlış org = "You do not have permission". Bağlayıcı yazabilir; DDL kuralı değişmedi, migration'lar yine kullanıcının onayıyla ([[pmj-perf-rework-2026-07]]).
+

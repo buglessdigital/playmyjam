@@ -27,10 +27,17 @@ const CHUNK = 1_000;
 // (GIN) indeksi her güncellemeye yazıyor: 30 Eyl 2026 ölçümü 1.000 satır
 // 5,7-13 sn (8 sn sınırına takıldı), 250 satır 0,5-0,85 sn.
 const WRITE_CHUNK = 250;
-// Yazılamayan dilim bir kez yeniden denenir, yine olmazsa atlanır: satırlar
-// en eski kaldığı için ertesi gün ilk sırada gelir. Eskiden tek zaman aşımı
-// günün tamamını (ve ardındaki playlist senkronunu) düşürüyordu. Bu kadar
-// dilim düşerse veritabanı gerçekten sorunlu demektir, tur durur.
+// Yazılamayan dilim kısa bir beklemeden sonra ikiye bölünüp yeniden denenir
+// (250 → 125 → 63). 6 Eki 2026: aynı 250'lik çağrı sakin anda 0,6-1 sn, cron
+// sırasında ortalama 2 sn, tepede 8 sn — tur kendi ölü satırlarıyla songs'un
+// autovacuum'unu tetikliyor, vacuum 9 indeksi (iki trigram GIN dahil) tararken
+// yazmalar sınıra dayanıyor. Bölmek hem anlık yükün geçmesini bekler hem de
+// tek çağrının işini küçültür. En küçük dilim de iki kez düşerse atlanır:
+// satırlar en eski kaldığı için ertesi gün ilk sırada gelir.
+const MIN_WRITE_CHUNK = 63;
+const WRITE_BACKOFF_MS = 2_000;
+// Bu kadar en küçük dilim düşerse veritabanı gerçekten sorunlu demektir, tur
+// durur (playlist senkronu yine çalışır).
 const MAX_FAILED_WRITES = 4;
 // Paralel işlenen parti sayısı. Sıralı gidince 1.000 satır ~5 sn sürüyordu
 // (videos.list ~1,5, yazma ~2,7 sn); 4 paralel yazma + hasat aynı anda
@@ -47,6 +54,8 @@ export type MetadataRefreshResult = {
   purged: number;
   // Yazılamayıp atlanan satırlar (bkz. MAX_FAILED_WRITES)
   failed: number;
+  // Zaman aşımı yüzünden bölünerek yeniden denenen yazma sayısı
+  writeRetries: number;
   writeError: string | null;
   units: number;
   stopped: "done" | "time" | "quota" | "db";
@@ -84,19 +93,39 @@ export async function refreshStaleMetadata(deadline: number): Promise<MetadataRe
   const pool = count ?? 0;
   const target = Math.min(MAX_BATCH, Math.max(MIN_BATCH, Math.ceil(pool / CYCLE_DAYS)));
   const result: MetadataRefreshResult = {
-    pool, target, refreshed: 0, delisted: 0, purged: 0, failed: 0, writeError: null, units: 0, stopped: "done", ms,
+    pool, target, refreshed: 0, delisted: 0, purged: 0, failed: 0, writeRetries: 0, writeError: null, units: 0, stopped: "done", ms,
   };
   const cutoff = new Date(Date.now() - MIN_AGE_DAYS * 86_400_000).toISOString();
   let failedWrites = 0;
 
-  // Tek dilim yazma: bir kez yeniden dener, olmazsa null döner (atlandı)
-  async function writeSlice(slice: Row[]): Promise<{ song_id: string }[] | null> {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const { data, error } = await supabaseAdmin.rpc("refresh_song_metadata", { p_rows: slice });
-      if (!error) return (data ?? []) as { song_id: string }[];
-      result.writeError = `metadata yazılamadı: ${error.message}`;
+  type WriteOut = { unplayable: { song_id: string }[]; written: Row[]; failed: Row[] };
+  const write = async (slice: Row[]) =>
+    supabaseAdmin.rpc("refresh_song_metadata", { p_rows: slice });
+
+  // Dilim yazma: düşerse bekleyip ikiye böler (bkz. MIN_WRITE_CHUNK); en küçük
+  // dilim iki kez düşerse o satırlar `failed` olarak döner
+  async function writeSlice(slice: Row[]): Promise<WriteOut> {
+    const first = await write(slice);
+    if (!first.error) return { unplayable: (first.data ?? []) as { song_id: string }[], written: slice, failed: [] };
+    result.writeError = `metadata yazılamadı: ${first.error.message}`;
+    if (Date.now() > deadline) return { unplayable: [], written: [], failed: slice };
+    result.writeRetries++;
+    await new Promise((r) => setTimeout(r, WRITE_BACKOFF_MS));
+
+    if (slice.length <= MIN_WRITE_CHUNK) {
+      const again = await write(slice);
+      if (!again.error) return { unplayable: (again.data ?? []) as { song_id: string }[], written: slice, failed: [] };
+      result.writeError = `metadata yazılamadı: ${again.error.message}`;
+      return { unplayable: [], written: [], failed: slice };
     }
-    return null;
+    const mid = Math.ceil(slice.length / 2);
+    const a = await writeSlice(slice.slice(0, mid));
+    const b = await writeSlice(slice.slice(mid));
+    return {
+      unplayable: [...a.unplayable, ...b.unplayable],
+      written: [...a.written, ...b.written],
+      failed: [...a.failed, ...b.failed],
+    };
   }
 
   // Tek parti: videos.list → toplu yazma → gömülemeyenleri kataloglardan düşürme
@@ -122,18 +151,16 @@ export async function refreshStaleMetadata(deadline: number): Promise<MetadataRe
     const unplayable = await timed("write", async () => {
       const out: { song_id: string }[] = [];
       for (let i = 0; i < rows.length && result.stopped === "done"; i += WRITE_CHUNK) {
-        const slice = rows.slice(i, i + WRITE_CHUNK);
-        const written = await writeSlice(slice);
-        if (!written) {
-          result.failed += slice.length;
+        const { unplayable, written, failed } = await writeSlice(rows.slice(i, i + WRITE_CHUNK));
+        if (failed.length > 0) {
+          result.failed += failed.length;
           if (++failedWrites >= MAX_FAILED_WRITES) result.stopped = "db";
-          continue;
         }
-        for (const r of slice) {
+        for (const r of written) {
           if (meta.get(r.youtube_video_id)) result.refreshed++;
           else result.delisted++;
         }
-        out.push(...written);
+        out.push(...unplayable);
       }
       return out;
     });

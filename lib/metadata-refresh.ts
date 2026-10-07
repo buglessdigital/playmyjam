@@ -18,7 +18,8 @@ const MIN_BATCH = 1_000;
 const MAX_BATCH = 75_000;
 // Yeni tazelenmiş satır yeniden sorulmasın
 const MIN_AGE_DAYS = 7;
-// Adaylar tek RPC ile dilim dilim alınır (0054 stale_song_video_ids); 20 bin
+// Adaylar tek RPC ile dilim dilim alınır (0074 stale_song_candidates, kaldığı
+// yerden; yoksa 0054 stale_song_video_ids); 20 bin
 // aday ~2 sn, API rolünün sorgu sınırı 8 sn.
 const CANDIDATE_SLICE = 20_000;
 // Parti boyu (videos.list 20 çağrı)
@@ -174,20 +175,46 @@ export async function refreshStaleMetadata(deadline: number): Promise<MetadataRe
     });
   }
 
+  // Bir sonraki aday diliminin başlangıcı (0074). Her dilim indeksin başından
+  // okununca az önce tazelenen satırların ölü kayıtları üzerinden geçiyordu:
+  // 7 Eki 2026 ikinci okuma soğuk önbellekte 8 sn sınırını aştı.
+  let after: string | null = null;
+  // 0074 henüz uygulanmamışsa eski RPC'ye düşülür (her dilim baştan okur)
+  let keyset = true;
+
+  async function readCandidates(limit: number): Promise<string[]> {
+    if (keyset) {
+      const { data, error } = await supabaseAdmin.rpc("stale_song_candidates", {
+        p_cutoff: cutoff,
+        p_after: after,
+        p_limit: limit,
+      });
+      if (!error) {
+        const out = (data ?? { ids: [], last: null }) as { ids: string[]; last: string | null };
+        if (out.last) after = out.last;
+        return out.ids;
+      }
+      if (error.code !== "PGRST202") throw new Error(error.message);
+      keyset = false;
+    }
+    const { data, error } = await supabaseAdmin.rpc("stale_song_video_ids", { p_cutoff: cutoff, p_limit: limit });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as string[];
+  }
+
   while (result.refreshed + result.delisted + result.failed < target) {
     const remaining = target - result.refreshed - result.delisted - result.failed;
     // Bir kez yeniden denenir: ilk deneme soğuk önbellekte sınıra dayanırsa
     // okuduğu sayfalar ikinciyi hızlandırır (4 Eki 2026: 7,9 sn → 0,13 sn).
-    // Asıl çözüm 0066'nın kapsayan indeksi.
+    // Asıl çözüm 0066'nın kapsayan indeksi + 0074'ün kaldığı yerden okuması.
     const candidates = await timed("select", async () => {
       let message = "";
       for (let attempt = 0; attempt < 2; attempt++) {
-        const { data, error } = await supabaseAdmin.rpc("stale_song_video_ids", {
-          p_cutoff: cutoff,
-          p_limit: Math.min(CANDIDATE_SLICE, remaining),
-        });
-        if (!error) return (data ?? []) as string[];
-        message = error.message;
+        try {
+          return await readCandidates(Math.min(CANDIDATE_SLICE, remaining));
+        } catch (err) {
+          message = err instanceof Error ? err.message : String(err);
+        }
       }
       throw new Error(`adaylar okunamadı: ${message}`);
     });

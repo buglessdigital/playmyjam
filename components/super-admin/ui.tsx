@@ -290,6 +290,78 @@ export function ErrorBox({ children }: { children: React.ReactNode }) {
   return <div className="px-4 py-3 rounded-xl text-sm text-red-400 bg-red-500/10 border border-red-500/20">{children}</div>;
 }
 
+// Listelerde toplu "çözüldü": tümünü seç + işaretle düğmesi + çözülenleri göster
+export function ResolveBar({
+  selectable,
+  picked,
+  onToggleAll,
+  onResolve,
+  resolving,
+  showResolved,
+  onToggleShowResolved,
+  resolvedCount,
+}: {
+  selectable: number;
+  picked: number;
+  onToggleAll: () => void;
+  onResolve: () => void;
+  resolving: boolean;
+  showResolved: boolean;
+  onToggleShowResolved: () => void;
+  // Bilinmiyorsa (sunucu süzüyor) verilmez; düğme her zaman görünür
+  resolvedCount?: number;
+}) {
+  const showToggle = resolvedCount === undefined || resolvedCount > 0 || showResolved;
+  if (selectable === 0 && !showToggle) return null;
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-3">
+      {selectable > 0 && (
+        <label className="flex items-center gap-2 text-xs text-[#9ca3af] cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={picked > 0 && picked === selectable}
+            onChange={onToggleAll}
+            className="h-4 w-4 accent-amber-500"
+          />
+          Tümünü seç
+        </label>
+      )}
+      {picked > 0 && (
+        <Button variant="success" onClick={onResolve} disabled={resolving}>
+          {resolving ? "Kaydediliyor…" : `${picked} kaydı çözüldü olarak işaretle`}
+        </Button>
+      )}
+      {showToggle && (
+        <button
+          type="button"
+          onClick={onToggleShowResolved}
+          className="ml-auto text-xs text-[#6b7280] hover:text-[#9ca3af]"
+        >
+          {showResolved
+            ? "Çözülenleri gizle"
+            : resolvedCount === undefined
+              ? "Çözülenleri de göster"
+              : `Çözülenleri göster (${resolvedCount})`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Satır başındaki seçim kutusu; seçilemeyen satırda yer tutar ama görünmez
+export function RowCheckbox({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
+  return (
+    <input
+      type="checkbox"
+      aria-label="Seç"
+      checked={checked}
+      onChange={onChange}
+      disabled={disabled}
+      className="mt-0.5 h-4 w-4 shrink-0 accent-amber-500 disabled:invisible"
+    />
+  );
+}
+
 export function Empty({ children }: { children: React.ReactNode }) {
   return (
     <div className="py-14 text-center rounded-2xl border border-white/10" style={{ background: "rgba(255,255,255,0.02)" }}>

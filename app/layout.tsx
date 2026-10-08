@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import ServiceWorkerRegister from "@/components/pwa/ServiceWorkerRegister";
+import NativeAppBridge from "@/components/native/NativeAppBridge";
 import { LanguageProvider } from "@/lib/i18n";
 import "./globals.css";
 
@@ -65,7 +66,11 @@ export default function RootLayout({
         <ServiceWorkerRegister />
         {/* Dil tercihi istemcide tutulur: sunucuda cookie okunsaydı kök layout
             dinamikleşir, mekan kabuklarının statik üretimi bozulurdu. */}
-        <LanguageProvider>{children}</LanguageProvider>
+        <LanguageProvider>
+          {children}
+          {/* Mağaza uygulaması içindeysek derin bağlantı + hediye; tarayıcıda boş */}
+          <NativeAppBridge />
+        </LanguageProvider>
         <SpeedInsights />
       </body>
     </html>

@@ -12,6 +12,7 @@ import { currentDict, fmt, useI18n } from "@/lib/i18n";
 import { publishTokenBalance } from "@/lib/token-balance-store";
 import { peekPendingAdd } from "@/lib/pending-add";
 import { trackAction } from "@/lib/ui-track";
+import { useNativePlatform } from "@/lib/native-app";
 
 // Ödeme sonrası bekleyen şarkıya dönüş gecikmesi — "ödeme başarılı" bilgisi
 // görülecek kadar uzun, akışı kesmeyecek kadar kısa
@@ -264,8 +265,13 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const buyTokens = pkg ? pkg.tokens * multiplier : 0;
   const buyTotal = pkg ? pkg.price * multiplier : 0;
 
+  // iOS uygulamasında dijital ürün yalnızca Apple ödemesiyle satılabilir
+  // (App Store kuralı 3.1.1). Apple IAP Aşama 3'te gelene kadar iyzico yolu
+  // orada kapalı; Android ve web iyzico'da kalır.
+  const iosApp = useNativePlatform() === "ios";
+
   const handlePurchase = async () => {
-    if (purchasing || !pkg || buyTokens <= 0) return;
+    if (iosApp || purchasing || !pkg || buyTokens <= 0) return;
     setPurchasing(true);
     try {
       const res = await fetch(`/api/venue/${venueId}/tokens/checkout`, {
@@ -446,7 +452,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
           </div>
         </div>
         {/* iyzico resmi ödeme rozeti: kart bilgilerinin iyzico güvencesiyle alındığını gösterir (marka kiti şartı) */}
-        <div className="mt-3 flex items-center justify-center">
+        <div className={`mt-3 items-center justify-center ${iosApp ? "hidden" : "flex"}`}>
           <Image
             src="/payment/iyzico-ile-ode-horizontal-white.svg"
             alt="iyzico ile Öde"
@@ -537,6 +543,9 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
               {fmt(t.tokens.selectedValue, { n: buyTokens })}
             </p>
           </div>
+          {iosApp ? (
+            <p className="flex-1 text-center text-[13px] font-semibold text-[#c4b5d4]">{t.nativeApp.iapSoon}</p>
+          ) : (
           <button
             onClick={handlePurchase}
             disabled={buyTokens <= 0 || purchasing}
@@ -560,6 +569,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
               <>{fmt(t.tokens.payWith, { total: fmtPrice(buyTotal) })}</>
             )}
           </button>
+          )}
         </div>
       </div>
     </div>

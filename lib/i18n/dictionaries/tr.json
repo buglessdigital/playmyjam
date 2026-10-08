@@ -770,5 +770,14 @@
   "notFoundPage": {
     "title": "Sayfa bulunamadı",
     "desc": "Aradığın sayfa taşınmış ya da hiç var olmamış olabilir. Mekandaysan karekodu yeniden okutmayı dene."
+  },
+  "nativeApp": {
+    "bannerTitle": "PlayMyJam uygulaması",
+    "bannerBody": "İndir, kayıtlı hesabınla gir: 1 jeton hediye",
+    "bannerCta": "İndir",
+    "bannerClose": "Kapat",
+    "giftTitle": "Uygulamaya hoş geldin!",
+    "giftBody": "{n} hediye jeton cüzdanına eklendi.",
+    "iapSoon": "Uygulama içi satın alma çok yakında"
   }
 }

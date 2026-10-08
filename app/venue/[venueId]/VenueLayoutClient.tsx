@@ -8,6 +8,7 @@ import EnablePushPrompt from "@/components/notifications/EnablePushPrompt";
 import NotificationWatcher from "@/components/notifications/NotificationWatcher";
 import RequestStatusBar from "@/components/venue/RequestStatusBar";
 import UiTracker from "@/components/venue/UiTracker";
+import AppDownloadBanner from "@/components/venue/AppDownloadBanner";
 
 interface Props {
   children: React.ReactNode;
@@ -46,6 +47,8 @@ function VenueLayoutContent({ children, params }: Props) {
         className={`w-full ${isLoginPage ? "" : "pb-16"}`}
         style={isLoginPage ? undefined : { paddingBottom: "calc(4rem + var(--pmj-request-bar, 0px))" }}
       >
+        {/* Mobil tarayıcıda mağaza uygulamasına çağrı (mağaza adresi yoksa boş) */}
+        {!isLoginPage && !isMapPage && <AppDownloadBanner />}
         {children}
         {!isMapPage && <LegalFooter hidePayment={isQueuePage} />}
       </main>

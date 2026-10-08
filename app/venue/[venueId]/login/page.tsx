@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { safeNextPath } from "@/lib/venue-gate";
 import { isGuestAccount } from "@/lib/guest-session";
+import { nativePlugins } from "@/lib/native-app";
 import { useRedirectPending } from "@/lib/use-redirect-pending";
 import { currentDict, fmt, useT } from "@/lib/i18n";
 import ConsentChecks, { EMPTY_CONSENTS } from "@/components/ui/ConsentChecks";
@@ -346,15 +347,26 @@ function AuthPageContent({ params }: Props) {
     }
     // Google dönüşünde sorgu parametresi PKCE tarafından ezilebiliyor — hedef yol çerezle de taşınır
     document.cookie = `pending_oauth_next=${encodeURIComponent(nextPath)}; path=/; max-age=600; samesite=lax`;
+    // Mobil uygulamada Google WebView'i reddeder: giriş sistem tarayıcısında
+    // açılır, dönüş /auth/native-callback üstünden uygulamaya geri atılır
+    // (bkz. o route ve lib/native-app.ts)
+    const browser = nativePlugins()?.Browser;
+    const callbackPath = browser ? "/auth/native-callback" : "/auth/callback";
     const oauthOptions = {
-      redirectTo: `${window.location.origin}/auth/callback?venueId=${venueId}&next=${encodeURIComponent(nextPath)}`,
+      redirectTo: `${window.location.origin}${callbackPath}?venueId=${venueId}&next=${encodeURIComponent(nextPath)}`,
+      skipBrowserRedirect: !!browser,
     };
     // Misafir kimliği varsa Google hesabı ONA bağlanır: yeni kullanıcı açılsaydı
     // cüzdan ve geçmiş eski kimlikte kalırdı (bkz. lib/guest-session.ts).
     const guest = !mergeIntoExisting && (await isGuestAccount());
-    const { error } = guest
+    const { data, error } = guest
       ? await supabase.auth.linkIdentity({ provider: "google", options: oauthOptions })
       : await supabase.auth.signInWithOAuth({ provider: "google", options: oauthOptions });
+    if (browser && !error && data?.url) {
+      await browser.open({ url: data.url, presentationStyle: "popover" });
+      setGoogleLoading(false);
+      return;
+    }
     if (error) {
       // linkIdentity yalnızca projede "Manual linking" AÇIKKEN çalışır; kapalıysa
       // istek Google'a hiç gitmeden hata döner. signInWithOAuth'a düşmüyoruz:

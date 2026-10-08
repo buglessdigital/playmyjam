@@ -28,6 +28,16 @@ export interface RequestActionToken {
   exp: number;
 }
 
+// Uygulama hediyesi için cihaz kanıtına gömülen tek kullanımlık meydan okuma:
+// kanıt bu kullanıcıya ve bu dakikalara bağlı olsun, başka hesapta tekrar
+// oynatılamasın (bkz. lib/app-gift.ts).
+export interface AppGiftNonce {
+  kind: "app_gift";
+  user_id: string;
+  n: string;
+  exp: number;
+}
+
 export const ADMIN_SESSION_COOKIE = "admin_session";
 export const SUPER_SESSION_COOKIE = "sa_session";
 
@@ -55,7 +65,9 @@ function hmac(data: string): Buffer {
   return createHmac("sha256", getSecret()).update(data).digest();
 }
 
-export function signSession(payload: AdminSession | SuperSession | RequestActionToken): string {
+export function signSession(
+  payload: AdminSession | SuperSession | RequestActionToken | AppGiftNonce
+): string {
   const body = b64url(Buffer.from(JSON.stringify(payload), "utf8"));
   return `${body}.${b64url(hmac(body))}`;
 }

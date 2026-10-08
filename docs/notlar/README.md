@@ -88,3 +88,4 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Mekanlar haritası](pmj-mekan-haritasi-2026-10.md) — müşteri alt menüsünde MEKANLAR; konum super admin'de Google Maps linkinden, koordinatsız mekan görünmez; tür iTunes'tan; 0073 ŞART; maplibre worker public/'e kopyalanıyor
 - [Avukat görüşü (telif/lisans)](pmj-hukuki-gorus-2026-10.md) — müzik bizde saklanmadıkça telif riski yok, MESAM/MÜYAP mekanın işi, YouTube gri alan, jeton = oyun jetonu modeli (araştırılacak); ses/video dosyası ASLA saklanmaz
 - [Kilit dosyası npm tuzağı](pmj-kilit-dosyasi-npm-tuzagi.md) — yerel npm @emnapi kayıtlarını + libc alanlarını siliyor, CI npm ci kırılıyor; kilidi main'den alıp elle güncelle
+- [Mobil uygulama](pmj-mobil-uygulama-2026-10.md) — Capacitor kabuğu (web ile aynı kod), yalnız müşteri; iOS'ta Apple IAP; hediye 1 jeton kayıtlı hesap+cihaz başına, doğrulayıcı gelene kadar fail-closed; 0076 ŞART

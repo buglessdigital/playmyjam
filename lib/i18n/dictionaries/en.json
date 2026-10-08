@@ -770,5 +770,14 @@
   "notFoundPage": {
     "title": "Page not found",
     "desc": "The page you are looking for may have moved or never existed. If you are at a venue, try scanning the QR code again."
+  },
+  "nativeApp": {
+    "bannerTitle": "PlayMyJam app",
+    "bannerBody": "Download and sign in: get 1 free token",
+    "bannerCta": "Get",
+    "bannerClose": "Close",
+    "giftTitle": "Welcome to the app!",
+    "giftBody": "{n} free token added to your wallet.",
+    "iapSoon": "In-app purchase coming soon"
   }
 }

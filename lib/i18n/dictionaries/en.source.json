@@ -665,5 +665,12 @@
   "venueMap.genres.singer": "Söz-Yazar",
   "venueMap.genres.world": "Dünya Müziği",
   "notFoundPage.title": "Sayfa bulunamadı",
-  "notFoundPage.desc": "Aradığın sayfa taşınmış ya da hiç var olmamış olabilir. Mekandaysan karekodu yeniden okutmayı dene."
+  "notFoundPage.desc": "Aradığın sayfa taşınmış ya da hiç var olmamış olabilir. Mekandaysan karekodu yeniden okutmayı dene.",
+  "nativeApp.bannerTitle": "PlayMyJam uygulaması",
+  "nativeApp.bannerBody": "İndir, kayıtlı hesabınla gir: 1 jeton hediye",
+  "nativeApp.bannerCta": "İndir",
+  "nativeApp.bannerClose": "Kapat",
+  "nativeApp.giftTitle": "Uygulamaya hoş geldin!",
+  "nativeApp.giftBody": "{n} hediye jeton cüzdanına eklendi.",
+  "nativeApp.iapSoon": "Uygulama içi satın alma çok yakında"
 }

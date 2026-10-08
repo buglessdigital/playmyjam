@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Badge, Card, Empty, ErrorBox, FilterChips, PageHeader, Select, Stat, api, useNow } from "@/components/super-admin/ui";
+import { Badge, Card, Empty, ErrorBox, FilterChips, PageHeader, ResolveBar, RowCheckbox, Select, Stat, api, useNow } from "@/components/super-admin/ui";
 import type { OpsSummary, PushDeliveryRow, PushFilter, SystemEventRow } from "@/app/api/super-admin/issues/route";
 
 // Sorunlar ekranı: mekanda sessizce ters giden her şey — bildirimlerin akıbeti
@@ -97,6 +97,12 @@ function IssuesPageContent() {
   const [venue, setVenue] = useState<string>("");
   const [days, setDays] = useState<string>("7");
   const now = useNow(15_000);
+  // Seçim, açık sekmenin kayıtlarıdır (bildirim uuid'si ya da sistem olayı id'si)
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [showResolved, setShowResolved] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  // Çözüldü işaretinden sonra özet sayıları tazelemek için
+  const [reload, setReload] = useState(0);
 
   // Veri yalnızca promise zincirinde yazılır (efekt içinde senkron setState yok)
   useEffect(() => {
@@ -104,6 +110,7 @@ function IssuesPageContent() {
     const q = new URLSearchParams({ days, push: pushFilter });
     if (venue) q.set("venue", venue);
     if (area) q.set("area", area);
+    if (showResolved) q.set("resolved", "1");
     const load = () =>
       api<IssuesResponse>(`/api/super-admin/issues?${q}`)
         .then((d) => {
@@ -120,12 +127,88 @@ function IssuesPageContent() {
       alive = false;
       clearInterval(id);
     };
-  }, [venue, days, pushFilter, area]);
+  }, [venue, days, pushFilter, area, showResolved, reload]);
 
   const venueName = useMemo(() => new Map((data?.venues ?? []).map((v) => [v.id, v.name])), [data?.venues]);
   const s = data?.summary;
   const push = s?.push;
-  const pushProblems = push ? push.no_device + push.failed + push.unconfirmed : 0;
+  const pushProblems = push?.open_problems ?? 0;
+
+  const deliveries = data?.deliveries ?? [];
+  const events = data?.events ?? [];
+  const rowIds = tab === "push" ? deliveries.filter((d) => !d.resolved_at).map((d) => d.id) : events.filter((e) => !e.resolved_at).map((e) => String(e.id));
+  const picked = rowIds.filter((id) => selected.has(id));
+
+  // Süzgeç/sekme değişince seçim sıfırlanır: görünmeyen kayıt işaretlenmesin
+  const resetting =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      set(v);
+      setSelected(new Set());
+    };
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleAll = () => setSelected(picked.length === rowIds.length ? new Set() : new Set(rowIds));
+
+  const resolve = async () => {
+    if (picked.length === 0) return;
+    setResolving(true);
+    try {
+      await api(
+        "/api/super-admin/issues",
+        "POST",
+        tab === "push" ? { push: picked } : { events: picked.map(Number) }
+      );
+      const ids = new Set(picked);
+      const at = new Date().toISOString();
+      // İyimser: listeden düşür (ya da çözülenler açıksa soldur); sayılar tazelenir
+      setData(
+        (d) =>
+          d && {
+            ...d,
+            deliveries:
+              tab === "push"
+                ? showResolved
+                  ? d.deliveries.map((x) => (ids.has(x.id) ? { ...x, resolved_at: at } : x))
+                  : d.deliveries.filter((x) => !ids.has(x.id))
+                : d.deliveries,
+            events:
+              tab === "events"
+                ? showResolved
+                  ? d.events.map((x) => (ids.has(String(x.id)) ? { ...x, resolved_at: at } : x))
+                  : d.events.filter((x) => !ids.has(String(x.id)))
+                : d.events,
+          }
+      );
+      setSelected(new Set());
+      setReload((n) => n + 1);
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kaydedilemedi");
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const resolveBar = data && (
+    <ResolveBar
+      selectable={rowIds.length}
+      picked={picked.length}
+      onToggleAll={toggleAll}
+      onResolve={resolve}
+      resolving={resolving}
+      showResolved={showResolved}
+      onToggleShowResolved={() => {
+        setShowResolved((v) => !v);
+        setSelected(new Set());
+      }}
+    />
+  );
 
   return (
     <div className="p-4 md:p-8 max-w-6xl">
@@ -144,12 +227,12 @@ function IssuesPageContent() {
           <div className="flex gap-2">
             <Select
               value={venue}
-              onChange={setVenue}
+              onChange={resetting(setVenue)}
               options={[{ value: "", label: "Tüm mekanlar" }, ...(data?.venues ?? []).map((v) => ({ value: v.id, label: v.name }))]}
             />
             <Select
               value={days}
-              onChange={setDays}
+              onChange={resetting(setDays)}
               options={[
                 { value: "1", label: "Son 24 saat" },
                 { value: "7", label: "Son 7 gün" },
@@ -185,10 +268,10 @@ function IssuesPageContent() {
       <div className="mb-4">
         <FilterChips<Tab>
           value={tab}
-          onChange={setTab}
+          onChange={resetting(setTab)}
           options={[
             { key: "push", label: "Bildirimler", count: pushProblems, color: pushProblems ? AMBER : undefined },
-            { key: "events", label: "Sistem hataları", count: s?.events.total ?? 0, color: s?.events.error ? RED : undefined },
+            { key: "events", label: "Sistem hataları", count: s?.events.open ?? 0, color: s?.events.error ? RED : undefined },
           ]}
         />
       </div>
@@ -230,7 +313,7 @@ function IssuesPageContent() {
           <div className="mb-3">
             <FilterChips<PushFilter>
               value={pushFilter}
-              onChange={setPushFilter}
+              onChange={resetting(setPushFilter)}
               options={[
                 { key: "problems", label: "Sorunlu olanlar" },
                 { key: "no_device", label: "Cihaz yok" },
@@ -241,16 +324,19 @@ function IssuesPageContent() {
             />
           </div>
 
-          {data && data.deliveries.length === 0 ? (
+          {resolveBar}
+
+          {data && deliveries.length === 0 ? (
             <Empty>
               {pushFilter === "all" ? "Bu aralıkta bildirim gönderilmedi." : "Bu aralıkta sorunlu bildirim yok — hepsi telefona ulaştı."}
             </Empty>
           ) : (
             <Card className="divide-y divide-white/5">
-              {(data?.deliveries ?? []).map((d) => {
+              {deliveries.map((d) => {
                 const st = deliveryState(d, now);
                 return (
-                  <div key={d.id} className="flex gap-3 px-4 py-3">
+                  <div key={d.id} className="flex gap-3 px-4 py-3" style={d.resolved_at ? { opacity: 0.5 } : undefined}>
+                    <RowCheckbox checked={selected.has(d.id)} onChange={() => toggle(d.id)} disabled={!!d.resolved_at} />
                     <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: st.color }} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -267,6 +353,7 @@ function IssuesPageContent() {
                         {d.recipient && <>: {d.recipient}</>}
                         {d.devices > 0 && <> · {d.devices} cihaz</>}
                         {d.shown_at && <> · göründü {clock(d.shown_at)}</>}
+                        {d.resolved_at && <> · çözüldü {clock(d.resolved_at)}</>}
                       </p>
                     </div>
                   </div>
@@ -280,7 +367,7 @@ function IssuesPageContent() {
           <div className="mb-3">
             <FilterChips<string>
               value={area}
-              onChange={setArea}
+              onChange={resetting(setArea)}
               options={[
                 { key: "", label: "Tümü" },
                 ...Object.entries(s?.events_by_area ?? {}).map(([key, count]) => ({
@@ -292,12 +379,19 @@ function IssuesPageContent() {
             />
           </div>
 
-          {data && data.events.length === 0 ? (
+          {resolveBar}
+
+          {data && events.length === 0 ? (
             <Empty>Bu aralıkta sistem hatası yok.</Empty>
           ) : (
             <Card className="divide-y divide-white/5">
-              {(data?.events ?? []).map((e) => (
-                <div key={e.id} className="flex gap-3 px-4 py-3">
+              {events.map((e) => (
+                <div key={e.id} className="flex gap-3 px-4 py-3" style={e.resolved_at ? { opacity: 0.5 } : undefined}>
+                  <RowCheckbox
+                    checked={selected.has(String(e.id))}
+                    onChange={() => toggle(String(e.id))}
+                    disabled={!!e.resolved_at}
+                  />
                   <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: e.severity === "error" ? RED : AMBER }} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -309,6 +403,7 @@ function IssuesPageContent() {
                       {!venue && e.venue_id && <> · {venueName.get(e.venue_id) ?? "?"}</>}
                       {" · "}
                       <span className="font-mono">{e.kind}</span>
+                      {e.resolved_at && <> · çözüldü {clock(e.resolved_at)}</>}
                     </p>
                     {e.detail && (
                       <details className="mt-1">

@@ -80,7 +80,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Git akışı: dal + PR](pmj-git-akisi-pr.md) — main korumalı, CI herkese zorunlu; Taner (buglessdigital hesabı) onaysız merge eder, Berkay'ın PR'ları Taner'in onayını bekler
 - [Mekan canlı yayını](pmj-canli-yayin-2026-09.md) — müşteri ekranları `venue-live:<id>` Broadcast'i dinler (postgres_changes değil); 0060 ŞART ve koddan ÖNCE prod'a; 20× az DB isteği
 - [Ölçek eşikleri](pmj-olcek-esikleri-2026-09.md) — Redis/replika/arama servisi/kuyruk ŞİMDİ kurulmaz; her biri hangi ölçümle tetiklenir + dalga öncesi `npm run load:venue`
-- [Sorunlar ekranı](pmj-sorunlar-ekrani-2026-09.md) — /super-admin/issues: bildirim akıbeti (gönderildi≠göründü, sw.js onayı) + ödeme/cron/sunucu hataları, Sentry'ye de gider; 0061 ŞART
+- [Sorunlar ekranı](pmj-sorunlar-ekrani-2026-09.md) — /super-admin/issues: bildirim akıbeti (gönderildi≠göründü, sw.js onayı) + ödeme/cron/sunucu hataları, Sentry'ye de gider; 0061 ŞART; toplu "çözüldü" için 0075 ŞART
 - [Katalog: talep yönlü kapsama](pmj-katalog-talep-yonlu-2026-09.md) — hacim değil kapsama sorunu; isimden kanal `forHandle` ile 1 birim, search.list ASLA
 - [Katalog ekranı](pmj-katalog-ekrani-2026-10.md) — /super-admin/catalog: havuzda arama + hasat ilerleme çubuğu; 0064+0065 ŞART, arama en az 3 harf
 - [Vercel görsel kotası](pmj-vercel-gorsel-kotasi.md) — 2 Eki 2026 hesap Image Optimization (6.7K/5K) yüzünden duraklatıldı → Pro + `images.unoptimized: true`

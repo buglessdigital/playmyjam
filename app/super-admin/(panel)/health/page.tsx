@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Badge, Card, Empty, ErrorBox, FilterChips, PageHeader, Select, api, useNow } from "@/components/super-admin/ui";
+import { Badge, Card, Empty, ErrorBox, FilterChips, PageHeader, ResolveBar, RowCheckbox, Select, api, useNow } from "@/components/super-admin/ui";
 import type { HealthIncident } from "@/app/api/super-admin/health/route";
 
 // Mekan sağlık ekranı YALNIZCA iki şeyi gösterir: kontrol dışı sessizlik
@@ -101,6 +101,9 @@ function HealthPageContent() {
   const [venue, setVenue] = useState<string>("");
   const [days, setDays] = useState<string>("7");
   const now = useNow(5_000);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [showResolved, setShowResolved] = useState(false);
+  const [resolving, setResolving] = useState(false);
 
   // Veri yalnızca promise zincirinde yazılır (efekt içinde senkron setState yok)
   useEffect(() => {
@@ -130,15 +133,72 @@ function HealthPageContent() {
     [data?.venues]
   );
   const activeVenues = (data?.venues ?? []).filter((v) => v.status === "active");
-  const incidents = data?.incidents ?? [];
-  const allSilences = incidents.filter((i) => i.type === "silence");
-  const silences = allSilences.filter((i) => !i.queue_empty);
-  const queueEmpty = allSilences.filter((i) => i.queue_empty);
-  const orders = incidents.filter((i) => i.type === "order");
-  const shown = tab === "silence" ? silences : tab === "queue" ? queueEmpty : orders;
+  const allIncidents = data?.incidents ?? [];
+  const allSilences = allIncidents.filter((i) => i.type === "silence");
   const ongoingBy = new Map(
     allSilences.filter((i) => i.type === "silence" && i.ended_by === "ongoing").map((i) => [i.venue_id, i])
   );
+  // Sekme sayaçları yalnızca çözülmemişleri sayar
+  const open = allIncidents.filter((i) => !i.resolved_at);
+  const silences = open.filter((i) => i.type === "silence" && !i.queue_empty);
+  const queueEmpty = open.filter((i) => i.type === "silence" && i.queue_empty);
+  const orders = open.filter((i) => i.type === "order");
+  const inTab = (i: HealthIncident) =>
+    tab === "order" ? i.type === "order" : i.type === "silence" && i.queue_empty === (tab === "queue");
+  const resolvedInTab = allIncidents.filter((i) => i.resolved_at && inTab(i)).length;
+  const shown = allIncidents.filter((i) => inTab(i) && (showResolved || !i.resolved_at));
+  // Süren sessizlik henüz bitmedi; çözülmüş olan yeniden işaretlenmez
+  const selectable = (i: HealthIncident) => !i.resolved_at && !(i.type === "silence" && i.ended_by === "ongoing");
+  const selectableShown = shown.filter(selectable);
+  const picked = selectableShown.filter((i) => selected.has(i.id));
+  const allPicked = selectableShown.length > 0 && picked.length === selectableShown.length;
+
+  const resetSelection = () => setSelected(new Set());
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleAll = () => setSelected(allPicked ? new Set() : new Set(selectableShown.map((i) => i.id)));
+
+  const resolve = async () => {
+    if (picked.length === 0) return;
+    setResolving(true);
+    try {
+      await api("/api/super-admin/health", "POST", {
+        incidents: picked.map((i) => ({ id: i.id, venue_id: i.venue_id })),
+      });
+      const ids = new Set(picked.map((i) => i.id));
+      const at = new Date().toISOString();
+      // İyimser: bir sonraki yenilemeyi beklemeden listeden düşür
+      setData((d) =>
+        d && {
+          ...d,
+          incidents: d.incidents.map((i) => (ids.has(i.id) ? { ...i, resolved_at: at } : i)),
+          venues: d.venues.map((v) => {
+            const day = Date.now() - 86_400_000;
+            let silence = v.last24h.silence;
+            let order = v.last24h.order;
+            for (const i of d.incidents) {
+              if (!ids.has(i.id) || i.venue_id !== v.id) continue;
+              if (Date.parse(i.type === "silence" ? i.started_at : i.at) < day) continue;
+              if (i.type === "order") order--;
+              else if (!i.queue_empty) silence--;
+            }
+            return { ...v, last24h: { silence: Math.max(0, silence), order: Math.max(0, order) } };
+          }),
+        }
+      );
+      resetSelection();
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kaydedilemedi");
+    } finally {
+      setResolving(false);
+    }
+  };
 
   return (
     <div className="p-4 md:p-8 max-w-6xl">
@@ -157,7 +217,10 @@ function HealthPageContent() {
             <button
               key={v.id}
               type="button"
-              onClick={() => setVenue(selected ? "" : v.id)}
+              onClick={() => {
+                setVenue(selected ? "" : v.id);
+                resetSelection();
+              }}
               className="text-left"
             >
               <Card
@@ -183,7 +246,10 @@ function HealthPageContent() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <FilterChips<Tab>
           value={tab}
-          onChange={setTab}
+          onChange={(t) => {
+            setTab(t);
+            resetSelection();
+          }}
           options={[
             { key: "silence", label: "Kontrol dışı sessizlik", count: silences.length, color: silences.length ? RED : undefined },
             { key: "queue", label: "Kuyruk boş", count: queueEmpty.length },
@@ -193,7 +259,10 @@ function HealthPageContent() {
         <div className="flex gap-2">
           <Select
             value={venue}
-            onChange={setVenue}
+            onChange={(v) => {
+              setVenue(v);
+              resetSelection();
+            }}
             options={[
               { value: "", label: "Tüm mekanlar" },
               ...(data?.venues ?? []).map((v) => ({ value: v.id, label: v.name })),
@@ -201,7 +270,10 @@ function HealthPageContent() {
           />
           <Select
             value={days}
-            onChange={setDays}
+            onChange={(d) => {
+              setDays(d);
+              resetSelection();
+            }}
             options={[
               { value: "1", label: "Son 24 saat" },
               { value: "7", label: "Son 7 gün" },
@@ -223,9 +295,24 @@ function HealthPageContent() {
         </p>
       )}
 
+      {data && (
+        <ResolveBar
+          selectable={selectableShown.length}
+          picked={picked.length}
+          onToggleAll={toggleAll}
+          onResolve={resolve}
+          resolving={resolving}
+          showResolved={showResolved}
+          onToggleShowResolved={() => setShowResolved((v) => !v)}
+          resolvedCount={resolvedInTab}
+        />
+      )}
+
       {data && shown.length === 0 ? (
         <Empty>
-          {tab === "silence"
+          {resolvedInTab > 0
+            ? "Çözülmemiş kayıt kalmadı."
+            : tab === "silence"
             ? "Bu aralıkta kontrol dışı sessizlik yok — müzik istendiği sürece çaldı."
             : tab === "queue"
               ? "Bu aralıkta kuyruk hiç tükenmedi."
@@ -234,10 +321,11 @@ function HealthPageContent() {
       ) : (
         <Card className="divide-y divide-white/5">
           {shown.map((i) => (
-            <div key={i.id} className="flex gap-3 px-4 py-3">
+            <div key={i.id} className="flex gap-3 px-4 py-3" style={i.resolved_at ? { opacity: 0.5 } : undefined}>
+              <RowCheckbox checked={selected.has(i.id)} onChange={() => toggle(i.id)} disabled={!selectable(i)} />
               <span
                 className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-                style={{ background: i.type === "silence" && i.queue_empty ? MUTED : RED }}
+                style={{ background: i.resolved_at ? "#34d399" : i.type === "silence" && i.queue_empty ? MUTED : RED }}
               />
               <div className="min-w-0 flex-1">
                 {i.type === "silence" ? (
@@ -264,6 +352,7 @@ function HealthPageContent() {
                       <span style={i.ended_by === "ongoing" ? { color: RED, fontWeight: 600 } : undefined}>
                         {END_TEXT[i.ended_by] ?? END_TEXT.unknown}
                       </span>
+                      {i.resolved_at && <> · çözüldü {clock(i.resolved_at)}</>}
                     </p>
                   </>
                 ) : (
@@ -273,6 +362,7 @@ function HealthPageContent() {
                       {clock(i.at)}
                       {!venue && <> · {venueName.get(i.venue_id) ?? "?"}</>}
                       {i.offline && <> · internet kesintisinde player kendi tamponundan çaldı</>}
+                      {i.resolved_at && <> · çözüldü {clock(i.resolved_at)}</>}
                     </p>
                   </>
                 )}

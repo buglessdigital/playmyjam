@@ -563,6 +563,21 @@ async function backfillChannelIds() {
 // albüm sesleridir, kategori 10 ve gömülebilir. --harvest-any her kanalı alır;
 // derleme kanallarının saatlik mix'leri süzgece yüklenir, kota boşa gider.
 async function harvestUploadPlaylists(): Promise<string[]> {
+  // Topic modu cron'la aynı RPC'yi kullanır (0062 skip scan, ~0,2 sn). Havuzu
+  // 1000'lik sayfalarla taramak 1 milyon satırda dakikalar sürüyor ve o sırada
+  // nabız atılmadığı için katalog ekranı turu "kesildi" gösteriyordu (9 Eki).
+  if (!HARVEST_ANY) {
+    const { data, error } = await retry("kanal okuma", () =>
+      supabase.rpc("catalog_topic_uploads")
+    );
+    if (error) throw new Error(`catalog_topic_uploads okunamadı: ${error.message}`);
+    const uploads = (data ?? []) as string[];
+    await runBeat(true);
+    stats.harvested = uploads.length;
+    console.log(`  hasat: ${uploads.length} kanal -> ${uploads.length} yükleme listesi (yalnızca Topic)`);
+    return uploads;
+  }
+
   const channels = new Set<string>();
   const PAGE = 1000;
 
@@ -590,6 +605,7 @@ async function harvestUploadPlaylists(): Promise<string[]> {
     }
     if (!data || data.length < PAGE) break;
     lastId = data[data.length - 1].id as string;
+    await runBeat();
   }
 
   await runBeat();

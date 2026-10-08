@@ -31,6 +31,10 @@ const WAKE_GRACE_MS = 90_000;
 const SILENCE_KINDS = ["silence_start", "silence_end"];
 const WAKE_KINDS = ["tab_throttled"];
 const ORDER_KINDS = ["out_of_order", "never_played"];
+// Süper admin'in "çözüldü" işareti: olay kimliği detail.incident_id'de. Ayrı
+// tablo yerine aynı kayıtta durur (migration yok, cron eskileriyle birlikte siler)
+const RESOLVED_KIND = "incident_resolved";
+const RESOLVE_MAX = 500;
 
 type EventRow = {
   id: number;
@@ -59,6 +63,7 @@ export type HealthIncident =
       queue_empty: boolean;
       song: string | null;
       playing_frozen: boolean;
+      resolved_at: string | null;
     }
   | {
       type: "order";
@@ -68,6 +73,7 @@ export type HealthIncident =
       kind: "out_of_order" | "never_played";
       message: string;
       offline: boolean;
+      resolved_at: string | null;
     };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -109,12 +115,20 @@ export async function GET(req: NextRequest) {
     .limit(EVENT_LIMIT);
   if (venueId && UUID_RE.test(venueId)) feed = feed.eq("venue_id", venueId);
 
-  const [venues, live, events] = await Promise.all([
+  let resolvedFeed = supabaseAdmin
+    .from("venue_events")
+    .select("at, detail")
+    .eq("kind", RESOLVED_KIND)
+    .gte("at", new Date(since).toISOString());
+  if (venueId && UUID_RE.test(venueId)) resolvedFeed = resolvedFeed.eq("venue_id", venueId);
+
+  const [venues, live, events, resolvedRes] = await Promise.all([
     supabaseAdmin.from("venues").select("id, slug, name, status").order("name"),
     supabaseAdmin
       .from("now_playing")
       .select("venue_id, is_playing, video_id, last_heartbeat_at, songs(title, artist)"),
     feed,
+    resolvedFeed,
   ]);
 
   if (venues.error || events.error) {
@@ -136,6 +150,11 @@ export async function GET(req: NextRequest) {
   };
 
   const rows = (events.data as EventRow[] | null) ?? [];
+  const resolvedAt = new Map<string, string>();
+  for (const r of (resolvedRes.data as { at: string; detail: Record<string, unknown> | null }[] | null) ?? []) {
+    const id = str(r.detail?.incident_id);
+    if (id) resolvedAt.set(id, r.at);
+  }
 
   // --- 1. Sessizlikler: başlangıç ve bitiş silence_id ile eşleşir ---------
   const silences = new Map<string, { venue: string; start?: EventRow; end?: EventRow }>();
@@ -240,6 +259,7 @@ export async function GET(req: NextRequest) {
       queue_empty: !videoId,
       song: videoId ? songBy.get(videoId) ?? null : null,
       playing_frozen: endDetail?.playing_frozen === true || s.start?.detail?.playing_frozen === true,
+      resolved_at: resolvedAt.get(sid) ?? null,
     });
   }
 
@@ -256,6 +276,7 @@ export async function GET(req: NextRequest) {
       message: e.message,
       // Bağlantı kesintisinde player kendi tamponundan çaldı (sync)
       offline: e.actor === "player-sync",
+      resolved_at: resolvedAt.get(`order-${e.id}`) ?? null,
     });
   }
 
@@ -265,7 +286,7 @@ export async function GET(req: NextRequest) {
   const day = now - 86_400_000;
   const counts = new Map<string, { silence: number; order: number }>();
   for (const i of incidents) {
-    if (at(i) < day || (i.type === "silence" && i.queue_empty)) continue;
+    if (at(i) < day || i.resolved_at || (i.type === "silence" && i.queue_empty)) continue;
     const c = counts.get(i.venue_id) ?? { silence: 0, order: 0 };
     c[i.type === "silence" ? "silence" : "order"]++;
     counts.set(i.venue_id, c);
@@ -291,4 +312,42 @@ export async function GET(req: NextRequest) {
     // Uyanma toleransıyla gizlenen kayıt sayısı (ekranda şeffaflık için)
     suppressed,
   });
+}
+
+// Toplu "çözüldü" işareti: { incidents: [{ id, venue_id }] }. Aynı olay iki kez
+// işaretlenirse zararsız (GET en sonuncuyu alır).
+export async function POST(req: NextRequest) {
+  if (!getSuperSession(req)) {
+    return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
+  }
+  const body = (await req.json().catch(() => null)) as { incidents?: unknown } | null;
+  const list = Array.isArray(body?.incidents) ? body.incidents : [];
+  const items = list
+    .map((v) => (v && typeof v === "object" ? (v as Record<string, unknown>) : {}))
+    .filter(
+      (v): v is { id: string; venue_id: string } =>
+        typeof v.id === "string" && v.id.length > 0 && v.id.length <= 100 &&
+        typeof v.venue_id === "string" && UUID_RE.test(v.venue_id)
+    );
+  if (items.length === 0 || items.length > RESOLVE_MAX) {
+    return NextResponse.json({ error: "Geçersiz seçim" }, { status: 400 });
+  }
+
+  const at = new Date().toISOString();
+  const { error } = await supabaseAdmin.from("venue_events").insert(
+    items.map((i) => ({
+      venue_id: i.venue_id,
+      at,
+      category: "player",
+      kind: RESOLVED_KIND,
+      severity: "info",
+      actor: "super-admin",
+      message: "Sağlık kaydı çözüldü olarak işaretlendi",
+      detail: { incident_id: i.id },
+    }))
+  );
+  if (error) {
+    return NextResponse.json({ error: "Kaydedilemedi" }, { status: 500 });
+  }
+  return NextResponse.json({ resolved: items.length });
 }

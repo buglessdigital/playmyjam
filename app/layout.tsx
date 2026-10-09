@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
@@ -68,8 +69,12 @@ export default function RootLayout({
             dinamikleşir, mekan kabuklarının statik üretimi bozulurdu. */}
         <LanguageProvider>
           {children}
-          {/* Mağaza uygulaması içindeysek derin bağlantı + hediye; tarayıcıda boş */}
-          <NativeAppBridge />
+          {/* Mağaza uygulaması içindeysek derin bağlantı + hediye; tarayıcıda boş.
+              Suspense: köprü usePathname okuyor, bilinmeyen dinamik parametreli
+              sayfalarda prerender'ı askıya almasın (cacheComponents kuralı) */}
+          <Suspense fallback={null}>
+            <NativeAppBridge />
+          </Suspense>
         </LanguageProvider>
         <SpeedInsights />
       </body>

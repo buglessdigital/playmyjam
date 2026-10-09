@@ -1,0 +1,5 @@
+node_modules/
+# Firebase yapılandırması gizli değil ama hesaba özel — repoya girmez,
+# Firebase konsolundan indirilip android/app/ altına konur
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist

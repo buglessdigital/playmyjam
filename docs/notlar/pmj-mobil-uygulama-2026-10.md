@@ -23,4 +23,9 @@ metadata:
 
 **Kabuğun sözleşmesi (Aşama 2):** appId `com.playmyjam.app`, şema `playmyjam://`, eklentiler App + Browser + kendi `PmjDevice.getProof({nonce})`.
 
+**Aşama 2 başlangıcı (9 Eki 2026):** `mobile/` ayrı paket (Capacitor 8.5, kendi kilidi; kök tsconfig/eslint/.vercelignore hariç tutar). Açılış `/mekanlar`, köprü son mekana geçer (localStorage `pmj-app-last-venue`, oturumda bir kez). Android projesi + manifest (`playmyjam://` şeması, `/venue/` App Link autoVerify, kamera izni) ve ikon/açılış hazır — ikon `assets/logo-mark.svg`'den (512 px PNG büyütülmedi, vektör yeniden çizildi). iOS projesi Xcode gelince `npx cap add ios`. `/.well-known/apple-app-site-association` (`APPLE_TEAM_ID`) ve `/.well-known/assetlinks.json` (`ANDROID_CERT_SHA256`, virgülle çoklu) env boşken 404. Universal Link yalnız `/venue/*`; arka yüz QR'ı ve yasal sayfalar tarayıcıda kalır.
+- **Tuzak:** kök layout'taki köprü `usePathname` okuduğu için `Suspense` içinde — cacheComponents'ta dinamik parametreli sayfada prerender'ı askıya alır.
+- **Tuzak:** `allowNavigation` iyzico alan adlarını içeriyor ama 3D Secure banka sayfalarını değil; Android'de gerçek kartla test edilmeli (banka sayfası sistem tarayıcısına atlarsa dönüş uygulamaya gelmez).
+- **Mac:** Xcode macOS 26.6+ istiyor; bu Mac 9 Eki'de macOS 27'ye güncelleniyordu (15.6'dan). Disk 256 GB — Xcode için ~40 GB boş yer şart.
+
 **Sıradakiler:** Aşama 2 Capacitor projesi (Xcode + Android Studio kurulu değildi), Aşama 3 AASA/assetlinks + doğrulayıcılar + IAP makbuz doğrulama, Aşama 4 mağaza gönderimi. Hesaplar: Apple Developer (Bugless Digital, D-U-N-S), Play Console kuruluş. Bkz. [[pmj-akis-kisaltma-2026-08]], [[pmj-is-yonetimi-2026-09]].

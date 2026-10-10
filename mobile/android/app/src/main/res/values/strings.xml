@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PlayMyJam</string>
+    <string name="title_activity_main">PlayMyJam</string>
+    <string name="package_name">com.playmyjam.app</string>
+    <string name="custom_url_scheme">playmyjam</string>
+</resources>

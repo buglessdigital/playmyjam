@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Mobil kabuk (Capacitor) kendi paketi; bağımlılıkları kökte kurulu değil
+    "mobile/**",
     // Kök dizindeki geçici deneme betikleri
     ".tmp-*",
     // Playwright çıktıları

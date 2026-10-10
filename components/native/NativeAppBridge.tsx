@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { deepLinkToPath, nativePlatform, nativePlugins } from "@/lib/native-app";
@@ -13,12 +14,38 @@ import { fmt, useT } from "@/lib/i18n";
 //      (Google girişi dönüşü dahil — bkz. app/auth/native-callback).
 //   2) Uygulama hediyesi: kayıtlı hesapla ilk girişte cihaz kanıtıyla 1 jeton
 //      istenir (bkz. app/api/app/gift, 0076).
+//   3) Son mekan: uygulama /mekanlar'da açılır (mobile/capacitor.config.ts);
+//      daha önce bir mekana girildiyse açılışta doğrudan oraya geçilir.
 
 const GIFT_DONE_KEY = "pmj-app-gift-done";
+const LAST_VENUE_KEY = "pmj-app-last-venue";
+// Açılış yönlendirmesi oturumda bir kez: kullanıcı mekanlar listesine
+// kendisi dönerse geri itilmesin
+const RESUMED_KEY = "pmj-app-resumed";
 
 export default function NativeAppBridge() {
   const t = useT();
+  const pathname = usePathname();
+  const router = useRouter();
   const [giftTokens, setGiftTokens] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!nativePlatform()) return;
+    try {
+      const venue = pathname.match(/^\/venue\/([^/]+)/)?.[1];
+      if (venue) {
+        localStorage.setItem(LAST_VENUE_KEY, venue);
+        sessionStorage.setItem(RESUMED_KEY, "1");
+        return;
+      }
+      if (pathname !== "/mekanlar" || sessionStorage.getItem(RESUMED_KEY)) return;
+      sessionStorage.setItem(RESUMED_KEY, "1");
+      const last = localStorage.getItem(LAST_VENUE_KEY);
+      if (last) router.replace(`/venue/${encodeURIComponent(last)}`);
+    } catch {
+      // depolama kapalı: her açılış mekanlar listesinden başlar
+    }
+  }, [pathname, router]);
 
   useEffect(() => {
     const app = nativePlugins()?.App;

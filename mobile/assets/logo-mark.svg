@@ -1,0 +1,6 @@
+<!-- public/logo-mark.png'nin vektör hâli (ölçü ve renkler o dosyadan okundu) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 454 512">
+  <rect x="0" y="0" width="142" height="512" rx="51" fill="#A8125F"/>
+  <rect x="156" y="57" width="142" height="398" rx="51" fill="#C4176F"/>
+  <rect x="312" y="133" width="142" height="246" rx="51" fill="#E91E8C"/>
+</svg>

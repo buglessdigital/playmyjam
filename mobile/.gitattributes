@@ -1,0 +1,2 @@
+# Windows betiği CRLF kalmalı
+*.bat text eol=crlf

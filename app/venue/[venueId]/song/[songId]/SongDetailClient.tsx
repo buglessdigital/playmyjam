@@ -21,6 +21,7 @@ import { fmt, useT } from "@/lib/i18n";
 import { publishTokenBalance } from "@/lib/token-balance-store";
 import { clearPendingAdd, peekPendingAdd } from "@/lib/pending-add";
 import { trackAction } from "@/lib/ui-track";
+import { nativeHaptic } from "@/lib/native-app";
 
 type QueueEntry = { song_id: string; priority: boolean; duration_ms: number };
 type NowPlayingInfo = {
@@ -401,6 +402,7 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
         setTokenBalance((b) => b + cost - charged);
       }
       trackAction("song_added", { priority });
+      nativeHaptic("success");
       window.dispatchEvent(new Event("pmj-queue-added"));
     } else {
       setTokenBalance((b) => b + cost);

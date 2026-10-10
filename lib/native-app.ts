@@ -34,6 +34,22 @@ interface CapacitorBridge {
       open: (opts: { url: string; presentationStyle?: "popover" | "fullscreen" }) => Promise<void>;
       close: () => Promise<void>;
     };
+    /** @capacitor/barcode-scanner — sarmalayıcısız çağrıldığı için tüm alanlar verilir */
+    CapacitorBarcodeScanner?: {
+      scanBarcode: (opts: {
+        hint: number;
+        scanInstructions: string;
+        scanButton: boolean;
+        scanText: string;
+        cameraDirection: number;
+        scanOrientation: number;
+        cancelButtonAccessibilityLabel?: string;
+      }) => Promise<{ ScanResult: string }>;
+    };
+    Haptics?: {
+      impact: (opts: { style: "LIGHT" | "MEDIUM" | "HEAVY" }) => Promise<void>;
+      notification: (opts: { type: "SUCCESS" | "WARNING" | "ERROR" }) => Promise<void>;
+    };
     /** Kendi eklentimiz: cihaz doğrulama kanıtı (App Attest/DeviceCheck · Play Integrity) */
     PmjDevice?: {
       getProof: (opts: { nonce: string }) => Promise<{ proof: string }>;
@@ -99,4 +115,58 @@ const noopSubscribe = () => () => {};
  */
 export function useNativePlatform(): NativePlatform | null {
   return useSyncExternalStore(noopSubscribe, nativePlatform, () => null);
+}
+
+/**
+ * Kamerayla karekod okutur, okunan metni döner; vazgeçilirse ya da eklenti
+ * yoksa null. Değerler eklentinin enum'larından: QR_CODE=0, BACK=1, PORTRAIT=1.
+ */
+export async function scanQrCode(labels: { instructions: string; cancel: string }): Promise<string | null> {
+  const scanner = nativePlugins()?.CapacitorBarcodeScanner;
+  if (!scanner) return null;
+  try {
+    const { ScanResult } = await scanner.scanBarcode({
+      hint: 0,
+      scanInstructions: labels.instructions,
+      scanButton: false,
+      scanText: " ",
+      cameraDirection: 1,
+      scanOrientation: 1,
+      cancelButtonAccessibilityLabel: labels.cancel,
+    });
+    return ScanResult?.trim() || null;
+  } catch {
+    // Kullanıcı vazgeçti ya da kamera izni verilmedi
+    return null;
+  }
+}
+
+/**
+ * Okunan karekodu uygulama içi yola çevirir. Yalnızca PlayMyJam adresleri:
+ * plaket ön yüzü (/venue/<slug>) ve arka yüzü (/<slug>/bilgi). Başka her şey null.
+ */
+export function qrToVenuePath(text: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.host !== "playmyjam.com.tr") return null;
+  const front = url.pathname.match(/^\/venue\/([^/]+)/);
+  if (front) return `/venue/${front[1]}`;
+  const back = url.pathname.match(/^\/([^/]+)\/bilgi\/?$/);
+  if (back) return `/${back[1]}/bilgi`;
+  return null;
+}
+
+/** Hafif dokunsal geri bildirim; tarayıcıda ve eklenti yoksa sessizce hiçbir şey yapmaz. */
+export function nativeHaptic(kind: "tap" | "success" | "error"): void {
+  const haptics = nativePlugins()?.Haptics;
+  if (!haptics) return;
+  const done =
+    kind === "tap"
+      ? haptics.impact({ style: "LIGHT" })
+      : haptics.notification({ type: kind === "success" ? "SUCCESS" : "ERROR" });
+  void done.catch(() => {});
 }

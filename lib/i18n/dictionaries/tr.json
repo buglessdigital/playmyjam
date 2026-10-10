@@ -778,6 +778,10 @@
     "bannerClose": "Kapat",
     "giftTitle": "Uygulamaya hoş geldin!",
     "giftBody": "{n} hediye jeton cüzdanına eklendi.",
-    "iapSoon": "Uygulama içi satın alma çok yakında"
+    "iapSoon": "Uygulama içi satın alma çok yakında",
+    "qrScan": "Karekod Okut",
+    "qrInstructions": "Masadaki PlayMyJam karekodunu çerçeveye getir",
+    "qrCancel": "Vazgeç",
+    "qrInvalid": "Bu bir PlayMyJam karekodu değil. Masadaki plaketin karekodunu okut."
   }
 }

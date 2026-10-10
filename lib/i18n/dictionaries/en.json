@@ -778,6 +778,10 @@
     "bannerClose": "Close",
     "giftTitle": "Welcome to the app!",
     "giftBody": "{n} free token added to your wallet.",
-    "iapSoon": "In-app purchase coming soon"
+    "iapSoon": "In-app purchase coming soon",
+    "qrScan": "Scan QR",
+    "qrInstructions": "Point at the PlayMyJam QR code on your table",
+    "qrCancel": "Cancel",
+    "qrInvalid": "This isn't a PlayMyJam QR code. Scan the code on the table plaque."
   }
 }

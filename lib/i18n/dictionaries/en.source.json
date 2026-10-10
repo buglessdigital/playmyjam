@@ -672,5 +672,9 @@
   "nativeApp.bannerClose": "Kapat",
   "nativeApp.giftTitle": "Uygulamaya hoş geldin!",
   "nativeApp.giftBody": "{n} hediye jeton cüzdanına eklendi.",
-  "nativeApp.iapSoon": "Uygulama içi satın alma çok yakında"
+  "nativeApp.iapSoon": "Uygulama içi satın alma çok yakında",
+  "nativeApp.qrScan": "Karekod Okut",
+  "nativeApp.qrInstructions": "Masadaki PlayMyJam karekodunu çerçeveye getir",
+  "nativeApp.qrCancel": "Vazgeç",
+  "nativeApp.qrInvalid": "Bu bir PlayMyJam karekodu değil. Masadaki plaketin karekodunu okut."
 }

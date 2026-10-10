@@ -9,6 +9,7 @@ import { usePlayerOnline } from "@/lib/use-player-online";
 import { useCustomerAddsPaused } from "@/lib/use-customer-adds";
 import PlayerOfflineNotice from "@/components/ui/PlayerOfflineNotice";
 import { trackAction } from "@/lib/ui-track";
+import { nativeHaptic } from "@/lib/native-app";
 
 type PlayedRow = {
   id: string;
@@ -82,6 +83,7 @@ export default function HistoryClient({ venueDbId, venueName, requestCost }: Pro
     setAddingIds((s) => { const n = new Set(s); n.delete(songId); return n; });
     if (res.ok) {
       trackAction("song_added", { priority: false, from: "history" });
+      nativeHaptic("success");
       setAddedIds((s) => new Set(s).add(songId));
     } else {
       const data = await res.json().catch(() => null);

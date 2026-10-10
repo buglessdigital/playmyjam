@@ -30,3 +30,5 @@ metadata:
 - **Mac:** Xcode macOS 26.6+ istiyor; bu Mac 9 Eki'de macOS 27'ye güncelleniyordu (15.6'dan). Disk 256 GB — Xcode için ~40 GB boş yer şart.
 
 **Sıradakiler:** Aşama 2 Capacitor projesi (Xcode + Android Studio kurulu değildi), Aşama 3 AASA/assetlinks + doğrulayıcılar + IAP makbuz doğrulama, Aşama 4 mağaza gönderimi. Hesaplar: Apple Developer (Bugless Digital, D-U-N-S), Play Console kuruluş. Bkz. [[pmj-akis-kisaltma-2026-08]], [[pmj-is-yonetimi-2026-09]].
+
+**Yerel özellikler (10 Eki 2026):** uygulamada (`useNativePlatform()`) vitrin üst menüsü/alt bilgisi mekan sahibi bağlantılarını (kayıt, panel girişi) çizmez, logo `/mekanlar`'a döner, "Mekanı Bul" yerine **Karekod Okut** (`components/native/ScanQrButton.tsx`, @capacitor/barcode-scanner köprüden — sarmalayıcı yok, enum değerleri elle: QR_CODE=0, BACK=1, PORTRAIT=1). Yalnız `https://playmyjam.com.tr` ön yüz (`/venue/<slug>`) ve arka yüz (`/<slug>/bilgi`) karekodları açılır (`qrToVenuePath`). Şarkı eklenince `nativeHaptic("success")` (gözat, şarkı detayı, geçmiş). Tarayıcıda hiçbiri değişmez. Bu iki özellik Apple 4.2'ye ("yalnız web sarmalayıcı") karşı ana kanıt.

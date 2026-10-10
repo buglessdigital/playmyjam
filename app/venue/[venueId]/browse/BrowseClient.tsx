@@ -39,6 +39,7 @@ import {
   type VenueSong,
 } from "@/components/browse/browse-types";
 import { trackAction } from "@/lib/ui-track";
+import { nativeHaptic } from "@/lib/native-app";
 
 // Gözat sayfasındaki ana listenin en az bu kadar şarkı göstermesi hedeflenir —
 // mekanın müşteriye açık şarkısı yetmiyorsa doğal olarak daha az olur.
@@ -576,6 +577,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
         setTokenBalance((b) => b + cost - charged);
       }
       trackAction("song_added", { priority });
+      nativeHaptic("success");
       // Onaylı talebin şeridi hakkın tükendiğini görsün (RequestStatusBar)
       window.dispatchEvent(new Event("pmj-queue-added"));
     } else {

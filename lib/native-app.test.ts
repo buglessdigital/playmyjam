@@ -8,7 +8,7 @@ import { test } from "node:test";
 // deepLinkToPath Universal Link'te kendi alan adını window.location'dan okur
 (globalThis as { window?: unknown }).window = { location: { host: "playmyjam.com.tr" } };
 
-const { deepLinkToPath } = await import("./native-app.ts");
+const { deepLinkToPath, qrToVenuePath } = await import("./native-app.ts");
 
 test("Google dönüşü sorgusuyla /auth/callback'e çevrilir", () => {
   assert.equal(
@@ -27,4 +27,17 @@ test("başka alan adı ve bozuk adres reddedilir", () => {
   assert.equal(deepLinkToPath("http://playmyjam.com.tr/venue/x"), null);
   assert.equal(deepLinkToPath("javascript:alert(1)"), null);
   assert.equal(deepLinkToPath("bozuk"), null);
+});
+
+test("plaket karekodu: ön yüz mekan paneline, arka yüz mekan sayfasına", () => {
+  assert.equal(qrToVenuePath("https://playmyjam.com.tr/venue/mezzanine"), "/venue/mezzanine");
+  assert.equal(qrToVenuePath("https://playmyjam.com.tr/venue/mezzanine/browse?x=1"), "/venue/mezzanine");
+  assert.equal(qrToVenuePath("https://playmyjam.com.tr/mezzanine/bilgi"), "/mezzanine/bilgi");
+});
+
+test("başka karekodlar mekan açmaz", () => {
+  assert.equal(qrToVenuePath("https://kotu.example/venue/x"), null);
+  assert.equal(qrToVenuePath("http://playmyjam.com.tr/venue/x"), null);
+  assert.equal(qrToVenuePath("https://playmyjam.com.tr/privacy"), null);
+  assert.equal(qrToVenuePath("WIFI:S:Kafe;T:WPA;P:1234;;"), null);
 });

@@ -6,10 +6,12 @@ import IyzicoBand from "@/components/ui/IyzicoBand";
 import LangToggle from "@/components/ui/LangToggle";
 import { COMPANY } from "@/lib/company-info";
 import { fmt, useT } from "@/lib/i18n";
+import { useNativePlatform } from "@/lib/native-app";
 
 // Vitrin sayfalarının ortak tam footer'ı (ödeme kuruluşu şartları: yasal linkler + kart logoları)
 export default function SiteFooter() {
   const t = useT();
+  const inApp = useNativePlatform() !== null;
 
   return (
     <footer className="border-t border-white/[0.06]" style={{ background: "#0c0814" }}>
@@ -33,8 +35,13 @@ export default function SiteFooter() {
             <li><Link href="/#nasil-calisir" className="hover:text-white">{t.nav.howItWorks}</Link></li>
             <li><Link href="/#fiyatlar" className="hover:text-white">{t.nav.pricing}</Link></li>
             <li><Link href="/#sss" className="hover:text-white">{t.footer.faqLong}</Link></li>
-            <li><Link href="/#mekan-basvuru" className="text-[#e91e8c] hover:text-[#ff2d9c]">{t.nav.registerVenue}</Link></li>
-            <li><Link href="/mekan-girisi" className="hover:text-white">{t.footer.venueLogin}</Link></li>
+            {/* Mağaza uygulamasında mekan sahibi bağlantıları yok (bkz. SiteHeader) */}
+            {!inApp && (
+              <>
+                <li><Link href="/#mekan-basvuru" className="text-[#e91e8c] hover:text-[#ff2d9c]">{t.nav.registerVenue}</Link></li>
+                <li><Link href="/mekan-girisi" className="hover:text-white">{t.footer.venueLogin}</Link></li>
+              </>
+            )}
           </ul>
         </div>
 

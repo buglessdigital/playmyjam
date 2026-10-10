@@ -15,7 +15,6 @@ cd mobile
 npm install
 npx cap sync          # eklenti/ayar değişikliğinden sonra
 npm run android       # Android Studio'da açar
-npx cap add ios       # yalnızca ilk kez (Xcode gerekir)
 npm run ios           # Xcode'da açar
 ```
 

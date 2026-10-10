@@ -18,6 +18,17 @@ npm run android       # Android Studio'da açar
 npm run ios           # Xcode'da açar
 ```
 
+## Android derleme notları
+
+- **Java 21 şart.** `@capacitor/barcode-scanner` Kotlin derlemesini tam olarak
+  Java 21 istiyor (`jvmToolchain(21)`); Android Studio Java 25 ile geliyor ve
+  Gradle 8.14 onunla derleme betiğini işleyemiyor. Mac'te:
+  `brew install openjdk@21`, sonra `~/.gradle/gradle.properties` içine
+  `org.gradle.java.home=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`.
+- **minSdk 26** (Android 8.0): barkod kütüphanesi (ionbarcode) daha düşüğünü kabul etmiyor.
+- Komut satırından: `cd android && ./gradlew assembleDebug`
+  (`ANDROID_HOME=~/Library/Android/sdk`).
+
 ## İkon ve açılış ekranı
 
 Kaynak `assets/logo-mark.svg` (public/logo-mark.png'nin vektörü):

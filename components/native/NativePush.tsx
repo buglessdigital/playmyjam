@@ -28,13 +28,17 @@ export default function NativePush() {
     let signedIn = false;
     let asked = false;
     let lastSent: string | null = null;
+    // Açılışta getClaims ve onAuthStateChange (INITIAL_SESSION) aynı anda
+    // tetikleniyor — ikinci çağrı süren isteği beklemeden tekrar göndermesin
+    let sending = false;
     const listeners: { remove: () => unknown }[] = [];
 
     const sendToken = async () => {
       if (!token || !signedIn) return;
       // Aynı kod aynı kullanıcıya tekrar tekrar yollanmasın; kullanıcı
       // değişince (onAuthStateChange) lastSent sıfırlanır
-      if (lastSent === token) return;
+      if (lastSent === token || sending) return;
+      sending = true;
       try {
         const res = await fetch("/api/push/native", {
           method: "POST",
@@ -44,6 +48,8 @@ export default function NativePush() {
         if (res.ok) lastSent = token;
       } catch {
         // Bir sonraki açılışta yeniden denenir
+      } finally {
+        sending = false;
       }
     };
 

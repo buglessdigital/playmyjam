@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bildirim çubuğu simgesi: Android yalnızca alfa kanalını kullanır, tek renk
+     (beyaz) + şeffaf olmalı; renkli uygulama ikonu gri kareye dönüşür.
+     Kaynak: mobile/assets/logo-mark.svg (üç çubuk), 600x600 tuvalde ortalı. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="600"
+    android:viewportHeight="600">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M124,44 h40 a51,51 0 0 1 51,51 v410 a51,51 0 0 1 -51,51 h-40 a51,51 0 0 1 -51,-51 v-410 a51,51 0 0 1 51,-51 z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M280,101 h40 a51,51 0 0 1 51,51 v296 a51,51 0 0 1 -51,51 h-40 a51,51 0 0 1 -51,-51 v-296 a51,51 0 0 1 51,-51 z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M436,177 h40 a51,51 0 0 1 51,51 v144 a51,51 0 0 1 -51,51 h-40 a51,51 0 0 1 -51,-51 v-144 a51,51 0 0 1 51,-51 z" />
+</vector>

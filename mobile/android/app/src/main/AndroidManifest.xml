@@ -39,6 +39,15 @@
             </intent-filter>
         </activity>
 
+        <!-- FCM bildirimlerinin simgesi ve rengi (uygulama arka plandayken
+             bildirimi işletim sistemi çizer, bunları kullanır) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_pmj" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/pmj_pink" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

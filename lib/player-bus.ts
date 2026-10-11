@@ -56,11 +56,86 @@ export const STATE_EVENT = "state";
 
 type Supabase = ReturnType<typeof createClient>;
 
-/** Ortak kanal ayarı: kendi yolladığımız mesajı geri almayız. */
-export function playerBusChannel(supabase: Supabase, venueDbId: string) {
-  return supabase.channel(PLAYER_BUS_TOPIC(venueDbId), {
-    config: { broadcast: { self: false, ack: false } },
-  });
+/**
+ * Ağ hattı — sekme başına TEK kanal, referans sayımlı.
+ *
+ * supabase.channel() aynı konu için var olan kanal NESNESİNİ geri verir. Panel
+ * (usePlayback) ve player (YouTubePlayer) aynı sekmede ayrı ayrı kanal açıp
+ * kapattığında aslında tek nesneyi paylaşıyorlardı: ana ekrandan başka sayfaya
+ * geçilince panel kanalı kapatıyor, player'ın elindeki kanal da ölüyordu. Player
+ * o andan sonra her saniyelik durum sinyalini REST'e düşürüyor (konsolda
+ * "Realtime send() is automatically falling back to REST API"), TV modundaki
+ * uzak oynatıcıya da panelden komut ulaşmıyordu.
+ *
+ * Burada kanal ilk katılanla açılır, son ayrılanla kapanır; her katılımcı
+ * yalnızca kendi dinleyicisini ekler/çıkarır. Kendi yolladığımızı geri almayız
+ * (self: false) — aynı sekme için aşağıdaki SAYFA İÇİ hat var.
+ */
+type SharedBus = {
+  channel: ReturnType<Supabase["channel"]>;
+  refs: number;
+  cmd: Set<(cmd: PlayerCommand) => void>;
+  state: Set<(beat: PlayerStateBeat) => void>;
+};
+
+const sharedBuses = new Map<string, SharedBus>();
+
+export type PlayerBus = {
+  sendCommand: (cmd: PlayerCommand) => void;
+  sendState: (beat: PlayerStateBeat) => void;
+  leave: () => void;
+};
+
+export function joinPlayerBus(
+  supabase: Supabase,
+  venueDbId: string,
+  listen: { cmd?: (cmd: PlayerCommand) => void; state?: (beat: PlayerStateBeat) => void }
+): PlayerBus {
+  let bus = sharedBuses.get(venueDbId);
+  if (!bus) {
+    const cmd = new Set<(cmd: PlayerCommand) => void>();
+    const state = new Set<(beat: PlayerStateBeat) => void>();
+    const channel = supabase
+      .channel(PLAYER_BUS_TOPIC(venueDbId), { config: { broadcast: { self: false, ack: false } } })
+      .on("broadcast", { event: CMD_EVENT }, ({ payload }: { payload: PlayerCommand }) => {
+        for (const cb of [...cmd]) cb(payload);
+      })
+      .on("broadcast", { event: STATE_EVENT }, ({ payload }: { payload: PlayerStateBeat }) => {
+        for (const cb of [...state]) cb(payload);
+      })
+      .subscribe();
+    bus = { channel, refs: 0, cmd, state };
+    sharedBuses.set(venueDbId, bus);
+  }
+
+  const joined = bus;
+  joined.refs += 1;
+  if (listen.cmd) joined.cmd.add(listen.cmd);
+  if (listen.state) joined.state.add(listen.state);
+
+  let left = false;
+  const send = (event: string, payload: unknown) => {
+    if (left) return;
+    try {
+      joined.channel.send({ type: "broadcast", event, payload });
+    } catch {}
+  };
+
+  return {
+    sendCommand: (cmd) => send(CMD_EVENT, cmd),
+    sendState: (beat) => send(STATE_EVENT, beat),
+    leave: () => {
+      if (left) return;
+      left = true;
+      if (listen.cmd) joined.cmd.delete(listen.cmd);
+      if (listen.state) joined.state.delete(listen.state);
+      joined.refs -= 1;
+      if (joined.refs === 0) {
+        sharedBuses.delete(venueDbId);
+        void supabase.removeChannel(joined.channel);
+      }
+    },
+  };
 }
 
 /**

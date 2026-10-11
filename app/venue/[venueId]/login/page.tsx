@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { safeNextPath } from "@/lib/venue-gate";
 import { isGuestAccount } from "@/lib/guest-session";
 import { nativePlugins } from "@/lib/native-app";
+import { directGoogleOAuth, googleStartUrl } from "@/lib/google-oauth-direct";
 import { useRedirectPending } from "@/lib/use-redirect-pending";
 import { currentDict, fmt, useT } from "@/lib/i18n";
 import ConsentChecks, { EMPTY_CONSENTS } from "@/components/ui/ConsentChecks";
@@ -18,6 +19,7 @@ function authErrorMessage(code: string): string {
     confirm_failed: d.errConfirmFailed,
     confirm_invalid: d.errConfirmInvalid,
     missing_params: d.errMissingParams,
+    link_failed: d.errGoogleLink,
   };
   return map[code] ?? d.errMissingParams;
 }
@@ -351,14 +353,43 @@ function AuthPageContent({ params }: Props) {
     // açılır, dönüş /auth/native-callback üstünden uygulamaya geri atılır
     // (bkz. o route ve lib/native-app.ts)
     const browser = nativePlugins()?.Browser;
+    // Misafir kimliği varsa Google hesabı ONA bağlanır: yeni kullanıcı açılsaydı
+    // cüzdan ve geçmiş eski kimlikte kalırdı (bkz. lib/guest-session.ts).
+    const guest = !mergeIntoExisting && (await isGuestAccount());
+
+    // Google kendi alan adımızdan (bkz. lib/google-oauth.ts): onay ekranında
+    // supabase.co yerine playmyjam.com.tr ve marka görünür. Mekan/hedef/onay
+    // bilgisi yukarıdaki çerezlerle taşınır.
+    if (directGoogleOAuth()) {
+      const params = {
+        flow: "customer",
+        ...(guest ? { link: "1" } : {}),
+        ...(browser ? { native: "1" } : {}),
+      };
+      if (!browser) {
+        window.location.assign(googleStartUrl(params));
+        return;
+      }
+      // Mobil: akış çerezi WebView'e yazılsın diye adres fetch ile alınır,
+      // Google sayfası sistem tarayıcısında açılır
+      try {
+        const res = await fetch(googleStartUrl({ ...params, format: "json" }));
+        const { url } = await res.json();
+        if (!res.ok || !url) throw new Error(`start ${res.status}`);
+        await browser.open({ url, presentationStyle: "popover" });
+      } catch (err) {
+        console.error("[google-auth]", err);
+        setError(t.login.errGoogleStart);
+      }
+      setGoogleLoading(false);
+      return;
+    }
+
     const callbackPath = browser ? "/auth/native-callback" : "/auth/callback";
     const oauthOptions = {
       redirectTo: `${window.location.origin}${callbackPath}?venueId=${venueId}&next=${encodeURIComponent(nextPath)}`,
       skipBrowserRedirect: !!browser,
     };
-    // Misafir kimliği varsa Google hesabı ONA bağlanır: yeni kullanıcı açılsaydı
-    // cüzdan ve geçmiş eski kimlikte kalırdı (bkz. lib/guest-session.ts).
-    const guest = !mergeIntoExisting && (await isGuestAccount());
     const { data, error } = guest
       ? await supabase.auth.linkIdentity({ provider: "google", options: oauthOptions })
       : await supabase.auth.signInWithOAuth({ provider: "google", options: oauthOptions });

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { GOOGLE_ERRORS, GoogleIcon } from "@/components/admin/GoogleAccountCard";
 import { useRedirectPending } from "@/lib/use-redirect-pending";
+import { directGoogleOAuth, googleStartUrl } from "@/lib/google-oauth-direct";
 
 // Yeni açılan mekanların ilk girişte gördüğü zorunlu ekran: kurtarma hesabı
 // bağlanana kadar panelin hiçbir yeri açılmıyor (kontrol proxy'de, bkz. 0038).
@@ -37,6 +38,11 @@ function LinkGoogleScreen({ params }: Props) {
   const handleConnect = async () => {
     setStarting(true);
     setStartError("");
+    // Google kendi alan adımızdan döner (bkz. lib/google-oauth.ts)
+    if (directGoogleOAuth()) {
+      window.location.assign(googleStartUrl({ flow: "admin-link" }));
+      return;
+    }
     const supabase = createClient();
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",

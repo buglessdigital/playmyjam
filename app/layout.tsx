@@ -4,6 +4,7 @@ import { Geist } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import ServiceWorkerRegister from "@/components/pwa/ServiceWorkerRegister";
 import NativeAppBridge from "@/components/native/NativeAppBridge";
+import NativeErrorBoundary from "@/components/native/NativeErrorBoundary";
 import { LanguageProvider } from "@/lib/i18n";
 import "./globals.css";
 
@@ -70,11 +71,14 @@ export default function RootLayout({
         <LanguageProvider>
           {children}
           {/* Mağaza uygulaması içindeysek derin bağlantı + hediye; tarayıcıda boş.
+              Hata sınırı: köprüdeki bir hata sayfayı düşürmesin (bkz. NativeErrorBoundary).
               Suspense: köprü usePathname okuyor, bilinmeyen dinamik parametreli
               sayfalarda prerender'ı askıya almasın (cacheComponents kuralı) */}
-          <Suspense fallback={null}>
-            <NativeAppBridge />
-          </Suspense>
+          <NativeErrorBoundary>
+            <Suspense fallback={null}>
+              <NativeAppBridge />
+            </Suspense>
+          </NativeErrorBoundary>
         </LanguageProvider>
         <SpeedInsights />
       </body>

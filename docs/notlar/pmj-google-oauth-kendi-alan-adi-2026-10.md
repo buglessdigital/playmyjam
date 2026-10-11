@@ -12,7 +12,9 @@ metadata:
 - **Güvenlik:** state + PKCE, doğrulayıcı httpOnly `pmj_google_oauth` çerezinde (10 dk).
 - **Anahtar:** istemci yalnız `NEXT_PUBLIC_GOOGLE_OAUTH_ORIGIN` ile açılan sayfada yeni akışı kullanır. Preview'lar ve `pmj-seven.vercel.app` eski Supabase akışında kalır. Geri dönüş = env'i silip yeniden derlemek.
 
-**Devreye alma (kullanıcının işi):**
+**11 Eki 2026 — DEVREDE:** 3 env Production'da, PR #53 prod'da, onay ekranında playmyjam.com.tr görünüyor. Client'ta yalnız 4 playmyjam.com.tr redirect URI'si kaldı (supabase.co + auth.playmyjam silindi → preview'larda Google girişi artık çalışmaz). Yeni secret Bitwarden'da; eski secret (`…yy5v`) Supabase'in Google provider'ında hâlâ kullanılıyor, kapatılmadı. Branding (ad PlayMyJam, logo 120×120 koyu zeminli, yalnız playmyjam.com.tr) aynı gün "The finding is incorrect" itirazıyla incelemeye gönderildi — durum: under review. Verification Center "Data access" kutusu hassas kapsam görmüyor: `youtube.readonly` Data Access'te kayıtlı değil, "YouTube hesabımdan seç"te uyarı sürebilir (bkz. [[pmj-google-oauth-dogrulama]]).
+
+**Devreye alma (yapıldı, kayıt için):**
 1. GCP `play-my-jam-502210` → "PlayMyJam Web" client → redirect URI'lere ekle: `https://playmyjam.com.tr` + `/auth/callback`, `/auth/native-callback`, `/api/admin/google/callback`, `/api/admin/youtube/callback`.
 2. Vercel **yalnız Production**: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` (sensitive; değeri aynı client'ta ya da Supabase → Auth → Providers → Google'da), `NEXT_PUBLIC_GOOGLE_OAUTH_ORIGIN=https://playmyjam.com.tr`. NEXT_PUBLIC derlemede gömülür → redeploy.
 3. Supabase Google provider'ındaki Client ID bu client olmalı (`signInWithIdToken` `aud` kontrol eder).

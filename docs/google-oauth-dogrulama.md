@@ -3,13 +3,9 @@
 Kapsam: `https://www.googleapis.com/auth/youtube.readonly` (sensitive scope)
 Amaç: "Google bu uygulamayı doğrulamadı" uyarı ekranını kaldırmak ve 100 kullanıcı tavanından çıkmak.
 
-> **21 Eyl 2026 — BEKLEMEDE.** 17 Eyl'de Supabase yeni projeye (`quvkscvbsplxkuolvhwe`) taşındı;
-> orada özel alan adı yok (Supabase Pro + custom domain eklentisi gerekir), `auth.playmyjam.com.tr`
-> hâlâ eski projeye CNAME'li ve çalışmıyor. Google girişi `quvkscvbsplxkuolvhwe.supabase.co`
-> üzerinden gidiyor, bu alan Search Console'da doğrulanamaz → branding kontrolü düşer.
-> Başvurudan ÖNCE iki yoldan biri: (a) Supabase Pro + custom domain ile `auth.playmyjam.com.tr`'yi
-> yeni projeye bağla, (b) `youtube.readonly`'yi kaldır (yalnız temel kapsamlar doğrulama istemez,
-> "YouTube hesabımdan seç" özelliği gider). Aşağıdaki "supabase.co silinecek" adımı ancak (a)'dan sonra geçerli.
+> **11 Eki 2026:** Google girişi artık doğrudan playmyjam.com.tr'ye dönüyor (bkz. `docs/notlar/pmj-google-oauth-kendi-alan-adi-2026-10.md`);
+> supabase.co alanları client'tan ve authorized domains'ten silindi, branding incelemeye gönderildi.
+> Kalan iş: `youtube.readonly`'yi Data Access'e ekleyip aşağıdaki gerekçe + demo videosuyla kapsam başvurusu.
 
 ## Sıra
 
@@ -19,7 +15,7 @@ Amaç: "Google bu uygulamayı doğrulamadı" uyarı ekranını kaldırmak ve 100
    - Privacy policy: `https://playmyjam.com.tr/privacy`
    - Terms: `https://playmyjam.com.tr/terms`
    - Authorized domains: yalnızca `playmyjam.com.tr` kalmalı — `*.supabase.co` **silinecek**
-     (OAuth artık `auth.playmyjam.com.tr` üzerinden gidiyor; kodda ham supabase adresi yok).
+     (OAuth artık doğrudan playmyjam.com.tr'ye dönüyor) — 11 Eki'de yapıldı.
    - Otomatik kontrol yine düşerse "I believe the issues found are incorrect" ile insan incelemesi.
 2. **Kapsam gerekçesi** (aşağıdaki metin) Verification Center'a yapıştırılır.
 3. **Demo videosu** (unlisted YouTube) — senaryo aşağıda.

@@ -3,3 +3,7 @@ node_modules/
 # Firebase konsolundan indirilip android/app/ altına konur
 android/app/google-services.json
 ios/App/App/GoogleService-Info.plist
+# Android yükleme anahtarı ve şifresi — GİZLİ, yalnızca üretildiği makinede
+android/keystore.properties
+android/*.jks
+*.keystore

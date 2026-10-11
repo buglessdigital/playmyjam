@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// Mağaza (release) sürümünün yükleme anahtarı. keystore.properties ve .jks
+// repoya GİRMEZ (mobile/.gitignore); yalnızca anahtarın üretildiği makinede
+// durur. Google Play "Play App Signing" ile asıl imzayı kendisi atar; bu anahtar
+// yalnızca yükleme içindir, kaybolursa Play Console'dan sıfırlatılır.
+// Dosya yoksa release derlemesi imzasız çıkar (debug etkilenmez).
+def keystoreProps = new Properties()
+def keystorePropsFile = rootProject.file('keystore.properties')
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
 android {
     namespace = "com.playmyjam.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +27,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (keystorePropsFile.exists()) {
+            upload {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.upload
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

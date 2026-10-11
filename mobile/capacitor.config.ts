@@ -20,7 +20,8 @@ const config: CapacitorConfig = {
     url: "https://playmyjam.com.tr/mekanlar",
     // WebView'de kalacak alan adları; geri kalanı sistem tarayıcısında açılır.
     // iyzico ödeme sayfası (Android) burada açılmalı ki dönüş uygulamaya gelsin.
-    // DİKKAT: 3D Secure banka sayfaları listede değil — gerçek kartla test et.
+    // 3D Secure banka sayfaları listede değil ama 11 Eki 2026'da gerçek kartla
+    // (Android, Xiaomi) ödeme uygulama içinde tamamlandı ve dönüş uygulamaya geldi.
     allowNavigation: ["playmyjam.com.tr", "*.playmyjam.com.tr", "*.iyzipay.com", "*.iyzico.com"],
   },
   ios: {

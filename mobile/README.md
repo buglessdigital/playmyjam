@@ -29,6 +29,18 @@ npm run ios           # Xcode'da açar
 - Komut satırından: `cd android && ./gradlew assembleDebug`
   (`ANDROID_HOME=~/Library/Android/sdk` ve `JAVA_HOME` Java 21 — `gradlew` kendini başlatmak için `org.gradle.java.home`'a değil `JAVA_HOME`'a bakar).
 
+## Mağaza sürümü (Android)
+
+```bash
+cd android && ./gradlew bundleRelease   # app/build/outputs/bundle/release/app-release.aab
+```
+
+İmza `android/keystore.properties` + `android/playmyjam-upload.jks` ile atılır;
+ikisi de repoda DEĞİL, yalnızca anahtarın üretildiği Mac'te. Bu bir **yükleme
+anahtarı**: Play Console'da "Play App Signing" açık kalmalı (asıl imzayı Google
+atar). Anahtar kaybolursa Play Console → Uygulama bütünlüğü → yükleme anahtarını
+sıfırlama isteğiyle yenisi tanımlanır. Dosyalar yoksa release imzasız çıkar.
+
 ## İkon ve açılış ekranı
 
 Kaynak `assets/logo-mark.svg` (public/logo-mark.png'nin vektörü):

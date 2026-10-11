@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  CMD_EVENT,
-  STATE_EVENT,
-  playerBusChannel,
+  joinPlayerBus,
+  type PlayerBus,
   type PlayerCommand,
   type PlayerStateBeat,
   onLocalCommand,
@@ -985,7 +984,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
   const claimIdRef = useRef<string | null>(null);
   const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Panelle arasındaki düşük gecikmeli hat (bkz. lib/player-bus.ts)
-  const busRef = useRef<ReturnType<typeof playerBusChannel> | null>(null);
+  const busRef = useRef<PlayerBus | null>(null);
   const claimId = useCallback(() => {
     claimIdRef.current ??= playerInstanceId(venueDbId);
     return claimIdRef.current;
@@ -1215,8 +1214,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
   // Panelin alt barına anlık durum: DB → Realtime turunu beklemeden gider, böylece
   // ilerleme çubuğu ve oynat/duraklat simgesi player'la aynı anda değişir.
   const broadcastState = useCallback((override?: Partial<PlayerStateBeat>) => {
-    const channel = busRef.current;
-    if (!channel) return;
+    const bus = busRef.current;
+    if (!bus) return;
     const player = activePlayer();
     let progress = 0;
     let duration: number | null = null;
@@ -1251,9 +1250,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       // çağıran taraf doğru değeri biliyorsa üstüne yazar
       ...override,
     };
-    try {
-      channel.send({ type: "broadcast", event: STATE_EVENT, payload: beat });
-    } catch {}
+    bus.sendState(beat);
     // Aynı sekmedeki panele doğrudan: Realtime kendi mesajımızı geri vermez
     sendLocalState(venueDbId, beat);
   }, [activePlayer, venueDbId]);
@@ -3181,19 +3178,14 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       }
     };
 
-    const channel = playerBusChannel(supabase, venueDbId);
-    channel
-      .on("broadcast", { event: CMD_EVENT }, ({ payload }: { payload: PlayerCommand }) => {
-        applyCommand(payload);
-      })
-      .subscribe();
-    busRef.current = channel;
+    const bus = joinPlayerBus(supabase, venueDbId, { cmd: applyCommand });
+    busRef.current = bus;
     const offLocal = onLocalCommand(venueDbId, applyCommand);
 
     return () => {
       busRef.current = null;
       offLocal();
-      supabase.removeChannel(channel);
+      bus.leave();
     };
   }, [
     started,

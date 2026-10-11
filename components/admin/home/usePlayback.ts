@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  CMD_EVENT,
-  STATE_EVENT,
-  playerBusChannel,
+  joinPlayerBus,
+  type PlayerBus,
   type PlayerCommand,
   type PlayerStateBeat,
   onLocalState,
@@ -174,7 +173,7 @@ export function usePlayback(venueDbId: string) {
   // bir süre yok sayılır.
   const intentRef = useRef<{ playing: boolean; at: number } | null>(null);
   // Player'ın broadcast ettiği canlı durum: DB turunu beklemeden uygulanır
-  const busRef = useRef<ReturnType<typeof playerBusChannel> | null>(null);
+  const busRef = useRef<PlayerBus | null>(null);
   // --- Sarma (alt bardaki ilerleme çubuğu) ---
   // Parmak çubuğun üstündeyken dışarıdan gelen hiçbir ilerleme uygulanmaz:
   // tick de, player'ın yoldaki heartbeat'i de imleci parmağın altından kaçırırdı.
@@ -482,12 +481,7 @@ export function usePlayback(venueDbId: string) {
         localActionAtRef.current = 0;
     };
 
-    const bus = playerBusChannel(supabase, venueDbId);
-    bus
-      .on("broadcast", { event: STATE_EVENT }, ({ payload }: { payload: PlayerStateBeat }) => {
-        applyBeat(payload);
-      })
-      .subscribe();
+    const bus = joinPlayerBus(supabase, venueDbId, { state: applyBeat });
     busRef.current = bus;
     const offLocal = onLocalState(venueDbId, applyBeat);
 
@@ -495,7 +489,7 @@ export function usePlayback(venueDbId: string) {
       cancelled = true;
       busRef.current = null;
       offLocal();
-      supabase.removeChannel(bus);
+      bus.leave();
       if (queueReloadTimer) clearTimeout(queueReloadTimer);
       clearInterval(poll);
       document.removeEventListener("visibilitychange", onWake);
@@ -561,9 +555,7 @@ export function usePlayback(venueDbId: string) {
   // Komutu player'a doğrudan yolla (HTTP + DB turunu beklemeden). Teslim garantisi
   // yoktur; her komut ayrıca /api/player'a da gider.
   const sendCommand = (command: PlayerCommand) => {
-    try {
-      busRef.current?.send({ type: "broadcast", event: CMD_EVENT, payload: command });
-    } catch {}
+    busRef.current?.sendCommand(command);
     // Aynı sekmedeki oynatıcıya doğrudan: Realtime kendi mesajımızı geri vermez,
     // yani panel içi player'a komut YALNIZCA bu hattan ulaşır.
     if (venueDbId) sendLocalCommand(venueDbId, command);

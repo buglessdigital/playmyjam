@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { directGoogleOAuth, googleStartUrl } from "@/lib/google-oauth-direct";
 import { formatDur, type Library, type Playlist } from "./useLibrary";
 import type { Playback } from "./usePlayback";
 
@@ -180,6 +181,11 @@ function AccountPicker({
   }, []);
 
   const connect = async () => {
+    // Google kendi alan adımızdan döner (bkz. lib/google-oauth.ts)
+    if (directGoogleOAuth()) {
+      window.location.assign(googleStartUrl({ flow: "youtube" }));
+      return;
+    }
     const supabase = createClient();
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",

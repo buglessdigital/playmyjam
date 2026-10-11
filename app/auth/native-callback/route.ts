@@ -4,7 +4,8 @@ import { NextRequest } from "next/server";
 //
 // Google, OAuth'u gömülü WebView'de yasaklıyor (disallowed_useragent); bu yüzden
 // uygulama girişi SİSTEM tarayıcısında açar (bkz. login sayfası, lib/native-app.ts).
-// Supabase oradan buraya ?code=… ile döner. Kodu burada TÜKETMİYORUZ: PKCE
+// Supabase (ya da kendi alan adı akışında Google, bkz. lib/google-oauth.ts)
+// oradan buraya ?code=… ile döner. Kodu burada TÜKETMİYORUZ: PKCE
 // doğrulayıcısı ve pending_oauth_* çerezleri uygulamanın WebView'inde duruyor,
 // sistem tarayıcısında değil. Sorgu olduğu gibi playmyjam:// şemasıyla uygulamaya
 // geri atılır; uygulama onu WebView'de /auth/callback'e çevirir ve olağan akış

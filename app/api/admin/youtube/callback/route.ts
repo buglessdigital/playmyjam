@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { YOUTUBE_TOKEN_COOKIE, youtubeTokenCookieOptions } from "@/lib/youtube-token";
+import {
+  GOOGLE_FLOW_COOKIE,
+  exchangeGoogleCode,
+  googleOAuthConfig,
+  readGoogleFlow,
+} from "@/lib/google-oauth";
 
 // Mekan "YouTube hesabımdan seç" dediğinde Google buraya döner.
 //
@@ -33,6 +39,22 @@ export async function GET(req: NextRequest) {
   const success = new URL(`/admin/${slug}`, origin);
   success.searchParams.set("youtube", "connected");
   const response = NextResponse.redirect(success);
+
+  // Google kendi alan adımıza döndüyse (bkz. lib/google-oauth.ts) erişim
+  // jetonu doğrudan Google'dan alınır; Supabase'te hiç oturum açılmaz.
+  const config = googleOAuthConfig();
+  const direct = config
+    ? readGoogleFlow(req.cookies.get(GOOGLE_FLOW_COOKIE)?.value, searchParams.get("state"), "youtube")
+    : null;
+  if (config && direct) {
+    const tokens = await exchangeGoogleCode(config, direct, code);
+    if (!tokens) {
+      return fail(origin, slug, "oauth_failed");
+    }
+    response.cookies.delete({ name: GOOGLE_FLOW_COOKIE, path: "/" });
+    response.cookies.set(YOUTUBE_TOKEN_COOKIE, tokens.access_token, youtubeTokenCookieOptions());
+    return response;
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

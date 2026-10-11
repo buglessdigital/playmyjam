@@ -12,6 +12,8 @@ metadata:
 
 **21 Eyl 2026 — BEKLEMEDE (kullanıcı "şimdilik bekle" dedi).** Supabase yeni projeye taşınınca (bkz. [[pmj-supabase-hesabi]]) özel alan adı kayboldu; Google girişi `quvkscvbsplxkuolvhwe.supabase.co` üzerinden gidiyor ve bu alan Search Console'da doğrulanamadığı için branding kontrolü düşer. Sunulan iki yol: (a) Supabase Pro (~25$) + custom domain eklentisi (~10$/ay) ile auth.playmyjam.com.tr'yi yeni projeye bağlamak — yayılım planı da zaten Pro istiyor ([[pmj-yayilim-plani-2026-09]]), o yükseltmede bunu da yap; (b) youtube.readonly'yi kaldırmak (temel kapsamlar doğrulama istemez, "YouTube hesabımdan seç" gider). `auth.playmyjam.com.tr` CNAME'i hâlâ eski projeye bakıyor — DNS TurkTicaret'te, kullanıcı silmeli ya da (a)'da yeni projeye çevirmeli. Aşağıdaki 2. adım ancak (a)'dan sonra geçerli.
 
+**11 Eki 2026 — aşağıdaki 23 Eyl planının 1-3. adımları GEÇERSİZ:** Supabase Pro + Custom Domain yerine Google girişi doğrudan playmyjam.com.tr'ye dönüyor (bkz. [[pmj-google-oauth-kendi-alan-adi-2026-10]]). 4. adım (branding) ve aşağıdaki doğrulama sırası geçerli. `auth.playmyjam.com.tr` CNAME'i hâlâ eski projeye bakıyorsa artık silinebilir.
+
 **23 Eyl 2026 — kullanıcı onay ekranında `quvkscvbsplxkuolvhwe.supabase.co` yerine "PlayMyJam" + logo istedi; kararı: Supabase Pro'ya geçince yapılacak.** O gün yapılacak sıra:
 1. Supabase Pro (~25$) + Custom Domain eklentisi (~10$/ay) → `auth.playmyjam.com.tr`.
 2. TurkTicaret DNS: `auth` CNAME'i eski `rtvnbhifqxdeljijxtpe` yerine `quvkscvbsplxkuolvhwe.supabase.co`'ya çevir + `_acme-challenge.auth` TXT'yi yenile.

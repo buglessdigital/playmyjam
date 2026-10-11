@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import type { SignInWithIdTokenCredentials } from "@supabase/supabase-js";
 import { setVenueAuthCookie } from "@/lib/venue-auth-cookie";
 import { reportIssue } from "@/lib/ops-log";
+import {
+  GOOGLE_FLOW_COOKIE,
+  exchangeGoogleCode,
+  googleOAuthConfig,
+  readGoogleFlow,
+} from "@/lib/google-oauth";
 
 // Misafir → mevcut hesap birleştirme bileti (0071); yalnız bu route okur
 const MERGE_COOKIE = "pmj_guest_merge";
@@ -45,54 +52,90 @@ export async function GET(req: NextRequest) {
     }
   );
 
-  if (!code) {
-    // Misafir Google'ı bağlamak istedi ama o Google hesabının zaten bir
-    // PlayMyJam hesabı var. İstek hâlâ misafir oturumunu taşıyor: birleştirme
-    // biletini ŞİMDİ kes, müşteri mevcut hesabıyla girince callback tüketsin.
-    if (searchParams.get("error_code") === "identity_already_exists") {
-      // Yanıt RPC'den ÖNCE kurulur: oturum tazelenirse yeni çerezler buna yazılsın
-      response = NextResponse.redirect(
-        new URL(`${loginUrl}?auth_error=identity_exists&next=${encodeURIComponent(nextPath)}`, origin)
-      );
-      const { data: ticket, error: ticketError } = await supabase.rpc("create_guest_merge_ticket");
-      if (!ticketError && ticket) {
-        response.cookies.set(MERGE_COOKIE, String(ticket), {
-          path: "/auth/callback",
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 900,
-        });
-      } else {
-        await reportIssue({
-          area: "auth",
-          kind: "merge_ticket_failed",
-          severity: "error",
-          message: "Misafir birleştirme bileti kesilemedi",
-          venueId,
-          error: ticketError,
-        });
-      }
-      clearPendingOauthCookies(response);
-      return response;
+  // Misafir Google'ı bağlamak istedi ama o Google hesabının zaten bir
+  // PlayMyJam hesabı var. İstek hâlâ misafir oturumunu taşıyor: birleştirme
+  // biletini ŞİMDİ kes, müşteri mevcut hesabıyla girince callback tüketsin.
+  const identityExists = async () => {
+    // Yanıt RPC'den ÖNCE kurulur: oturum tazelenirse yeni çerezler buna yazılsın.
+    // Başlıklar taşınır: linkIdentity sırasında tazelenen oturum çerezleri
+    // kaybolursa misafir eski refresh token'la kalır ve oturumu düşer.
+    response = NextResponse.redirect(
+      new URL(`${loginUrl}?auth_error=identity_exists&next=${encodeURIComponent(nextPath)}`, origin),
+      { headers: response.headers }
+    );
+    const { data: ticket, error: ticketError } = await supabase.rpc("create_guest_merge_ticket");
+    if (!ticketError && ticket) {
+      response.cookies.set(MERGE_COOKIE, String(ticket), {
+        path: "/auth/callback",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 900,
+      });
+    } else {
+      await reportIssue({
+        area: "auth",
+        kind: "merge_ticket_failed",
+        severity: "error",
+        message: "Misafir birleştirme bileti kesilemedi",
+        venueId,
+        error: ticketError,
+      });
     }
-    response = NextResponse.redirect(new URL(`${loginUrl}?auth_error=missing_params`, origin));
     clearPendingOauthCookies(response);
     return response;
-  }
+  };
+  const fail = (reason: string) => {
+    response = NextResponse.redirect(new URL(`${loginUrl}?auth_error=${reason}`, origin), {
+      headers: response.headers,
+    });
+    clearPendingOauthCookies(response);
+    return response;
+  };
 
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-  if (error || !data.session) {
-    response = NextResponse.redirect(new URL(`${loginUrl}?auth_error=oauth_failed`, origin));
-    clearPendingOauthCookies(response);
-    return response;
+  // Google kendi alan adımıza döndüyse (bkz. lib/google-oauth.ts) kodu biz
+  // takas edip kimlik jetonunu Supabase'e veririz; yoksa eski Supabase dönüşü.
+  const config = googleOAuthConfig();
+  const direct = config
+    ? readGoogleFlow(req.cookies.get(GOOGLE_FLOW_COOKIE)?.value, searchParams.get("state"), "customer")
+    : null;
+
+  let session;
+  if (config && direct) {
+    if (!code) return fail("missing_params");
+    const tokens = await exchangeGoogleCode(config, direct, code);
+    if (!tokens?.id_token) return fail("oauth_failed");
+    const credentials: SignInWithIdTokenCredentials = {
+      provider: "google",
+      token: tokens.id_token,
+      access_token: tokens.access_token,
+    };
+    // Misafir kimliği varsa Google hesabı ONA bağlanır (bkz. login sayfası)
+    const { data, error } = direct.l
+      ? await supabase.auth.linkIdentity(credentials)
+      : await supabase.auth.signInWithIdToken(credentials);
+    if (error?.code === "identity_already_exists") return identityExists();
+    if (error || !data.session) {
+      // linkIdentity yalnız "Manual linking" AÇIKKEN çalışır
+      console.error("[google-auth]", error);
+      return fail(direct.l ? "link_failed" : "oauth_failed");
+    }
+    session = data.session;
+  } else {
+    if (!code) {
+      if (searchParams.get("error_code") === "identity_already_exists") return identityExists();
+      return fail("missing_params");
+    }
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error || !data.session) return fail("oauth_failed");
+    session = data.session;
   }
 
   // Misafirden mevcut hesaba geçiş: biletteki misafirin cüzdanı ve geçmişi bu
   // hesaba taşınır (0071). Hata girişi durdurmaz — jetonlar misafirde kalır,
   // Sorunlar ekranına düşer.
   const mergeTicket = req.cookies.get(MERGE_COOKIE)?.value;
-  if (mergeTicket && !data.session.user.is_anonymous) {
+  if (mergeTicket && !session.user.is_anonymous) {
     const { data: merged, error: mergeError } = await supabase.rpc("merge_guest_account", {
       p_ticket: mergeTicket,
     });
@@ -128,7 +171,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  setVenueAuthCookie(response, venueId, data.session.user.id);
+  setVenueAuthCookie(response, venueId, session.user.id);
   clearPendingOauthCookies(response);
   return response;
 }
@@ -139,4 +182,5 @@ function clearPendingOauthCookies(res: NextResponse) {
   res.cookies.delete({ name: "pending_oauth_next", path: "/" });
   res.cookies.delete({ name: "pending_consent", path: "/" });
   res.cookies.delete({ name: "pending_consent_marketing", path: "/" });
+  res.cookies.delete({ name: GOOGLE_FLOW_COOKIE, path: "/" });
 }

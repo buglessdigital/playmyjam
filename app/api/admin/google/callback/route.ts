@@ -6,10 +6,18 @@ import {
   forgetAdminState,
   getVerifiedAdminSession,
 } from "@/lib/admin-session";
+import {
+  GOOGLE_FLOW_COOKIE,
+  exchangeGoogleCode,
+  googleOAuthConfig,
+  idTokenClaims,
+  readGoogleFlow,
+} from "@/lib/google-oauth";
 
 // Mekan admini panelden "Google ile bağla" dediğinde Google buraya döner.
 //
-// Buradaki Supabase oturumu yalnızca kimliği doğrulamak için açılır: e-posta ve
+// Buradaki Supabase oturumu (kendi alan adı akışında hiç açılmaz, bkz.
+// lib/google-oauth.ts) yalnızca kimliği doğrulamak için açılır: e-posta ve
 // değişmeyen hesap kimliği (sub) alınıp venue_admins satırına yazılır, ardından
 // oturum kapatılır. Admin paneline erişim eskisi gibi imzalı admin çerezinden
 // gelir — Google, panelin giriş yöntemi değil, kurtarma adresidir.
@@ -62,36 +70,58 @@ export async function GET(req: NextRequest) {
       : resultUrl(origin, slug, false, "google", "linked")
   );
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return req.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
-        },
-      },
+  let email = "";
+  let sub = "";
+
+  // Google kendi alan adımıza döndüyse (bkz. lib/google-oauth.ts) kimlik
+  // doğrudan Google'dan okunur; Supabase'te hiç oturum açılmaz.
+  const config = googleOAuthConfig();
+  const direct = config
+    ? readGoogleFlow(req.cookies.get(GOOGLE_FLOW_COOKIE)?.value, searchParams.get("state"), "admin-link")
+    : null;
+
+  if (config && direct) {
+    response.cookies.delete({ name: GOOGLE_FLOW_COOKIE, path: "/" });
+    const tokens = await exchangeGoogleCode(config, direct, code);
+    const claims = idTokenClaims(tokens?.id_token);
+    if (!claims) {
+      return fail("oauth_failed");
     }
-  );
+    // Doğrulanmamış adrese sıfırlama bağlantısı göndermeyelim
+    email = claims.emailVerified ? claims.email : "";
+    sub = claims.sub;
+  } else {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return req.cookies.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options)
+            );
+          },
+        },
+      }
+    );
 
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-  if (error || !data.session) {
-    return fail("oauth_failed");
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error || !data.session) {
+      return fail("oauth_failed");
+    }
+
+    const user = data.session.user;
+    email = user.email?.trim().toLowerCase() ?? "";
+    const googleIdentity = user.identities?.find((identity) => identity.provider === "google");
+    sub = googleIdentity?.id ?? (typeof user.user_metadata?.sub === "string" ? user.user_metadata.sub : "");
+
+    // Supabase oturumu işi bitti: yalnızca bu tarayıcıdaki oturumu kapat
+    // (scope: "global" adminin telefonundaki müşteri oturumunu da düşürürdü)
+    await supabase.auth.signOut({ scope: "local" });
   }
-
-  const user = data.session.user;
-  const email = user.email?.trim().toLowerCase() ?? "";
-  const googleIdentity = user.identities?.find((identity) => identity.provider === "google");
-  const sub = googleIdentity?.id ?? (typeof user.user_metadata?.sub === "string" ? user.user_metadata.sub : "");
-
-  // Supabase oturumu işi bitti: yalnızca bu tarayıcıdaki oturumu kapat
-  // (scope: "global" adminin telefonundaki müşteri oturumunu da düşürürdü)
-  await supabase.auth.signOut({ scope: "local" });
 
   if (!email || !sub) {
     return fail("no_email");

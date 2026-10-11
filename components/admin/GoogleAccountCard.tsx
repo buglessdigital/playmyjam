@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useRedirectPending } from "@/lib/use-redirect-pending";
+import { directGoogleOAuth, googleStartUrl } from "@/lib/google-oauth-direct";
 
 // Mekan admininin kurtarma hesabı. Google'dan dönen adres doğrulanmış sayılır;
 // "şifremi unuttum" bağlantısı yalnızca buraya gider — bağlı hesap yoksa
@@ -57,6 +58,11 @@ export default function GoogleAccountCard({
   const handleConnect = async () => {
     setStarting(true);
     setStartError("");
+    // Google kendi alan adımızdan döner (bkz. lib/google-oauth.ts)
+    if (directGoogleOAuth()) {
+      window.location.assign(googleStartUrl({ flow: "admin-link" }));
+      return;
+    }
     const supabase = createClient();
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",

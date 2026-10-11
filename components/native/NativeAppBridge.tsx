@@ -6,6 +6,7 @@ import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { deepLinkToPath, nativePlatform, nativePlugins } from "@/lib/native-app";
 import { publishTokenBalance } from "@/lib/token-balance-store";
+import NativePush from "@/components/native/NativePush";
 import { fmt, useT } from "@/lib/i18n";
 
 // Mağaza uygulamasının (Capacitor kabuğu) WebView'i ile web kodu arasındaki
@@ -14,7 +15,8 @@ import { fmt, useT } from "@/lib/i18n";
 //      (Google girişi dönüşü dahil — bkz. app/auth/native-callback).
 //   2) Uygulama hediyesi: kayıtlı hesapla ilk girişte cihaz kanıtıyla 1 jeton
 //      istenir (bkz. app/api/app/gift, 0076).
-//   3) Son mekan: uygulama /mekanlar'da açılır (mobile/capacitor.config.ts);
+//   3) Push bildirimleri: components/native/NativePush.tsx
+//   4) Son mekan: uygulama /mekanlar'da açılır (mobile/capacitor.config.ts);
 //      daha önce bir mekana girildiyse açılışta doğrudan oraya geçilir.
 
 const GIFT_DONE_KEY = "pmj-app-gift-done";
@@ -130,15 +132,19 @@ export default function NativeAppBridge() {
     return () => clearTimeout(timer);
   }, [giftTokens]);
 
-  if (giftTokens === null) return null;
   return (
-    <div
-      role="status"
-      className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+12px)] z-[60] mx-auto max-w-md rounded-2xl border border-[#e91e8c]/40 bg-[#170e25]/95 px-4 py-3 text-center shadow-xl backdrop-blur"
-    >
-      <p className="text-sm font-bold text-white">{t.nativeApp.giftTitle}</p>
-      <p className="mt-0.5 text-xs text-[#c4b5d4]">{fmt(t.nativeApp.giftBody, { n: giftTokens })}</p>
-    </div>
+    <>
+      <NativePush />
+      {giftTokens !== null && (
+        <div
+          role="status"
+          className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+12px)] z-[60] mx-auto max-w-md rounded-2xl border border-[#e91e8c]/40 bg-[#170e25]/95 px-4 py-3 text-center shadow-xl backdrop-blur"
+        >
+          <p className="text-sm font-bold text-white">{t.nativeApp.giftTitle}</p>
+          <p className="mt-0.5 text-xs text-[#c4b5d4]">{fmt(t.nativeApp.giftBody, { n: giftTokens })}</p>
+        </div>
+      )}
+    </>
   );
 }
 

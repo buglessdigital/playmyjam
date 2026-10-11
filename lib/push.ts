@@ -1,8 +1,12 @@
 import webpush from "web-push";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { fcmConfigured, sendFcm } from "@/lib/fcm";
 
 // Web Push gönderimi (VAPID). Anahtarlar yoksa sessizce devre dışı —
 // push, uygulamanın kritik yolu değil; eksik env build'i/istekleri düşürmemeli.
+//
+// Müşteriye giden bildirimler mağaza uygulamasının cihazlarına da (FCM, 0077)
+// AYNI gönderimde gider: tek push_deliveries satırı, cihaz sayısı ikisinin toplamı.
 
 let vapidConfigured = false;
 
@@ -54,6 +58,7 @@ function sendOptions(delivery?: PushDelivery) {
 }
 
 type SubscriptionRow = { id?: string; endpoint: string; p256dh: string; auth: string };
+type NativeTokenRow = { id: string; token: string };
 
 // Teslim kaydı (0061 push_deliveries): super admin "Sorunlar" ekranı her
 // bildirimin akıbetini buradan görür. Eskiden hatalar ve "cihazı yok"
@@ -76,6 +81,7 @@ type DeliveryStatus = "sent" | "partial" | "failed" | "no_device" | "not_configu
 
 type DeliveryRow = {
   id: string;
+  shown_at?: string;
   venue_id: string | null;
   kind: PushKind;
   audience: Audience;
@@ -121,7 +127,8 @@ async function deliver(
   subs: SubscriptionRow[],
   payload: PushPayload,
   target: { audience: Audience; recipientId: string | null; log: PushLog },
-  delivery?: PushDelivery
+  delivery?: PushDelivery,
+  native: NativeTokenRow[] = []
 ): Promise<boolean> {
   const id = crypto.randomUUID();
   const base = {
@@ -133,7 +140,8 @@ async function deliver(
     title: payload.title.slice(0, 120),
   };
 
-  if (subs.length === 0) {
+  const devices = subs.length + native.length;
+  if (devices === 0) {
     await recordDelivery({ ...base, status: "no_device", devices: 0, error: null });
     return false;
   }
@@ -143,18 +151,40 @@ async function deliver(
   await recordDelivery({
     ...base,
     status: "failed",
-    devices: subs.length,
+    devices,
     error: "gönderim tamamlanmadı (sunucu fonksiyonu yarıda kesildi)",
   });
 
   // deliveryId bildirimin data'sına iner → sw.js /api/push/ack ile işaretler
   const body = JSON.stringify({ ...payload, data: { ...(payload.data ?? {}), deliveryId: id } });
   let accepted = 0;
+  let nativeAccepted = 0;
   let expired = 0;
   const errors: string[] = [];
 
-  await Promise.all(
-    subs.map(async (sub) => {
+  const nativeSends = native.map(async (row) => {
+    const result = await sendFcm(row.token, {
+      title: payload.title,
+      body: payload.body,
+      url: payload.url,
+      tag: payload.tag,
+      data: { deliveryId: id },
+      ttlSeconds: delivery?.ttl ?? DEFAULT_TTL,
+    });
+    if (result.ok) {
+      accepted++;
+      nativeAccepted++;
+    } else if (result.expired) {
+      expired++;
+      await supabaseAdmin.from("native_push_tokens").delete().eq("id", row.id);
+    } else {
+      errors.push(result.error);
+    }
+  });
+
+  await Promise.all([
+    ...nativeSends,
+    ...subs.map(async (sub) => {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
@@ -171,8 +201,8 @@ async function deliver(
           errors.push(pushErrorText(err));
         }
       }
-    })
-  );
+    }),
+  ]);
 
   const failed = errors.length;
   // Bütün cihazların aboneliği düşmüşse alıcının fiilen cihazı yok
@@ -180,6 +210,10 @@ async function deliver(
     accepted > 0 ? (failed > 0 ? "partial" : "sent") : failed > 0 ? "failed" : "no_device";
   await finishDelivery(id, {
     status,
+    // Uygulama bildirimini işletim sistemi kendisi gösterir, sw.js'teki gibi
+    // "göründü" onayı gelmez. Yalnızca uygulamaya gittiyse FCM'in kabulü en
+    // yakın işaret — yoksa her uygulama bildirimi "onaysız" sayılırdı.
+    ...(nativeAccepted > 0 && accepted === nativeAccepted ? { shown_at: new Date().toISOString() } : {}),
     accepted,
     expired,
     failed,
@@ -238,18 +272,27 @@ export async function sendPushToUser(
   delivery?: PushDelivery
 ): Promise<void> {
   const target = { audience: "customer" as const, recipientId: userId, log };
-  if (!ensureVapid()) {
+  const webReady = ensureVapid();
+  const nativeReady = fcmConfigured();
+  if (!webReady && !nativeReady) {
     await recordNotConfigured(payload, target);
     return;
   }
 
-  const { data: subs, error } = await supabaseAdmin
-    .from("push_subscriptions")
-    .select("id, endpoint, p256dh, auth")
-    .eq("user_id", userId);
-  if (error) throw new Error(`push aboneliği okunamadı: ${error.message}`);
+  const [web, native] = await Promise.all([
+    webReady
+      ? supabaseAdmin.from("push_subscriptions").select("id, endpoint, p256dh, auth").eq("user_id", userId)
+      : Promise.resolve({ data: [] as SubscriptionRow[], error: null }),
+    // iOS kodları APNs anahtarı gelene kadar yalnızca saklanıyor (0077)
+    nativeReady
+      ? supabaseAdmin.from("native_push_tokens").select("id, token").eq("user_id", userId).eq("platform", "android")
+      : Promise.resolve({ data: [] as NativeTokenRow[], error: null }),
+  ]);
+  if (web.error) throw new Error(`push aboneliği okunamadı: ${web.error.message}`);
+  // 0077 henüz uygulanmamışsa uygulama cihazları atlanır, web push etkilenmez
+  if (native.error) console.error("[push] uygulama cihazları okunamadı:", native.error.message);
 
-  await deliver(subs ?? [], payload, target, delivery);
+  await deliver(web.data ?? [], payload, target, delivery, native.error ? [] : (native.data ?? []));
 }
 
 // Mekanın tüm adminlerinin cihazlarına gönderir (0045: admin_id'li abonelikler).

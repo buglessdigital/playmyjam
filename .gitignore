@@ -54,3 +54,6 @@ design/avatar-originals/
 
 # YouTube uyum incelemesine giden yanıt taslakları — demo hesap bilgisi içerir, repoya girmez
 /docs/youtube-compliance-reply-*.md
+
+# Firebase Admin servis hesabı anahtarı (push gönderimi) — GİZLİ; Vercel env + Bitwarden
+firebase-service-account.json

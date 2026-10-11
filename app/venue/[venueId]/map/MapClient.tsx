@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import ProfileChip from "@/components/ui/ProfileChip";
+import ScanQrButton from "@/components/native/ScanQrButton";
+import { useNativePlatform } from "@/lib/native-app";
 import { useT } from "@/lib/i18n";
 import type { MapVenue, VenueMapCard } from "@/lib/venue-map";
 import VenueSheet from "./VenueSheet";
@@ -22,6 +24,7 @@ const cardCache = new Map<string, { card: VenueMapCard; at: number }>();
 
 export default function MapClient({ venueId, venues }: Props) {
   const t = useT();
+  const inApp = useNativePlatform() !== null;
   const [selected, setSelected] = useState<string | null>(null);
   const [card, setCard] = useState<VenueMapCard | null>(null);
   const [cardError, setCardError] = useState(false);
@@ -87,7 +90,13 @@ export default function MapClient({ venueId, venues }: Props) {
           <h1 className="text-xl font-bold text-white">{t.venueMap.title}</h1>
           <p className="text-xs text-[#9ca3af]">{t.venueMap.subtitle}</p>
         </div>
-        <div className="pointer-events-auto">
+        <div className="pointer-events-auto flex items-center gap-2">
+          {/* Uygulamada başka mekana karekodla geç (tarayıcıda telefonun kamerası var) */}
+          {inApp && (
+            <ScanQrButton
+              className="flex h-9 items-center gap-1.5 rounded-full bg-[#e91e8c] px-3 text-xs font-bold text-white active:scale-95 disabled:opacity-70"
+            />
+          )}
           <ProfileChip venueId={venueId} />
         </div>
       </div>

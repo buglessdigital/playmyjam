@@ -50,6 +50,18 @@ interface CapacitorBridge {
       impact: (opts: { style: "LIGHT" | "MEDIUM" | "HEAVY" }) => Promise<void>;
       notification: (opts: { type: "SUCCESS" | "WARNING" | "ERROR" }) => Promise<void>;
     };
+    /** @capacitor/push-notifications */
+    PushNotifications?: {
+      checkPermissions: () => Promise<{ receive: string }>;
+      requestPermissions: () => Promise<{ receive: string }>;
+      register: () => Promise<void>;
+      addListener(event: "registration", cb: (token: { value: string }) => void): Promise<Listener>;
+      addListener(event: "registrationError", cb: (err: { error: string }) => void): Promise<Listener>;
+      addListener(
+        event: "pushNotificationActionPerformed",
+        cb: (action: { notification: { data?: Record<string, unknown> } }) => void
+      ): Promise<Listener>;
+    };
     /** Kendi eklentimiz: cihaz doğrulama kanıtı (App Attest/DeviceCheck · Play Integrity) */
     PmjDevice?: {
       getProof: (opts: { nonce: string }) => Promise<{ proof: string }>;

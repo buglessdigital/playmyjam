@@ -61,18 +61,22 @@ export default function NativePush() {
       }
     };
 
-    void push.addListener("registration", ({ value }) => {
-      token = value;
-      void sendToken();
-    }).then((l) => listeners.push(l));
-    void push
-      .addListener("pushNotificationActionPerformed", ({ notification }) => {
+    // Köprünün addListener'ı Promise DÖNDÜRMEYEBİLİR (11 Eki'de `.then is not
+    // a function` uygulamayı hata sayfasına düşürdü) — her zaman Promise.resolve
+    void Promise.resolve(
+      push.addListener("registration", ({ value }) => {
+        token = value;
+        void sendToken();
+      })
+    ).then((l) => listeners.push(l));
+    void Promise.resolve(
+      push.addListener("pushNotificationActionPerformed", ({ notification }) => {
         const url = typeof notification.data?.url === "string" ? notification.data.url : null;
         // Yük yalnızca site içi yol taşır; yine de mutlak adres gelirse süzgeçten geçsin
         const path = url?.startsWith("/") && !url.startsWith("//") ? url : url ? deepLinkToPath(url) : null;
         if (path) router.push(path);
       })
-      .then((l) => listeners.push(l));
+    ).then((l) => listeners.push(l));
 
     const supabase = createClient();
     const onSession = (hasSession: boolean) => {

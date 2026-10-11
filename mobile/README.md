@@ -27,7 +27,7 @@ npm run ios           # Xcode'da açar
   `org.gradle.java.home=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`.
 - **minSdk 26** (Android 8.0): barkod kütüphanesi (ionbarcode) daha düşüğünü kabul etmiyor.
 - Komut satırından: `cd android && ./gradlew assembleDebug`
-  (`ANDROID_HOME=~/Library/Android/sdk`).
+  (`ANDROID_HOME=~/Library/Android/sdk` ve `JAVA_HOME` Java 21 — `gradlew` kendini başlatmak için `org.gradle.java.home`'a değil `JAVA_HOME`'a bakar).
 
 ## İkon ve açılış ekranı
 

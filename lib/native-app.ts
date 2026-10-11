@@ -55,12 +55,14 @@ interface CapacitorBridge {
       checkPermissions: () => Promise<{ receive: string }>;
       requestPermissions: () => Promise<{ receive: string }>;
       register: () => Promise<void>;
-      addListener(event: "registration", cb: (token: { value: string }) => void): Promise<Listener>;
-      addListener(event: "registrationError", cb: (err: { error: string }) => void): Promise<Listener>;
+      // Köprü (window.Capacitor) bazen Promise, bazen doğrudan nesne döndürür —
+      // çağıran her zaman Promise.resolve ile sarmalı
+      addListener(event: "registration", cb: (token: { value: string }) => void): Promise<Listener> | Listener;
+      addListener(event: "registrationError", cb: (err: { error: string }) => void): Promise<Listener> | Listener;
       addListener(
         event: "pushNotificationActionPerformed",
         cb: (action: { notification: { data?: Record<string, unknown> } }) => void
-      ): Promise<Listener>;
+      ): Promise<Listener> | Listener;
     };
     /** Kendi eklentimiz: cihaz doğrulama kanıtı (App Attest/DeviceCheck · Play Integrity) */
     PmjDevice?: {

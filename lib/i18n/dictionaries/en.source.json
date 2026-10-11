@@ -676,5 +676,6 @@
   "nativeApp.qrScan": "Karekod Okut",
   "nativeApp.qrInstructions": "Masadaki PlayMyJam karekodunu çerçeveye getir",
   "nativeApp.qrCancel": "Vazgeç",
-  "nativeApp.qrInvalid": "Bu bir PlayMyJam karekodu değil. Masadaki plaketin karekodunu okut."
+  "nativeApp.qrInvalid": "Bu bir PlayMyJam karekodu değil. Masadaki plaketin karekodunu okut.",
+  "venueMap.switchVenue": "Bu mekana geç"
 }

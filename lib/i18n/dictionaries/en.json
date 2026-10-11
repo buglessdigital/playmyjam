@@ -765,7 +765,8 @@
       "soundtrack": "Soundtrack",
       "singer": "Singer-Songwriter",
       "world": "World"
-    }
+    },
+    "switchVenue": "Switch to this venue"
   },
   "notFoundPage": {
     "title": "Page not found",

@@ -765,7 +765,8 @@
       "soundtrack": "Film Müziği",
       "singer": "Söz-Yazar",
       "world": "Dünya Müziği"
-    }
+    },
+    "switchVenue": "Bu mekana geç"
   },
   "notFoundPage": {
     "title": "Sayfa bulunamadı",

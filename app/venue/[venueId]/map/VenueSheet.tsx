@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { useNativePlatform } from "@/lib/native-app";
 import { fmt, useT } from "@/lib/i18n";
 import { GENRE_FAMILIES, type GenreFamily } from "@/lib/genres";
 import type { MapSong, VenueMapCard } from "@/lib/venue-map";
@@ -33,6 +35,10 @@ const FLING = 0.45;
 
 export default function VenueSheet({ slug, card, error, isCurrent, onClose, onRetry, onInsetChange }: Props) {
   const t = useT();
+  // Mağaza uygulamasında harita mekanlar arası geçişin de yolu: uygulama hep son
+  // mekandan açıldığı için mekanlar listesine başka yoldan ulaşılmıyor. Tarayıcıda
+  // müşteri mekana karekodla gelir, kart yalnızca keşif içindir (düğme yok).
+  const inApp = useNativePlatform() !== null;
   const rootRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -238,7 +244,18 @@ export default function VenueSheet({ slug, card, error, isCurrent, onClose, onRe
             </button>
           </div>
         ) : card ? (
-          <CardBody card={card} />
+          <>
+            {inApp && !isCurrent && slug && (
+              <Link
+                href={`/venue/${encodeURIComponent(slug)}/browse`}
+                className="mb-4 flex h-11 w-full items-center justify-center rounded-2xl text-sm font-bold text-white active:scale-[0.98]"
+                style={{ background: "linear-gradient(135deg, #ff2d9c 0%, #e91e8c 45%, #a8125f 100%)" }}
+              >
+                {t.venueMap.switchVenue}
+              </Link>
+            )}
+            <CardBody card={card} />
+          </>
         ) : (
           <CardSkeleton />
         )}

@@ -28,6 +28,15 @@ const ORDER_RACE_MS = 3_000;
 // aynı süre boyunca sessizlik açmıyor; bu filtre eski kayıtlar için.
 const WAKE_GRACE_MS = 90_000;
 
+// Player'ın kendi kurtarma merdiveninin tavanı: sessizlik 10 sn kanıtsızlıktan
+// sonra açılır (SILENCE_MIN_MS), takılan şarkı 15 sn'de yeniden yüklenir, 28
+// sn'de atlanır (STALL_RELOAD_MS / STALL_SKIP_MS), sıradaki birkaç saniyede
+// başlar. Bu süre içinde kendiliğinden geri gelen sessizlik sistemin işini
+// yaptığı anlamına gelir — "kısa takılma" olarak ayrı ve gri gösterilir, hata
+// sayaçlarına girmez. 13 Eki 2026: 21 günde 39 sessizliğin 24'ü buydu; en
+// uzunu 44 sn. Daha uzun süren ya da kendiliğinden bitmeyen sessizlik hatadır.
+const SELF_RECOVERY_MAX_S = 45;
+
 const SILENCE_KINDS = ["silence_start", "silence_end"];
 const WAKE_KINDS = ["tab_throttled"];
 const ORDER_KINDS = ["out_of_order", "never_played"];
@@ -61,6 +70,8 @@ export type HealthIncident =
       // Çalan şarkı yokken başladı: kuyruk tükenmiş. Arıza değil, ayar
       // (aktif playlist yok ya da liste bitti) — ekranda ayrı sekmede
       queue_empty: boolean;
+      // Kurtarma merdiveni içinde kendiliğinden geçti (bkz. SELF_RECOVERY_MAX_S)
+      minor: boolean;
       song: string | null;
       playing_frozen: boolean;
       resolved_at: string | null;
@@ -85,7 +96,10 @@ const str = (v: unknown): string | null => (typeof v === "string" && v ? v : nul
 const CAUSE_PRIORITY: [string, string[]][] = [
   ["network", ["network_offline", "network_error", "offline_fallback"]],
   ["session", ["session_lost"]],
-  ["youtube", ["youtube_error", "transient_skip", "stall", "stall_reload", "stall_gave_up"]],
+  ["youtube", ["youtube_error", "transient_skip"]],
+  // Takılma YouTube hatası değildir: şarkı sağlam, tampon dolmuyor — çoğunlukla
+  // cihazın bağlantısı yavaş (11 Eki Mezzanine: aynı şarkılar başka günler çaldı)
+  ["stall", ["stall", "stall_reload", "stall_gave_up"]],
   ["frozen", ["page_frozen", "tab_throttled", "skip_deferred"]],
   ["external_pause", ["external_pause"]],
   ["queue_empty", ["idle_silence"]],
@@ -239,6 +253,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const seconds =
+      typeof endDetail?.seconds === "number"
+        ? endDetail.seconds
+        : endedBy === "ongoing"
+          ? Math.round((now - Date.parse(startedAt)) / 1000)
+          : null;
     const causes = Array.isArray(endDetail?.causes)
       ? (endDetail.causes as unknown[]).filter((c): c is string => typeof c === "string")
       : [];
@@ -248,15 +268,11 @@ export async function GET(req: NextRequest) {
       venue_id: s.venue,
       started_at: startedAt,
       ended_at: s.end?.at ?? null,
-      seconds:
-        typeof endDetail?.seconds === "number"
-          ? endDetail.seconds
-          : endedBy === "ongoing"
-            ? Math.round((now - Date.parse(startedAt)) / 1000)
-            : null,
+      seconds,
       ended_by: endedBy,
       cause: primaryCause(causes),
       queue_empty: !videoId,
+      minor: endedBy === "recovered" && seconds !== null && seconds <= SELF_RECOVERY_MAX_S,
       song: videoId ? songBy.get(videoId) ?? null : null,
       playing_frozen: endDetail?.playing_frozen === true || s.start?.detail?.playing_frozen === true,
       resolved_at: resolvedAt.get(sid) ?? null,
@@ -286,7 +302,7 @@ export async function GET(req: NextRequest) {
   const day = now - 86_400_000;
   const counts = new Map<string, { silence: number; order: number }>();
   for (const i of incidents) {
-    if (at(i) < day || i.resolved_at || (i.type === "silence" && i.queue_empty)) continue;
+    if (at(i) < day || i.resolved_at || (i.type === "silence" && (i.queue_empty || i.minor))) continue;
     const c = counts.get(i.venue_id) ?? { silence: 0, order: 0 };
     c[i.type === "silence" ? "silence" : "order"]++;
     counts.set(i.venue_id, c);

@@ -9,7 +9,7 @@ import type { HealthIncident } from "@/app/api/super-admin/health/route";
 // sayılmaz) ve hatalı sıra (müşteri isteği sırası geldiği hâlde çalmadı).
 // Ayrıntı: app/api/super-admin/health/route.ts.
 
-type Tab = "silence" | "queue" | "order";
+type Tab = "silence" | "short" | "queue" | "order";
 
 type VenueHealth = {
   id: string;
@@ -33,6 +33,7 @@ const CAUSE_TEXT: Record<string, string> = {
   network: "mekan cihazının interneti koptu",
   session: "mekan oturumu düştü",
   youtube: "şarkı YouTube'dan yüklenemedi",
+  stall: "şarkı tamponda takıldı (cihazın bağlantısı yavaş olabilir)",
   frozen: "tarayıcı player sayfasını dondurdu",
   external_pause: "müzik dışarıdan duraklatıldı (YouTube / medya tuşu)",
   queue_empty: "kuyruk boşaldı",
@@ -140,11 +141,15 @@ function HealthPageContent() {
   );
   // Sekme sayaçları yalnızca çözülmemişleri sayar
   const open = allIncidents.filter((i) => !i.resolved_at);
-  const silences = open.filter((i) => i.type === "silence" && !i.queue_empty);
-  const queueEmpty = open.filter((i) => i.type === "silence" && i.queue_empty);
+  // Sessizlik üç sekmeye ayrılır: hata, kısa takılma (player kendi toparladı),
+  // kuyruk boş (ayar) — bkz. route.ts SELF_RECOVERY_MAX_S
+  const silenceTab = (i: HealthIncident): Tab | null =>
+    i.type !== "silence" ? null : i.queue_empty ? "queue" : i.minor ? "short" : "silence";
+  const silences = open.filter((i) => silenceTab(i) === "silence");
+  const shortStalls = open.filter((i) => silenceTab(i) === "short");
+  const queueEmpty = open.filter((i) => silenceTab(i) === "queue");
   const orders = open.filter((i) => i.type === "order");
-  const inTab = (i: HealthIncident) =>
-    tab === "order" ? i.type === "order" : i.type === "silence" && i.queue_empty === (tab === "queue");
+  const inTab = (i: HealthIncident) => (tab === "order" ? i.type === "order" : silenceTab(i) === tab);
   const resolvedInTab = allIncidents.filter((i) => i.resolved_at && inTab(i)).length;
   const shown = allIncidents.filter((i) => inTab(i) && (showResolved || !i.resolved_at));
   // Süren sessizlik henüz bitmedi; çözülmüş olan yeniden işaretlenmez
@@ -185,7 +190,7 @@ function HealthPageContent() {
               if (!ids.has(i.id) || i.venue_id !== v.id) continue;
               if (Date.parse(i.type === "silence" ? i.started_at : i.at) < day) continue;
               if (i.type === "order") order--;
-              else if (!i.queue_empty) silence--;
+              else if (!i.queue_empty && !i.minor) silence--;
             }
             return { ...v, last24h: { silence: Math.max(0, silence), order: Math.max(0, order) } };
           }),
@@ -252,6 +257,7 @@ function HealthPageContent() {
           }}
           options={[
             { key: "silence", label: "Kontrol dışı sessizlik", count: silences.length, color: silences.length ? RED : undefined },
+            { key: "short", label: "Kısa takılma", count: shortStalls.length },
             { key: "queue", label: "Kuyruk boş", count: queueEmpty.length },
             { key: "order", label: "Hatalı sıra", count: orders.length, color: orders.length ? RED : undefined },
           ]}
@@ -289,6 +295,12 @@ function HealthPageContent() {
           (Wi-Fi yeniden bağlanırken şarkı baştan yükleniyor).
         </p>
       )}
+      {tab === "short" && shortStalls.length > 0 && (
+        <p className="mb-3 text-xs text-[#6b7280]">
+          Şarkı takıldı, player 45 sn içinde kendisi toparladı (yeniden yükledi ya da sıradakine geçti). Arıza değil;
+          aynı mekanda sık tekrarlanıyorsa cihazın internetine bakılmalı.
+        </p>
+      )}
       {tab === "queue" && queueEmpty.length > 0 && (
         <p className="mb-3 text-xs text-[#6b7280]">
           Çalacak şarkı kalmadığı için müzik durdu. Arıza değil, ayar: mekanın aktif playlist&apos;i yok ya da bitti.
@@ -314,7 +326,9 @@ function HealthPageContent() {
             ? "Çözülmemiş kayıt kalmadı."
             : tab === "silence"
             ? "Bu aralıkta kontrol dışı sessizlik yok — müzik istendiği sürece çaldı."
-            : tab === "queue"
+            : tab === "short"
+              ? "Bu aralıkta kısa takılma yok."
+              : tab === "queue"
               ? "Bu aralıkta kuyruk hiç tükenmedi."
               : "Bu aralıkta sıra hatası yok — müşteri istekleri sırasıyla çaldı."}
         </Empty>
@@ -325,7 +339,7 @@ function HealthPageContent() {
               <RowCheckbox checked={selected.has(i.id)} onChange={() => toggle(i.id)} disabled={!selectable(i)} />
               <span
                 className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-                style={{ background: i.resolved_at ? "#34d399" : i.type === "silence" && i.queue_empty ? MUTED : RED }}
+                style={{ background: i.resolved_at ? "#34d399" : i.type === "silence" && (i.queue_empty || i.minor) ? MUTED : RED }}
               />
               <div className="min-w-0 flex-1">
                 {i.type === "silence" ? (

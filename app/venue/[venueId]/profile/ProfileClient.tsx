@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { ChevronRight, Heart, Link2, ListMusic, LogOut, Pencil, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAnimatedNumber } from "@/lib/use-animated-number";
 import { useVenueGate } from "@/lib/venue-gate";
@@ -19,6 +21,13 @@ type ProfileState = {
   token_balance: number;
   fav_count: number;
   request_count: number;
+};
+
+type RecentSong = {
+  song_id: string;
+  title: string;
+  artist: string;
+  album_cover_url: string | null;
 };
 
 interface Props {
@@ -129,260 +138,192 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
     if (loaded) publishTokenBalance(tokenBalance);
   }, [loaded, tokenBalance]);
 
+  // Son çaldırdıkları ayrı istek: profil özeti bunu beklemesin
+  const [recent, setRecent] = useState<RecentSong[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const { data } = await supabase.rpc("get_played_history");
+      if (cancelled) return;
+      // Aynı şarkı birkaç kez çaldırılmış olabilir — şeritte bir kez görünsün
+      const seen = new Set<string>();
+      const rows = ((data ?? []) as RecentSong[]).filter((r) => !seen.has(r.song_id) && seen.add(r.song_id));
+      setRecent(rows.slice(0, 8));
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
   const initial = username.charAt(0).toUpperCase() || "?";
   const animRequests = useAnimatedNumber(requestCount);
   const animFavs = useAnimatedNumber(favCount);
   const animTokens = useAnimatedNumber(tokenBalance);
 
-  const stats = [
-    { label: t.profile.statRequests, value: animRequests },
-    { label: t.profile.statFavorites, value: animFavs },
-    { label: t.profile.statTokens, value: animTokens },
+  // İstek/favori sayısı ile o sayfaya giden menü satırı eskiden ayrı ayrı
+  // duruyordu (aynı bilgi iki kez) — artık sayı kutunun kendisi bağlantı
+  const shortcuts = [
+    { href: `/venue/${venueId}/requests`, label: t.profile.myRequests, value: animRequests, Icon: ListMusic },
+    { href: `/venue/${venueId}/favorites`, label: t.profile.favorites, value: animFavs, Icon: Heart },
   ];
 
-  const menu = [
-    {
-      href: `/venue/${venueId}/tokens`,
-      label: t.profile.buyTokens,
-      desc: t.profile.buyTokensDesc,
-      tint: "rgba(245,165,36,0.1)",
-      border: "rgba(245,165,36,0.2)",
-      icon: <Coin size={20} />,
-    },
-    {
-      href: `/venue/${venueId}/favorites`,
-      label: t.profile.favorites,
-      desc: t.profile.favoritesDesc,
-      tint: "rgba(244,63,94,0.1)",
-      border: "rgba(244,63,94,0.2)",
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" stroke="#f43f5e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ),
-    },
-    {
-      // İsteklerim sayfası panelde hiçbir yerden bağlantılı değildi: talebini
-      // takip etmek isteyen müşteri adresi elle yazmak zorundaydı
-      href: `/venue/${venueId}/requests`,
-      label: t.profile.myRequests,
-      desc: t.profile.myRequestsDesc,
-      tint: "rgba(34,197,94,0.1)",
-      border: "rgba(34,197,94,0.2)",
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <path d="M12 3l1.9 4.8L19 9l-5.1 1.2L12 15l-1.9-4.8L5 9l5.1-1.2L12 3z" stroke="#22c55e" strokeWidth="1.8" strokeLinejoin="round" />
-          <path d="M5 19h14" stroke="#22c55e" strokeWidth="1.8" strokeLinecap="round" />
-        </svg>
-      ),
-    },
-    {
-      href: `/venue/${venueId}/history`,
-      label: t.profile.history,
-      desc: t.profile.historyDesc,
-      tint: "rgba(59,130,246,0.1)",
-      border: "rgba(59,130,246,0.2)",
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="9" stroke="#3b82f6" strokeWidth="2" />
-          <path d="M12 7v5l3 3" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ),
-    },
-    {
-      href: `/venue/${venueId}/settings`,
-      label: t.profile.settings,
-      desc: t.profile.settingsDesc,
-      tint: "rgba(139,92,246,0.1)",
-      border: "rgba(139,92,246,0.2)",
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="3" stroke="#8b5cf6" strokeWidth="2" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="#8b5cf6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ),
-    },
-  ];
+  const cardStyle = { background: "var(--pmj-surface)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" };
 
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-canvas px-5 pt-12 pb-28">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-80"
-        style={{ background: "radial-gradient(75% 55% at 50% 0%, rgba(233,30,140,0.16), rgba(139,92,246,0.08) 45%, transparent 75%)" }}
-      />
-
-      <div className="relative">
-        {/* Avatar + kimlik */}
-        <div className="flex flex-col items-center pb-8 pt-5">
-          <button
-            onClick={openPicker}
-            aria-label={t.profile.changeAvatarAria}
-            className="relative transition-transform active:scale-95"
-          >
-            <div
-              className="rounded-full p-[3px]"
-              style={{
-                background: "conic-gradient(from 210deg, #e91e8c, #8b5cf6, #3b82f6, #e91e8c)",
-                boxShadow: "0 14px 44px -10px rgba(233,30,140,0.5)",
-              }}
-            >
-              <div className="rounded-full bg-canvas p-[3px]">
-                <AvatarMark avatarId={avatarId} initial={initial} size={84} />
-              </div>
-            </div>
-            {/* Yeşil "çevrimiçi" noktası yerine düzenleme rozeti: avatara
-                dokunulabildiğini gösteren tek ipucu bu */}
-            <span
-              className="absolute bottom-0.5 right-0.5 flex h-7 w-7 items-center justify-center rounded-full border-[3px] border-canvas"
-              style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                <path d="M12 20h9" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
-                <path
-                  d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"
-                  stroke="#fff"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-          </button>
-
-          {avatarError && <p className="mt-3 text-[13px] text-red-400">{avatarError}</p>}
-
-          <div className="mt-4 text-center">
-            {loaded ? (
-              <>
-                <h1 className="text-[22px] font-bold tracking-tight text-ink">
-                  {username || email.split("@")[0] || t.profile.guestName}
-                </h1>
-                <p className="mt-1 text-[13px] text-subtle">{email || t.profile.guestEmail}</p>
-              </>
-            ) : (
-              <>
-                <div className="mx-auto h-6 w-36 animate-pulse rounded-lg bg-ink/10" />
-                <div className="mx-auto mt-1.5 h-4 w-44 animate-pulse rounded-lg bg-ink/10" />
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* İstatistikler */}
-        <div
-          className="mb-7 grid grid-cols-3 overflow-hidden rounded-2xl"
-          style={{ background: "var(--pmj-surface)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}
-        >
-          {stats.map((s, i) => (
-            <div
-              key={s.label}
-              className="flex flex-col items-center gap-1.5 px-2 py-5"
-              style={i > 0 ? { borderLeft: "1px solid rgb(var(--pmj-ink-rgb) / 0.06)" } : undefined}
-            >
-              {loaded ? (
-                <p className="text-[22px] font-extrabold leading-none text-ink tabular-nums">{s.value}</p>
-              ) : (
-                <span className="inline-block h-[22px] w-8 animate-pulse rounded-md bg-ink/10" />
-              )}
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-subtle">{s.label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Menü */}
-        {/* Dil anahtarı buraya taşındı: kuyruk/gözat başlıkları üç düğmeyle
-            kalabalıklaşmasın. Misafirde hâlâ başlıkta duruyor (profil hesaba bağlı). */}
-        <div
-          className="mb-6 flex items-center justify-between rounded-2xl px-4 py-3"
-          style={{ background: "var(--pmj-surface)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}
-        >
-          <span className="text-sm font-semibold text-ink">{t.profile.language}</span>
-          <LangToggle />
-        </div>
-        <div
-          className="-mt-4 mb-6 flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
-          style={{ background: "var(--pmj-surface)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}
-        >
-          <span className="text-sm font-semibold text-ink">{t.profile.theme}</span>
-          <ThemeToggle />
-        </div>
-
-        {isGuest && (
-          <Link
-            href={`/venue/${venueId}/login?next=${encodeURIComponent(`/venue/${venueId}/profile`)}`}
-            className="mb-6 flex items-center gap-3.5 rounded-2xl px-4 py-4 transition-all active:scale-[0.99]"
-            style={{ background: "rgba(233,30,140,0.08)", border: "1px solid rgba(233,30,140,0.3)" }}
-          >
-            <span
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-              style={{ background: "rgba(233,30,140,0.15)", border: "1px solid rgba(233,30,140,0.25)" }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1 1" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />
-                <path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1-1" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </span>
-            <span className="min-w-0 flex-1">
-              <p className="text-[15px] font-semibold text-ink">{t.profile.linkAccountTitle}</p>
-              <p className="mt-0.5 text-xs text-muted">{t.profile.linkAccountDesc}</p>
-            </span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </Link>
-        )}
-
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">{t.profile.account}</p>
-        <div className="overflow-hidden rounded-2xl" style={{ background: "var(--pmj-surface)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}>
-          {menu.map((item, i) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center gap-3.5 px-4 py-4 transition-colors active:bg-ink/5"
-              style={i > 0 ? { borderTop: "1px solid rgb(var(--pmj-ink-rgb) / 0.06)" } : undefined}
-            >
-              <span
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-                style={{ background: item.tint, border: `1px solid ${item.border}` }}
-              >
-                {item.icon}
-              </span>
-              <span className="min-w-0 flex-1">
-                <p className="text-[15px] font-semibold text-ink">{item.label}</p>
-                <p className="mt-0.5 text-xs text-subtle">{item.desc}</p>
-              </span>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </Link>
-          ))}
-        </div>
-
-        {/* Çıkış */}
+    <div className="min-h-dvh bg-canvas px-5 pt-14 pb-28">
+      {/* Kimlik: sola yaslı, avatar yanında */}
+      <div className="flex items-center gap-4">
         <button
-          onClick={handleLogout}
-          className="mt-4 flex w-full items-center gap-3.5 rounded-2xl px-4 py-4 text-left transition-all active:scale-[0.99]"
-          style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)" }}
+          onClick={openPicker}
+          aria-label={t.profile.changeAvatarAria}
+          className="relative shrink-0 transition-transform active:scale-95"
         >
-          <span
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-            style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)" }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M16 17l5-5-5-5" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M21 12H9" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-          <span className="flex-1">
-            <p className="text-[15px] font-semibold text-[#ef4444]">{t.profile.logout}</p>
-            <p className="mt-0.5 text-xs text-[#ef4444]/50">{t.profile.logoutDesc}</p>
+          <AvatarMark avatarId={avatarId} initial={initial} size={68} />
+          {/* Avatara dokunulabildiğini gösteren tek ipucu */}
+          <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-canvas bg-ink text-canvas">
+            <Pencil size={11} strokeWidth={2.6} />
           </span>
         </button>
-
-        <p className="mt-8 text-center text-[11px] font-medium tracking-[0.2em] text-dim">PLAYMYJAM</p>
+        <div className="min-w-0 flex-1">
+          {loaded ? (
+            <>
+              <h1 className="truncate text-[24px] font-extrabold leading-tight tracking-tight text-ink">
+                {username || email.split("@")[0] || t.profile.guestName}
+              </h1>
+              <p className="mt-0.5 truncate text-[13px] text-subtle">{email || t.profile.guestEmail}</p>
+            </>
+          ) : (
+            <>
+              <div className="h-7 w-40 animate-pulse rounded-lg bg-ink/10" />
+              <div className="mt-1.5 h-4 w-48 animate-pulse rounded-lg bg-ink/10" />
+            </>
+          )}
+        </div>
       </div>
+      {avatarError && <p className="mt-3 text-[13px] text-red-400">{avatarError}</p>}
+
+      {isGuest && (
+        <Link
+          href={`/venue/${venueId}/login?next=${encodeURIComponent(`/venue/${venueId}/profile`)}`}
+          className="mt-6 flex items-start gap-3 rounded-2xl px-4 py-3.5 transition-transform active:scale-[0.99]"
+          style={{ background: "rgba(233,30,140,0.08)", border: "1px solid rgba(233,30,140,0.3)" }}
+        >
+          <Link2 size={18} strokeWidth={2.2} className="mt-0.5 shrink-0 text-[#e91e8c]" />
+          <span className="min-w-0 flex-1">
+            <p className="text-[15px] font-semibold text-ink">{t.profile.linkAccountTitle}</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted">{t.profile.linkAccountDesc}</p>
+          </span>
+          <ChevronRight size={16} className="mt-0.5 shrink-0 text-faint" />
+        </Link>
+      )}
+
+      {/* Cüzdan: sayfanın asıl işi bakiye — jeton alma menü satırı değil, burada */}
+      <div className="mt-7 rounded-3xl p-5" style={cardStyle}>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">{t.profile.balance}</p>
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <Coin size={30} />
+            {loaded ? (
+              <p className="text-[40px] font-black leading-none tracking-tight text-ink tabular-nums">{animTokens}</p>
+            ) : (
+              <span className="inline-block h-10 w-12 animate-pulse rounded-lg bg-ink/10" />
+            )}
+            <span className="self-end pb-1 text-sm font-bold text-gold">{t.profile.tokensUnit}</span>
+          </div>
+          <Link
+            href={`/venue/${venueId}/tokens`}
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#e91e8c] px-4 py-2.5 text-[13px] font-bold text-white transition-transform active:scale-95"
+          >
+            <Plus size={15} strokeWidth={2.8} />
+            {t.profile.buyShort}
+          </Link>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        {shortcuts.map(({ href, label, value, Icon }) => (
+          <Link key={href} href={href} className="rounded-2xl p-4 transition-transform active:scale-[0.98]" style={cardStyle}>
+            <div className="flex items-center justify-between text-faint">
+              <Icon size={17} strokeWidth={2} className="text-muted" />
+              <ChevronRight size={15} />
+            </div>
+            {loaded ? (
+              <p className="mt-4 text-[28px] font-extrabold leading-none text-ink tabular-nums">{value}</p>
+            ) : (
+              <span className="mt-4 inline-block h-7 w-8 animate-pulse rounded-md bg-ink/10" />
+            )}
+            <p className="mt-1.5 text-[13px] font-semibold text-muted">{label}</p>
+          </Link>
+        ))}
+      </div>
+
+      {/* Son çaldırdıkları: profili ayar ekranından çıkarıp müzik sayfası yapan kısım */}
+      <div className="mt-9">
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="text-[17px] font-bold tracking-tight text-ink">{t.profile.recentPlays}</h2>
+          {recent && recent.length > 0 && (
+            <Link href={`/venue/${venueId}/history`} className="text-[13px] font-semibold text-[#e91e8c]">
+              {t.profile.seeAll}
+            </Link>
+          )}
+        </div>
+        {recent === null ? (
+          <div className="-mx-5 flex gap-3 overflow-hidden px-5">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-[112px] w-[112px] shrink-0 animate-pulse rounded-xl bg-ink/10" />
+            ))}
+          </div>
+        ) : recent.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-ink/15 px-4 py-6 text-center text-[13px] text-subtle">
+            {t.profile.recentEmpty}
+          </p>
+        ) : (
+          <div className="-mx-5 flex snap-x scroll-px-5 gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none]">
+            {recent.map((song) => (
+              <Link key={song.song_id} href={`/venue/${venueId}/history`} className="w-[112px] shrink-0 snap-start">
+                <div className="h-[112px] w-[112px] overflow-hidden rounded-xl bg-ink/10">
+                  {/* YouTube kapakları 4:3 ve üstte/altta siyah bant var — büyütüp kırpılır */}
+                  {song.album_cover_url && (
+                    <Image src={song.album_cover_url} alt="" width={112} height={112} className="h-full w-full scale-[1.35] object-cover" />
+                  )}
+                </div>
+                <p className="mt-2 truncate text-[13px] font-semibold text-ink">{song.title}</p>
+                <p className="truncate text-xs text-subtle">{song.artist}</p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Dil + tema + ayarlar tek grupta (eskiden her biri ayrı kart) */}
+      <p className="mt-9 mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">{t.profile.preferences}</p>
+      <div className="divide-y divide-ink/[0.06] overflow-hidden rounded-2xl" style={cardStyle}>
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <span className="text-[15px] font-medium text-ink">{t.profile.language}</span>
+          <LangToggle />
+        </div>
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <span className="text-[15px] font-medium text-ink">{t.profile.theme}</span>
+          <ThemeToggle />
+        </div>
+        <Link
+          href={`/venue/${venueId}/settings`}
+          className="flex items-center justify-between px-4 py-3.5 transition-colors active:bg-ink/5"
+        >
+          <span className="text-[15px] font-medium text-ink">{t.profile.settings}</span>
+          <ChevronRight size={16} className="text-faint" />
+        </Link>
+      </div>
+
+      <button
+        onClick={handleLogout}
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[14px] font-semibold transition-colors active:bg-ink/5"
+        style={{ color: "var(--pmj-red)" }}
+      >
+        <LogOut size={16} strokeWidth={2.2} />
+        {t.profile.logout}
+      </button>
 
       {/* Avatar seçici */}
       {pickerOpen && (

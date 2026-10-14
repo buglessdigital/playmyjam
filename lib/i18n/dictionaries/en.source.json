@@ -685,5 +685,12 @@
   "theme.system": "Sistem",
   "settings.themeSection": "GÖRÜNÜM",
   "settings.themeRow": "Tema",
-  "profile.theme": "Tema"
+  "profile.theme": "Tema",
+  "profile.balance": "Bakiyen",
+  "profile.tokensUnit": "jeton",
+  "profile.buyShort": "Jeton al",
+  "profile.recentPlays": "Son çaldırdıkların",
+  "profile.seeAll": "Tümü",
+  "profile.recentEmpty": "Çaldırdığın şarkılar burada birikecek",
+  "profile.preferences": "Tercihler"
 }

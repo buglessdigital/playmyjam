@@ -1,18 +1,26 @@
 export default function ProfileLoading() {
+  const block = (style: React.CSSProperties) => (
+    <div style={{ background: "rgb(var(--pmj-ink-rgb) / 0.07)", ...style }} className="animate-pulse" />
+  );
   return (
-    <div style={{ background: "var(--pmj-bg)", minHeight: "100dvh", width: "100%", paddingBottom: 112 }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "68px 20px 32px" }}>
-        <div style={{ width: 96, height: 96, borderRadius: "50%", background: "rgb(var(--pmj-ink-rgb) / 0.08)" }} className="animate-pulse" />
-        <div style={{ height: 22, width: 160, borderRadius: 8, background: "rgb(var(--pmj-ink-rgb) / 0.1)" }} className="animate-pulse" />
-        <div style={{ height: 13, width: 130, borderRadius: 8, background: "rgb(var(--pmj-ink-rgb) / 0.06)", marginTop: -8 }} className="animate-pulse" />
+    <div style={{ background: "var(--pmj-bg)", minHeight: "100dvh", width: "100%", padding: "56px 20px 112px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        {block({ width: 68, height: 68, borderRadius: "50%", flexShrink: 0 })}
+        <div style={{ flex: 1 }}>
+          {block({ height: 26, width: 160, borderRadius: 8 })}
+          {block({ height: 14, width: 190, borderRadius: 8, marginTop: 8 })}
+        </div>
       </div>
-
-      <div style={{ margin: "0 20px 28px", height: 92, borderRadius: 16, background: "rgb(var(--pmj-ink-rgb) / 0.05)" }} className="animate-pulse" />
-
-      <div style={{ margin: "0 20px" }}>
-        <div style={{ height: 12, width: 60, borderRadius: 6, background: "rgb(var(--pmj-ink-rgb) / 0.08)", marginBottom: 12 }} className="animate-pulse" />
-        <div style={{ height: 217, borderRadius: 16, background: "rgb(var(--pmj-ink-rgb) / 0.05)", marginBottom: 16 }} className="animate-pulse" />
-        <div style={{ height: 73, borderRadius: 16, background: "rgba(239,68,68,0.05)" }} className="animate-pulse" />
+      {block({ height: 124, borderRadius: 24, marginTop: 28 })}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+        {block({ height: 112, borderRadius: 16 })}
+        {block({ height: 112, borderRadius: 16 })}
+      </div>
+      {block({ height: 18, width: 150, borderRadius: 6, marginTop: 36 })}
+      <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+        {block({ height: 112, width: 112, borderRadius: 12, flexShrink: 0 })}
+        {block({ height: 112, width: 112, borderRadius: 12, flexShrink: 0 })}
+        {block({ height: 112, width: 112, borderRadius: 12, flexShrink: 0 })}
       </div>
     </div>
   );

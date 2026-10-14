@@ -9,6 +9,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 
 
 - [Dil tercihi](kullanici-dil-turkce.md) — kullanıcıyla daima Türkçe konuş
+- [Canlıya al = web + uygulama](canliya-al-web-uygulama.md) — web deploy uygulamaya kendiliğinden yansır; mobile/ değiştiyse uygulama ayrıca derlenir
 - [Next 16 instant doğrulaması](next16-instant-validation.md) — param'lı route'larda prefetch:'runtime'+samples şart, GSP yetmez
 - [Müşteri paneli hız mimarisi](pmj-perf-rework-2026-07.md) — kabuk cache'li + client RPC; tüm migration'lar uygulandı, DDL sadece kullanıcının SQL Editor'ından
 - [YouTube geçişi](pmj-youtube-migration-2026-07.md) — Spotify temiz kesimle kaldırıldı; IFrame player + /api/search yerel-önce; 0008 migrasyonu + YOUTUBE_API_KEY gerekli

@@ -31,3 +31,6 @@ Açık kalanlar: iyzipay kaynaklı 4 orta açık (kullanılmayan HTTP katmanı);
 Bekleyen: CSP Report-Only.
 
 **How to apply:** Yeni iş bu turun devamıysa buradan sürdür; [[pmj-yayilim-plani-2026-09]] ile öncelik çakışırsa kullanıcıya sor.
+
+**15 Eki 2026 — e2e kapsamı genişledi (8 test):** talep → mekan onayı → tek seferlik çaldırma (`e2e/request-approval.spec.ts`; bildirim tetiklenmesi `push_deliveries` kaydından doğrulanır), müzik durdu alarmı + ödeme mutabakatı (`e2e/ops-alerts.spec.ts`). Admin çerezi ve cron için test sunucusuna **teste özel sabit** `SESSION_SECRET`/`CRON_SECRET` verilir (`e2e/env.ts`) — CI'a secret eklenmedi; `OPS_ALERT_EMAIL` boş (gerçek gelen kutusuna mail gitmesin). Kural: kuyruğa şarkı ekleyen her test, `after()` ile başlayan çalmayı (`nowPlayingVideo`) beklemeli — beklemezse sonraki testin seed'ine sızıyor (ilk denemede tam bu oldu).
+

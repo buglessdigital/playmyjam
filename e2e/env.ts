@@ -18,6 +18,9 @@ function loadEnvNew(): Record<string, string> {
 
 const src = { ...loadEnvNew(), ...process.env };
 
+export const E2E_SESSION_SECRET = "e2e-only-session-secret-not-used-anywhere-else-0001";
+export const E2E_CRON_SECRET = "e2e-only-cron-secret";
+
 function need(name: string): string {
   const v = src[name];
   if (!v) throw new Error(`E2E için ${name} gerekli (.env.new ya da ortam değişkeni)`);
@@ -34,6 +37,13 @@ export const E2E = {
     IYZICO_SECRET_KEY: need("STAGING_IYZICO_SECRET_KEY"),
     IYZICO_BASE_URL: "https://sandbox-api.iyzipay.com",
     NEXT_PUBLIC_SENTRY_DSN: "",
+    // Teste özel sabit anahtarlar: admin oturum çerezi ve cron çağrısı testten
+    // imzalanabilsin. Yalnızca staging'e bağlanan test sunucusunda geçerli —
+    // CI'a ayrıca secret gerekmez, .env.local'daki gerçek değerleri ezer.
+    SESSION_SECRET: E2E_SESSION_SECRET,
+    CRON_SECRET: E2E_CRON_SECRET,
+    // Alarm e-postası testten gerçek bir gelen kutusuna gitmesin
+    OPS_ALERT_EMAIL: "",
   },
 };
 

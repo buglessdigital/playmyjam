@@ -20,6 +20,9 @@ export type DiscoverTrack = {
   artist: string;
   cover: string;
   duration_ms: number;
+  /** Ortak havuzda (songs) var: onayda bağlantı gerekmez, bildirimde tek
+   *  dokunuşla onaylanır. Bu sonuçlar listenin başında durur. */
+  inPool?: boolean;
 };
 
 const ITUNES = "https://itunes.apple.com/search";

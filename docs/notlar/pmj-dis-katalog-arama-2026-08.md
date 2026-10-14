@@ -1,6 +1,6 @@
 ---
 name: pmj-dis-katalog-arama-2026-08
-description: "Müşteri araması mekan listesi sonuçlarının altında Apple Music + Deezer'dan sonuç gösterip talebe çevirir (16 Ağu 2026; 5 Eki 2026'dan beri her aramada)"
+description: "Müşteri araması (15 Eki 2026'dan beri önce ortak havuz, sonra) mekan listesi sonuçlarının altında Apple Music + Deezer'dan sonuç gösterip talebe çevirir (16 Ağu 2026; 5 Eki 2026'dan beri her aramada)"
 metadata: 
   node_type: memory
   type: project
@@ -15,6 +15,18 @@ Mekan listesi sonuçları üstte, dış sonuçlar altta; dönen kayıtlar normal
 listelenir ama düğmesi "İste"dir ve mevcut serbest metin talep akışını
 (`onSuggest` → `/api/venue/[venueId]/request`) tetikler. Amaç: "listede yoksa
 isteyebilirsin" yazısını okumayan müşteri bunu sonuçtan anlasın.
+
+**15 Eki 2026'dan beri önce ortak havuz:** `/api/discover` aynı yanıtta önce
+`songs` havuzundan (`lib/pool-search.ts`, panel aramasıyla ortak) en fazla 15
+sonuç (`inPool: true`), sonra dış kaynakları verir; havuzda karşılığı olan dış
+sonuç ayıklanır. Sebep: talep onayında şarkı havuzda bulunursa mekan bildirimden
+tek dokunuşla onaylar, bulunamazsa YouTube'a girip bağlantı kopyalamak zorunda
+kalıyordu ("Haberin Yok Ölüyorum — Duman" havuzda dururken müşteri cover
+sürümlerini de aynı ağırlıkta görüyordu). Havuz sonuçları müşteriye sade
+gösterilir: parantezli ek + konuk sanatçı atılınca aynı kalan sürümler teke
+iner, alaka (tam eşleşme > tam kelime) izlenmeden önce gelir. Havuz sorgusu
+hata verirse yanıt CDN'de yalnız 60 sn tutulur. En az bir kelime 3+ harf değilse
+havuz yoklanmaz.
 
 Kaynaklar `lib/discover.ts`: **iTunes Search API** (`country=TR`) + **Deezer public
 API** — ikisi de anahtarsız, günlük kotasız. Spotify bilerek seçilmedi (yeni

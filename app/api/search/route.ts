@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { getSuperSession } from "@/lib/session";
 import { consumeRateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { resolveVideoLink } from "@/lib/request-approval";
 import { parseVideoId } from "@/lib/youtube-oembed";
-import { dedupeSongs, searchTokens, tokenPattern } from "@/lib/search-match";
+import { searchPool } from "@/lib/pool-search";
 
 // Mekan panelinin arama ucu. YouTube search.list (100 birim) BURADAN KALDIRILDI —
 // tek bir kalabalık gece günlük kotayı bitirebiliyordu.
@@ -17,11 +16,8 @@ import { dedupeSongs, searchTokens, tokenPattern } from "@/lib/search-match";
 //      videos.list = 1 birim; günlük kotayla 10.000 yapıştırma.
 const SEARCH_LIMIT = 20;
 const SEARCH_WINDOW_SECONDS = 60;
-// Gösterilen sonuç sayısı ve kopyalar ayıklanmadan önce çekilen satır sayısı
+// Gösterilen sonuç sayısı
 const RESULT_LIMIT = 30;
-const POOL_FETCH = 80;
-// Kelime başına bir regex koşulu: uzun yapıştırılmış metinler sorguyu şişirmesin
-const MAX_TOKENS = 6;
 
 type SearchTrack = {
   youtube_video_id: string;
@@ -68,25 +64,8 @@ export async function GET(req: NextRequest) {
   }
 
   // Ortak havuzda arama: HER kelime başlıkta ya da sanatçıda geçmeli (bkz.
-  // lib/search-match.ts). Eskiden metnin tamamı tek parça aranıyordu ve
+  // lib/pool-search.ts). Eskiden metnin tamamı tek parça aranıyordu ve
   // "sena sener f" gibi bir harf daha yazmak sonuçları tamamen siliyordu.
-  // Kelimeler Türkçe harf sınıflarıyla regex'e açılır — metin JS'te
-  // küçültülmez, "İ"/"ı" farkı sınıfın içinde çözülür.
-  const tokens = searchTokens(q).slice(0, MAX_TOKENS);
-  if (tokens.length === 0) return NextResponse.json({ tracks: [], source: "pool" });
-
-  let query = supabaseAdmin
-    .from("songs")
-    .select("youtube_video_id, title, artist, album_cover_url, duration_ms")
-    .eq("embeddable", true);
-  for (const token of tokens) {
-    const pattern = tokenPattern(token);
-    query = query.or(`title.imatch.${pattern},artist.imatch.${pattern}`);
-  }
-  // Kopyalar ayıklanacağı için fazladan çekilir: aynı şarkının klip/ses/sözler
-  // videoları tek sonuca iner, en çok izleneni kalır
-  const { data: localRows } = await query.order("view_count", { ascending: false }).limit(POOL_FETCH);
-
-  const tracks = dedupeSongs((localRows ?? []) as SearchTrack[]).slice(0, RESULT_LIMIT);
+  const tracks: SearchTrack[] = (await searchPool(q, RESULT_LIMIT)) ?? [];
   return NextResponse.json({ tracks, source: "pool" });
 }

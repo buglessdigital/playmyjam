@@ -41,7 +41,7 @@ test("boş sorgu her şeyi eşler, noktalama yok sayılır", () => {
 
 test("veritabanı deseni: harf sınıfları, özel karakter yok", () => {
   const pattern = tokenPattern("sener");
-  assert.equal(pattern, "[sşSŞ][eéèêëEÉÈÊË][nñNÑ][eéèêëEÉÈÊË]r");
+  assert.equal(pattern, "[sşSŞ][eéEÉ]n[eéEÉ]r");
   assert.ok(!/[,()\\.*+?^$|{}]/.test(tokenPattern("abc123")));
   // Desen gerçek metinleri JS regex'inde de tutmalı (Postgres ~* ile aynı mantık)
   const re = new RegExp(pattern, "i");

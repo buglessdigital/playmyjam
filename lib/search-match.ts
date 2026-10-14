@@ -50,16 +50,20 @@ export function matchesTokens(tokens: string[], haystack: string): boolean {
 // sınıfa açılır ve büyük/küçük harf duyarsız regex (~*) ile aranır. Büyük
 // harfler ayrıca yazılır: Türkçe İ/ı'nın büyük-küçük eşlemesi veritabanının
 // yerel ayarına güvenilemeyecek kadar tutarsız.
+//
+// Sınıflar KASTEN dar: yalnız Türkçe harfler, â/î/û ve é. Her harfe tüm
+// aksanları açınca trigram indeksi desenden anlamlı trigram çıkaramıyor ve
+// "manga" araması 55 bin aday satırı tek tek yeniden süzüp 17 sn sürüyordu;
+// dar sınıflarla aynı 645 sonuç 33 ms'de geliyor (15 Eki 2026 ölçümü).
 const LETTER_VARIANTS: Record<string, string> = {
-  a: "aâàáäAÂÀÁÄ",
+  a: "aâAÂ",
   c: "cçCÇ",
-  e: "eéèêëEÉÈÊË",
+  e: "eéEÉ",
   g: "gğGĞ",
-  i: "iıîïíìIİÎÏÍÌ",
-  n: "nñNÑ",
-  o: "oöôóòOÖÔÓÒ",
+  i: "iıîIİÎ",
+  o: "oöOÖ",
   s: "sşSŞ",
-  u: "uüûúùUÜÛÚÙ",
+  u: "uüûUÜÛ",
 };
 
 /**

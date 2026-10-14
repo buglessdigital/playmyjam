@@ -13,5 +13,8 @@ title + artist). 0056 24 Eyl 2026 UYGULANDI (768f2f1): talep araması 8 sn timeo
 
 **Why:** Havuz büyüdükçe indekssiz metin araması sessizce bozuluyor; hata "sonuç yok"la karışıyor.
 **How to apply:** songs üzerinde yeni metin araması yazarken trigram indeksine dayandığını doğrula;
-REST'ten `count=exact` bile timeout veriyor, `count=estimated` kullan. İlgili: [[pmj-katalog-hasadi-2026-09]],
+regex harf sınıflarını DAR tut (`lib/search-match.ts` LETTER_VARIANTS):
+her harfe tüm aksanlar açılınca indeks desenden trigram çıkaramıyor, "manga" 55 bin
+adayı yeniden süzüp 17 sn sürüyordu; yalnız Türkçe harfler + â/î/û/é ile 33 ms
+(15 Eki 2026). REST'ten `count=exact` bile timeout veriyor, `count=estimated` kullan. İlgili: [[pmj-katalog-hasadi-2026-09]],
 [[pmj-talep-onay-akisi-2026-08]]

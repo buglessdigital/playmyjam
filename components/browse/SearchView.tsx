@@ -44,8 +44,10 @@ interface Props {
 
 // Arama önce mekanın kendi listesi üzerinde çalışır (YouTube'a çıkılmaz).
 // Mekan listesinin sonuçları en üstte durur; altında her zaman dış katalog
-// sonuçları gelir (bkz. /api/discover — Apple Music + Deezer, kotasız): müşteri
-// aradığı şarkı listede olmasa da onu sonuçlarda görür ve tek dokunuşla ister.
+// sonuçları gelir (bkz. /api/discover — önce ortak havuz, sonra Apple Music +
+// Deezer, kotasız): müşteri aradığı şarkı listede olmasa da onu sonuçlarda
+// görür ve tek dokunuşla ister. Havuzdakiler başta durur: onları mekan
+// bildirimden tek dokunuşla onaylar, YouTube bağlantısı aramak zorunda kalmaz.
 // Listede zaten olan şarkılar dış sonuçlardan ayıklanır ("Manga" aramasında
 // listedeki tek şarkı üstte, Manga'nın diğer şarkıları altta "İste" ile). Seçim serbest metin talebe
 // dönüşür, mekanın istekler bölümüne düşer. Metin okumayan müşteri de
@@ -199,6 +201,8 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
       if (s.in_venue_list) venueSongs.push({ title: fold(s.title), text: songHaystack(s) });
     }
     return (discoverState?.tracks ?? []).filter((track) => {
+      // Havuz sonucu video kimliğiyle gelir: listedeki videonun kendisiyse kesin aynı
+      if (track.key.startsWith("yt:") && venueSongMap.get(track.key.slice(3))?.in_venue_list) return false;
       const title = fold(track.title);
       const artist = fold(primaryArtist(track.artist));
       if (!title) return true;

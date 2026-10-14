@@ -35,12 +35,15 @@ const KIND_TEXT: Record<string, string> = {
   request_rejected: "Talep reddedildi",
   suggestion_added: "Öneri listeye eklendi",
   payment_recovered: "Jeton geç yüklendi",
+  music_stopped: "Müzik durdu",
+  music_resumed: "Müzik durumu güncellendi",
   subscribe_test: "Bildirim açma testi",
 };
 
 const AREA_TEXT: Record<string, string> = {
   push: "Bildirim",
   payment: "Ödeme",
+  player: "Player",
   cron: "Zamanlanmış iş",
   queue: "Kuyruk",
   server: "Sunucu hatası",

@@ -92,7 +92,7 @@ export function passwordResetEmail(venueName: string, link: string, minutes: num
   return { to: "", subject, html, text };
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

@@ -69,6 +69,7 @@ export type PushKind =
   | "request_approved"
   | "request_rejected"
   | "suggestion_added"
+  | "payment_recovered"
   | "subscribe_test";
 
 export interface PushLog {

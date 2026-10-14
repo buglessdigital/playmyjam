@@ -411,7 +411,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                 {/* Adet: her dokunuş paketin kendi katı kadar jeton ve fiyat ekler */}
                 {isSel && (
                   <div
-                    className="mt-4 flex items-center justify-center gap-4 rounded-xl bg-black/20 py-2.5"
+                    className="pmj-well mt-4 flex items-center justify-center gap-4 rounded-xl py-2.5"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <button
@@ -458,7 +458,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             alt="iyzico ile Öde"
             width={210}
             height={31}
-            className="h-5 w-auto opacity-70"
+            className="pmj-white-logo h-5 w-auto opacity-70"
           />
         </div>
 

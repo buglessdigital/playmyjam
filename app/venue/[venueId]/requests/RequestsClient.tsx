@@ -183,12 +183,12 @@ export default function RequestsClient() {
                       <p className="text-subtle text-xs">{s.songs?.artist ?? s.suggested_artist}</p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className="text-xs font-medium" style={{ color: added ? "#22c55e" : rejected || expired ? "var(--pmj-subtle)" : "var(--pmj-gold)" }}>
+                      <p className="text-xs font-medium" style={{ color: added ? "var(--pmj-success)" : rejected || expired ? "var(--pmj-subtle)" : "var(--pmj-gold)" }}>
                         {added ? t.requestsPage.added : rejected ? t.requestsPage.notAdded : expired ? t.requestsPage.expired : t.requestsPage.sent}
                       </p>
                       {/* Süre dolduysa geri sayım yerine tarih gösterilir */}
                       {deadline && leftMs > 0 ? (
-                        <p className="mt-0.5 text-xs font-medium" style={{ color: added ? "#22c55e" : "var(--pmj-gold)" }}>
+                        <p className="mt-0.5 text-xs font-medium" style={{ color: added ? "var(--pmj-success)" : "var(--pmj-gold)" }}>
                           {fmt(added ? t.requestsPage.playWindow : t.requestsPage.decisionWindow, { t: clock })}
                         </p>
                       ) : (

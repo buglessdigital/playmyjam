@@ -39,6 +39,8 @@
   --pmj-blue: #60a5fa;
   --pmj-green: #4ade80;
   --pmj-pink-text: #e91e8c;
+  --pmj-red: #ef4444;
+  --pmj-success: #22c55e;
 }
 
 @theme inline {
@@ -233,11 +235,13 @@ html[data-theme="light"] {
   --pmj-soft: #3d3352;
   --pmj-lilac: #6e5a8a;
   --pmj-sand: #7a6430;
-  --pmj-dim: #cfc6dc;
+  --pmj-dim: #a99fbd;
   --pmj-violet: #7c3aed;
   --pmj-blue: #2563eb;
-  --pmj-green: #16a34a;
+  --pmj-green: #15803d;
   --pmj-pink-text: #c4127a;
+  --pmj-red: #dc2626;
+  --pmj-success: #15803d;
 }
 /* Albüm kapağı / fotoğraf üstündeki yarı saydam siyah rozetler: zemin her
    temada koyu, yazı ve ikonlar da koyu temanın renklerinde kalır */
@@ -260,6 +264,11 @@ html[data-theme="light"] [fill="#4b5563"] { fill: var(--pmj-faint); }
 html[data-theme="light"] [stroke="#fbbf24"] { stroke: var(--pmj-gold); }
 html[data-theme="light"] [fill="#fbbf24"] { fill: var(--pmj-gold); }
 html[data-theme="light"] .text-\[\#e91e8c\] { color: var(--pmj-pink-text); }
+html[data-theme="light"] [stroke="#22c55e"] { stroke: var(--pmj-success); }
+html[data-theme="light"] .text-\[\#22c55e\] { color: var(--pmj-success); }
+html[data-theme="light"] [stroke="#ef4444"] { stroke: var(--pmj-red); }
+html[data-theme="light"] .text-\[\#ef4444\] { color: var(--pmj-red); }
+html[data-theme="light"] .text-\[\#ef4444\]\/50 { color: rgb(220 38 38 / 0.75); }
 html[data-theme="light"] [stroke="#3d3450"] { stroke: var(--pmj-dim); }
 html[data-theme="light"] [stroke="#4ade80"] { stroke: var(--pmj-green); }
 /* Koyu zemin için seçilmiş açık tonlu Tailwind yazı renkleri */
@@ -270,3 +279,16 @@ html[data-theme="light"] :is(.text-amber-400\/80, .text-amber-300\/90) { color: 
 html[data-theme="light"] .text-gray-300 { color: var(--pmj-soft); }
 html[data-theme="light"] .text-gray-400 { color: var(--pmj-muted); }
 html[data-theme="light"] .text-gray-500 { color: var(--pmj-subtle); }
+
+/* Koyu zeminli kuyu (ör. jeton adedi seçicisi) */
+.pmj-well { background: rgb(0 0 0 / 0.2); }
+html[data-theme="light"] .pmj-well { background: rgb(255 255 255 / 0.8); }
+/* Yalnız beyaz varyantı olan resmi logolar (iyzico marka kiti): açık temada
+   logo değiştirilmeden koyu bir zemine oturur */
+html[data-theme="light"] .pmj-white-logo {
+  box-sizing: content-box;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  background: #1d1030;
+  opacity: 1;
+}

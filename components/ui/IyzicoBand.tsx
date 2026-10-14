@@ -4,7 +4,8 @@ import Image from "next/image";
 // logolarını tek görselde taşır. iyzico'nun onay şartı olan "Visa ve MasterCard
 // Logoları" + "iyzico ile Öde Logosu" ikisini birden karşılar; Tosla'nın kart
 // logosu şartını da aynı anda çözer. Koyu zeminler için beyaz varyant kullanılır
-// (site genelinde açık zemin yok).
+// (müşteri panelinin açık temasında logo koyu bir zemine oturur: globals.css
+// .pmj-white-logo — resmi logonun rengi değiştirilmez).
 export default function IyzicoBand({ className = "" }: { className?: string }) {
   return (
     <Image
@@ -12,7 +13,7 @@ export default function IyzicoBand({ className = "" }: { className?: string }) {
       alt="iyzico ile Öde · Visa, Mastercard, Troy ve American Express kabul edilir"
       width={456}
       height={32}
-      className={`h-6 w-auto ${className}`}
+      className={`pmj-white-logo h-6 w-auto ${className}`}
     />
   );
 }

@@ -428,7 +428,14 @@
     "guestEmail": "No account linked",
     "linkAccountTitle": "Link your account",
     "linkAccountDesc": "Your tokens and history live on this device for now. Link an email or Google to use them anywhere.",
-    "theme": "Theme"
+    "theme": "Theme",
+    "balance": "Your balance",
+    "tokensUnit": "tokens",
+    "buyShort": "Get tokens",
+    "recentPlays": "Recently played by you",
+    "seeAll": "See all",
+    "recentEmpty": "Songs you play will collect here",
+    "preferences": "Preferences"
   },
   "tokens": {
     "title": "Buy Tokens",

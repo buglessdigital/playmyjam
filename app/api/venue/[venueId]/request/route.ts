@@ -104,6 +104,8 @@ export async function POST(
     user_id: userId,
     requested_by: profileRes.data?.username ?? email.split("@")[0] ?? "Misafir",
     status: "pending",
+    // Müşteriye 10 dk deniyor; süre dolunca pg_cron kapatır (0078)
+    expires_at: new Date(Date.now() + REQUEST_DECISION_MS).toISOString(),
   });
 
   if (error) {

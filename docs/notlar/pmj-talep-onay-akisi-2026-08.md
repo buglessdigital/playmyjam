@@ -34,5 +34,12 @@ GİRMEZ — katalog, playlist rotasyonu ve auto-fill hiç etkilenmez. Müşteri 
   basılınca talep reddediliyordu (canlıda üç kez tekrarlandı; tek eylemli bildirimde
   aynı akış doğru çalıştı, sunucu ve SW kodu ikisinde de aynı). Reddetme bildirime
   dokunup panelden yapılıyor. Yeni eylem eklemeden önce bunu hatırla.
+- **Süre dolumu otomatik (15 Eki 2026, 0078 ŞART):** pg_cron `expire-song-requests`
+  her dakika `expire_song_requests()` çağırır; expires_at boş eski satırlar
+  requested_at + 10 dk sayılır. Önceden yalnız yeni talep/karar gelince
+  çalışıyordu, katalog şarkısı istekleri de expires_at'sız yazılıyordu →
+  panelde 182 saatlik "bekleyen" talepler kalıyordu. Panel listesi ve rozet
+  süresi geçeni cron'u beklemeden gizler. Durum adı 'expired' ("Süre doldu"),
+  'rejected' değil — müşteri şeridi ve geçmiş bunu zaten tanıyor.
 - Onay başına 1 YouTube araması (100 birim) — önce yerel songs, sonra search_cache.
 - İlgili: [[pmj-oneri-akisi-2026-08]], [[pmj-push-stats-2026-07]], [[pmj-playlist-queue-2026-08]]

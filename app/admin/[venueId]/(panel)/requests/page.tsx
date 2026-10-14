@@ -44,6 +44,14 @@ function timeAgo(ts: string) {
   return `${Math.floor(diff / 3600)} sa önce`;
 }
 
+// Karar süresi: expires_at boşsa (eski satırlar) istek anından 10 dk — 0078 ile aynı kural
+const DECISION_MS = 10 * 60 * 1000;
+function decisionDeadline(req: Pick<Request, "expires_at" | "requested_at">) {
+  return req.expires_at
+    ? new Date(req.expires_at).getTime()
+    : new Date(req.requested_at).getTime() + DECISION_MS;
+}
+
 function countdown(deadline: string, now: number) {
   const left = Math.max(0, new Date(deadline).getTime() - now);
   const mins = Math.floor(left / 60000);
@@ -174,7 +182,10 @@ function RequestsPageContent({ params }: Props) {
     [pending, busyId, highlightId, actionToken]
   );
 
-  const list = tab === "pending" ? pending : history;
+  // Süresi dolan talep sunucuda dakikada bir kapanıyor (pg_cron, 0078) — o
+  // dakikayı beklemeden listeden hemen düşsün; kapanınca realtime Geçmiş'e taşır
+  const livePending = useMemo(() => pending.filter((r) => decisionDeadline(r) > now), [pending, now]);
+  const list = tab === "pending" ? livePending : history;
   // Vurgulanan talep her zaman en üstte
   const orderedList = useMemo(() => {
     if (!highlightId) return list;
@@ -183,7 +194,7 @@ function RequestsPageContent({ params }: Props) {
     return [list[idx], ...list.slice(0, idx), ...list.slice(idx + 1)];
   }, [list, highlightId]);
 
-  const suggestionCount = pending.filter((r) => !r.songs).length;
+  const suggestionCount = livePending.filter((r) => !r.songs).length;
 
   return (
     <div className="p-4 md:p-8 max-w-4xl">
@@ -209,7 +220,7 @@ function RequestsPageContent({ params }: Props) {
         {(["pending", "history"] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)} className="px-4 py-2 rounded-xl text-sm font-medium transition-all" style={{ background: tab === t ? "rgba(233,30,140,0.15)" : "rgba(255,255,255,0.06)", color: tab === t ? "#e91e8c" : "#9ca3af" }}>
             {t === "pending"
-              ? `Bekleyen (${pending.length}${suggestionCount > 0 ? ` · ${suggestionCount} talep` : ""})`
+              ? `Bekleyen (${livePending.length}${suggestionCount > 0 ? ` · ${suggestionCount} talep` : ""})`
               : "Geçmiş"}
           </button>
         ))}

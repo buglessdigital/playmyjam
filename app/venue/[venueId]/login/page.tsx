@@ -410,24 +410,24 @@ function AuthPageContent({ params }: Props) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0f0a18] max-w-md mx-auto relative overflow-hidden">
+    <div className="min-h-screen flex flex-col bg-canvas max-w-md mx-auto relative overflow-hidden">
       <div className="relative h-56 w-full overflow-hidden">
         {/* Yerel görsel: external CDN'e gitmez, service worker cache'ler */}
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: "url('/login-hero.jpg')" }}
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-[#0f0a18]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-canvas" />
         <div className="absolute top-4 left-1/2 -translate-x-1/2">
-          <span className="text-white font-bold text-lg tracking-wide">PlayMyJam</span>
+          <span className="text-ink font-bold text-lg tracking-wide">PlayMyJam</span>
         </div>
       </div>
 
       <div className="flex-1 px-6 pt-2 pb-10">
-        <h1 className="text-3xl font-bold text-white leading-tight mb-1">
+        <h1 className="text-3xl font-bold text-ink leading-tight mb-1">
           {t.login.headingLead} <span className="text-[#e91e8c]">{t.login.headingAccent}</span>
         </h1>
-        <p className="text-[#9ca3af] text-sm mb-8">
+        <p className="text-muted text-sm mb-8">
           {t.login.sub}
         </p>
 
@@ -438,7 +438,7 @@ function AuthPageContent({ params }: Props) {
               <button
                 onClick={handleResend}
                 disabled={resendLoading}
-                className="block mt-2 font-semibold text-white underline underline-offset-2 disabled:opacity-50"
+                className="block mt-2 font-semibold text-ink underline underline-offset-2 disabled:opacity-50"
               >
                 {resendLoading ? t.login.sending : t.login.resendConfirm}
               </button>
@@ -462,7 +462,7 @@ function AuthPageContent({ params }: Props) {
               style={{ background: "linear-gradient(135deg, #e91e8c, #c2185b)" }}
             >
               {continueLoading ? (
-                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span className="w-5 h-5 border-2 border-ink/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                   <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -472,9 +472,9 @@ function AuthPageContent({ params }: Props) {
               {continueLoading ? t.login.continuing : fmt(t.login.continueAs, { name: existingUser.name })}
             </button>
             <div className="flex items-center gap-3 mb-4">
-              <div className="flex-1 h-px bg-white/10" />
-              <span className="text-xs text-[#4b5563]">{t.login.orDifferentAccount}</span>
-              <div className="flex-1 h-px bg-white/10" />
+              <div className="flex-1 h-px bg-ink/10" />
+              <span className="text-xs text-faint">{t.login.orDifferentAccount}</span>
+              <div className="flex-1 h-px bg-ink/10" />
             </div>
           </>
         )}
@@ -490,10 +490,10 @@ function AuthPageContent({ params }: Props) {
         <button
           onClick={handleGoogle}
           disabled={googleLoading || loading}
-          className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl font-semibold text-white text-base border border-white/10 bg-white/5 hover:bg-white/10 transition-all active:scale-95 disabled:opacity-50 mb-4"
+          className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl font-semibold text-ink text-base border border-ink/10 bg-ink/5 hover:bg-ink/10 transition-all active:scale-95 disabled:opacity-50 mb-4"
         >
           {googleLoading ? (
-            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <span className="w-5 h-5 border-2 border-ink/30 border-t-white rounded-full animate-spin" />
           ) : (
             <svg width="20" height="20" viewBox="0 0 24 24">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -507,9 +507,9 @@ function AuthPageContent({ params }: Props) {
 
         {/* Ayraç */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex-1 h-px bg-white/10" />
-          <span className="text-xs text-[#4b5563]">{t.login.orWithEmail}</span>
-          <div className="flex-1 h-px bg-white/10" />
+          <div className="flex-1 h-px bg-ink/10" />
+          <span className="text-xs text-faint">{t.login.orWithEmail}</span>
+          <div className="flex-1 h-px bg-ink/10" />
         </div>
 
         {/* Misafirken var olan bir hesaba giriş: Supabase iki kimliği birleştiremiyor,
@@ -523,7 +523,7 @@ function AuthPageContent({ params }: Props) {
 
         <div className="space-y-4">
           <div>
-            <label className="text-xs text-[#9ca3af] mb-1.5 block">{t.login.email}</label>
+            <label className="text-xs text-muted mb-1.5 block">{t.login.email}</label>
             <div className="relative">
               <div className="absolute left-3 top-1/2 -translate-y-1/2">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -536,14 +536,14 @@ function AuthPageContent({ params }: Props) {
                 placeholder="merhaba@ornek.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-[#1a0e2a] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white placeholder-[#4b5563] text-sm focus:outline-none focus:border-[#e91e8c]/50 transition-colors"
+                className="w-full bg-surface border border-ink/10 rounded-xl py-3 pl-10 pr-4 text-ink placeholder-faint text-sm focus:outline-none focus:border-[#e91e8c]/50 transition-colors"
               />
             </div>
           </div>
 
           <div>
             <div className="flex justify-between items-center mb-1.5">
-              <label className="text-xs text-[#9ca3af]">{t.login.password}</label>
+              <label className="text-xs text-muted">{t.login.password}</label>
               {isLogin && (
                 <button
                   onClick={handleForgotPassword}
@@ -567,7 +567,7 @@ function AuthPageContent({ params }: Props) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                className="w-full bg-[#1a0e2a] border border-white/10 rounded-xl py-3 pl-10 pr-10 text-white placeholder-[#4b5563] text-sm focus:outline-none focus:border-[#e91e8c]/50 transition-colors"
+                className="w-full bg-surface border border-ink/10 rounded-xl py-3 pl-10 pr-10 text-ink placeholder-faint text-sm focus:outline-none focus:border-[#e91e8c]/50 transition-colors"
               />
               <button onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -595,14 +595,14 @@ function AuthPageContent({ params }: Props) {
 
           <button
             onClick={() => { setIsLogin(!isLogin); setError(""); setInfo(""); setShowResend(false); }}
-            className="w-full text-center py-3.5 rounded-2xl font-semibold text-white text-base border border-white/10 bg-white/5 hover:bg-white/10 transition-all"
+            className="w-full text-center py-3.5 rounded-2xl font-semibold text-ink text-base border border-ink/10 bg-ink/5 hover:bg-ink/10 transition-all"
           >
             {isLogin ? t.login.switchToSignUp : t.login.switchToSignIn}
           </button>
 
           <Link
             href={`/venue/${venueId}/browse`}
-            className="block w-full text-center py-2 text-sm font-semibold text-[#9ca3af]"
+            className="block w-full text-center py-2 text-sm font-semibold text-muted"
           >
             {t.login.justLooking}
           </Link>

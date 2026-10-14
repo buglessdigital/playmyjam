@@ -7,6 +7,7 @@ import NativeAppBridge from "@/components/native/NativeAppBridge";
 import NativeErrorBoundary from "@/components/native/NativeErrorBoundary";
 import { LanguageProvider } from "@/lib/i18n";
 import "./globals.css";
+import { THEME_BOOT_SCRIPT } from "@/lib/theme-boot";
 
 const geist = Geist({
   variable: "--font-geist-sans",
@@ -60,11 +61,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="tr" className={`${geist.variable} antialiased`}>
+    <html lang="tr" className={`${geist.variable} antialiased`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: venueManifestScript }} />
+        {/* Müşteri panelinin açık teması ilk boyamadan önce (bkz. lib/theme.ts) */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col bg-[#0f0a18] text-white">
+      <body className="min-h-full flex flex-col bg-canvas text-ink">
         <ServiceWorkerRegister />
         {/* Dil tercihi istemcide tutulur: sunucuda cookie okunsaydı kök layout
             dinamikleşir, mekan kabuklarının statik üretimi bozulurdu. */}

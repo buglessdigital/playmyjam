@@ -58,11 +58,11 @@ export default function BottomNav({ venueId }: BottomNavProps) {
       href: `/venue/${venueId}/queue`,
       icon: (active: boolean) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="5" width="18" height="2" rx="1" fill={active ? "#e91e8c" : "#6b7280"} />
-          <rect x="3" y="10" width="14" height="2" rx="1" fill={active ? "#e91e8c" : "#6b7280"} />
-          <rect x="3" y="15" width="10" height="2" rx="1" fill={active ? "#e91e8c" : "#6b7280"} />
-          <circle cx="20" cy="15" r="3" stroke={active ? "#e91e8c" : "#6b7280"} strokeWidth="1.5" />
-          <path d="M20 12v3" stroke={active ? "#e91e8c" : "#6b7280"} strokeWidth="1.5" strokeLinecap="round" />
+          <rect x="3" y="5" width="18" height="2" rx="1" fill={active ? "#e91e8c" : "var(--pmj-subtle)"} />
+          <rect x="3" y="10" width="14" height="2" rx="1" fill={active ? "#e91e8c" : "var(--pmj-subtle)"} />
+          <rect x="3" y="15" width="10" height="2" rx="1" fill={active ? "#e91e8c" : "var(--pmj-subtle)"} />
+          <circle cx="20" cy="15" r="3" stroke={active ? "#e91e8c" : "var(--pmj-subtle)"} strokeWidth="1.5" />
+          <path d="M20 12v3" stroke={active ? "#e91e8c" : "var(--pmj-subtle)"} strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       ),
     },
@@ -72,8 +72,8 @@ export default function BottomNav({ venueId }: BottomNavProps) {
       href: `/venue/${venueId}/browse`,
       icon: (active: boolean) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <circle cx="11" cy="11" r="7" stroke={active ? "#e91e8c" : "#6b7280"} strokeWidth="2" />
-          <path d="M20 20l-3-3" stroke={active ? "#e91e8c" : "#6b7280"} strokeWidth="2" strokeLinecap="round" />
+          <circle cx="11" cy="11" r="7" stroke={active ? "#e91e8c" : "var(--pmj-subtle)"} strokeWidth="2" />
+          <path d="M20 20l-3-3" stroke={active ? "#e91e8c" : "var(--pmj-subtle)"} strokeWidth="2" strokeLinecap="round" />
         </svg>
       ),
     },
@@ -86,11 +86,11 @@ export default function BottomNav({ venueId }: BottomNavProps) {
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
           <path
             d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0113 0c0 5.4-6.5 11-6.5 11z"
-            stroke={active ? "#e91e8c" : "#6b7280"}
+            stroke={active ? "#e91e8c" : "var(--pmj-subtle)"}
             strokeWidth="2"
             strokeLinejoin="round"
           />
-          <circle cx="12" cy="10" r="2.5" stroke={active ? "#e91e8c" : "#6b7280"} strokeWidth="1.8" />
+          <circle cx="12" cy="10" r="2.5" stroke={active ? "#e91e8c" : "var(--pmj-subtle)"} strokeWidth="1.8" />
         </svg>
       ),
     },
@@ -105,9 +105,9 @@ export default function BottomNav({ venueId }: BottomNavProps) {
       requiresAccount: true,
       icon: (active: boolean) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="8" stroke={active ? "#fbbf24" : "#6b7280"} strokeWidth="2" />
-          <circle cx="12" cy="12" r="3.5" stroke={active ? "#fbbf24" : "#6b7280"} strokeWidth="1.6" />
-          <path d="M12 8.5v-3M12 18.5v-3" stroke={active ? "#fbbf24" : "#6b7280"} strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="12" cy="12" r="8" stroke={active ? "var(--pmj-gold)" : "var(--pmj-subtle)"} strokeWidth="2" />
+          <circle cx="12" cy="12" r="3.5" stroke={active ? "var(--pmj-gold)" : "var(--pmj-subtle)"} strokeWidth="1.6" />
+          <path d="M12 8.5v-3M12 18.5v-3" stroke={active ? "var(--pmj-gold)" : "var(--pmj-subtle)"} strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       ),
     },
@@ -115,8 +115,8 @@ export default function BottomNav({ venueId }: BottomNavProps) {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-white/10 backdrop-blur-md h-16"
-      style={{ background: "rgba(15,10,24,0.96)" }}
+      className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-ink/10 backdrop-blur-md h-16"
+      style={{ background: "rgb(var(--pmj-bg-rgb) / 0.96)" }}
     >
       {tabs.map((tab) => {
         const active = pathname.includes(`/${tab.segment}`);
@@ -144,14 +144,14 @@ export default function BottomNav({ venueId }: BottomNavProps) {
               {showBadge && (
                 <span
                   aria-hidden
-                  className="absolute -right-1 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-[#0f0a18]"
+                  className="absolute -right-1 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-canvas"
                   style={{ background: "#e91e8c" }}
                 />
               )}
             </span>
             <span
               className="whitespace-nowrap text-[10px] font-semibold tracking-wider"
-              style={{ color: active ? "#e91e8c" : "#6b7280" }}
+              style={{ color: active ? "#e91e8c" : "var(--pmj-subtle)" }}
             >
               {tab.label}
             </span>

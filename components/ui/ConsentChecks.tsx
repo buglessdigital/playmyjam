@@ -41,17 +41,17 @@ export default function ConsentChecks({
   const linkClass = "font-semibold text-[#e91e8c] underline underline-offset-2";
 
   return (
-    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div className="space-y-3 rounded-2xl border border-ink/10 bg-ink/5 p-4">
       <ConsentNotice variant={variant} />
 
-      <label className="flex gap-3 cursor-pointer select-none border-t border-white/10 pt-3">
+      <label className="flex gap-3 cursor-pointer select-none border-t border-ink/10 pt-3">
         <input
           type="checkbox"
           checked={value.marketing}
           onChange={(e) => onChange({ ...value, marketing: e.target.checked })}
           className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#e91e8c]"
         />
-        <span className="text-xs leading-relaxed text-[#9ca3af]">
+        <span className="text-xs leading-relaxed text-muted">
           {withLinks(t.login.consentMarketing, {
             link: (
               <Link href="/ticari-ileti" target="_blank" className={linkClass}>
@@ -59,7 +59,7 @@ export default function ConsentChecks({
               </Link>
             ),
           })}{" "}
-          <span className="ml-1 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#6b7280]">
+          <span className="ml-1 rounded bg-ink/10 px-1.5 py-0.5 text-[10px] font-semibold text-subtle">
             {t.login.consentOptional}
           </span>
         </span>
@@ -75,7 +75,7 @@ export default function ConsentChecks({
  */
 export function ConsentNotice({
   variant = "signup",
-  className = "text-xs leading-relaxed text-[#9ca3af]",
+  className = "text-xs leading-relaxed text-muted",
 }: {
   variant?: "signup" | "continue";
   className?: string;

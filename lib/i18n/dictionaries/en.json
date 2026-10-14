@@ -427,7 +427,8 @@
     "guestName": "Guest",
     "guestEmail": "No account linked",
     "linkAccountTitle": "Link your account",
-    "linkAccountDesc": "Your tokens and history live on this device for now. Link an email or Google to use them anywhere."
+    "linkAccountDesc": "Your tokens and history live on this device for now. Link an email or Google to use them anywhere.",
+    "theme": "Theme"
   },
   "tokens": {
     "title": "Buy Tokens",
@@ -638,7 +639,9 @@
     "consentSection": "PERMISSIONS",
     "marketingTitle": "Campaign emails",
     "marketingDesc": "Campaigns, discounts and new venue announcements. You can turn this off at any time.",
-    "errMarketing": "Your preference couldn't be saved. Please try again."
+    "errMarketing": "Your preference couldn't be saved. Please try again.",
+    "themeSection": "APPEARANCE",
+    "themeRow": "Theme"
   },
   "venueForm": {
     "sendError": "Couldn't submit the application, please try again.",
@@ -785,5 +788,11 @@
     "qrCancel": "Cancel",
     "qrInvalid": "This isn't a PlayMyJam QR code. Scan the code on the table plaque.",
     "qrCameraDenied": "Couldn't access the camera. Allow camera access in your browser settings, or scan with your phone's camera."
+  },
+  "theme": {
+    "label": "Theme",
+    "dark": "Dark",
+    "light": "Light",
+    "system": "System"
   }
 }

@@ -427,7 +427,8 @@
     "guestName": "Misafir",
     "guestEmail": "Hesap bağlı değil",
     "linkAccountTitle": "Hesabını bağla",
-    "linkAccountDesc": "Jetonların ve geçmişin şimdilik bu cihazda. E-posta veya Google bağlarsan her cihazdan girebilirsin."
+    "linkAccountDesc": "Jetonların ve geçmişin şimdilik bu cihazda. E-posta veya Google bağlarsan her cihazdan girebilirsin.",
+    "theme": "Tema"
   },
   "tokens": {
     "title": "Jeton Satın Al",
@@ -638,7 +639,9 @@
     "consentSection": "İZİNLER",
     "marketingTitle": "Kampanya e-postaları",
     "marketingDesc": "Kampanya, indirim ve yeni mekan duyuruları. Dilediğin an kapatabilirsin.",
-    "errMarketing": "Tercih kaydedilemedi. Lütfen tekrar dene."
+    "errMarketing": "Tercih kaydedilemedi. Lütfen tekrar dene.",
+    "themeSection": "GÖRÜNÜM",
+    "themeRow": "Tema"
   },
   "venueForm": {
     "sendError": "Başvuru gönderilemedi, lütfen tekrar deneyin.",
@@ -785,5 +788,11 @@
     "qrCancel": "Vazgeç",
     "qrInvalid": "Bu bir PlayMyJam karekodu değil. Masadaki plaketin karekodunu okut.",
     "qrCameraDenied": "Kameraya erişilemedi. Tarayıcı ayarlarından kamera izni ver ya da telefonunun kamerasıyla okut."
+  },
+  "theme": {
+    "label": "Tema",
+    "dark": "Koyu",
+    "light": "Açık",
+    "system": "Sistem"
   }
 }

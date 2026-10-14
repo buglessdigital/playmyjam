@@ -84,11 +84,11 @@ export default function ProfileChip({ venueId }: Props) {
       className="shrink-0 rounded-full p-[2px] transition-transform active:scale-95"
       style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
     >
-      <span className="block rounded-full bg-[#0f0a18] p-[2px]">
+      <span className="block rounded-full bg-canvas p-[2px]">
         {profile ? (
           <AvatarMark avatarId={profile.avatarId} initial={profile.initial} size={28} />
         ) : (
-          <span className="block h-7 w-7 animate-pulse rounded-full bg-white/10" />
+          <span className="block h-7 w-7 animate-pulse rounded-full bg-ink/10" />
         )}
       </span>
     </Link>

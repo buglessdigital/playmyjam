@@ -133,33 +133,33 @@ export default function RequestsClient() {
   }, [supabase]);
 
   return (
-    <div className="min-h-screen bg-[#0f0a18]">
+    <div className="min-h-screen bg-canvas">
       <div className="flex items-center gap-3 px-5 pt-12 pb-6">
-        <button onClick={() => router.back()} className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10">
+        <button onClick={() => router.back()} className="w-9 h-9 flex items-center justify-center rounded-full bg-ink/10">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
-        <h1 className="text-white font-bold text-lg">{t.requestsPage.title}</h1>
+        <h1 className="text-ink font-bold text-lg">{t.requestsPage.title}</h1>
       </div>
 
       {!loaded ? (
         <div className="px-5 space-y-3 pb-20">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="flex items-center gap-3 p-3 rounded-2xl animate-pulse" style={{ background: "#1a0e2a" }}>
-              <div className="w-12 h-12 rounded-xl bg-white/10 flex-shrink-0" />
+            <div key={i} className="flex items-center gap-3 p-3 rounded-2xl animate-pulse" style={{ background: "var(--pmj-surface)" }}>
+              <div className="w-12 h-12 rounded-xl bg-ink/10 flex-shrink-0" />
               <div className="flex-1 space-y-2">
-                <div className="h-4 w-3/4 rounded bg-white/10" />
-                <div className="h-3 w-1/2 rounded bg-white/10" />
+                <div className="h-4 w-3/4 rounded bg-ink/10" />
+                <div className="h-3 w-1/2 rounded bg-ink/10" />
               </div>
             </div>
           ))}
         </div>
       ) : requests.length === 0 && suggestions.length === 0 ? (
-        <div className="text-center py-16 text-[#6b7280] text-sm">{t.requestsPage.empty}</div>
+        <div className="text-center py-16 text-subtle text-sm">{t.requestsPage.empty}</div>
       ) : (
         <div className="px-5 space-y-3 pb-20">
           {suggestions.length > 0 && (
             <>
-              <h2 className="text-white font-semibold text-sm pt-1">{t.requestsPage.suggestionsHeading}</h2>
+              <h2 className="text-ink font-semibold text-sm pt-1">{t.requestsPage.suggestionsHeading}</h2>
               {suggestions.map((s) => {
                 const added = s.status === "accepted";
                 const rejected = s.status === "rejected";
@@ -170,8 +170,8 @@ export default function RequestsClient() {
                 const leftMs = deadline ? new Date(deadline).getTime() - tick : 0;
                 const clock = `${Math.floor(Math.max(0, leftMs) / 60000)}:${Math.floor((Math.max(0, leftMs) % 60000) / 1000).toString().padStart(2, "0")}`;
                 return (
-                  <div key={s.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: "#1a0e2a" }}>
-                    <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-white/10 flex items-center justify-center">
+                  <div key={s.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: "var(--pmj-surface)" }}>
+                    <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-ink/10 flex items-center justify-center">
                       {s.songs?.album_cover_url ? (
                         <Image src={s.songs.album_cover_url} alt="" width={48} height={48} className="w-full h-full object-cover" />
                       ) : (
@@ -179,45 +179,45 @@ export default function RequestsClient() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-white font-semibold text-sm truncate">{s.songs?.title ?? s.suggested_title}</p>
-                      <p className="text-[#6b7280] text-xs">{s.songs?.artist ?? s.suggested_artist}</p>
+                      <p className="text-ink font-semibold text-sm truncate">{s.songs?.title ?? s.suggested_title}</p>
+                      <p className="text-subtle text-xs">{s.songs?.artist ?? s.suggested_artist}</p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className="text-xs font-medium" style={{ color: added ? "#22c55e" : rejected || expired ? "#6b7280" : "#fbbf24" }}>
+                      <p className="text-xs font-medium" style={{ color: added ? "#22c55e" : rejected || expired ? "var(--pmj-subtle)" : "var(--pmj-gold)" }}>
                         {added ? t.requestsPage.added : rejected ? t.requestsPage.notAdded : expired ? t.requestsPage.expired : t.requestsPage.sent}
                       </p>
                       {/* Süre dolduysa geri sayım yerine tarih gösterilir */}
                       {deadline && leftMs > 0 ? (
-                        <p className="mt-0.5 text-xs font-medium" style={{ color: added ? "#22c55e" : "#fbbf24" }}>
+                        <p className="mt-0.5 text-xs font-medium" style={{ color: added ? "#22c55e" : "var(--pmj-gold)" }}>
                           {fmt(added ? t.requestsPage.playWindow : t.requestsPage.decisionWindow, { t: clock })}
                         </p>
                       ) : (
-                        <p className="text-[#6b7280] text-xs mt-0.5">{timeAgo(s.requested_at)}</p>
+                        <p className="text-subtle text-xs mt-0.5">{timeAgo(s.requested_at)}</p>
                       )}
                     </div>
                   </div>
                 );
               })}
-              {requests.length > 0 && <h2 className="text-white font-semibold text-sm pt-3">{t.requestsPage.queuedHeading}</h2>}
+              {requests.length > 0 && <h2 className="text-ink font-semibold text-sm pt-3">{t.requestsPage.queuedHeading}</h2>}
             </>
           )}
           {requests.map((req) => (
-            <div key={req.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: "#1a0e2a" }}>
-              <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-white/10">
+            <div key={req.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: "var(--pmj-surface)" }}>
+              <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-ink/10">
                 {req.songs.album_cover_url && (
                   <Image src={req.songs.album_cover_url} alt="" width={48} height={48} className="w-full h-full object-cover" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white font-semibold text-sm truncate">{req.songs.title}</p>
-                <p className="text-[#6b7280] text-xs">{req.songs.artist}</p>
+                <p className="text-ink font-semibold text-sm truncate">{req.songs.title}</p>
+                <p className="text-subtle text-xs">{req.songs.artist}</p>
                 {req.tokens_spent && (
-                  <p className="text-[#9ca3af] text-xs mt-0.5">{fmt(t.requestsPage.tokensLine, { n: req.tokens_spent })}{req.priority ? t.requestsPage.prioritySuffix : ""}</p>
+                  <p className="text-muted text-xs mt-0.5">{fmt(t.requestsPage.tokensLine, { n: req.tokens_spent })}{req.priority ? t.requestsPage.prioritySuffix : ""}</p>
                 )}
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="text-[#9ca3af] text-xs">{statusLabel(req.status)}</p>
-                <p className="text-[#6b7280] text-xs mt-0.5">{timeAgo(req.requested_at)}</p>
+                <p className="text-muted text-xs">{statusLabel(req.status)}</p>
+                <p className="text-subtle text-xs mt-0.5">{timeAgo(req.requested_at)}</p>
               </div>
             </div>
           ))}

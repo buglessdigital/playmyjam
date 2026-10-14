@@ -138,10 +138,10 @@ export default function NativeAppBridge() {
       {giftTokens !== null && (
         <div
           role="status"
-          className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+12px)] z-[60] mx-auto max-w-md rounded-2xl border border-[#e91e8c]/40 bg-[#170e25]/95 px-4 py-3 text-center shadow-xl backdrop-blur"
+          className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+12px)] z-[60] mx-auto max-w-md rounded-2xl border border-[#e91e8c]/40 bg-sheet/95 px-4 py-3 text-center shadow-xl backdrop-blur"
         >
-          <p className="text-sm font-bold text-white">{t.nativeApp.giftTitle}</p>
-          <p className="mt-0.5 text-xs text-[#c4b5d4]">{fmt(t.nativeApp.giftBody, { n: giftTokens })}</p>
+          <p className="text-sm font-bold text-ink">{t.nativeApp.giftTitle}</p>
+          <p className="mt-0.5 text-xs text-lilac">{fmt(t.nativeApp.giftBody, { n: giftTokens })}</p>
         </div>
       )}
     </>

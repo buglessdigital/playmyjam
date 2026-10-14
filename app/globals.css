@@ -12,7 +12,47 @@
   --border: rgba(255, 255, 255, 0.08);
 }
 
+/* Müşteri paneli teması. Bileşenler renkleri bu değişkenlerden alır
+   (bg-canvas, text-ink, bg-ink/10, text-muted …); koyu değerler kök
+   varsayılan, açık tema yalnız html[data-theme="light"] altında — bu öznitelik
+   yalnız müşteri panelinde konur (lib/theme.ts), panel/vitrin hep koyu. */
+:root {
+  --pmj-bg: #0f0a18;
+  --pmj-bg-rgb: 15 10 24;
+  --pmj-surface: #1a0e2a;
+  --pmj-ink: #ffffff;
+  --pmj-ink-rgb: 255 255 255;
+  --pmj-muted: #9ca3af;
+  --pmj-subtle: #6b7280;
+  --pmj-faint: #4b5563;
+  --pmj-gold: #fbbf24;
+  --pmj-sheet: #170e25;
+  --pmj-hero: #2d1045;
+  --pmj-top: #2a1a30;
+  --pmj-mid: #150c1f;
+  --pmj-glow: #1b1030;
+  --pmj-soft: #d1d5db;
+  --pmj-lilac: #c4b5d4;
+  --pmj-sand: #d6c9a8;
+  --pmj-dim: #3d3450;
+  --pmj-violet: #a78bfa;
+  --pmj-blue: #60a5fa;
+  --pmj-green: #4ade80;
+}
+
 @theme inline {
+  --color-canvas: var(--pmj-bg);
+  --color-surface: var(--pmj-surface);
+  --color-ink: var(--pmj-ink);
+  --color-muted: var(--pmj-muted);
+  --color-subtle: var(--pmj-subtle);
+  --color-faint: var(--pmj-faint);
+  --color-gold: var(--pmj-gold);
+  --color-sheet: var(--pmj-sheet);
+  --color-soft: var(--pmj-soft);
+  --color-lilac: var(--pmj-lilac);
+  --color-sand: var(--pmj-sand);
+  --color-dim: var(--pmj-dim);
   --color-background: var(--bg-primary);
   --color-foreground: var(--text-primary);
   --font-sans: var(--font-geist-sans);
@@ -167,3 +207,52 @@ details.faq-item[open] .faq-chevron {
 .rail-badge-playing {
   animation: rail-badge-glow 1.8s ease-out infinite;
 }
+
+/* ── Açık tema (müşteri paneli) ─────────────────────────────────────────
+   Gece kulübünün gündüz hali: lila-beyaz zemin, beyaz kartlar, koyu
+   patlıcan moru yazı; pembe-mor neon vurgular aynen kalır. */
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg-primary: #f6f1fb;
+  --text-primary: #1d1030;
+  --pmj-bg: #f6f1fb;
+  --pmj-bg-rgb: 246 241 251;
+  --pmj-surface: #ffffff;
+  --pmj-ink: #1d1030;
+  --pmj-ink-rgb: 29 16 48;
+  --pmj-muted: #6b6282;
+  --pmj-subtle: #857c9b;
+  --pmj-faint: #b9b0c8;
+  --pmj-gold: #c98600;
+  --pmj-sheet: #ffffff;
+  --pmj-hero: #fbe0f0;
+  --pmj-top: #f6dcec;
+  --pmj-mid: #f8eef8;
+  --pmj-glow: #efe3fa;
+  --pmj-soft: #3d3352;
+  --pmj-lilac: #6e5a8a;
+  --pmj-sand: #7a6430;
+  --pmj-dim: #cfc6dc;
+  --pmj-violet: #7c3aed;
+  --pmj-blue: #2563eb;
+  --pmj-green: #16a34a;
+}
+/* SVG sunum öznitelikleri (stroke="#6b7280" …) koyu temanın sabit renkleri;
+   CSS öznitelikten güçlü olduğu için buradan ezilir */
+html[data-theme="light"] [stroke="#6b7280"] { stroke: var(--pmj-subtle); }
+html[data-theme="light"] [fill="#6b7280"] { fill: var(--pmj-subtle); }
+html[data-theme="light"] [stroke="#9ca3af"] { stroke: var(--pmj-muted); }
+html[data-theme="light"] [fill="#9ca3af"] { fill: var(--pmj-muted); }
+html[data-theme="light"] [stroke="#4b5563"] { stroke: var(--pmj-faint); }
+html[data-theme="light"] [fill="#4b5563"] { fill: var(--pmj-faint); }
+html[data-theme="light"] [stroke="#fbbf24"] { stroke: var(--pmj-gold); }
+html[data-theme="light"] [stroke="#3d3450"] { stroke: var(--pmj-dim); }
+html[data-theme="light"] [stroke="#4ade80"] { stroke: var(--pmj-green); }
+/* Koyu zemin için seçilmiş açık tonlu Tailwind yazı renkleri */
+html[data-theme="light"] .text-\[\#4ade80\] { color: var(--pmj-green); }
+html[data-theme="light"] :is(.text-\[\#fca5a5\], .text-\[\#f87171\], .text-red-400) { color: #dc2626; }
+html[data-theme="light"] .text-emerald-400 { color: #059669; }
+html[data-theme="light"] :is(.text-amber-400\/80, .text-amber-300\/90) { color: #b45309; }
+html[data-theme="light"] .text-gray-300 { color: var(--pmj-soft); }
+html[data-theme="light"] .text-gray-400 { color: var(--pmj-muted); }
+html[data-theme="light"] .text-gray-500 { color: var(--pmj-subtle); }

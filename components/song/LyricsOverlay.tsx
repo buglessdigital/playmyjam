@@ -40,16 +40,16 @@ export default function LyricsOverlay({ title, artist, lyrics, loading, activeIn
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col"
-      style={{ background: "linear-gradient(180deg, #2a1a30 0%, #150c1f 45%, #0f0a18 100%)" }}
+      style={{ background: "linear-gradient(180deg, var(--pmj-top) 0%, var(--pmj-mid) 45%, var(--pmj-bg) 100%)" }}
     >
       <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-12">
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-white">{title}</p>
-          <p className="truncate text-xs text-[#9ca3af]">{artist}</p>
+          <p className="truncate text-sm font-bold text-ink">{title}</p>
+          <p className="truncate text-xs text-muted">{artist}</p>
         </div>
         <button
           onClick={onClose}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink/10"
           aria-label={t.lyrics.closeAria}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -62,7 +62,7 @@ export default function LyricsOverlay({ title, artist, lyrics, loading, activeIn
             <svg className="animate-spin" width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#6b7280" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" /></svg>
           </div>
         ) : !lyrics || lyrics.lines.length === 0 ? (
-          <p className="pt-16 text-center text-sm text-[#6b7280]">{t.lyrics.notFound}</p>
+          <p className="pt-16 text-center text-sm text-subtle">{t.lyrics.notFound}</p>
         ) : (
           <div className={`${lyricsFont.className} flex flex-col gap-4`}>
             {lyrics.lines.map((line, i) => {
@@ -79,7 +79,7 @@ export default function LyricsOverlay({ title, artist, lyrics, loading, activeIn
                     fontSize: isActive ? 23 : 19,
                     lineHeight: 1.35,
                     fontWeight: isActive ? 800 : 700,
-                    color: isActive ? "#e91e8c" : isPast ? "rgba(255,255,255,0.35)" : "white",
+                    color: isActive ? "#e91e8c" : isPast ? "rgb(var(--pmj-ink-rgb) / 0.35)" : "white",
                     textShadow: isActive ? "0 0 24px rgba(233,30,140,0.45)" : "none",
                   }}
                 >

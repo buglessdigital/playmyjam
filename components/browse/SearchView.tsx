@@ -235,7 +235,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
   const showRequestHint = !(hasQuery && !artistFilter && results.length === 0);
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={t.browse.title} className="fixed inset-0 z-50 flex flex-col bg-[#0f0a18]">
+    <div role="dialog" aria-modal="true" aria-label={t.browse.title} className="fixed inset-0 z-50 flex flex-col bg-canvas">
       <div className="flex items-center gap-2 px-4 pb-3 pt-12">
         <button
           onClick={artistFilter ? clearArtist : onClose}
@@ -258,7 +258,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
                 inputRef.current?.blur();
               }
             }}
-            className="w-full rounded-2xl border border-[#e91e8c]/40 bg-[#1a0e2a] py-3.5 pl-4 pr-10 text-sm text-white shadow-[0_0_16px_rgba(233,30,140,0.2)] outline-none placeholder:text-[#6b7280] focus:border-[#e91e8c]"
+            className="w-full rounded-2xl border border-[#e91e8c]/40 bg-surface py-3.5 pl-4 pr-10 text-sm text-ink shadow-[0_0_16px_rgba(233,30,140,0.2)] outline-none placeholder:text-subtle focus:border-[#e91e8c]"
           />
           {query && (
             <button
@@ -278,9 +278,9 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
 
       {/* Listede olmayan şarkının da çalınabildiği bilgisi arama boyunca ekranda kalır */}
       {showRequestHint && (
-        <div className="mx-4 mb-3 flex items-start gap-2 rounded-xl border border-[#fbbf24]/25 bg-[#fbbf24]/[0.07] px-3 py-2.5">
+        <div className="mx-4 mb-3 flex items-start gap-2 rounded-xl border border-gold/25 bg-gold/[0.07] px-3 py-2.5">
           <svg className="mt-0.5 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3l2.2 5.6L20 10l-5.8 1.4L12 17l-2.2-5.6L4 10l5.8-1.4L12 3z" fill="#fbbf24" /></svg>
-          <p className="min-w-0 flex-1 text-[11px] leading-snug text-[#d6c9a8]">{t.search.requestHint}</p>
+          <p className="min-w-0 flex-1 text-[11px] leading-snug text-sand">{t.search.requestHint}</p>
         </div>
       )}
 
@@ -290,11 +290,11 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
         {artistFilter ? (
           <>
             <div className="flex items-center gap-2 pt-2">
-              <h2 className="min-w-0 truncate text-sm font-bold text-white">{artistFilter.name}</h2>
-              <span className="shrink-0 text-xs text-[#9ca3af]">{t.search.artistSongsSuffix}</span>
+              <h2 className="min-w-0 truncate text-sm font-bold text-ink">{artistFilter.name}</h2>
+              <span className="shrink-0 text-xs text-muted">{t.search.artistSongsSuffix}</span>
               <button
                 onClick={clearArtist}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ink/10"
                 aria-label={t.browse.clearArtistAria}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -330,16 +330,16 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
             {recent.length > 0 && (
               <>
                 <div className="mb-1 flex items-center justify-between pt-2">
-                  <h2 className="text-sm font-bold text-white">{t.search.recentTitle}</h2>
-                  <button onClick={() => persistRecent([])} className="text-xs font-medium text-[#9ca3af]">
+                  <h2 className="text-sm font-bold text-ink">{t.search.recentTitle}</h2>
+                  <button onClick={() => persistRecent([])} className="text-xs font-medium text-muted">
                     {t.search.clear}
                   </button>
                 </div>
                 {recent.map((term) => (
-                  <div key={term} className="flex items-center gap-3 border-b border-white/5">
+                  <div key={term} className="flex items-center gap-3 border-b border-ink/5">
                     <button onClick={() => submitQuery(term)} className="flex min-w-0 flex-1 items-center gap-3 py-3.5 text-left">
                       <svg className="shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#6b7280" strokeWidth="2" /><path d="M12 7v5l3 3" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
-                      <span className="truncate text-sm text-white">{term}</span>
+                      <span className="truncate text-sm text-ink">{term}</span>
                     </button>
                     <button
                       onClick={() => removeRecent(term)}
@@ -359,7 +359,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
 
             {suggestedSongs.length > 0 ? (
               <>
-                <h2 className="pt-2 text-sm font-bold text-white">{t.search.venueList}</h2>
+                <h2 className="pt-2 text-sm font-bold text-ink">{t.search.venueList}</h2>
                 {suggestedSongs.map((song) => (
                   <SongRow
                     key={song.youtube_video_id}
@@ -378,7 +378,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
               recent.length === 0 && (
                 <div className="flex flex-col items-center pt-16 text-center">
                   <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#3d3450" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#3d3450" strokeWidth="2" strokeLinecap="round" /></svg>
-                  <p className="mt-3 text-sm text-[#6b7280]">{t.search.emptyHint}</p>
+                  <p className="mt-3 text-sm text-subtle">{t.search.emptyHint}</p>
                 </div>
               )
             )}
@@ -409,7 +409,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
               <ArtistStrip artists={searchArtists} onSelect={selectArtist} />
             )}
 
-            <h2 className="pt-2 text-sm font-bold text-white">{t.search.venueList}</h2>
+            <h2 className="pt-2 text-sm font-bold text-ink">{t.search.venueList}</h2>
             {results.map((song) => (
               <SongRow
                 key={song.youtube_video_id}
@@ -440,15 +440,15 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
                 className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-[#e91e8c]/30 bg-[#e91e8c]/[0.07] px-4 py-3.5 text-left"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-white">{t.search.notFoundTitle}</p>
-                  <p className="mt-0.5 text-xs text-[#9ca3af]">{t.search.notFoundDesc}</p>
+                  <p className="text-sm font-semibold text-ink">{t.search.notFoundTitle}</p>
+                  <p className="mt-0.5 text-xs text-muted">{t.search.notFoundDesc}</p>
                 </div>
                 <svg className="shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
             )}
 
             {/* YouTube API branding şartı: şarkı verilerinin kaynağı görünür olmalı */}
-            <p className="pb-2 pt-4 text-center text-[11px] text-[#6b7280]">
+            <p className="pb-2 pt-4 text-center text-[11px] text-subtle">
               {t.search.youtubePrefix}{" "}
               <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" className="underline">
                 YouTube
@@ -468,7 +468,7 @@ function ArtistStrip({ artists, onSelect }: { artists: SearchArtist[]; onSelect:
   const t = useT();
   return (
     <>
-      <h2 className="pt-2 text-sm font-bold text-white">{t.search.artists}</h2>
+      <h2 className="pt-2 text-sm font-bold text-ink">{t.search.artists}</h2>
       <div className="flex gap-4 overflow-x-auto py-3">
         {artists.map((a) => (
           <button
@@ -476,16 +476,16 @@ function ArtistStrip({ artists, onSelect }: { artists: SearchArtist[]; onSelect:
             onClick={() => onSelect(a)}
             className="flex w-16 shrink-0 flex-col items-center gap-1.5 transition-transform active:scale-95"
           >
-            <div className="h-16 w-16 overflow-hidden rounded-full ring-1 ring-white/10">
+            <div className="h-16 w-16 overflow-hidden rounded-full ring-1 ring-ink/10">
               {a.coverUrl ? (
                 <Image src={a.coverUrl} alt={a.name} width={64} height={64} sizes="64px" className="h-full w-full object-cover" />
               ) : (
-                <div className="flex h-full w-full items-center justify-center bg-[#1a0e2a]">
+                <div className="flex h-full w-full items-center justify-center bg-surface">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#6b7280" strokeWidth="2" /><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
                 </div>
               )}
             </div>
-            <span className="w-full truncate text-center text-[11px] text-[#9ca3af]">{a.name}</span>
+            <span className="w-full truncate text-center text-[11px] text-muted">{a.name}</span>
           </button>
         ))}
       </div>
@@ -514,17 +514,17 @@ function DiscoverResults({
       <div className="pt-3">
         <div className="flex items-center gap-2 pb-1">
           <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.15)" strokeWidth="2.5" />
+            <circle cx="12" cy="12" r="9" stroke="rgb(var(--pmj-ink-rgb) / 0.15)" strokeWidth="2.5" />
             <path d="M21 12a9 9 0 0 0-9-9" stroke="#e91e8c" strokeWidth="2.5" strokeLinecap="round" />
           </svg>
-          <span className="text-xs text-[#9ca3af]">{t.search.discoverLoading}</span>
+          <span className="text-xs text-muted">{t.search.discoverLoading}</span>
         </div>
         {[0, 1, 2].map((i) => (
-          <div key={i} className="flex items-center gap-3 border-b border-white/5 py-3.5">
-            <div className="h-14 w-14 shrink-0 animate-pulse rounded-xl bg-white/[0.06]" />
+          <div key={i} className="flex items-center gap-3 border-b border-ink/5 py-3.5">
+            <div className="h-14 w-14 shrink-0 animate-pulse rounded-xl bg-ink/[0.06]" />
             <div className="min-w-0 flex-1 space-y-2">
-              <div className="h-3 w-2/3 animate-pulse rounded bg-white/[0.06]" />
-              <div className="h-2.5 w-1/3 animate-pulse rounded bg-white/[0.04]" />
+              <div className="h-3 w-2/3 animate-pulse rounded bg-ink/[0.06]" />
+              <div className="h-2.5 w-1/3 animate-pulse rounded bg-ink/[0.04]" />
             </div>
           </div>
         ))}
@@ -537,14 +537,14 @@ function DiscoverResults({
   return (
     <>
       <div className="pt-3">
-        <h2 className="text-sm font-bold text-white">{t.search.discoverTitle}</h2>
-        <p className="mt-0.5 text-xs text-[#9ca3af]">{t.search.discoverDesc}</p>
+        <h2 className="text-sm font-bold text-ink">{t.search.discoverTitle}</h2>
+        <p className="mt-0.5 text-xs text-muted">{t.search.discoverDesc}</p>
       </div>
       {tracks.map((track) => (
         <DiscoverRow key={track.key} track={track} onSuggest={onSuggest} onInteract={onInteract} />
       ))}
       {/* Kaynak gösterimi: her iki servisin de kullanım şartı */}
-      <p className="pt-3 text-center text-[11px] text-[#6b7280]">{t.search.discoverSource}</p>
+      <p className="pt-3 text-center text-[11px] text-subtle">{t.search.discoverSource}</p>
     </>
   );
 }
@@ -572,9 +572,9 @@ function DiscoverRow({
   };
 
   return (
-    <div className="border-b border-white/5 [content-visibility:auto] [contain-intrinsic-size:auto_85px]">
+    <div className="border-b border-ink/5 [content-visibility:auto] [contain-intrinsic-size:auto_85px]">
       <div className="flex items-center gap-3 py-3.5">
-        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-[#1a0e2a]">
+        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-surface">
           {track.cover && (
             /* Dış kapaklar tek kullanımlık ve sayısız — next/image dönüşümüne
                sokmaya değmez, doğrudan servisten gelir */
@@ -583,8 +583,8 @@ function DiscoverRow({
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-white">{track.title}</p>
-          <p className="mt-0.5 truncate text-xs text-[#6b7280]">{track.artist}</p>
+          <p className="truncate text-sm font-semibold text-ink">{track.title}</p>
+          <p className="mt-0.5 truncate text-xs text-subtle">{track.artist}</p>
         </div>
         <button
           onClick={request}
@@ -598,7 +598,7 @@ function DiscoverRow({
         >
           {state === "sending" ? (
             <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5" />
+              <circle cx="12" cy="12" r="9" stroke="rgb(var(--pmj-ink-rgb) / 0.3)" strokeWidth="2.5" />
               <path d="M21 12a9 9 0 0 0-9-9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
             </svg>
           ) : state === "sent" ? (
@@ -672,15 +672,15 @@ function SuggestBox({
     return (
       <div
         className={`overflow-hidden rounded-2xl border border-[#22c55e]/25 p-4 ${spacing}`}
-        style={{ background: "linear-gradient(160deg, rgba(34,197,94,0.16), rgba(34,197,94,0.05) 60%, rgba(255,255,255,0.02))" }}
+        style={{ background: "linear-gradient(160deg, rgba(34,197,94,0.16), rgba(34,197,94,0.05) 60%, rgb(var(--pmj-ink-rgb) / 0.02))" }}
       >
         <div className="flex items-center gap-2.5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#22c55e]/15 ring-1 ring-inset ring-[#22c55e]/30">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </span>
-          <p className="text-sm font-semibold text-white">{t.suggest.sentTitle}</p>
+          <p className="text-sm font-semibold text-ink">{t.suggest.sentTitle}</p>
         </div>
-        <p className="mt-2 text-xs leading-relaxed text-[#9ca3af]">
+        <p className="mt-2 text-xs leading-relaxed text-muted">
           {t.suggest.sentDesc}
         </p>
         {/* Onay bildirimi kaçmasın: talep zaten gitti, bu adım isteğe bağlı */}
@@ -690,12 +690,12 @@ function SuggestBox({
   }
 
   const inputClass =
-    "w-full rounded-xl border border-white/10 bg-[#150b23]/80 px-3.5 py-3 text-sm text-white outline-none transition-colors placeholder:text-[#6b7280] focus:border-[#e91e8c]/60 focus:bg-[#1a0e2a] focus:ring-2 focus:ring-[#e91e8c]/20";
+    "w-full rounded-xl border border-ink/10 bg-sheet/80 px-3.5 py-3 text-sm text-ink outline-none transition-colors placeholder:text-subtle focus:border-[#e91e8c]/60 focus:bg-surface focus:ring-2 focus:ring-[#e91e8c]/20";
 
   return (
     <div
       className={`overflow-hidden rounded-2xl border border-[#e91e8c]/25 p-4 shadow-[0_10px_30px_-18px_rgba(233,30,140,0.8)] ${spacing}`}
-      style={{ background: "linear-gradient(160deg, rgba(233,30,140,0.14), rgba(139,92,246,0.08) 55%, rgba(255,255,255,0.02))" }}
+      style={{ background: "linear-gradient(160deg, rgba(233,30,140,0.14), rgba(139,92,246,0.08) 55%, rgb(var(--pmj-ink-rgb) / 0.02))" }}
     >
       {variant === "empty" ? (
         <>
@@ -703,9 +703,9 @@ function SuggestBox({
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e91e8c]/15 ring-1 ring-inset ring-[#e91e8c]/30">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#e91e8c" strokeWidth="2" /><path d="M20 20l-3-3" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" /></svg>
             </span>
-            <p className="text-sm font-bold leading-snug text-white">{t.suggest.emptyTitle}</p>
+            <p className="text-sm font-bold leading-snug text-ink">{t.suggest.emptyTitle}</p>
           </div>
-          <p className="mt-2 text-xs leading-relaxed text-[#9ca3af]">
+          <p className="mt-2 text-xs leading-relaxed text-muted">
             {t.suggest.emptyDesc}
           </p>
         </>
@@ -714,7 +714,7 @@ function SuggestBox({
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e91e8c]/15 ring-1 ring-inset ring-[#e91e8c]/30">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" /></svg>
           </span>
-          <p className="text-sm font-bold leading-snug text-white">{t.suggest.inlineTitle}</p>
+          <p className="text-sm font-bold leading-snug text-ink">{t.suggest.inlineTitle}</p>
         </div>
       )}
 
@@ -748,7 +748,7 @@ function SuggestBox({
         {sending ? (
           <>
             <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5" />
+              <circle cx="12" cy="12" r="9" stroke="rgb(var(--pmj-ink-rgb) / 0.3)" strokeWidth="2.5" />
               <path d="M21 12a9 9 0 0 0-9-9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
             </svg>
             {t.suggest.sending}
@@ -762,7 +762,7 @@ function SuggestBox({
       </button>
 
       <div className="mt-3 flex justify-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1 text-[11px] text-[#9ca3af] ring-1 ring-inset ring-white/10">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-3 py-1 text-[11px] text-muted ring-1 ring-inset ring-ink/10">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#9ca3af" strokeWidth="2" /><path d="M12 8v5" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /><circle cx="12" cy="16.5" r="1" fill="#9ca3af" /></svg>
           {t.suggest.freeNote}
         </span>

@@ -9,6 +9,8 @@ import { isGuestAccount } from "@/lib/guest-session";
 import { AVATARS, AvatarMark, isAvatarId } from "@/lib/avatars";
 import Coin from "@/components/ui/Coin";
 import LangToggle from "@/components/ui/LangToggle";
+import ThemeToggle from "@/components/ui/ThemeToggle";
+import { useThemeBeta } from "@/lib/theme";
 import { useT } from "@/lib/i18n";
 import { publishTokenBalance } from "@/lib/token-balance-store";
 
@@ -41,6 +43,7 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
     };
   }, []);
   const t = useT();
+  const themeBeta = useThemeBeta();
 
   const [loaded, setLoaded] = useState(false);
   const [username, setUsername] = useState("");
@@ -204,7 +207,7 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
   ];
 
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-[#0f0a18] px-5 pt-12 pb-28">
+    <div className="relative min-h-dvh overflow-hidden bg-canvas px-5 pt-12 pb-28">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-80"
@@ -226,14 +229,14 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
                 boxShadow: "0 14px 44px -10px rgba(233,30,140,0.5)",
               }}
             >
-              <div className="rounded-full bg-[#0f0a18] p-[3px]">
+              <div className="rounded-full bg-canvas p-[3px]">
                 <AvatarMark avatarId={avatarId} initial={initial} size={84} />
               </div>
             </div>
             {/* Yeşil "çevrimiçi" noktası yerine düzenleme rozeti: avatara
                 dokunulabildiğini gösteren tek ipucu bu */}
             <span
-              className="absolute bottom-0.5 right-0.5 flex h-7 w-7 items-center justify-center rounded-full border-[3px] border-[#0f0a18]"
+              className="absolute bottom-0.5 right-0.5 flex h-7 w-7 items-center justify-center rounded-full border-[3px] border-canvas"
               style={{ background: "linear-gradient(135deg, #e91e8c, #8b5cf6)" }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
@@ -254,15 +257,15 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
           <div className="mt-4 text-center">
             {loaded ? (
               <>
-                <h1 className="text-[22px] font-bold tracking-tight text-white">
+                <h1 className="text-[22px] font-bold tracking-tight text-ink">
                   {username || email.split("@")[0] || t.profile.guestName}
                 </h1>
-                <p className="mt-1 text-[13px] text-[#6b7280]">{email || t.profile.guestEmail}</p>
+                <p className="mt-1 text-[13px] text-subtle">{email || t.profile.guestEmail}</p>
               </>
             ) : (
               <>
-                <div className="mx-auto h-6 w-36 animate-pulse rounded-lg bg-white/10" />
-                <div className="mx-auto mt-1.5 h-4 w-44 animate-pulse rounded-lg bg-white/10" />
+                <div className="mx-auto h-6 w-36 animate-pulse rounded-lg bg-ink/10" />
+                <div className="mx-auto mt-1.5 h-4 w-44 animate-pulse rounded-lg bg-ink/10" />
               </>
             )}
           </div>
@@ -271,20 +274,20 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
         {/* İstatistikler */}
         <div
           className="mb-7 grid grid-cols-3 overflow-hidden rounded-2xl"
-          style={{ background: "#1a0e2a", border: "1px solid rgba(255,255,255,0.07)" }}
+          style={{ background: "var(--pmj-surface)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}
         >
           {stats.map((s, i) => (
             <div
               key={s.label}
               className="flex flex-col items-center gap-1.5 px-2 py-5"
-              style={i > 0 ? { borderLeft: "1px solid rgba(255,255,255,0.06)" } : undefined}
+              style={i > 0 ? { borderLeft: "1px solid rgb(var(--pmj-ink-rgb) / 0.06)" } : undefined}
             >
               {loaded ? (
-                <p className="text-[22px] font-extrabold leading-none text-white tabular-nums">{s.value}</p>
+                <p className="text-[22px] font-extrabold leading-none text-ink tabular-nums">{s.value}</p>
               ) : (
-                <span className="inline-block h-[22px] w-8 animate-pulse rounded-md bg-white/10" />
+                <span className="inline-block h-[22px] w-8 animate-pulse rounded-md bg-ink/10" />
               )}
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6b7280]">{s.label}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-subtle">{s.label}</p>
             </div>
           ))}
         </div>
@@ -294,11 +297,20 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
             kalabalıklaşmasın. Misafirde hâlâ başlıkta duruyor (profil hesaba bağlı). */}
         <div
           className="mb-6 flex items-center justify-between rounded-2xl px-4 py-3"
-          style={{ background: "#1a0e2a", border: "1px solid rgba(255,255,255,0.07)" }}
+          style={{ background: "var(--pmj-surface)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}
         >
-          <span className="text-sm font-semibold text-white">{t.profile.language}</span>
+          <span className="text-sm font-semibold text-ink">{t.profile.language}</span>
           <LangToggle />
         </div>
+        {themeBeta && (
+        <div
+          className="-mt-4 mb-6 flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
+          style={{ background: "var(--pmj-surface)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}
+        >
+          <span className="text-sm font-semibold text-ink">{t.profile.theme}</span>
+          <ThemeToggle />
+        </div>
+        )}
 
         {isGuest && (
           <Link
@@ -316,8 +328,8 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
               </svg>
             </span>
             <span className="min-w-0 flex-1">
-              <p className="text-[15px] font-semibold text-white">{t.profile.linkAccountTitle}</p>
-              <p className="mt-0.5 text-xs text-[#9ca3af]">{t.profile.linkAccountDesc}</p>
+              <p className="text-[15px] font-semibold text-ink">{t.profile.linkAccountTitle}</p>
+              <p className="mt-0.5 text-xs text-muted">{t.profile.linkAccountDesc}</p>
             </span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -325,14 +337,14 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
           </Link>
         )}
 
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.profile.account}</p>
-        <div className="overflow-hidden rounded-2xl" style={{ background: "#1a0e2a", border: "1px solid rgba(255,255,255,0.07)" }}>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">{t.profile.account}</p>
+        <div className="overflow-hidden rounded-2xl" style={{ background: "var(--pmj-surface)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}>
           {menu.map((item, i) => (
             <Link
               key={item.href}
               href={item.href}
-              className="flex items-center gap-3.5 px-4 py-4 transition-colors active:bg-white/5"
-              style={i > 0 ? { borderTop: "1px solid rgba(255,255,255,0.06)" } : undefined}
+              className="flex items-center gap-3.5 px-4 py-4 transition-colors active:bg-ink/5"
+              style={i > 0 ? { borderTop: "1px solid rgb(var(--pmj-ink-rgb) / 0.06)" } : undefined}
             >
               <span
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
@@ -341,8 +353,8 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
                 {item.icon}
               </span>
               <span className="min-w-0 flex-1">
-                <p className="text-[15px] font-semibold text-white">{item.label}</p>
-                <p className="mt-0.5 text-xs text-[#6b7280]">{item.desc}</p>
+                <p className="text-[15px] font-semibold text-ink">{item.label}</p>
+                <p className="mt-0.5 text-xs text-subtle">{item.desc}</p>
               </span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -373,7 +385,7 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
           </span>
         </button>
 
-        <p className="mt-8 text-center text-[11px] font-medium tracking-[0.2em] text-[#3f3a4d]">PLAYMYJAM</p>
+        <p className="mt-8 text-center text-[11px] font-medium tracking-[0.2em] text-dim">PLAYMYJAM</p>
       </div>
 
       {/* Avatar seçici */}
@@ -385,15 +397,15 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
         >
           <div
             className="max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-t-3xl p-6"
-            style={{ background: "#1a0e2a" }}
+            style={{ background: "var(--pmj-surface)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white">{t.profile.pickAvatar}</h2>
+              <h2 className="text-lg font-bold text-ink">{t.profile.pickAvatar}</h2>
               <button
                 onClick={() => setPickerOpen(false)}
                 aria-label={t.common.close}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-ink/5"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M18 6L6 18M6 6l12 12" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" />
@@ -413,7 +425,7 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
                     className="flex items-center justify-center rounded-2xl p-1.5 transition-all active:scale-95"
                     style={{
                       background: selected ? "rgba(233,30,140,0.12)" : "transparent",
-                      border: `1px solid ${selected ? "rgba(233,30,140,0.6)" : "rgba(255,255,255,0.07)"}`,
+                      border: `1px solid ${selected ? "rgba(233,30,140,0.6)" : "rgb(var(--pmj-ink-rgb) / 0.07)"}`,
                     }}
                   >
                     <AvatarMark avatarId={avatar.id} initial={initial} size={56} />
@@ -426,7 +438,7 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
             {avatarId !== null && (
               <button
                 onClick={() => chooseAvatar(null)}
-                className="mt-5 w-full rounded-xl border border-white/10 py-3 text-sm font-semibold text-[#9ca3af]"
+                className="mt-5 w-full rounded-xl border border-ink/10 py-3 text-sm font-semibold text-muted"
               >
                 {t.profile.removeAvatar}
               </button>

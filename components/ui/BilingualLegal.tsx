@@ -22,13 +22,13 @@ export default function BilingualLegal({
   return (
     <>
       <div className="mx-auto flex max-w-3xl justify-end px-6 pt-8">
-        <div className="inline-flex rounded-full border border-white/15 p-0.5 text-xs">
+        <div className="inline-flex rounded-full border border-ink/15 p-0.5 text-xs">
           <button
             type="button"
             onClick={() => setLang("tr")}
             aria-pressed={lang === "tr"}
             className={`rounded-full px-3 py-1 transition ${
-              lang === "tr" ? "bg-white text-black" : "text-gray-300 hover:text-white"
+              lang === "tr" ? "bg-white text-black" : "text-gray-300 hover:text-ink"
             }`}
           >
             {t.lang.tr}
@@ -38,7 +38,7 @@ export default function BilingualLegal({
             onClick={() => setLang("en")}
             aria-pressed={lang === "en"}
             className={`rounded-full px-3 py-1 transition ${
-              lang === "en" ? "bg-white text-black" : "text-gray-300 hover:text-white"
+              lang === "en" ? "bg-white text-black" : "text-gray-300 hover:text-ink"
             }`}
           >
             {t.lang.en}

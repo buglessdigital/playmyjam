@@ -198,13 +198,13 @@ export default function VenueSheet({ slug, card, error, isCurrent, onClose, onRe
       role="dialog"
       aria-label={card?.name ?? t.venueMap.title}
       aria-hidden={snap === "closed"}
-      className="absolute inset-x-0 top-0 z-20 flex flex-col overflow-hidden border-t border-white/10"
+      className="absolute inset-x-0 top-0 z-20 flex flex-col overflow-hidden border-t border-ink/10"
       style={{
         height,
         transform: `translateY(${offset}px)`,
         transition: drag === null ? "transform 320ms cubic-bezier(0.22, 1, 0.36, 1), border-radius 320ms" : "none",
         borderRadius: full ? 0 : "24px 24px 0 0",
-        background: "linear-gradient(180deg, #1a0e2a 0%, #0f0a18 220px)",
+        background: "linear-gradient(180deg, var(--pmj-surface) 0%, var(--pmj-bg) 220px)",
         boxShadow: "0 -12px 40px rgba(0,0,0,0.55)",
         visibility: snap === "closed" && drag === null ? "hidden" : "visible",
       }}
@@ -218,7 +218,7 @@ export default function VenueSheet({ slug, card, error, isCurrent, onClose, onRe
         style={{ paddingTop: full ? "env(safe-area-inset-top)" : 0, transition: "padding-top 320ms" }}
       >
         <div className="flex justify-center pb-1 pt-2.5">
-          <span className="h-1.5 w-10 rounded-full bg-white/20" />
+          <span className="h-1.5 w-10 rounded-full bg-ink/20" />
         </div>
         <SheetHeader card={card} isCurrent={isCurrent} onClose={onClose} />
       </div>
@@ -230,10 +230,10 @@ export default function VenueSheet({ slug, card, error, isCurrent, onClose, onRe
       >
         {error ? (
           <div className="flex flex-col items-center gap-3 py-10 text-center">
-            <p className="text-sm text-[#9ca3af]">{t.venueMap.cardError}</p>
+            <p className="text-sm text-muted">{t.venueMap.cardError}</p>
             <button
               onClick={onRetry}
-              className="rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-white active:scale-95"
+              className="rounded-full bg-ink/10 px-4 py-2 text-xs font-semibold text-ink active:scale-95"
             >
               {t.venueMap.retry}
             </button>
@@ -257,7 +257,7 @@ export default function VenueSheet({ slug, card, error, isCurrent, onClose, onRe
           <CardSkeleton />
         )}
         {!full && card && (
-          <p className="pointer-events-none mt-4 text-center text-[11px] text-[#6b7280]">{t.venueMap.dragHint}</p>
+          <p className="pointer-events-none mt-4 text-center text-[11px] text-subtle">{t.venueMap.dragHint}</p>
         )}
       </div>
     </div>
@@ -269,8 +269,8 @@ function SheetHeader({ card, isCurrent, onClose }: { card: VenueMapCard | null; 
   return (
     <div className="flex items-center gap-3 px-5 pb-4 pt-1">
       <div
-        className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 text-sm font-bold text-white"
-        style={{ borderColor: isCurrent ? "#fbbf24" : "#e91e8c", background: "#1a0e2a" }}
+        className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 text-sm font-bold text-ink"
+        style={{ borderColor: isCurrent ? "var(--pmj-gold)" : "#e91e8c", background: "var(--pmj-surface)" }}
       >
         {card?.logo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -282,20 +282,20 @@ function SheetHeader({ card, isCurrent, onClose }: { card: VenueMapCard | null; 
       <div className="min-w-0 flex-1">
         {card ? (
           <>
-            <h2 className="truncate text-lg font-bold leading-tight text-white">{card.name}</h2>
+            <h2 className="truncate text-lg font-bold leading-tight text-ink">{card.name}</h2>
             <div className="mt-0.5 flex min-w-0 items-center gap-2">
               {isCurrent && (
-                <span className="shrink-0 rounded-full bg-[#fbbf24]/15 px-2 py-0.5 text-[10px] font-bold text-[#fbbf24]">
+                <span className="shrink-0 rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-bold text-gold">
                   {t.venueMap.youAreHere}
                 </span>
               )}
-              {card.tagline && <p className="truncate text-xs text-[#9ca3af]">{card.tagline}</p>}
+              {card.tagline && <p className="truncate text-xs text-muted">{card.tagline}</p>}
             </div>
           </>
         ) : (
           <div className="flex flex-col gap-2">
-            <div className="h-4 w-36 animate-pulse rounded bg-white/10" />
-            <div className="h-3 w-24 animate-pulse rounded bg-white/5" />
+            <div className="h-4 w-36 animate-pulse rounded bg-ink/10" />
+            <div className="h-3 w-24 animate-pulse rounded bg-ink/5" />
           </div>
         )}
       </div>
@@ -319,7 +319,7 @@ function SheetHeader({ card, isCurrent, onClose }: { card: VenueMapCard | null; 
         onClick={onClose}
         onMouseDown={(e) => e.stopPropagation()}
         aria-label={t.common.close}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 active:scale-95"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink/10 active:scale-95"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
           <path d="M6 6l12 12M18 6L6 18" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
@@ -350,13 +350,13 @@ function CardBody({ card }: { card: VenueMapCard }) {
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#e91e8c]" />
               {t.venueMap.nowPlaying}
             </p>
-            <p className="truncate text-sm font-semibold text-white">{card.nowPlaying.title}</p>
-            <p className="truncate text-xs text-[#9ca3af]">{card.nowPlaying.artist}</p>
+            <p className="truncate text-sm font-semibold text-ink">{card.nowPlaying.title}</p>
+            <p className="truncate text-xs text-muted">{card.nowPlaying.artist}</p>
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-[#9ca3af]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#4b5563]" />
+        <div className="flex items-center gap-2 rounded-2xl border border-ink/10 bg-ink/[0.03] px-4 py-3 text-xs text-muted">
+          <span className="h-1.5 w-1.5 rounded-full bg-faint" />
           {t.venueMap.notPlaying}
         </div>
       )}
@@ -377,18 +377,18 @@ function CardBody({ card }: { card: VenueMapCard }) {
               >
                 {genreLabel(topGenre.key, t.venueMap.genres)}
               </span>
-              <span className="text-sm font-bold text-white">%{Math.round(topGenre.share * 100)}</span>
+              <span className="text-sm font-bold text-ink">%{Math.round(topGenre.share * 100)}</span>
             </div>
             <Bar share={topGenre.share} strong />
             {otherGenres.map((g) => (
               <div key={g.key} className="flex items-center gap-3">
-                <span className="w-28 shrink-0 truncate text-xs text-[#9ca3af]">
+                <span className="w-28 shrink-0 truncate text-xs text-muted">
                   {genreLabel(g.key, t.venueMap.genres)}
                 </span>
                 <div className="flex-1">
                   <Bar share={g.share} />
                 </div>
-                <span className="w-9 shrink-0 text-right text-xs text-[#9ca3af]">%{Math.round(g.share * 100)}</span>
+                <span className="w-9 shrink-0 text-right text-xs text-muted">%{Math.round(g.share * 100)}</span>
               </div>
             ))}
           </div>
@@ -403,7 +403,7 @@ function CardBody({ card }: { card: VenueMapCard }) {
           <ol className="flex flex-col">
             {card.topSongs.map((s, i) => (
               <SongRow key={`${s.title}-${s.artist}-${i}`} index={i + 1} song={s}>
-                <span className="shrink-0 text-xs font-semibold text-[#9ca3af]">
+                <span className="shrink-0 text-xs font-semibold text-muted">
                   {fmt(t.venueMap.plays, { n: s.plays })}
                 </span>
               </SongRow>
@@ -421,7 +421,7 @@ function CardBody({ card }: { card: VenueMapCard }) {
             {card.upNext.map((s, i) => (
               <SongRow key={`${s.title}-${s.artist}-${i}`} index={i + 1} song={s}>
                 {s.priority && (
-                  <span className="shrink-0 rounded-full bg-[#fbbf24]/15 px-2 py-0.5 text-[10px] font-bold text-[#fbbf24]">
+                  <span className="shrink-0 rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-bold text-gold">
                     {t.venueMap.priority}
                   </span>
                 )}
@@ -440,8 +440,8 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   return (
     <section>
       <div className="mb-3 flex items-baseline justify-between">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-white/80">{title}</h3>
-        {hint && <span className="text-[11px] text-[#6b7280]">{hint}</span>}
+        <h3 className="text-xs font-bold uppercase tracking-wider text-ink/80">{title}</h3>
+        {hint && <span className="text-[11px] text-subtle">{hint}</span>}
       </div>
       {children}
     </section>
@@ -450,7 +450,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 
 function Bar({ share, strong = false }: { share: number; strong?: boolean }) {
   return (
-    <div className={`w-full overflow-hidden rounded-full bg-white/[0.06] ${strong ? "h-2" : "h-1.5"}`}>
+    <div className={`w-full overflow-hidden rounded-full bg-ink/[0.06] ${strong ? "h-2" : "h-1.5"}`}>
       <div
         className="h-full rounded-full"
         style={{
@@ -464,12 +464,12 @@ function Bar({ share, strong = false }: { share: number; strong?: boolean }) {
 
 function SongRow({ index, song, children }: { index: number; song: MapSong; children?: ReactNode }) {
   return (
-    <li className="flex items-center gap-3 border-b border-white/[0.05] py-2.5 last:border-0">
-      <span className="w-5 shrink-0 text-center text-xs font-bold text-[#6b7280]">{index}</span>
+    <li className="flex items-center gap-3 border-b border-ink/[0.05] py-2.5 last:border-0">
+      <span className="w-5 shrink-0 text-center text-xs font-bold text-subtle">{index}</span>
       <Cover song={song} size={40} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-white">{song.title}</p>
-        <p className="truncate text-xs text-[#9ca3af]">{song.artist}</p>
+        <p className="truncate text-sm font-medium text-ink">{song.title}</p>
+        <p className="truncate text-xs text-muted">{song.artist}</p>
       </div>
       {children}
     </li>
@@ -487,25 +487,25 @@ function Cover({ song, size }: { song: MapSong; size: number }) {
       style={{ width: size, height: size }}
     />
   ) : (
-    <div className="shrink-0 rounded-lg bg-white/10" style={{ width: size, height: size }} />
+    <div className="shrink-0 rounded-lg bg-ink/10" style={{ width: size, height: size }} />
   );
 }
 
 function Empty({ text }: { text: string }) {
-  return <p className="rounded-xl bg-white/[0.03] px-4 py-3 text-xs text-[#6b7280]">{text}</p>;
+  return <p className="rounded-xl bg-ink/[0.03] px-4 py-3 text-xs text-subtle">{text}</p>;
 }
 
 function CardSkeleton() {
   return (
     <div className="flex flex-col gap-4">
-      <div className="h-[72px] animate-pulse rounded-2xl bg-white/[0.06]" />
-      <div className="h-16 animate-pulse rounded-2xl bg-white/[0.04]" />
+      <div className="h-[72px] animate-pulse rounded-2xl bg-ink/[0.06]" />
+      <div className="h-16 animate-pulse rounded-2xl bg-ink/[0.04]" />
       {[1, 2, 3, 4].map((i) => (
         <div key={i} className="flex items-center gap-3">
-          <div className="h-10 w-10 animate-pulse rounded-lg bg-white/[0.08]" />
+          <div className="h-10 w-10 animate-pulse rounded-lg bg-ink/[0.08]" />
           <div className="flex flex-1 flex-col gap-2">
-            <div className="h-3 w-2/3 animate-pulse rounded bg-white/10" />
-            <div className="h-3 w-1/3 animate-pulse rounded bg-white/[0.06]" />
+            <div className="h-3 w-2/3 animate-pulse rounded bg-ink/10" />
+            <div className="h-3 w-1/3 animate-pulse rounded bg-ink/[0.06]" />
           </div>
         </div>
       ))}

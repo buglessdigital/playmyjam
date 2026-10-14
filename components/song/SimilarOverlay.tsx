@@ -151,22 +151,22 @@ export default function SimilarOverlay({
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col"
-      style={{ background: "linear-gradient(180deg, #2a1a30 0%, #150c1f 45%, #0f0a18 100%)" }}
+      style={{ background: "linear-gradient(180deg, var(--pmj-top) 0%, var(--pmj-mid) 45%, var(--pmj-bg) 100%)" }}
     >
       {/* Üst bar: hangi şarkının benzerlerine bakıldığı sürekli görünür */}
-      <div className="flex items-center gap-3 border-b border-white/5 px-5 pb-3 pt-12">
-        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-[#1a0e2a]">
+      <div className="flex items-center gap-3 border-b border-ink/5 px-5 pb-3 pt-12">
+        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-surface">
           {track.album_cover_url && (
             <Image src={track.album_cover_url} alt={track.title} width={40} height={40} sizes="40px" className="h-full w-full object-cover" />
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-white">{track.title}</p>
-          <p className="truncate text-xs text-[#9ca3af]">{track.artist}</p>
+          <p className="truncate text-sm font-bold text-ink">{track.title}</p>
+          <p className="truncate text-xs text-muted">{track.artist}</p>
         </div>
         <button
           onClick={onClose}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink/10"
           aria-label={t.similar.closeAria}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -178,16 +178,16 @@ export default function SimilarOverlay({
           <>
             <button
               onClick={() => setSelectedArtist(null)}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink/10"
               aria-label={t.similar.backAria}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
-            <h2 className="truncate text-lg font-bold text-white">{selectedArtist.name}</h2>
-            <span className="shrink-0 text-xs text-[#9ca3af]">{artistSongs.length} şarkı</span>
+            <h2 className="truncate text-lg font-bold text-ink">{selectedArtist.name}</h2>
+            <span className="shrink-0 text-xs text-muted">{artistSongs.length} şarkı</span>
           </>
         ) : (
-          <h2 className="text-lg font-bold text-white">{t.similar.title}</h2>
+          <h2 className="text-lg font-bold text-ink">{t.similar.title}</h2>
         )}
       </div>
 
@@ -196,10 +196,10 @@ export default function SimilarOverlay({
           <div className="px-5 pt-4">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 py-2.5">
-                <div className="h-12 w-12 shrink-0 animate-pulse rounded-lg bg-white/5" />
+                <div className="h-12 w-12 shrink-0 animate-pulse rounded-lg bg-ink/5" />
                 <div className="min-w-0 flex-1">
-                  <div className="h-3.5 w-2/3 animate-pulse rounded bg-white/5" />
-                  <div className="mt-2 h-3 w-1/3 animate-pulse rounded bg-white/5" />
+                  <div className="h-3.5 w-2/3 animate-pulse rounded bg-ink/5" />
+                  <div className="mt-2 h-3 w-1/3 animate-pulse rounded bg-ink/5" />
                 </div>
               </div>
             ))}
@@ -207,7 +207,7 @@ export default function SimilarOverlay({
         )}
 
         {empty && (
-          <p className="px-8 pt-16 text-center text-sm text-[#6b7280]">
+          <p className="px-8 pt-16 text-center text-sm text-subtle">
             {t.similar.empty}
           </p>
         )}
@@ -223,8 +223,8 @@ export default function SimilarOverlay({
         {!loading && !selectedArtist && songs.length > 0 && (
           <>
             <section className="pt-2">
-              <h3 className="px-5 pb-1 text-sm font-bold text-white">{t.similar.songsTitle}</h3>
-              <p className="px-5 pb-2 text-[11px] text-[#6b7280]">{t.similar.songsDesc}</p>
+              <h3 className="px-5 pb-1 text-sm font-bold text-ink">{t.similar.songsTitle}</h3>
+              <p className="px-5 pb-2 text-[11px] text-subtle">{t.similar.songsDesc}</p>
               <div className="px-5">
                 {songs.map((song) => (
                   <SimilarRow key={song.youtube_video_id} song={song} action={actionFor(song)} onOpen={onOpenSong} onAdd={handleAdd} />
@@ -234,8 +234,8 @@ export default function SimilarOverlay({
 
             {artists.length > 0 && (
               <section className="pt-5">
-                <h3 className="px-5 pb-1 text-sm font-bold text-white">{t.similar.artistsTitle}</h3>
-                <p className="px-5 pb-3 text-[11px] text-[#6b7280]">{t.similar.artistsDesc}</p>
+                <h3 className="px-5 pb-1 text-sm font-bold text-ink">{t.similar.artistsTitle}</h3>
+                <p className="px-5 pb-3 text-[11px] text-subtle">{t.similar.artistsDesc}</p>
                 <div className="flex gap-4 overflow-x-auto px-5 pb-2">
                   {artists.map((a) => (
                     <button
@@ -246,15 +246,15 @@ export default function SimilarOverlay({
                       {/* YouTube hqdefault kapağı 480x360'tır ve 16:9 videoda üst/alt %12,5
                           siyah bant içerir. scale-[1.35] bu bantları daire dışına taşır —
                           böylece daire tamamen görselle dolar. */}
-                      <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-full bg-[#1a0e2a] ring-1 ring-white/10">
+                      <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-full bg-surface ring-1 ring-ink/10">
                         {a.coverUrl ? (
                           <Image src={a.coverUrl} alt={a.name} width={144} height={144} sizes="144px" className="h-full w-full scale-[1.35] object-cover" />
                         ) : (
                           <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#6b7280" strokeWidth="2" /><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
                         )}
                       </div>
-                      <span className="w-full truncate text-center text-[17px] font-medium text-[#d1d5db]">{a.name}</span>
-                      <span className="-mt-1 text-[13px] text-[#6b7280]">{a.songCount} şarkı</span>
+                      <span className="w-full truncate text-center text-[17px] font-medium text-soft">{a.name}</span>
+                      <span className="-mt-1 text-[13px] text-subtle">{a.songCount} şarkı</span>
                     </button>
                   ))}
                 </div>
@@ -276,20 +276,20 @@ function SimilarRow({
   onAdd: (song: VenueSong) => void;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-white/5 py-2.5">
+    <div className="flex items-center gap-3 border-b border-ink/5 py-2.5">
       <button onClick={() => onOpen(song)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-[#1a0e2a]">
+        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-surface">
           {song.album_cover_url && (
             <Image src={song.album_cover_url} alt={song.title} width={48} height={48} sizes="48px" className="h-full w-full object-cover" />
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-white">{song.title}</p>
+          <p className="truncate text-sm font-semibold text-ink">{song.title}</p>
           <div className="mt-0.5 flex items-center gap-1.5">
-            <span className="truncate text-xs text-[#6b7280]">{primaryArtist(song.artist)}</span>
+            <span className="truncate text-xs text-subtle">{primaryArtist(song.artist)}</span>
             {song.play_count > 0 && (
               <>
-                <span className="text-xs text-[#6b7280]">•</span>
+                <span className="text-xs text-subtle">•</span>
                 <span className="shrink-0 text-xs font-medium text-[#e91e8c]">{song.play_count}</span>
               </>
             )}

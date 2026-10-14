@@ -155,11 +155,11 @@ export default function NotifyOptIn({
   // Aç"a bastığında 2. aşamadaki iOS yönergesi devreye girer.
   if (!skipInstall && !installed && state !== "on" && (homeScreen || (prompt && !skippedInstall))) {
     return (
-      <div className="mt-3 rounded-xl border border-white/10 bg-[#1a0e2a] p-3">
-        <p className="text-xs font-semibold text-white">{t.suggest.installTitle}</p>
+      <div className="mt-3 rounded-xl border border-ink/10 bg-surface p-3">
+        <p className="text-xs font-semibold text-ink">{t.suggest.installTitle}</p>
         {/* iPhone yönergesi adım adım anlatım — kısaltılamaz; öneri metni compact'te düşer */}
         {(homeScreen || !compact) && (
-          <p className="mt-1 text-[11px] text-[#9ca3af]">
+          <p className="mt-1 text-[11px] text-muted">
             {homeScreen ? t.suggest.installIos : t.suggest.installDesc}
           </p>
         )}
@@ -176,7 +176,7 @@ export default function NotifyOptIn({
         {!homeScreen && (
           <button
             onClick={() => setSkippedInstall(true)}
-            className="mt-2 w-full text-center text-[11px] font-medium text-[#9ca3af] underline"
+            className="mt-2 w-full text-center text-[11px] font-medium text-muted underline"
           >
             {t.suggest.installSkip}
           </button>
@@ -188,8 +188,8 @@ export default function NotifyOptIn({
   // 2. AŞAMA — bildirim izni
   if (state === "on") {
     return (
-      <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#1a0e2a] px-3 py-2.5">
-        <p className="flex items-center gap-1.5 text-[11px] text-[#9ca3af]">
+      <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-ink/10 bg-surface px-3 py-2.5">
+        <p className="flex items-center gap-1.5 text-[11px] text-muted">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
           {t.suggest.notifyOn}
         </p>
@@ -219,9 +219,9 @@ export default function NotifyOptIn({
             : t.suggest.notifyDesc;
 
   return (
-    <div className="mt-3 rounded-xl border border-white/10 bg-[#1a0e2a] p-3">
-      <p className="text-xs font-semibold text-white">{t.suggest.notifyTitle}</p>
-      {notifyLine && <p className="mt-1 text-[11px] text-[#9ca3af]">{notifyLine}</p>}
+    <div className="mt-3 rounded-xl border border-ink/10 bg-surface p-3">
+      <p className="text-xs font-semibold text-ink">{t.suggest.notifyTitle}</p>
+      {notifyLine && <p className="mt-1 text-[11px] text-muted">{notifyLine}</p>}
       {state !== "denied" && state !== "ios" && (
         <button
           onClick={enable}

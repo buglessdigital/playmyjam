@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import BlockedHelp from "@/components/notifications/BlockedHelp";
 import LangToggle from "@/components/ui/LangToggle";
+import ThemeToggle from "@/components/ui/ThemeToggle";
+import { useThemeBeta } from "@/lib/theme";
 import { fmt, useT } from "@/lib/i18n";
 import {
   getNotifPref,
@@ -27,7 +29,7 @@ const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) =
   <button
     onClick={onChange}
     className="relative w-12 h-6 rounded-full transition-all duration-300 flex-shrink-0"
-    style={{ background: value ? "#e91e8c" : "rgba(255,255,255,0.15)" }}
+    style={{ background: value ? "#e91e8c" : "rgb(var(--pmj-ink-rgb) / 0.15)" }}
   >
     <div
       className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-300"
@@ -41,6 +43,7 @@ const DELETE_CONFIRM_PHRASE = "HESABIMI SİL";
 export default function SettingsPage() {
   const router = useRouter();
   const t = useT();
+  const themeBeta = useThemeBeta();
   const venueId = String(useParams()?.venueId ?? "");
   const notifNearby = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("nearby"), () => true);
   const notifQueue = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("queue"), () => false);
@@ -295,42 +298,42 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f0a18]">
+    <div className="min-h-screen bg-canvas">
       <div className="flex items-center gap-3 px-5 pt-12 pb-6">
         <button
           onClick={() => router.back()}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-ink/10"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <h1 className="text-white font-bold text-xl">{t.settings.title}</h1>
+        <h1 className="text-ink font-bold text-xl">{t.settings.title}</h1>
       </div>
 
       {/* Bildirimler */}
       <div className="px-5 mb-4">
-        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">{t.settings.notifSection}</h2>
-        <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
-          <div className="flex items-center justify-between px-4 py-4 border-b border-white/5">
+        <h2 className="text-subtle text-xs font-semibold tracking-wider mb-3">{t.settings.notifSection}</h2>
+        <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pmj-surface)" }}>
+          <div className="flex items-center justify-between px-4 py-4 border-b border-ink/5">
             <div className="flex-1 pr-4">
-              <p className="text-white text-sm font-medium">{t.settings.nearbyTitle}</p>
-              <p className="text-[#6b7280] text-xs mt-0.5">{t.settings.nearbyDesc}</p>
+              <p className="text-ink text-sm font-medium">{t.settings.nearbyTitle}</p>
+              <p className="text-subtle text-xs mt-0.5">{t.settings.nearbyDesc}</p>
             </div>
             <Toggle value={notifNearby} onChange={() => toggleNotif("nearby", notifNearby)} />
           </div>
-          <div className="flex items-center justify-between px-4 py-4 border-b border-white/5">
+          <div className="flex items-center justify-between px-4 py-4 border-b border-ink/5">
             <div className="flex-1 pr-4">
-              <p className="text-white text-sm font-medium">{t.settings.queueTitle}</p>
-              <p className="text-[#6b7280] text-xs mt-0.5">{t.settings.queueDesc}</p>
+              <p className="text-ink text-sm font-medium">{t.settings.queueTitle}</p>
+              <p className="text-subtle text-xs mt-0.5">{t.settings.queueDesc}</p>
             </div>
             <Toggle value={notifQueue} onChange={() => toggleNotif("queue", notifQueue)} />
           </div>
           {pushSupported && (
             <div className="flex items-center justify-between px-4 py-4" style={{ opacity: pushBusy ? 0.6 : 1 }}>
               <div className="flex-1 pr-4">
-                <p className="text-white text-sm font-medium">{t.settings.pushTitle}</p>
-                <p className="text-[#6b7280] text-xs mt-0.5">{t.settings.pushDesc}</p>
+                <p className="text-ink text-sm font-medium">{t.settings.pushTitle}</p>
+                <p className="text-subtle text-xs mt-0.5">{t.settings.pushDesc}</p>
               </div>
               <Toggle value={notifPush} onChange={togglePush} />
             </div>
@@ -350,12 +353,12 @@ export default function SettingsPage() {
 
       {/* İzinler */}
       <div className="px-5 mb-4">
-        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">{t.settings.consentSection}</h2>
-        <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
+        <h2 className="text-subtle text-xs font-semibold tracking-wider mb-3">{t.settings.consentSection}</h2>
+        <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pmj-surface)" }}>
           <div className="flex items-center justify-between px-4 py-4" style={{ opacity: marketingBusy ? 0.6 : 1 }}>
             <div className="flex-1 pr-4">
-              <p className="text-white text-sm font-medium">{t.settings.marketingTitle}</p>
-              <p className="text-[#6b7280] text-xs mt-0.5">{t.settings.marketingDesc}</p>
+              <p className="text-ink text-sm font-medium">{t.settings.marketingTitle}</p>
+              <p className="text-subtle text-xs mt-0.5">{t.settings.marketingDesc}</p>
             </div>
             <Toggle value={marketing} onChange={toggleMarketing} />
           </div>
@@ -363,12 +366,25 @@ export default function SettingsPage() {
         {marketingError && <p className="text-amber-400/80 text-xs mt-2 px-1">{marketingError}</p>}
       </div>
 
+      {/* Görünüm */}
+      {themeBeta && (
+      <div className="px-5 mb-4">
+        <h2 className="text-subtle text-xs font-semibold tracking-wider mb-3">{t.settings.themeSection}</h2>
+        <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pmj-surface)" }}>
+          <div className="flex items-center justify-between gap-3 px-4 py-4">
+            <span className="text-ink text-sm font-medium">{t.settings.themeRow}</span>
+            <ThemeToggle />
+          </div>
+        </div>
+      </div>
+      )}
+
       {/* Dil */}
       <div className="px-5 mb-4">
-        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">{t.settings.langSection}</h2>
-        <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
+        <h2 className="text-subtle text-xs font-semibold tracking-wider mb-3">{t.settings.langSection}</h2>
+        <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pmj-surface)" }}>
           <div className="flex items-center justify-between px-4 py-4">
-            <span className="text-white text-sm font-medium">{t.settings.langRow}</span>
+            <span className="text-ink text-sm font-medium">{t.settings.langRow}</span>
             <LangToggle />
           </div>
         </div>
@@ -376,13 +392,13 @@ export default function SettingsPage() {
 
       {/* Hesap */}
       <div className="px-5 mb-4">
-        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">{t.settings.accountSection}</h2>
-        <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
+        <h2 className="text-subtle text-xs font-semibold tracking-wider mb-3">{t.settings.accountSection}</h2>
+        <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pmj-surface)" }}>
           <button
             onClick={() => { setEditName(name); setSaveError(""); setShowUpdateModal(true); }}
-            className="w-full flex items-center justify-between px-4 py-4 border-b border-white/5 hover:bg-white/5 transition-colors"
+            className="w-full flex items-center justify-between px-4 py-4 border-b border-ink/5 hover:bg-ink/5 transition-colors"
           >
-            <span className="text-white text-sm font-medium">{t.settings.updateInfo}</span>
+            <span className="text-ink text-sm font-medium">{t.settings.updateInfo}</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" />
             </svg>
@@ -392,14 +408,14 @@ export default function SettingsPage() {
               setCurrentPassword(""); setNewPassword("");
               setPasswordError(""); setPasswordInfo(""); setShowPasswordModal(true);
             }}
-            className="w-full flex items-center justify-between px-4 py-4 border-b border-white/5 hover:bg-white/5 transition-colors"
+            className="w-full flex items-center justify-between px-4 py-4 border-b border-ink/5 hover:bg-ink/5 transition-colors"
           >
             <div className="text-left">
-              <p className="text-white text-sm font-medium">
+              <p className="text-ink text-sm font-medium">
                 {hasPassword ? t.settings.changePassword : t.settings.setPassword}
               </p>
               {!hasPassword && (
-                <p className="text-[#6b7280] text-xs mt-0.5">
+                <p className="text-subtle text-xs mt-0.5">
                   {t.settings.googleNoPassword}
                 </p>
               )}
@@ -410,9 +426,9 @@ export default function SettingsPage() {
           </button>
           <button
             onClick={() => { setNewEmail(""); setEmailError(""); setEmailInfo(""); setShowEmailModal(true); }}
-            className="w-full flex items-center justify-between px-4 py-4 hover:bg-white/5 transition-colors"
+            className="w-full flex items-center justify-between px-4 py-4 hover:bg-ink/5 transition-colors"
           >
-            <span className="text-white text-sm font-medium">{t.settings.changeEmail}</span>
+            <span className="text-ink text-sm font-medium">{t.settings.changeEmail}</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" />
             </svg>
@@ -422,15 +438,15 @@ export default function SettingsPage() {
 
       {/* Hesabı sil */}
       <div className="px-5 mb-4">
-        <h2 className="text-[#6b7280] text-xs font-semibold tracking-wider mb-3">{t.settings.dangerSection}</h2>
-        <div className="rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
+        <h2 className="text-subtle text-xs font-semibold tracking-wider mb-3">{t.settings.dangerSection}</h2>
+        <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pmj-surface)" }}>
           <button
             onClick={() => { setDeleteConfirm(""); setDeleteError(""); setShowDeleteModal(true); }}
-            className="w-full flex items-center justify-between px-4 py-4 hover:bg-white/5 transition-colors"
+            className="w-full flex items-center justify-between px-4 py-4 hover:bg-ink/5 transition-colors"
           >
             <div className="text-left">
               <p className="text-red-400 text-sm font-medium">{t.settings.deleteAccount}</p>
-              <p className="text-[#6b7280] text-xs mt-0.5">{t.settings.deleteAccountDesc}</p>
+              <p className="text-subtle text-xs mt-0.5">{t.settings.deleteAccountDesc}</p>
             </div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M9 18l6-6-6-6" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" />
@@ -441,36 +457,36 @@ export default function SettingsPage() {
 
       {/* Versiyon */}
       <div className="px-5 pb-8">
-        <p className="text-center text-[#4b5563] text-xs">PlayMyJam v1.0.0</p>
+        <p className="text-center text-faint text-xs">PlayMyJam v1.0.0</p>
       </div>
 
       {/* Bilgileri Güncelle Modal */}
       {showUpdateModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-          <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "#1a0e2a" }}>
-            <h2 className="text-white font-bold text-lg mb-5">{t.settings.updateInfo}</h2>
+          <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "var(--pmj-surface)" }}>
+            <h2 className="text-ink font-bold text-lg mb-5">{t.settings.updateInfo}</h2>
             {saveError && (
               <p className="text-red-400 text-sm mb-3">{saveError}</p>
             )}
             <div className="space-y-3 mb-5">
               <div>
-                <label className="text-[#6b7280] text-xs mb-1 block">{t.settings.username}</label>
+                <label className="text-subtle text-xs mb-1 block">{t.settings.username}</label>
                 <input
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-[#e91e8c]/40"
+                  className="w-full bg-canvas border border-ink/10 rounded-xl py-3 px-4 text-ink text-sm focus:outline-none focus:border-[#e91e8c]/40"
                 />
               </div>
               <div>
-                <label className="text-[#6b7280] text-xs mb-1 block">{t.settings.email}</label>
+                <label className="text-subtle text-xs mb-1 block">{t.settings.email}</label>
                 <input
                   type="email"
                   value={email}
                   readOnly
-                  className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-[#6b7280] text-sm focus:outline-none"
+                  className="w-full bg-canvas border border-ink/10 rounded-xl py-3 px-4 text-subtle text-sm focus:outline-none"
                 />
-                <p className="text-[#4b5563] text-xs mt-1">
+                <p className="text-faint text-xs mt-1">
                   {t.settings.emailChangeHint}
                 </p>
               </div>
@@ -478,7 +494,7 @@ export default function SettingsPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowUpdateModal(false)}
-                className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm"
+                className="flex-1 py-3 rounded-xl font-semibold text-muted border border-ink/10 text-sm"
               >
                 {t.common.cancel}
               </button>
@@ -498,8 +514,8 @@ export default function SettingsPage() {
       {/* Şifre Modal */}
       {showPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-          <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "#1a0e2a" }}>
-            <h2 className="text-white font-bold text-lg mb-5">
+          <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "var(--pmj-surface)" }}>
+            <h2 className="text-ink font-bold text-lg mb-5">
               {hasPassword ? t.settings.changePassword : t.settings.setPassword}
             </h2>
             {passwordError && <p className="text-red-400 text-sm mb-3">{passwordError}</p>}
@@ -507,33 +523,33 @@ export default function SettingsPage() {
             <div className="space-y-3 mb-5">
               {hasPassword && (
                 <div>
-                  <label className="text-[#6b7280] text-xs mb-1 block">{t.settings.currentPassword}</label>
+                  <label className="text-subtle text-xs mb-1 block">{t.settings.currentPassword}</label>
                   <input
                     type="password"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     autoComplete="current-password"
-                    className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-[#e91e8c]/40"
+                    className="w-full bg-canvas border border-ink/10 rounded-xl py-3 px-4 text-ink text-sm focus:outline-none focus:border-[#e91e8c]/40"
                   />
                 </div>
               )}
               <div>
-                <label className="text-[#6b7280] text-xs mb-1 block">{t.settings.newPassword}</label>
+                <label className="text-subtle text-xs mb-1 block">{t.settings.newPassword}</label>
                 <input
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && savePassword()}
                   autoComplete="new-password"
-                  className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-[#e91e8c]/40"
+                  className="w-full bg-canvas border border-ink/10 rounded-xl py-3 px-4 text-ink text-sm focus:outline-none focus:border-[#e91e8c]/40"
                 />
-                <p className="text-[#4b5563] text-xs mt-1">{t.settings.minChars}</p>
+                <p className="text-faint text-xs mt-1">{t.settings.minChars}</p>
               </div>
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowPasswordModal(false)}
-                className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm"
+                className="flex-1 py-3 rounded-xl font-semibold text-muted border border-ink/10 text-sm"
               >
                 {t.common.cancel}
               </button>
@@ -553,26 +569,26 @@ export default function SettingsPage() {
       {/* E-posta Modal */}
       {showEmailModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-          <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "#1a0e2a" }}>
-            <h2 className="text-white font-bold text-lg mb-1">{t.settings.changeEmail}</h2>
-            <p className="text-[#6b7280] text-xs mb-5">{fmt(t.settings.currentEmail, { email })}</p>
+          <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "var(--pmj-surface)" }}>
+            <h2 className="text-ink font-bold text-lg mb-1">{t.settings.changeEmail}</h2>
+            <p className="text-subtle text-xs mb-5">{fmt(t.settings.currentEmail, { email })}</p>
             {emailError && <p className="text-red-400 text-sm mb-3">{emailError}</p>}
             {emailInfo && <p className="text-emerald-400 text-sm mb-3">{emailInfo}</p>}
             <div className="mb-5">
-              <label className="text-[#6b7280] text-xs mb-1 block">{t.settings.newEmail}</label>
+              <label className="text-subtle text-xs mb-1 block">{t.settings.newEmail}</label>
               <input
                 type="email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && saveEmail()}
                 placeholder={t.settings.newEmailPlaceholder}
-                className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white text-sm placeholder-[#4b5563] focus:outline-none focus:border-[#e91e8c]/40"
+                className="w-full bg-canvas border border-ink/10 rounded-xl py-3 px-4 text-ink text-sm placeholder-faint focus:outline-none focus:border-[#e91e8c]/40"
               />
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowEmailModal(false)}
-                className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm"
+                className="flex-1 py-3 rounded-xl font-semibold text-muted border border-ink/10 text-sm"
               >
                 {emailInfo ? t.common.close : t.common.cancel}
               </button>
@@ -592,31 +608,31 @@ export default function SettingsPage() {
       {/* Hesap Silme Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-          <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "#1a0e2a" }}>
-            <h2 className="text-white font-bold text-lg mb-2">{t.settings.deleteTitle}</h2>
-            <p className="text-[#9ca3af] text-sm mb-3 leading-relaxed">
+          <div className="w-full max-w-sm rounded-t-3xl p-6" style={{ background: "var(--pmj-surface)" }}>
+            <h2 className="text-ink font-bold text-lg mb-2">{t.settings.deleteTitle}</h2>
+            <p className="text-muted text-sm mb-3 leading-relaxed">
               {t.settings.deleteDesc}
             </p>
-            <p className="text-[#6b7280] text-xs mb-5 leading-relaxed">
+            <p className="text-subtle text-xs mb-5 leading-relaxed">
               {t.settings.deleteNote}
             </p>
             {deleteError && <p className="text-red-400 text-sm mb-3">{deleteError}</p>}
             <div className="mb-5">
-              <label className="text-[#6b7280] text-xs mb-1 block">
-                {t.settings.deleteConfirmPrefix} <span className="text-white font-semibold">{DELETE_CONFIRM_PHRASE}</span> {t.settings.deleteConfirmSuffix}
+              <label className="text-subtle text-xs mb-1 block">
+                {t.settings.deleteConfirmPrefix} <span className="text-ink font-semibold">{DELETE_CONFIRM_PHRASE}</span> {t.settings.deleteConfirmSuffix}
               </label>
               <input
                 type="text"
                 value={deleteConfirm}
                 onChange={(e) => setDeleteConfirm(e.target.value)}
-                className="w-full bg-[#0f0a18] border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-red-500/40"
+                className="w-full bg-canvas border border-ink/10 rounded-xl py-3 px-4 text-ink text-sm focus:outline-none focus:border-red-500/40"
               />
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteModal(false)}
                 disabled={deleting}
-                className="flex-1 py-3 rounded-xl font-semibold text-[#9ca3af] border border-white/10 text-sm disabled:opacity-60"
+                className="flex-1 py-3 rounded-xl font-semibold text-muted border border-ink/10 text-sm disabled:opacity-60"
               >
                 {t.common.cancel}
               </button>

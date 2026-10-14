@@ -36,10 +36,10 @@ export default function SongDetailModal({ song, onClose }: Props) {
       />
       <div
         className="relative w-full max-w-md rounded-t-3xl p-6 pb-10"
-        style={{ background: "#1a0e2a", touchAction: "manipulation" }}
+        style={{ background: "var(--pmj-surface)", touchAction: "manipulation" }}
       >
         {/* Handle */}
-        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-6" />
+        <div className="w-10 h-1 bg-ink/20 rounded-full mx-auto mb-6" />
 
         <div className="flex items-center gap-4 mb-6">
           {song.album_cover_url ? (
@@ -51,32 +51,32 @@ export default function SongDetailModal({ song, onClose }: Props) {
               className="w-16 h-16 rounded-xl object-cover"
             />
           ) : (
-            <div className="w-16 h-16 rounded-xl bg-white/10" />
+            <div className="w-16 h-16 rounded-xl bg-ink/10" />
           )}
           <div>
-            <h3 className="text-white font-bold text-lg">{song.title}</h3>
-            <p className="text-[#9ca3af] text-sm">{song.artist}</p>
+            <h3 className="text-ink font-bold text-lg">{song.title}</h3>
+            <p className="text-muted text-sm">{song.artist}</p>
           </div>
         </div>
 
         <div className="space-y-3">
-          <div className="flex justify-between items-center py-3 border-b border-white/10">
-            <span className="text-[#9ca3af] text-sm">{t.songModal.addedBy}</span>
-            <span className="text-white text-sm font-medium">{song.added_by}</span>
+          <div className="flex justify-between items-center py-3 border-b border-ink/10">
+            <span className="text-muted text-sm">{t.songModal.addedBy}</span>
+            <span className="text-ink text-sm font-medium">{song.added_by}</span>
           </div>
-          <div className="flex justify-between items-center py-3 border-b border-white/10">
-            <span className="text-[#9ca3af] text-sm">{t.songModal.tokensSpent}</span>
+          <div className="flex justify-between items-center py-3 border-b border-ink/10">
+            <span className="text-muted text-sm">{t.songModal.tokensSpent}</span>
             <span className="text-sm font-bold" style={{ color: "#e91e8c" }}>
               {fmt(t.songModal.tokensValue, { n: song.tokens_spent })}
             </span>
           </div>
-          <div className="flex justify-between items-center py-3 border-b border-white/10">
-            <span className="text-[#9ca3af] text-sm">{t.songModal.queueType}</span>
+          <div className="flex justify-between items-center py-3 border-b border-ink/10">
+            <span className="text-muted text-sm">{t.songModal.queueType}</span>
             <span
               className="text-xs font-semibold px-2 py-1 rounded-full"
               style={{
-                background: song.priority ? "rgba(233,30,140,0.15)" : "rgba(255,255,255,0.08)",
-                color: song.priority ? "#e91e8c" : "#9ca3af",
+                background: song.priority ? "rgba(233,30,140,0.15)" : "rgb(var(--pmj-ink-rgb) / 0.08)",
+                color: song.priority ? "#e91e8c" : "var(--pmj-muted)",
               }}
             >
               {song.priority ? (
@@ -89,15 +89,15 @@ export default function SongDetailModal({ song, onClose }: Props) {
           </div>
           {song.wait_ms !== undefined && (
             <div className="flex justify-between items-center py-3">
-              <span className="text-[#9ca3af] text-sm">{t.songModal.estimatedWait}</span>
-              <span className="text-white text-sm font-medium">{formatWait(song.wait_ms)}</span>
+              <span className="text-muted text-sm">{t.songModal.estimatedWait}</span>
+              <span className="text-ink text-sm font-medium">{formatWait(song.wait_ms)}</span>
             </div>
           )}
         </div>
 
         <button
           onClick={onClose}
-          className="w-full mt-6 py-3.5 rounded-2xl font-semibold text-white border border-white/10 bg-white/5 hover:bg-white/10 transition-all"
+          className="w-full mt-6 py-3.5 rounded-2xl font-semibold text-ink border border-ink/10 bg-ink/5 hover:bg-ink/10 transition-all"
         >
           {t.common.close}
         </button>

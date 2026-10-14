@@ -53,7 +53,7 @@ export default function AddSongSheet({
     <span className="flex flex-col items-end leading-tight">
       <span className="font-bold text-sm" style={{ color }}>{fmt(t.addSong.tokensValue, { n: tokens })}</span>
       {priceLabel(tokens) && (
-        <span className="text-[#6b7280] text-[11px] font-semibold tabular-nums">{priceLabel(tokens)}</span>
+        <span className="text-subtle text-[11px] font-semibold tabular-nums">{priceLabel(tokens)}</span>
       )}
     </span>
   );
@@ -153,9 +153,9 @@ export default function AddSongSheet({
       />
       <div
         className="relative w-full max-w-md rounded-t-3xl p-6 pb-24 max-h-[90vh] overflow-y-auto"
-        style={{ background: "#1a0e2a", touchAction: "manipulation" }}
+        style={{ background: "var(--pmj-surface)", touchAction: "manipulation" }}
       >
-        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-6" />
+        <div className="w-10 h-1 bg-ink/20 rounded-full mx-auto mb-6" />
 
         <div className="flex items-center gap-4 mb-6">
           {song.album_cover_url ? (
@@ -167,11 +167,11 @@ export default function AddSongSheet({
               className="w-14 h-14 rounded-xl object-cover"
             />
           ) : (
-            <div className="w-14 h-14 rounded-xl bg-white/10" />
+            <div className="w-14 h-14 rounded-xl bg-ink/10" />
           )}
           <div>
-            <h3 className="text-white font-bold text-base">{song.title}</h3>
-            <p className="text-[#9ca3af] text-sm">{song.artist}</p>
+            <h3 className="text-ink font-bold text-base">{song.title}</h3>
+            <p className="text-muted text-sm">{song.artist}</p>
           </div>
         </div>
 
@@ -185,7 +185,7 @@ export default function AddSongSheet({
               <path d="M12 7v5l3 3" stroke="#fbbf24" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             <div>
-              <p className="text-[#fbbf24] text-sm font-semibold">
+              <p className="text-gold text-sm font-semibold">
                 {cooldownReason === "playing"
                   ? t.addSong.playingTitle
                   : cooldownReason === "queued"
@@ -194,10 +194,10 @@ export default function AddSongSheet({
               </p>
               <p className="text-[#d97706] text-xs mt-0.5">
                 {cooldownReason === "playing"
-                  ? <>{t.addSong.playingDescPrefix} <span className="font-bold text-[#fbbf24]">{t.addSong.playingDescBold}</span> {t.addSong.playingDescSuffix}</>
+                  ? <>{t.addSong.playingDescPrefix} <span className="font-bold text-gold">{t.addSong.playingDescBold}</span> {t.addSong.playingDescSuffix}</>
                   : cooldownReason === "queued"
-                  ? <>{t.addSong.queuedDescPrefix} <span className="font-bold text-[#fbbf24]">{fmt(t.addSong.minutesBold, { n: cooldownMin })}</span> {t.addSong.queuedDescSuffix}</>
-                  : <>{t.addSong.playedDescPrefix} <span className="font-bold text-[#fbbf24]">{fmt(t.addSong.minutesBold, { n: cooldownMin })}</span> {t.addSong.playedDescSuffix}</>
+                  ? <>{t.addSong.queuedDescPrefix} <span className="font-bold text-gold">{fmt(t.addSong.minutesBold, { n: cooldownMin })}</span> {t.addSong.queuedDescSuffix}</>
+                  : <>{t.addSong.playedDescPrefix} <span className="font-bold text-gold">{fmt(t.addSong.minutesBold, { n: cooldownMin })}</span> {t.addSong.playedDescSuffix}</>
                 }
               </p>
             </div>
@@ -207,9 +207,9 @@ export default function AddSongSheet({
           // anlatmıyordu, "jetonun yetmiyor" kutusuyla birlikte kartı
           // gereksiz yere uzatıyordu. Ne ödeneceği zaten düğmelerin üstünde.
           tokenBalance > 0 && (
-            <p className="text-[#6b7280] text-xs mb-4">
+            <p className="text-subtle text-xs mb-4">
               {t.addSong.balance}{" "}
-              <span className="text-white font-semibold">{fmt(t.addSong.tokensValue, { n: tokenBalance })}</span>
+              <span className="text-ink font-semibold">{fmt(t.addSong.tokensValue, { n: tokenBalance })}</span>
             </p>
           )
         )}
@@ -228,8 +228,8 @@ export default function AddSongSheet({
             disabled={inCooldown || buying !== null}
             className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
             style={{
-              background: inCooldown ? "rgba(255,255,255,0.03)" : "rgba(233,30,140,0.12)",
-              borderColor: inCooldown ? "rgba(255,255,255,0.08)" : "rgba(233,30,140,0.45)",
+              background: inCooldown ? "rgb(var(--pmj-ink-rgb) / 0.03)" : "rgba(233,30,140,0.12)",
+              borderColor: inCooldown ? "rgb(var(--pmj-ink-rgb) / 0.08)" : "rgba(233,30,140,0.45)",
               opacity: inCooldown ? 0.5 : 1,
             }}
           >
@@ -247,13 +247,13 @@ export default function AddSongSheet({
                 )}
               </div>
               <div className="text-left">
-                <p className="text-white font-semibold text-sm flex items-center gap-1.5">
+                <p className="text-ink font-semibold text-sm flex items-center gap-1.5">
                   {t.addSong.priorityQueue}
                   <span className="rounded-full bg-[#e91e8c]/20 px-2 py-[1px] text-[9px] font-extrabold uppercase tracking-wider text-[#e91e8c]">
                     {t.addSong.recommended}
                   </span>
                 </p>
-                <p className="text-[#6b7280] text-xs">{subLine(waitPriorityMs, priorityCost, affordPriority)}</p>
+                <p className="text-subtle text-xs">{subLine(waitPriorityMs, priorityCost, affordPriority)}</p>
                 {prioritySurcharge && (
                   <p className="text-[#e91e8c]/80 text-[11px] mt-0.5">{t.addSong.priorityBusy}</p>
                 )}
@@ -272,8 +272,8 @@ export default function AddSongSheet({
             disabled={inCooldown || buying !== null}
             className="w-full flex items-center justify-between p-4 rounded-2xl border transition-all"
             style={{
-              background: inCooldown ? "rgba(255,255,255,0.03)" : "rgba(59,130,246,0.1)",
-              borderColor: inCooldown ? "rgba(255,255,255,0.08)" : "rgba(59,130,246,0.3)",
+              background: inCooldown ? "rgb(var(--pmj-ink-rgb) / 0.03)" : "rgba(59,130,246,0.1)",
+              borderColor: inCooldown ? "rgb(var(--pmj-ink-rgb) / 0.08)" : "rgba(59,130,246,0.3)",
               opacity: inCooldown ? 0.5 : 1,
             }}
           >
@@ -291,10 +291,10 @@ export default function AddSongSheet({
                 )}
               </div>
               <div className="text-left">
-                <p className="text-white font-semibold text-sm">{t.addSong.normalQueue}</p>
-                <p className="text-[#6b7280] text-xs">{subLine(waitNormalMs, normalCost, affordNormal)}</p>
+                <p className="text-ink font-semibold text-sm">{t.addSong.normalQueue}</p>
+                <p className="text-subtle text-xs">{subLine(waitNormalMs, normalCost, affordNormal)}</p>
                 {/* Onay ekranının tek gerçek bilgisi buydu: sonradan gelen öncelikliler öne geçer */}
-                {!inCooldown && <p className="text-[#6b7280] text-[11px] mt-0.5">{t.addSong.normalWarn}</p>}
+                {!inCooldown && <p className="text-subtle text-[11px] mt-0.5">{t.addSong.normalWarn}</p>}
               </div>
             </div>
             {costLabel(normalCost, "#3b82f6")}
@@ -303,12 +303,12 @@ export default function AddSongSheet({
         </div>
 
         {isGuest && (
-          <ConsentNotice variant="continue" className="mt-4 text-center text-[10px] leading-relaxed text-[#6b7280]" />
+          <ConsentNotice variant="continue" className="mt-4 text-center text-[10px] leading-relaxed text-subtle" />
         )}
 
         <button
           onClick={onClose}
-          className="w-full mt-4 py-3 rounded-2xl font-semibold text-[#9ca3af] border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-sm"
+          className="w-full mt-4 py-3 rounded-2xl font-semibold text-muted border border-ink/10 bg-ink/5 hover:bg-ink/10 transition-all text-sm"
         >
           {t.common.cancel}
         </button>

@@ -24,10 +24,10 @@ export default function NowPlayingBanner({ song, progressMs, durationMs, isPlayi
     <button
       onClick={onClick}
       className="block w-full rounded-2xl p-3 text-left"
-      style={{ background: "linear-gradient(145deg, #2d1045 0%, #1a0e2a 100%)", border: "1px solid rgba(233,30,140,0.15)" }}
+      style={{ background: "linear-gradient(145deg, var(--pmj-hero) 0%, var(--pmj-surface) 100%)", border: "1px solid rgba(233,30,140,0.15)" }}
     >
       <div className="flex items-center gap-3">
-        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-[#0f0a18]">
+        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-canvas">
           {song.album_cover_url && (
             <Image src={song.album_cover_url} alt={song.title} width={48} height={48} sizes="48px" className="h-full w-full object-cover" />
           )}
@@ -43,13 +43,13 @@ export default function NowPlayingBanner({ song, progressMs, durationMs, isPlayi
             )}
             <span className="text-[10px] font-bold uppercase tracking-wider text-[#e91e8c]">{t.queue.nowPlaying}</span>
           </div>
-          <p className="mt-0.5 truncate text-sm font-semibold text-white">{song.title}</p>
-          <p className="truncate text-xs text-[#9ca3af]">{song.artist}</p>
+          <p className="mt-0.5 truncate text-sm font-semibold text-ink">{song.title}</p>
+          <p className="truncate text-xs text-muted">{song.artist}</p>
         </div>
         <svg className="shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </div>
       {showProgress && (
-        <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
+        <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-ink/10">
           <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${pct}%`, background: "linear-gradient(90deg, #e91e8c, #8b5cf6)" }} />
         </div>
       )}

@@ -678,5 +678,12 @@
   "nativeApp.qrCancel": "Vazgeç",
   "nativeApp.qrInvalid": "Bu bir PlayMyJam karekodu değil. Masadaki plaketin karekodunu okut.",
   "venueMap.switchVenue": "Bu mekana geç",
-  "nativeApp.qrCameraDenied": "Kameraya erişilemedi. Tarayıcı ayarlarından kamera izni ver ya da telefonunun kamerasıyla okut."
+  "nativeApp.qrCameraDenied": "Kameraya erişilemedi. Tarayıcı ayarlarından kamera izni ver ya da telefonunun kamerasıyla okut.",
+  "theme.label": "Tema",
+  "theme.dark": "Koyu",
+  "theme.light": "Açık",
+  "theme.system": "Sistem",
+  "settings.themeSection": "GÖRÜNÜM",
+  "settings.themeRow": "Tema",
+  "profile.theme": "Tema"
 }

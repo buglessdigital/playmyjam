@@ -23,7 +23,7 @@ function SongCard({ song, action, onOpen, onAdd, onRequest }: Props) {
           )}
         </div>
         {(song.play_count ?? 0) > 0 && (
-          <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 backdrop-blur-sm">
+          <span className="absolute left-1.5 top-1.5 flex items-center gap-1 on-media rounded-full bg-black/60 px-2 py-0.5 backdrop-blur-sm">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#e91e8c" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="#e91e8c" strokeWidth="2.5" /><circle cx="18" cy="16" r="3" stroke="#e91e8c" strokeWidth="2.5" /></svg>
             <span className="text-[10px] font-bold text-ink">{song.play_count}</span>
           </span>

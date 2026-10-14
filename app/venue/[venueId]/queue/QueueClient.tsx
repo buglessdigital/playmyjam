@@ -292,7 +292,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
             </svg>
             <div>
               <p className="text-subtle text-[10px]">{t.queue.priorityWait}</p>
-              <p className="font-bold text-sm" style={{ color: "#e91e8c" }}>{formatWait(waitPriorityMs)}</p>
+              <p className="font-bold text-sm" style={{ color: "var(--pmj-pink-text)" }}>{formatWait(waitPriorityMs)}</p>
             </div>
           </div>
         </div>
@@ -316,7 +316,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
             <span className="text-ink font-bold text-sm">{t.queue.nowPlaying}</span>
           </div>
           {isLive && (
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(233,30,140,0.2)", color: "#e91e8c" }}>{t.queue.live}</span>
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(233,30,140,0.2)", color: "var(--pmj-pink-text)" }}>{t.queue.live}</span>
           )}
         </div>
 
@@ -423,7 +423,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                       className="text-xs font-bold px-1.5 py-0.5 rounded-full"
                       style={
                         item.priority
-                          ? { background: "rgba(233,30,140,0.15)", color: "#e91e8c" }
+                          ? { background: "rgba(233,30,140,0.15)", color: "var(--pmj-pink-text)" }
                           : { background: "rgba(139,92,246,0.15)", color: "var(--pmj-violet)" }
                       }
                     >
@@ -431,7 +431,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                     </span>
                   )}
                   {!playerOffline && (
-                    <span className="text-xs font-bold" style={{ color: item.priority ? "#e91e8c" : "var(--pmj-muted)" }}>{formatWait(getRowWaitMs(idx))}</span>
+                    <span className="text-xs font-bold" style={{ color: item.priority ? "var(--pmj-pink-text)" : "var(--pmj-muted)" }}>{formatWait(getRowWaitMs(idx))}</span>
                   )}
                   <button
                     onClick={(e) => {

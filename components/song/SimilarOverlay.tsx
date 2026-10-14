@@ -169,7 +169,7 @@ export default function SimilarOverlay({
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink/10"
           aria-label={t.similar.closeAria}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="var(--pmj-ink)" strokeWidth="2" strokeLinecap="round" /></svg>
         </button>
       </div>
 
@@ -181,7 +181,7 @@ export default function SimilarOverlay({
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink/10"
               aria-label={t.similar.backAria}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--pmj-ink)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
             <h2 className="truncate text-lg font-bold text-ink">{selectedArtist.name}</h2>
             <span className="shrink-0 text-xs text-muted">{artistSongs.length} şarkı</span>

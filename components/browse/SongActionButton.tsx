@@ -23,7 +23,7 @@ export default function SongActionButton({ state, size, onAdd, onRequest }: Prop
     );
     if (size === "card") {
       return (
-        <div className="flex h-7 items-center gap-1 rounded-full bg-black/60 px-2 backdrop-blur-sm">
+        <div className="flex h-7 items-center gap-1 on-media rounded-full bg-black/60 px-2 backdrop-blur-sm">
           {eq}
           <span className="text-[11px] font-semibold text-[#e91e8c]">{t.songAction.playing}</span>
         </div>
@@ -49,7 +49,7 @@ export default function SongActionButton({ state, size, onAdd, onRequest }: Prop
     );
     if (size === "card") {
       return (
-        <div className="flex h-7 items-center gap-1 rounded-full bg-black/60 px-2 backdrop-blur-sm" title={copy.title}>
+        <div className="flex h-7 items-center gap-1 on-media rounded-full bg-black/60 px-2 backdrop-blur-sm" title={copy.title}>
           {icon}
           <span className="text-[11px] font-semibold" style={{ color: "var(--pmj-gold)" }}>{copy.short}</span>
         </div>
@@ -70,7 +70,7 @@ export default function SongActionButton({ state, size, onAdd, onRequest }: Prop
   if (state.kind === "cooldown") {
     if (size === "card") {
       return (
-        <div className="flex h-7 items-center gap-1 rounded-full bg-black/60 px-2 backdrop-blur-sm">
+        <div className="flex h-7 items-center gap-1 on-media rounded-full bg-black/60 px-2 backdrop-blur-sm">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#9ca3af" strokeWidth="2" /><path d="M12 7v5l3 3" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
           <span className="text-[11px] font-semibold text-muted">{fmt(t.songAction.cooldownMins, { n: state.mins })}</span>
         </div>
@@ -111,7 +111,7 @@ export default function SongActionButton({ state, size, onAdd, onRequest }: Prop
         {added ? (
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#e91e8c" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
         ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="white" strokeWidth="2.5" strokeLinecap="round" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="var(--pmj-ink)" strokeWidth="2.5" strokeLinecap="round" /></svg>
         )}
       </button>
     );

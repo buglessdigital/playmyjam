@@ -38,6 +38,7 @@
   --pmj-violet: #a78bfa;
   --pmj-blue: #60a5fa;
   --pmj-green: #4ade80;
+  --pmj-pink-text: #e91e8c;
 }
 
 @theme inline {
@@ -220,10 +221,10 @@ html[data-theme="light"] {
   --pmj-surface: #ffffff;
   --pmj-ink: #1d1030;
   --pmj-ink-rgb: 29 16 48;
-  --pmj-muted: #6b6282;
-  --pmj-subtle: #857c9b;
-  --pmj-faint: #b9b0c8;
-  --pmj-gold: #c98600;
+  --pmj-muted: #5c5372;
+  --pmj-subtle: #6b6282;
+  --pmj-faint: #8a81a0;
+  --pmj-gold: #a86b00;
   --pmj-sheet: #ffffff;
   --pmj-hero: #fbe0f0;
   --pmj-top: #f6dcec;
@@ -236,6 +237,17 @@ html[data-theme="light"] {
   --pmj-violet: #7c3aed;
   --pmj-blue: #2563eb;
   --pmj-green: #16a34a;
+  --pmj-pink-text: #c4127a;
+}
+/* Albüm kapağı / fotoğraf üstündeki yarı saydam siyah rozetler: zemin her
+   temada koyu, yazı ve ikonlar da koyu temanın renklerinde kalır */
+html[data-theme="light"] .on-media {
+  --pmj-ink: #ffffff;
+  --pmj-ink-rgb: 255 255 255;
+  --pmj-muted: #9ca3af;
+  --pmj-subtle: #6b7280;
+  --pmj-gold: #fbbf24;
+  --pmj-pink-text: #e91e8c;
 }
 /* SVG sunum öznitelikleri (stroke="#6b7280" …) koyu temanın sabit renkleri;
    CSS öznitelikten güçlü olduğu için buradan ezilir */
@@ -246,6 +258,8 @@ html[data-theme="light"] [fill="#9ca3af"] { fill: var(--pmj-muted); }
 html[data-theme="light"] [stroke="#4b5563"] { stroke: var(--pmj-faint); }
 html[data-theme="light"] [fill="#4b5563"] { fill: var(--pmj-faint); }
 html[data-theme="light"] [stroke="#fbbf24"] { stroke: var(--pmj-gold); }
+html[data-theme="light"] [fill="#fbbf24"] { fill: var(--pmj-gold); }
+html[data-theme="light"] .text-\[\#e91e8c\] { color: var(--pmj-pink-text); }
 html[data-theme="light"] [stroke="#3d3450"] { stroke: var(--pmj-dim); }
 html[data-theme="light"] [stroke="#4ade80"] { stroke: var(--pmj-green); }
 /* Koyu zemin için seçilmiş açık tonlu Tailwind yazı renkleri */

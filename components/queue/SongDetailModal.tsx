@@ -66,7 +66,7 @@ export default function SongDetailModal({ song, onClose }: Props) {
           </div>
           <div className="flex justify-between items-center py-3 border-b border-ink/10">
             <span className="text-muted text-sm">{t.songModal.tokensSpent}</span>
-            <span className="text-sm font-bold" style={{ color: "#e91e8c" }}>
+            <span className="text-sm font-bold" style={{ color: "var(--pmj-pink-text)" }}>
               {fmt(t.songModal.tokensValue, { n: song.tokens_spent })}
             </span>
           </div>
@@ -76,7 +76,7 @@ export default function SongDetailModal({ song, onClose }: Props) {
               className="text-xs font-semibold px-2 py-1 rounded-full"
               style={{
                 background: song.priority ? "rgba(233,30,140,0.15)" : "rgb(var(--pmj-ink-rgb) / 0.08)",
-                color: song.priority ? "#e91e8c" : "var(--pmj-muted)",
+                color: song.priority ? "var(--pmj-pink-text)" : "var(--pmj-muted)",
               }}
             >
               {song.priority ? (

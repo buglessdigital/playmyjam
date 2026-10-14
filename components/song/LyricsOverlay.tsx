@@ -52,7 +52,7 @@ export default function LyricsOverlay({ title, artist, lyrics, loading, activeIn
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink/10"
           aria-label={t.lyrics.closeAria}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="white" strokeWidth="2" strokeLinecap="round" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="var(--pmj-ink)" strokeWidth="2" strokeLinecap="round" /></svg>
         </button>
       </div>
 
@@ -79,7 +79,7 @@ export default function LyricsOverlay({ title, artist, lyrics, loading, activeIn
                     fontSize: isActive ? 23 : 19,
                     lineHeight: 1.35,
                     fontWeight: isActive ? 800 : 700,
-                    color: isActive ? "#e91e8c" : isPast ? "rgb(var(--pmj-ink-rgb) / 0.35)" : "white",
+                    color: isActive ? "var(--pmj-pink-text)" : isPast ? "rgb(var(--pmj-ink-rgb) / 0.35)" : "var(--pmj-ink)",
                     textShadow: isActive ? "0 0 24px rgba(233,30,140,0.45)" : "none",
                   }}
                 >

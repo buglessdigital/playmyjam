@@ -322,7 +322,7 @@ function SheetHeader({ card, isCurrent, onClose }: { card: VenueMapCard | null; 
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink/10 active:scale-95"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-          <path d="M6 6l12 12M18 6L6 18" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
+          <path d="M6 6l12 12M18 6L6 18" stroke="var(--pmj-ink)" strokeWidth="2.2" strokeLinecap="round" />
         </svg>
       </button>
     </div>

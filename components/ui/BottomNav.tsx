@@ -151,7 +151,7 @@ export default function BottomNav({ venueId }: BottomNavProps) {
             </span>
             <span
               className="whitespace-nowrap text-[10px] font-semibold tracking-wider"
-              style={{ color: active ? "#e91e8c" : "var(--pmj-subtle)" }}
+              style={{ color: active ? "var(--pmj-pink-text)" : "var(--pmj-subtle)" }}
             >
               {tab.label}
             </span>

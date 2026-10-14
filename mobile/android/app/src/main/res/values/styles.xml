@@ -13,6 +13,11 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Android 15+ status bar'ı ve alttaki hareket çubuğunu boyatmıyor
+             (edge-to-edge zorunlu): o şeritlerde bu zemin görünür. Sitenin
+             koyu zeminiyle aynı ki renk kesimi olmasın; site açık temaya
+             geçince PmjSystemBars eklentisi bunu çalışırken değiştirir. -->
+        <item name="android:windowBackground">@color/pmj_bg</item>
     </style>
 
 

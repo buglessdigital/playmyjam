@@ -38,6 +38,13 @@ const config: CapacitorConfig = {
       backgroundColor: "#0f0a18",
       showSpinner: false,
     },
+    // Android 15+ şeritleri boyatmaz (edge-to-edge zorunlu); şeritte pencere
+    // zemini görünür → styles.xml windowBackground = site zemini, ikonlar
+    // açık renk. Site teması değişince: lib/native-app.ts nativeSetSystemBars
+    SystemBars: {
+      style: "DARK",
+    },
+    // iOS ve Android 14 ve öncesi için
     StatusBar: {
       style: "DARK",
       backgroundColor: "#0f0a18",

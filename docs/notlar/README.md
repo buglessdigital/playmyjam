@@ -74,6 +74,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Player güvenilirlik turu](pmj-player-guvenilirlik-2026-09.md) — sahiplik kimliği bellekte (sessionStorage DEĞİL), from_video_id, oturum iptalinde çalma izni; c29543b prod
 - [Mekan sayfası (plaket arka yüzü)](pmj-mekan-sayfasi-2026-09.md) — /<slug>/bilgi; 0052 ŞART, 0ff9636 prod'da, hizmet super admin'de açılır, tasarımda reddedilen yönler kayıtlı
 - [iyzico Vercel TLS sorunu](pmj-iyzico-vercel-engel-2026-09.md) — 17-21 Eyl canlı ödeme yoktu: Node 24.20 TLS 1.3 el sıkışması kopuyordu; TLS 1.2 + retry ile çözüldü, 21 Eyl gerçek ödeme başarılı
+- [Ödeme mutabakatı](pmj-odeme-mutabakati-2026-10.md) — 15 dk'da bir cron dönüşü gelmeyen iyzico siparişlerini sorar; INIT_THREEDS 'status:success' ile gelir, jeton yükleme!
 - [Metadata tazeleme](pmj-metadata-tazeleme-2026-09.md) — 30 gün kuralı: günde havuz/20 en eski önce, 0054 RPC'leri; 0066 kapsayan indeks ŞART; yazma timeout'unda dilim bölünerek yeniden denenir (6 Eki); 0074 ŞART (aday okuma kaldığı yerden, 7 Eki)
 - [Sağlık ekranı](pmj-saglik-ekrani-2026-09.md) — yalnız kontrol dışı sessizlik (player ölçer) + hatalı sıra; uyanmadan sonraki 90 sn sayılmaz, kuyruk boş ve ≤45 sn kendiliğinden geçen "kısa takılma" ayrı gri sekmeler; kullanıcının kendi duraklatmasını arıza sanma
 - [songs trigram indeksi](pmj-songs-trigram-2026-09.md) — songs ~830 bin; 0056 uygulandı; indekssiz metin araması timeout verir

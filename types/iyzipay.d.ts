@@ -25,3 +25,10 @@ declare module "iyzipay/lib/resources/CheckoutForm" {
   };
   export default CheckoutFormResource;
 }
+
+declare module "iyzipay/lib/resources/Payment" {
+  const PaymentResource: new (config: IyzicoResourceConfig) => {
+    retrieve(data: unknown, callback: (err: Error | null, result: unknown) => void): void;
+  };
+  export default PaymentResource;
+}

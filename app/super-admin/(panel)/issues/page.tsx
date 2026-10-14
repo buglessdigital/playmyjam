@@ -34,6 +34,7 @@ const KIND_TEXT: Record<string, string> = {
   request_approved: "Talep onaylandı",
   request_rejected: "Talep reddedildi",
   suggestion_added: "Öneri listeye eklendi",
+  payment_recovered: "Jeton geç yüklendi",
   subscribe_test: "Bildirim açma testi",
 };
 

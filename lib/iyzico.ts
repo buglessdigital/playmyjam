@@ -14,6 +14,7 @@
 // zincirleme olarak otomatik dahil olur.
 import CheckoutFormInitializeResource from "iyzipay/lib/resources/CheckoutFormInitialize";
 import CheckoutFormResource from "iyzipay/lib/resources/CheckoutForm";
+import PaymentResource from "iyzipay/lib/resources/Payment";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import https from "node:https";
 
@@ -197,6 +198,34 @@ export function retrieveCheckoutForm(token: string): Promise<CheckoutFormRetriev
       if (err) return reject(err);
       resolve(result as CheckoutFormRetrieveResult);
     });
+  });
+}
+
+export interface PaymentDetailResult {
+  status: string;
+  errorCode?: string;
+  errorMessage?: string;
+  /** SUCCESS: para çekildi · FAILURE: banka reddetti · INIT_THREEDS: 3D Secure yarıda kaldı */
+  paymentStatus?: string;
+  paymentId?: string;
+  basketId?: string;
+  paidPrice?: number | string;
+  price?: number | string;
+  currency?: string;
+}
+
+// Ödemeyi bizim sipariş kimliğimizle sorar (checkout'ta conversationId =
+// order.id). Callback hiç gelmediğinde de çalışır — checkout form token'ı
+// gerekmez. Yalnız okuma: para hareketi yok. Bkz. lib/payment-reconcile.ts
+export function retrievePaymentByOrderId(orderId: string): Promise<PaymentDetailResult> {
+  return new Promise((resolve, reject) => {
+    withHttpsTransport(new PaymentResource(getConfig())).retrieve(
+      { locale: "tr", paymentConversationId: orderId },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve(result as PaymentDetailResult);
+      }
+    );
   });
 }
 

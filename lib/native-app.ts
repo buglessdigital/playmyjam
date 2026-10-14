@@ -131,6 +131,20 @@ export function useNativePlatform(): NativePlatform | null {
   return useSyncExternalStore(noopSubscribe, nativePlatform, () => null);
 }
 
+function canScanQr(): boolean {
+  if (isNativeApp()) return true;
+  return typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function";
+}
+
+/**
+ * Karekod okutma düğmesi çizilsin mi? Uygulamada eklentiyle, tarayıcıda/PWA'da
+ * kamerayla (components/native/WebQrScanner.tsx) — kamera API'si yoksa (http,
+ * eski tarayıcı) false. Sunucuda ve ilk hidrasyonda false.
+ */
+export function useCanScanQr(): boolean {
+  return useSyncExternalStore(noopSubscribe, canScanQr, () => false);
+}
+
 /**
  * Kamerayla karekod okutur, okunan metni döner; vazgeçilirse ya da eklenti
  * yoksa null. Değerler eklentinin enum'larından: QR_CODE=0, BACK=1, PORTRAIT=1.
@@ -174,10 +188,27 @@ export function qrToVenuePath(text: string): string | null {
   return null;
 }
 
-/** Hafif dokunsal geri bildirim; tarayıcıda ve eklenti yoksa sessizce hiçbir şey yapmaz. */
+/** Titreşim deseni (ms) — uygulama dışında, Vibration API'si olan tarayıcılarda (Android) */
+const WEB_VIBRATION: Record<"tap" | "success" | "error", number | number[]> = {
+  tap: 10,
+  success: [15, 60, 25],
+  error: [40, 50, 40],
+};
+
+/**
+ * Hafif dokunsal geri bildirim. Uygulamada Haptics eklentisi, tarayıcıda ve
+ * PWA'da Vibration API'si (iOS Safari desteklemez, sessizce hiçbir şey olmaz).
+ */
 export function nativeHaptic(kind: "tap" | "success" | "error"): void {
   const haptics = nativePlugins()?.Haptics;
-  if (!haptics) return;
+  if (!haptics) {
+    try {
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(WEB_VIBRATION[kind]);
+    } catch {
+      // izin politikası engelledi: titreşimsiz devam
+    }
+    return;
+  }
   const done =
     kind === "tap"
       ? haptics.impact({ style: "LIGHT" })

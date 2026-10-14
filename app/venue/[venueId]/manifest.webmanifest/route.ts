@@ -20,7 +20,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ venueId
     description: `${venue.name} için şarkı seç`,
     id: base,
     start_url: base,
-    scope: base,
+    // Kapsam tüm mekanlar: haritadan "Bu mekana geç" ve karekodla başka mekana
+    // geçince kurulu uygulama içinde kalınsın (kapsam dışı adres tarayıcı
+    // sekmesinde açılıyordu). id mekana özel, kurulu uygulamalar ayrı kalır.
+    scope: "/venue/",
     display: "standalone",
     background_color: "#0f0a18",
     theme_color: "#0f0a18",

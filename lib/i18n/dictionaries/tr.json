@@ -783,6 +783,7 @@
     "qrScan": "Karekod Okut",
     "qrInstructions": "Masadaki PlayMyJam karekodunu çerçeveye getir",
     "qrCancel": "Vazgeç",
-    "qrInvalid": "Bu bir PlayMyJam karekodu değil. Masadaki plaketin karekodunu okut."
+    "qrInvalid": "Bu bir PlayMyJam karekodu değil. Masadaki plaketin karekodunu okut.",
+    "qrCameraDenied": "Kameraya erişilemedi. Tarayıcı ayarlarından kamera izni ver ya da telefonunun kamerasıyla okut."
   }
 }

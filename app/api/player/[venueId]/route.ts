@@ -11,6 +11,7 @@ import {
 } from "@/lib/queue";
 import { withActor } from "@/lib/actor";
 import { logVenueEvents, parseClientEvents } from "@/lib/venue-events";
+import { handleSilenceAlerts } from "@/lib/music-alert";
 
 // Sahiplik bu süre boyunca heartbeat gelmezse serbest kalır (heartbeat 15 sn'de bir).
 // Panelin "oynatıcı çevrimdışı" eşiğiyle aynı: 45 sn.
@@ -221,12 +222,15 @@ async function handlePost(
         .eq("venue_id", venueId);
       // Kapanırken player elindeki son olayları da taşır: pencere müzik
       // sessizken kapatıldıysa o sessizliğin sonu buradan gelir
+      const closingEvents = parseClientEvents(body?.events);
       after(
         logVenueEvents(venueId, "player", [
-          ...parseClientEvents(body?.events),
+          ...closingEvents,
           { kind: "player_closed", severity: "info", message: "Player kapatıldı (sekme/pencere kapandı)" },
         ])
       );
+      // Sessizlik sürerken kapatıldıysa "durdu" bildirimi "kapatıldı" ile güncellenir
+      after(handleSilenceAlerts(venueId, closingEvents).catch((err) => console.error("[music-alert]", err)));
       return reply({ ok: true, released: true });
     }
 
@@ -430,7 +434,11 @@ async function handlePost(
       // Sağlık kaydı: player'ın biriktirdiği olaylar (kontrol dışı sessizlik
       // ölçümü dahil — bkz. YouTubePlayer trackSilence). Yanıttan sonra yazılır.
       const clientEvents = parseClientEvents(body?.events);
-      if (clientEvents.length > 0) after(logVenueEvents(venueId, "player", clientEvents));
+      if (clientEvents.length > 0) {
+        after(logVenueEvents(venueId, "player", clientEvents));
+        // Müzik durdu / yeniden çalıyor alarmı (bkz. lib/music-alert.ts)
+        after(handleSilenceAlerts(venueId, clientEvents).catch((err) => console.error("[music-alert]", err)));
+      }
 
       // Kuyruk boşken gelen "buradayım" sinyali: çalma durumuna dokunmadan yalnızca
       // sağlık sinyalini tazeler. Müşteri paneli oynatıcının açık olduğunu bundan

@@ -70,6 +70,8 @@ export type PushKind =
   | "request_rejected"
   | "suggestion_added"
   | "payment_recovered"
+  | "music_stopped"
+  | "music_resumed"
   | "subscribe_test";
 
 export interface PushLog {

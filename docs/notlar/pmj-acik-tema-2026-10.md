@@ -1,6 +1,6 @@
 ---
 name: pmj-acik-tema-2026-10
-description: Müşteri paneli açık teması — renkler --pmj-* değişkenlerinde, html[data-theme="light"] yalnız /venue/ altında; seçici onaya kadar beta işaretli cihazda
+description: Müşteri paneli açık teması — renkler --pmj-* değişkenlerinde, html[data-theme="light"] yalnız /venue/ altında; 15 Eki 2026'dan beri herkese açık
 metadata:
   type: project
 ---
@@ -18,4 +18,4 @@ metadata:
 
 **Yeni müşteri bileşeni yazarken:** `#0f0a18`/`text-white`/`bg-white/10` YAZMA → `bg-canvas`/`text-ink`/`bg-ink/10`. Pembe/mor dolu düğmede yazı `text-white` kalır (her temada beyaz). Kapak üstü rozet → `on-media`. Pembe *yazı* → `text-[#e91e8c]` (CSS açıkta koyulaştırır) ya da `var(--pmj-pink-text)`; pembe *zemin* sabit kalır.
 
-**GEÇİCİ:** seçici (profil + ayarlar) yalnız localStorage `pmj-theme-beta=1` olan cihazda görünür (`useThemeBeta`, `lib/theme.ts`). Kullanıcı onaylayınca kanca ve iki kullanımı silinecek. Bkz. [[pmj-mobil-uygulama-2026-10]].
+**15 Eki 2026 herkese açıldı:** seçici (Koyu / Açık / Sistem) profil + ayarlarda tüm müşterilere görünür; varsayılan koyu. Beta kancası (`pmj-theme-beta`) silindi. Bkz. [[pmj-mobil-uygulama-2026-10]].

@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/client";
 import BlockedHelp from "@/components/notifications/BlockedHelp";
 import LangToggle from "@/components/ui/LangToggle";
 import ThemeToggle from "@/components/ui/ThemeToggle";
-import { useThemeBeta } from "@/lib/theme";
 import { fmt, useT } from "@/lib/i18n";
 import {
   getNotifPref,
@@ -43,7 +42,6 @@ const DELETE_CONFIRM_PHRASE = "HESABIMI SİL";
 export default function SettingsPage() {
   const router = useRouter();
   const t = useT();
-  const themeBeta = useThemeBeta();
   const venueId = String(useParams()?.venueId ?? "");
   const notifNearby = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("nearby"), () => true);
   const notifQueue = useSyncExternalStore(subscribeNotifPrefs, () => getNotifPref("queue"), () => false);
@@ -367,7 +365,6 @@ export default function SettingsPage() {
       </div>
 
       {/* Görünüm */}
-      {themeBeta && (
       <div className="px-5 mb-4">
         <h2 className="text-subtle text-xs font-semibold tracking-wider mb-3">{t.settings.themeSection}</h2>
         <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pmj-surface)" }}>
@@ -377,7 +374,6 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
-      )}
 
       {/* Dil */}
       <div className="px-5 mb-4">

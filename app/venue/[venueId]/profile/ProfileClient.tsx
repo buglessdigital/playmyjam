@@ -10,7 +10,6 @@ import { AVATARS, AvatarMark, isAvatarId } from "@/lib/avatars";
 import Coin from "@/components/ui/Coin";
 import LangToggle from "@/components/ui/LangToggle";
 import ThemeToggle from "@/components/ui/ThemeToggle";
-import { useThemeBeta } from "@/lib/theme";
 import { useT } from "@/lib/i18n";
 import { publishTokenBalance } from "@/lib/token-balance-store";
 
@@ -43,7 +42,6 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
     };
   }, []);
   const t = useT();
-  const themeBeta = useThemeBeta();
 
   const [loaded, setLoaded] = useState(false);
   const [username, setUsername] = useState("");
@@ -302,7 +300,6 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
           <span className="text-sm font-semibold text-ink">{t.profile.language}</span>
           <LangToggle />
         </div>
-        {themeBeta && (
         <div
           className="-mt-4 mb-6 flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
           style={{ background: "var(--pmj-surface)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}
@@ -310,7 +307,6 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
           <span className="text-sm font-semibold text-ink">{t.profile.theme}</span>
           <ThemeToggle />
         </div>
-        )}
 
         {isGuest && (
           <Link

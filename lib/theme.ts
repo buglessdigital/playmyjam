@@ -77,16 +77,3 @@ export function applyTheme(theme: Theme | null) {
   nativeSetSystemBars({ background: color, dark: theme !== "light" });
 }
 
-// GEÇİCİ: açık tema onaylanana kadar seçici yalnız bu işaretin olduğu cihazda
-// görünür (geliştiricinin telefonu). Onaydan sonra bu kanca ve kullanımları silinir.
-const BETA_KEY = "pmj-theme-beta";
-function readBeta(): boolean {
-  try {
-    return localStorage.getItem(BETA_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-export function useThemeBeta(): boolean {
-  return useSyncExternalStore(subscribe, readBeta, () => false);
-}

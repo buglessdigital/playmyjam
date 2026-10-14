@@ -130,7 +130,10 @@ function usePendingRequestCount(venueId: string) {
         .from("song_requests")
         .select("id", { count: "exact", head: true })
         .eq("venue_id", venueDbId)
-        .eq("status", "pending");
+        .eq("status", "pending")
+        // Süresi dolmuşlar sayılmaz; pg_cron dakikada bir kapatır (0078), o
+        // UPDATE realtime ile buraya düşüp rozeti tazeler
+        .gt("expires_at", new Date().toISOString());
       if (!cancelled) setCount(c ?? 0);
     };
 

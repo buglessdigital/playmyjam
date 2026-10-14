@@ -52,7 +52,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [YouTube hesap seçici](pmj-youtube-hesap-secici.md) — tıkla-seç playlist aktarma canlıda; jeton çerezde, gizli listeler senkronsuz
 - [Google OAuth doğrulama + onay ekranı markası](pmj-google-oauth-dogrulama.md) — 11 Eki: Custom Domain'e GEREK YOK, bkz. pmj-google-oauth-kendi-alan-adi; kalan iş branding + doğrulama başvurusu
 - [Google girişi kendi alan adımızdan](pmj-google-oauth-kendi-alan-adi-2026-10.md) — 11 Eki DEVREDE; branding incelemede (logo onayla gelir); env yoksa eski Supabase akışı, preview'larda Google girişi yok
-- [Talep onay akışı](pmj-talep-onay-akisi-2026-08.md) — bildirimden onay + 10 dk tek seferlik çalma hakkı; 0045 ŞART, katalog hiç değişmez
+- [Talep onay akışı](pmj-talep-onay-akisi-2026-08.md) — bildirimden onay + 10 dk tek seferlik çalma hakkı; 0045 ŞART; karar verilmeyen talep 10 dk'da pg_cron ile kapanır (0078 ŞART), katalog hiç değişmez
 - [Çalınamaz damgası](pmj-unplayable-damga-2026-08.md) — damga sadece 100/101/150; geri alırken snapshot'tan da sil, yoksa şarkı hiç dönmez
 - [Mekana özel panel PWA](pmj-admin-pwa-2026-08.md) — her mekan kendi panelini ayrı uygulama olarak kurar; manifest+ikon proxy'de muaf; manifest head'e inline script ile konuyor (Next body'ye akıtıyordu)
 - [Panel içi mini player](pmj-mini-player-2026-08.md) — müzik artık panel kabuğundaki yüzen kartta; ayrı sekme TV modu

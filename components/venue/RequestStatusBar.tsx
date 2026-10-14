@@ -280,19 +280,19 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
             ? "border-[#22c55e]/40 shadow-[0_10px_30px_-14px_rgba(34,197,94,0.9)]"
             : isRejected
               ? "border-[#ef4444]/40 shadow-[0_10px_30px_-14px_rgba(239,68,68,0.9)]"
-              : "border-[#fbbf24]/30"
+              : "border-gold/30"
         }`}
         style={{
           background: isApproved
-            ? "linear-gradient(120deg, rgba(34,197,94,0.22), rgba(15,10,24,0.96) 65%)"
+            ? "linear-gradient(120deg, rgba(34,197,94,0.22), rgb(var(--pmj-bg-rgb) / 0.96) 65%)"
             : isRejected
-              ? "linear-gradient(120deg, rgba(239,68,68,0.22), rgba(15,10,24,0.96) 65%)"
-              : "linear-gradient(120deg, rgba(251,191,36,0.14), rgba(15,10,24,0.96) 65%)",
+              ? "linear-gradient(120deg, rgba(239,68,68,0.22), rgb(var(--pmj-bg-rgb) / 0.96) 65%)"
+              : "linear-gradient(120deg, rgba(251,191,36,0.14), rgb(var(--pmj-bg-rgb) / 0.96) 65%)",
         }}
       >
         <div className="flex items-center">
         <button type="button" onClick={handleClick} className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left">
-        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-white/10">
+        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-ink/10">
           {cover ? (
             <Image src={cover} alt="" width={40} height={40} sizes="40px" className="h-full w-full object-cover" />
           ) : (
@@ -303,14 +303,14 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className={`text-[11px] font-bold ${isApproved ? "text-[#22c55e]" : isRejected ? "text-[#f87171]" : "text-[#fbbf24]"}`}>
+          <p className={`text-[11px] font-bold ${isApproved ? "text-[#22c55e]" : isRejected ? "text-[#f87171]" : "text-gold"}`}>
             {isApproved ? t.requestBar.approvedTitle : isRejected ? t.requestBar.rejectedTitle : t.requestBar.pendingTitle}
           </p>
-          <p className="truncate text-xs text-white">
+          <p className="truncate text-xs text-ink">
             {title}
-            {artist ? <span className="text-[#9ca3af]"> · {artist}</span> : null}
+            {artist ? <span className="text-muted"> · {artist}</span> : null}
           </p>
-          <p className="mt-0.5 text-[11px] text-[#9ca3af]">
+          <p className="mt-0.5 text-[11px] text-muted">
             {isRejected
               ? t.requestBar.rejectedLine
               : fmt(isApproved ? t.requestBar.approvedCountdown : t.requestBar.pendingCountdown, { t: clock(left) })}
@@ -345,7 +345,7 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
             type="button"
             onClick={dismiss}
             aria-label={t.requestBar.dismiss}
-            className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#9ca3af]"
+            className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </button>
@@ -354,11 +354,11 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
 
         {/* Onaylanmamış talep: neyi beklediğini ve ne kadar kaldığını burada söyler */}
         {!isApproved && !isRejected && expanded && (
-          <div className="border-t border-white/10 px-3 py-2.5">
-            <p className="text-[11px] leading-relaxed text-[#d6c9a8]">{t.requestBar.pendingHelp}</p>
+          <div className="border-t border-ink/10 px-3 py-2.5">
+            <p className="text-[11px] leading-relaxed text-sand">{t.requestBar.pendingHelp}</p>
             <Link
               href={`/venue/${venueId}/requests`}
-              className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-[#fbbf24]"
+              className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-gold"
             >
               {t.requestBar.seeAll}
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>

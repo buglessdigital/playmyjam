@@ -61,11 +61,11 @@ export default function AppDownloadBanner() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-md items-center gap-3 border-b border-white/10 bg-[#170e25] px-4 py-2.5">
+    <div className="mx-auto flex w-full max-w-md items-center gap-3 border-b border-ink/10 bg-sheet px-4 py-2.5">
       <Image src="/icon-192.png" alt="" width={36} height={36} className="shrink-0 rounded-[10px]" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-bold text-white">{t.nativeApp.bannerTitle}</p>
-        <p className="truncate text-[11px] text-[#c4b5d4]">{t.nativeApp.bannerBody}</p>
+        <p className="truncate text-[13px] font-bold text-ink">{t.nativeApp.bannerTitle}</p>
+        <p className="truncate text-[11px] text-lilac">{t.nativeApp.bannerBody}</p>
       </div>
       <a
         href={storeUrl}
@@ -78,7 +78,7 @@ export default function AppDownloadBanner() {
         type="button"
         onClick={close}
         aria-label={t.nativeApp.bannerClose}
-        className="-mr-1 shrink-0 p-1 text-[#6b7280]"
+        className="-mr-1 shrink-0 p-1 text-subtle"
       >
         <X size={16} />
       </button>

@@ -10,7 +10,13 @@ import type { StyleSpecification, LayerSpecification } from "maplibre-gl";
 
 export const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
 
-const C = {
+type Palette = Record<
+  | "bg" | "land" | "green" | "water" | "building" | "buildingEdge" | "path" | "minor" | "major"
+  | "motorway" | "casing" | "rail" | "boundary" | "label" | "labelDim" | "halo",
+  string
+>;
+
+const DARK: Palette = {
   bg: "#0f0a18",
   land: "#130c20",
   green: "#151026",
@@ -29,8 +35,29 @@ const C = {
   halo: "#0f0a18",
 };
 
+// Açık tema (müşteri paneli, bkz. lib/theme.ts): lila zemin, beyaz sokaklar,
+// pembe ana yollar — aynı kulüp, gündüz
+const LIGHT: Palette = {
+  bg: "#f6f1fb",
+  land: "#f1e9f8",
+  green: "#e5efe1",
+  water: "#d6d4f3",
+  building: "#ece3f4",
+  buildingEdge: "#dccfea",
+  path: "#ffffff",
+  minor: "#ffffff",
+  major: "#f8d9ec",
+  motorway: "#f2b4d8",
+  casing: "rgba(233,30,140,0.28)",
+  rail: "#d9cde8",
+  boundary: "#c4b2da",
+  label: "#4f416b",
+  labelDim: "#857a9e",
+  halo: "#f6f1fb",
+};
+
 // Katman adına göre boya. Sıra önemli: ilk eşleşen kazanır.
-const RULES: [RegExp, Record<string, unknown>][] = [
+const rules = (C: Palette): [RegExp, Record<string, unknown>][] => [
   [/^background$/, { "background-color": C.bg }],
   [/^water$/, { "fill-color": C.water }],
   [/^waterway/, { "line-color": C.water }],
@@ -56,7 +83,7 @@ const RULES: [RegExp, Record<string, unknown>][] = [
   [/^place_/, { "text-color": C.label, "text-halo-color": C.halo }],
 ];
 
-function paint(layer: LayerSpecification): LayerSpecification {
+function paint(layer: LayerSpecification, RULES: [RegExp, Record<string, unknown>][]): LayerSpecification {
   if (layer.type === "raster") {
     // Düşük yakınlıktaki gölgeli kabartma: gri lekeler mor zemini bozmasın
     return { ...layer, paint: { ...layer.paint, "raster-opacity": 0.12, "raster-saturation": -1 } };
@@ -79,12 +106,16 @@ function paint(layer: LayerSpecification): LayerSpecification {
   return out;
 }
 
-export async function loadPmjMapStyle(signal?: AbortSignal): Promise<StyleSpecification | string> {
+export async function loadPmjMapStyle(
+  signal?: AbortSignal,
+  theme: "dark" | "light" = "dark"
+): Promise<StyleSpecification | string> {
   try {
     const res = await fetch(MAP_STYLE_URL, { signal });
     if (!res.ok) return MAP_STYLE_URL;
     const style = (await res.json()) as StyleSpecification;
-    return { ...style, layers: style.layers.map(paint) };
+    const r = rules(theme === "light" ? LIGHT : DARK);
+    return { ...style, layers: style.layers.map((layer) => paint(layer, r)) };
   } catch {
     // Boyanamazsa orijinal koyu stil — harita yine açılır
     return MAP_STYLE_URL;

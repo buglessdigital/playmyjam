@@ -740,11 +740,11 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
   ] as const;
 
   return (
-    <div className="w-full bg-[#0f0a18]">
+    <div className="w-full bg-canvas">
       {/* Sticky başlık + sahte arama çubuğu (dokununca tam ekran arama açılır) */}
-      <div className="sticky top-0 z-30 bg-[#0f0a18]/95 px-5 pb-3 pt-12 backdrop-blur-md">
+      <div className="sticky top-0 z-30 bg-canvas/95 px-5 pb-3 pt-12 backdrop-blur-md">
         <div className="mb-3 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-white">{t.browse.title}</h1>
+          <h1 className="text-xl font-bold text-ink">{t.browse.title}</h1>
           <div className="flex items-center gap-2">
           {/* Dil anahtarı yalnızca misafirde başlıkta: üye onu profil sayfasından
               değiştirir, başlık üç düğmeyle kalabalıklaşmasın */}
@@ -752,14 +752,14 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           {isMember ? (
             <Link
               href={`/venue/${venueId}/tokens`}
-              className="flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-[#1a0e2a] px-3 transition-transform active:scale-95"
+              className="flex h-8 items-center gap-1.5 rounded-full border border-ink/10 bg-surface px-3 transition-transform active:scale-95"
               aria-label={t.browse.balanceAria}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fbbf24" strokeWidth="2" /><circle cx="12" cy="12" r="4" stroke="#fbbf24" strokeWidth="2" /></svg>
               {stateLoaded ? (
-                <span className="text-sm font-bold text-white">{tokenBalance}</span>
+                <span className="text-sm font-bold text-ink">{tokenBalance}</span>
               ) : (
-                <span className="h-3.5 w-4 animate-pulse rounded bg-white/10" />
+                <span className="h-3.5 w-4 animate-pulse rounded bg-ink/10" />
               )}
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /></svg>
             </Link>
@@ -769,7 +769,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
               href={venueLoginPath(venueId, `/venue/${venueId}/browse`)}
               className="flex h-8 items-center gap-1.5 rounded-full border border-[#e91e8c]/40 bg-[#e91e8c]/15 px-3 transition-transform active:scale-95"
             >
-              <span className="text-xs font-bold text-white">{t.queue.login}</span>
+              <span className="text-xs font-bold text-ink">{t.queue.login}</span>
             </Link>
           )}
           {/* Profil artık alt gezinmede değil — her sayfanın sağ üstünde */}
@@ -786,15 +786,15 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           >
             <button
               onClick={() => setSearchOpen(true)}
-              className="flex h-[45px] w-full items-center gap-3 rounded-[14px] bg-[#1a0e2a] px-4 text-left transition-transform active:scale-[0.98]"
+              className="flex h-[45px] w-full items-center gap-3 rounded-[14px] bg-surface px-4 text-left transition-transform active:scale-[0.98]"
             >
               <svg className="shrink-0" width="19" height="19" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#e91e8c" strokeWidth="2.2" /><path d="M20 20l-3-3" stroke="#e91e8c" strokeWidth="2.2" strokeLinecap="round" /></svg>
-              <span className="truncate text-sm font-semibold text-white">{t.browse.searchPlaceholder}</span>
+              <span className="truncate text-sm font-semibold text-ink">{t.browse.searchPlaceholder}</span>
             </button>
           </div>
           <button
             onClick={luckyPick}
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#e91e8c]/30 bg-[#1a0e2a] transition-transform active:scale-95"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#e91e8c]/30 bg-surface transition-transform active:scale-95"
             aria-label={t.browse.luckyAria}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -806,7 +806,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           className="mt-2 flex w-full items-center gap-1.5 text-left"
         >
           <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 3l2.2 5.6L20 10l-5.8 1.4L12 17l-2.2-5.6L4 10l5.8-1.4L12 3z" fill="#fbbf24" /></svg>
-          <span className="min-w-0 flex-1 text-[11px] leading-snug text-[#c4b5d4]">{t.browse.searchHint}</span>
+          <span className="min-w-0 flex-1 text-[11px] leading-snug text-lilac">{t.browse.searchHint}</span>
         </button>
       </div>
 
@@ -853,14 +853,14 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
                   <svg className="mt-0.5 shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ef4444" strokeWidth="2" /><path d="M12 7v6M12 16.5v.5" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" /></svg>
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-white">
+                  <p className="text-sm font-semibold text-ink">
                     {suggestFlash.state === "sent" ? t.suggest.sentTitle : t.suggest.sendError}
                   </p>
-                  <p className="mt-0.5 truncate text-xs text-[#9ca3af]">
+                  <p className="mt-0.5 truncate text-xs text-muted">
                     {suggestFlash.title} — {suggestFlash.artist}
                   </p>
                   {suggestFlash.state === "sent" && (
-                    <p className="mt-1.5 text-xs text-[#9ca3af]">{t.suggest.sentDesc}</p>
+                    <p className="mt-1.5 text-xs text-muted">{t.suggest.sentDesc}</p>
                   )}
                 </div>
                 <button
@@ -879,12 +879,12 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
         {/* Mekanın onayladığı talepler: tek seferlik, süreli. İlk ekleyen alır. */}
         {!selectedArtist && oneTimeSongs.length > 0 && (
           <section className="mb-6 px-5">
-            <div className="rounded-2xl border border-[#fbbf24]/30 bg-[#fbbf24]/[0.06] px-4 py-3.5">
+            <div className="rounded-2xl border border-gold/30 bg-gold/[0.06] px-4 py-3.5">
               <div className="flex items-center gap-2">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fbbf24" strokeWidth="2" /><path d="M12 7v5l3 3" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" /></svg>
-                <h2 className="text-base font-bold text-white">{t.oneTime.heading}</h2>
+                <h2 className="text-base font-bold text-ink">{t.oneTime.heading}</h2>
               </div>
-              <p className="mt-1 text-xs text-[#9ca3af]">{t.oneTime.desc}</p>
+              <p className="mt-1 text-xs text-muted">{t.oneTime.desc}</p>
               <div className="mt-2">
                 {oneTimeSongs.map((song) => {
                   const leftMs = Math.max(0, new Date(song.one_time_expires_at!).getTime() - oneTimeTick);
@@ -892,7 +892,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
                   const secs = Math.floor((leftMs % 60000) / 1000);
                   return (
                     <div key={song.youtube_video_id}>
-                      <p className="pt-2 text-[11px] font-semibold text-[#fbbf24]">
+                      <p className="pt-2 text-[11px] font-semibold text-gold">
                         {fmt(t.oneTime.remaining, { t: `${mins}:${secs.toString().padStart(2, "0")}` })}
                       </p>
                       <SongRow
@@ -918,7 +918,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
             <div className="mb-3 flex items-center justify-between px-5">
               <div className="flex items-center gap-2">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="#e91e8c"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" /></svg>
-                <h2 className="text-base font-bold text-white">{t.browse.favorites}</h2>
+                <h2 className="text-base font-bold text-ink">{t.browse.favorites}</h2>
               </div>
               <Link href={`/venue/${venueId}/favorites`} className="text-xs font-semibold text-[#e91e8c]">
                 {t.browse.seeAll}
@@ -936,7 +936,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           <section className="mb-6">
             <div className="mb-3 flex items-center gap-2 px-5">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2c0 4-5 6-5 11a5 5 0 0010 0c0-2-1-3.5-2-5-1 2-3 2.5-3 0 0-2 0-4 0-6z" stroke="#e91e8c" strokeWidth="2" strokeLinejoin="round" /></svg>
-              <h2 className="text-base font-bold text-white">{t.browse.mostRequested}</h2>
+              <h2 className="text-base font-bold text-ink">{t.browse.mostRequested}</h2>
             </div>
             <div className="flex gap-3 overflow-x-auto px-5">
               {topSongs.map((song) => (
@@ -950,7 +950,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           <section className="mb-6">
             <div className="mb-3 flex items-center gap-2 px-5">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2a4 4 0 00-4 4v5a4 4 0 008 0V6a4 4 0 00-4-4z" stroke="#e91e8c" strokeWidth="2" /><path d="M5 11a7 7 0 0014 0M12 18v4" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" /></svg>
-              <h2 className="text-base font-bold text-white">{t.browse.artists}</h2>
+              <h2 className="text-base font-bold text-ink">{t.browse.artists}</h2>
             </div>
             <div className="flex gap-4 overflow-x-auto px-5">
               {artists.map((a) => {
@@ -961,16 +961,16 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
                     onClick={() => setSelectedArtist((cur) => (cur === a.key ? null : a.key))}
                     className="flex w-16 shrink-0 flex-col items-center gap-1.5 transition-transform active:scale-95"
                   >
-                    <div className={`h-16 w-16 overflow-hidden rounded-full ${active ? "ring-2 ring-[#e91e8c]" : "ring-1 ring-white/10"}`}>
+                    <div className={`h-16 w-16 overflow-hidden rounded-full ${active ? "ring-2 ring-[#e91e8c]" : "ring-1 ring-ink/10"}`}>
                       {a.coverUrl ? (
                         <Image src={a.coverUrl} alt={a.name} width={64} height={64} sizes="64px" className="h-full w-full object-cover" />
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-[#1a0e2a]">
+                        <div className="flex h-full w-full items-center justify-center bg-surface">
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#6b7280" strokeWidth="2" /><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" /></svg>
                         </div>
                       )}
                     </div>
-                    <span className={`w-full truncate text-center text-[11px] ${active ? "font-semibold text-[#e91e8c]" : "text-[#9ca3af]"}`}>{a.name}</span>
+                    <span className={`w-full truncate text-center text-[11px] ${active ? "font-semibold text-[#e91e8c]" : "text-muted"}`}>{a.name}</span>
                   </button>
                 );
               })}
@@ -982,7 +982,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           <section className="mb-6">
             <div className="mb-3 flex items-center gap-2 px-5">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#e91e8c" strokeWidth="2" /><path d="M12 7v5l3 3" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" /></svg>
-              <h2 className="text-base font-bold text-white">{t.browse.recentlyPlayed}</h2>
+              <h2 className="text-base font-bold text-ink">{t.browse.recentlyPlayed}</h2>
             </div>
             <div className="flex gap-3 overflow-x-auto px-5">
               {recentSongs.map((song) => (
@@ -996,18 +996,18 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           <div className="mb-1 flex items-center justify-between">
             {selectedArtist ? (
               <div className="flex min-w-0 items-center gap-2">
-                <h2 className="truncate text-base font-bold text-white">{selectedArtistName}</h2>
-                <span className="shrink-0 text-xs text-[#9ca3af]">{fmt(t.browse.songCount, { n: listSongs.length })}</span>
+                <h2 className="truncate text-base font-bold text-ink">{selectedArtistName}</h2>
+                <span className="shrink-0 text-xs text-muted">{fmt(t.browse.songCount, { n: listSongs.length })}</span>
                 <button
                   onClick={() => setSelectedArtist(null)}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ink/10"
                   aria-label={t.browse.clearArtistAria}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" /></svg>
                 </button>
               </div>
             ) : (
-              <h2 className="text-base font-bold text-white">
+              <h2 className="text-base font-bold text-ink">
                 {listAllPlayed ? t.browse.mostPlayed : t.browse.songs}
               </h2>
             )}
@@ -1015,20 +1015,20 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
               <div className="relative">
                 <button
                   onClick={() => setSortOpen((v) => !v)}
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${sortOpen || sortBy !== "default" ? "border border-[#e91e8c]/40 bg-[#e91e8c]/20" : "bg-white/10"}`}
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${sortOpen || sortBy !== "default" ? "border border-[#e91e8c]/40 bg-[#e91e8c]/20" : "bg-ink/10"}`}
                   aria-label={t.browse.sortAria}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <path d="M3 6h18M7 12h10M11 18h2" stroke={sortBy !== "default" ? "#e91e8c" : "#9ca3af"} strokeWidth="2" strokeLinecap="round" />
+                    <path d="M3 6h18M7 12h10M11 18h2" stroke={sortBy !== "default" ? "#e91e8c" : "var(--pmj-muted)"} strokeWidth="2" strokeLinecap="round" />
                   </svg>
                 </button>
                 {sortOpen && (
-                  <div className="absolute right-0 top-11 z-40 min-w-[180px] overflow-hidden rounded-2xl border border-white/10 bg-[#1e1130] shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+                  <div className="absolute right-0 top-11 z-40 min-w-[180px] overflow-hidden rounded-2xl border border-ink/10 bg-sheet shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
                     {sortOptions.map((opt, idx, arr) => (
                       <button
                         key={opt.key}
                         onClick={() => { setSortBy(opt.key); setSortOpen(false); }}
-                        className={`flex w-full items-center justify-between px-4 py-3 text-sm font-medium ${sortBy === opt.key ? "text-[#e91e8c]" : "text-white"} ${idx < arr.length - 1 ? "border-b border-white/5" : ""}`}
+                        className={`flex w-full items-center justify-between px-4 py-3 text-sm font-medium ${sortBy === opt.key ? "text-[#e91e8c]" : "text-ink"} ${idx < arr.length - 1 ? "border-b border-ink/5" : ""}`}
                       >
                         {opt.label}
                         {sortBy === opt.key && (
@@ -1043,7 +1043,7 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
           </div>
 
           {listSongs.length === 0 && (
-            <p className="mt-10 text-center text-[#6b7280]">
+            <p className="mt-10 text-center text-subtle">
               {/* Liste artık çalma verisine bağlı değil: boşsa mekanın müşteriye
                   açık hiç şarkısı yok demektir */}
               {t.browse.noSongsFound}

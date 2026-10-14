@@ -40,7 +40,7 @@ const TX_PREVIEW = 3;
 const SINGLE_ID = "single";
 
 const PINK = "#e91e8c";
-const CARD = "#170e25";
+const CARD = "var(--pmj-sheet)";
 
 function timeAgo(ms: number) {
   const d = currentDict().historyPage;
@@ -97,7 +97,7 @@ function OptionRow({
       className="cursor-pointer rounded-2xl p-4 transition-all active:scale-[0.99]"
       style={{
         background: selected ? "rgba(233,30,140,0.07)" : CARD,
-        border: selected ? `1px solid rgba(233,30,140,0.5)` : "1px solid rgba(255,255,255,0.07)",
+        border: selected ? `1px solid rgba(233,30,140,0.5)` : "1px solid rgb(var(--pmj-ink-rgb) / 0.07)",
       }}
     >
       {children}
@@ -111,7 +111,7 @@ function Radio({ selected }: { selected: boolean }) {
       className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-all"
       style={{
         background: selected ? PINK : "transparent",
-        border: selected ? `1px solid ${PINK}` : "1px solid rgba(255,255,255,0.22)",
+        border: selected ? `1px solid ${PINK}` : "1px solid rgb(var(--pmj-ink-rgb) / 0.22)",
       }}
     >
       {selected && (
@@ -304,7 +304,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
   const visibleTxs = txExpanded ? txs : txs.slice(0, TX_PREVIEW);
 
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-[#0f0a18] px-5 pt-12 pb-44">
+    <div className="relative min-h-dvh overflow-hidden bg-canvas px-5 pt-12 pb-44">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-64"
@@ -319,18 +319,18 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             <button
               onClick={() => router.back()}
               aria-label={t.common.back}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-transform active:scale-95"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-ink/10 transition-transform active:scale-95"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
           )}
-          <h1 className="text-lg font-bold text-white">{t.tokens.title}</h1>
+          <h1 className="text-lg font-bold text-ink">{t.tokens.title}</h1>
         </div>
 
         {/* Bakiye: tek satır, sade */}
         <div
           className="mb-6 flex items-center gap-4 rounded-3xl px-5 py-4"
-          style={{ background: CARD, border: "1px solid rgba(255,255,255,0.07)" }}
+          style={{ background: CARD, border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}
         >
           <span
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
@@ -339,17 +339,17 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             <Coin size={26} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.currentBalance}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">{t.tokens.currentBalance}</p>
             <div className="mt-1 flex items-baseline gap-1.5">
               {balanceLoaded ? (
-                <span className="text-[30px] font-black leading-none text-white tabular-nums">{displayBalance}</span>
+                <span className="text-[30px] font-black leading-none text-ink tabular-nums">{displayBalance}</span>
               ) : (
-                <span className="inline-block h-7 w-14 animate-pulse rounded-lg bg-white/10" />
+                <span className="inline-block h-7 w-14 animate-pulse rounded-lg bg-ink/10" />
               )}
-              <span className="text-sm font-medium text-[#9ca3af]">{t.tokens.tokenUnit}</span>
+              <span className="text-sm font-medium text-muted">{t.tokens.tokenUnit}</span>
             </div>
           </div>
-          <p className="max-w-[7.5rem] shrink-0 text-right text-[10px] leading-tight text-[#6b7280]">
+          <p className="max-w-[7.5rem] shrink-0 text-right text-[10px] leading-tight text-subtle">
             {fmt(t.tokens.balanceNote, { price: fmtPrice(unitPrice) })}
           </p>
         </div>
@@ -359,7 +359,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             className="mb-6 flex items-center gap-2 rounded-2xl p-4 text-sm font-semibold"
             style={
               paymentResult === "success"
-                ? { background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.4)", color: "#4ade80" }
+                ? { background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.4)", color: "var(--pmj-green)" }
                 : { background: "rgba(233,30,140,0.12)", border: "1px solid rgba(233,30,140,0.4)", color: PINK }
             }
           >
@@ -368,7 +368,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
         )}
 
         {/* Miktar seçimi: yalnızca paketler; seçili paket kendi katlarıyla artar */}
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.chooseAmount}</p>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">{t.tokens.chooseAmount}</p>
 
         <div className="space-y-2.5" role="radiogroup" aria-label={t.tokens.chooseAmount}>
           {packages.map((p) => {
@@ -384,8 +384,8 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                   <Radio selected={isSel} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="text-[19px] font-extrabold leading-none text-white tabular-nums">
-                        {rowTokens} <span className="text-xs font-medium text-[#9ca3af]">{t.tokens.tokenUnit}</span>
+                      <p className="text-[19px] font-extrabold leading-none text-ink tabular-nums">
+                        {rowTokens} <span className="text-xs font-medium text-muted">{t.tokens.tokenUnit}</span>
                       </p>
                       {p.popular && (
                         <span
@@ -396,10 +396,10 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                         </span>
                       )}
                     </div>
-                    <p className="mt-1.5 text-[11px] text-[#6b7280]">{fmt(t.tokens.perToken, { price: unitLabel(p) })}</p>
+                    <p className="mt-1.5 text-[11px] text-subtle">{fmt(t.tokens.perToken, { price: unitLabel(p) })}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-base font-bold text-white tabular-nums">{fmtPrice(rowPrice)}₺</p>
+                    <p className="text-base font-bold text-ink tabular-nums">{fmtPrice(rowPrice)}₺</p>
                     {savings > 0 && (
                       <span className="mt-1 inline-block rounded-full bg-[#22c55e]/10 px-2 py-0.5 text-[10px] font-bold text-[#4ade80]">
                         {fmt(t.tokens.savings, { percent: savings })}
@@ -418,19 +418,19 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                       type="button"
                       aria-label={t.tokens.decreaseAria}
                       onClick={() => setMultiplier((m) => clampMultiplier(m - 1, p))}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95 disabled:opacity-40"
+                      className="flex h-9 w-9 items-center justify-center rounded-xl bg-ink/10 text-lg font-bold text-ink transition-transform active:scale-95 disabled:opacity-40"
                       disabled={multiplier <= 1}
                     >
                       −
                     </button>
-                    <span className="min-w-20 text-center text-lg font-extrabold text-white tabular-nums">
+                    <span className="min-w-20 text-center text-lg font-extrabold text-ink tabular-nums">
                       {rowTokens}
                     </span>
                     <button
                       type="button"
                       aria-label={t.tokens.increaseAria}
                       onClick={() => setMultiplier((m) => clampMultiplier(m + 1, p))}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white transition-transform active:scale-95 disabled:opacity-40"
+                      className="flex h-9 w-9 items-center justify-center rounded-xl bg-ink/10 text-lg font-bold text-ink transition-transform active:scale-95 disabled:opacity-40"
                       disabled={rowTokens + p.tokens > MAX_TOKENS}
                     >
                       +
@@ -443,7 +443,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
         </div>
 
         <div className="mt-6 flex items-center justify-center gap-3">
-          <div className="flex items-center gap-1.5 text-[11px] text-[#6b7280]">
+          <div className="flex items-center gap-1.5 text-[11px] text-subtle">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
               <rect x="4" y="10" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="2" />
               <path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="2" />
@@ -463,7 +463,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
         </div>
 
         {/* Jeton hareketleri */}
-        <p className="mt-9 mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{t.tokens.recentActivity}</p>
+        <p className="mt-9 mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">{t.tokens.recentActivity}</p>
         {!txLoaded ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
@@ -472,21 +472,21 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
           </div>
         ) : txs.length === 0 ? (
           <div
-            className="rounded-2xl py-8 text-center text-xs text-[#6b7280]"
-            style={{ background: CARD, border: "1px solid rgba(255,255,255,0.07)" }}
+            className="rounded-2xl py-8 text-center text-xs text-subtle"
+            style={{ background: CARD, border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}
           >
             {t.tokens.noActivity}
           </div>
         ) : (
           <>
-            <div className="overflow-hidden rounded-2xl" style={{ background: CARD, border: "1px solid rgba(255,255,255,0.07)" }}>
+            <div className="overflow-hidden rounded-2xl" style={{ background: CARD, border: "1px solid rgb(var(--pmj-ink-rgb) / 0.07)" }}>
               {visibleTxs.map((tx, i) => {
                 const positive = tx.amount > 0;
                 return (
                   <div
                     key={tx.id}
                     className="flex items-center gap-3 px-4 py-3"
-                    style={i > 0 ? { borderTop: "1px solid rgba(255,255,255,0.06)" } : undefined}
+                    style={i > 0 ? { borderTop: "1px solid rgb(var(--pmj-ink-rgb) / 0.06)" } : undefined}
                   >
                     <span
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
@@ -503,8 +503,8 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                       )}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-white">{txLabel(tx)}</p>
-                      <p className="mt-0.5 text-[11px] text-[#6b7280]">
+                      <p className="truncate text-sm font-semibold text-ink">{txLabel(tx)}</p>
+                      <p className="mt-0.5 text-[11px] text-subtle">
                         {tx.venue_name ? `${tx.venue_name} · ` : ""}{timeAgo(tx.created_at)}
                       </p>
                     </div>
@@ -512,7 +512,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                       <p className={`text-sm font-bold tabular-nums ${positive ? "text-[#4ade80]" : "text-[#e91e8c]"}`}>
                         {positive ? `+${tx.amount}` : tx.amount}
                       </p>
-                      <p className="mt-0.5 text-[10px] text-[#6b7280] tabular-nums">{fmt(t.tokens.balanceAfter, { n: tx.balance_after })}</p>
+                      <p className="mt-0.5 text-[10px] text-subtle tabular-nums">{fmt(t.tokens.balanceAfter, { n: tx.balance_after })}</p>
                     </div>
                   </div>
                 );
@@ -521,8 +521,8 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             {txs.length > TX_PREVIEW && (
               <button
                 onClick={() => setTxExpanded((v) => !v)}
-                className="mt-3 w-full rounded-xl py-2.5 text-xs font-semibold text-[#9ca3af] transition-colors active:text-white"
-                style={{ background: "rgba(255,255,255,0.04)" }}
+                className="mt-3 w-full rounded-xl py-2.5 text-xs font-semibold text-muted transition-colors active:text-ink"
+                style={{ background: "rgb(var(--pmj-ink-rgb) / 0.04)" }}
               >
                 {txExpanded ? t.tokens.showLess : fmt(t.tokens.showAll, { n: txs.length })}
               </button>
@@ -533,18 +533,18 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
 
       {/* Ödeme çubuğu: alt gezinmenin (h-16) ve varsa talep şeridinin üstünde sabit */}
       <div
-        className="fixed inset-x-0 z-30 border-t border-white/10 px-5 py-3 backdrop-blur-xl"
-        style={{ background: "rgba(15,10,24,0.9)", bottom: "calc(4rem + var(--pmj-request-bar, 0px))" }}
+        className="fixed inset-x-0 z-30 border-t border-ink/10 px-5 py-3 backdrop-blur-xl"
+        style={{ background: "rgb(var(--pmj-bg-rgb) / 0.9)", bottom: "calc(4rem + var(--pmj-request-bar, 0px))" }}
       >
         <div className="mx-auto flex w-full max-w-md items-center gap-3">
           <div className="min-w-0 shrink-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]">{t.tokens.selected}</p>
-            <p className="mt-1 text-lg font-extrabold leading-none text-white tabular-nums">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-subtle">{t.tokens.selected}</p>
+            <p className="mt-1 text-lg font-extrabold leading-none text-ink tabular-nums">
               {fmt(t.tokens.selectedValue, { n: buyTokens })}
             </p>
           </div>
           {iosApp ? (
-            <p className="flex-1 text-center text-[13px] font-semibold text-[#c4b5d4]">{t.nativeApp.iapSoon}</p>
+            <p className="flex-1 text-center text-[13px] font-semibold text-lilac">{t.nativeApp.iapSoon}</p>
           ) : (
           <button
             onClick={handlePurchase}
@@ -560,7 +560,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
             {purchasing ? (
               <>
                 <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                  <circle cx="12" cy="12" r="9" stroke="rgb(var(--pmj-ink-rgb) / 0.3)" strokeWidth="3" />
                   <path d="M21 12a9 9 0 0 0-9-9" stroke="white" strokeWidth="3" strokeLinecap="round" />
                 </svg>
                 {t.tokens.redirecting}

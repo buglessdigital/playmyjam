@@ -44,14 +44,14 @@ export default function RequestSentModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-3xl border border-[#fbbf24]/30 p-5"
+        className="w-full max-w-md overflow-hidden rounded-3xl border border-gold/30 p-5"
         style={{ background: "linear-gradient(160deg, rgba(251,191,36,0.16), #150e22 60%)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-3">
           {/* Yeşil tik "şarkı çalacak" izlenimi veriyordu; talep henüz beklemede.
               Onun yerine şeritteki sarıyla aynı tonda, dolmakta olan bir saat. */}
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fbbf24]/15 ring-1 ring-inset ring-[#fbbf24]/30">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 ring-1 ring-inset ring-gold/30">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="9" stroke="#fbbf24" strokeOpacity="0.28" strokeWidth="2" />
               {/* Dolan pay: çember uzunluğu 2πr ≈ 56.5 */}
@@ -81,8 +81,8 @@ export default function RequestSentModal({
             </svg>
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-base font-bold text-white">{t.requestSent.title}</p>
-            <p className="mt-0.5 truncate text-xs text-[#9ca3af]">
+            <p className="text-base font-bold text-ink">{t.requestSent.title}</p>
+            <p className="mt-0.5 truncate text-xs text-muted">
               {title}
               {artist ? ` — ${artist}` : ""}
             </p>
@@ -97,7 +97,7 @@ export default function RequestSentModal({
               <circle cx="12" cy="12" r="9" stroke="#e91e8c" strokeWidth="2" />
               <path d="M14.5 9.5A3 3 0 1 0 12 15" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />
             </svg>
-            <p className="min-w-0 flex-1 text-base font-bold leading-snug text-white">
+            <p className="min-w-0 flex-1 text-base font-bold leading-snug text-ink">
               {fmt(price ? t.requestSent.costLine : t.requestSent.costLinePlain, {
                 n: tokens,
                 price: price ?? "",
@@ -109,17 +109,17 @@ export default function RequestSentModal({
         {/* Tek satır: şerit kartın hemen altında, ok oraya bakar */}
         {/* Kartın tamamı sarıya döndüğü için bu satır nötr: sarı artık "bekliyor"
             sinyali, ok ise sadece yön gösteriyor */}
-        <div className="mt-2.5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2.5">
+        <div className="mt-2.5 flex items-center gap-2 rounded-2xl border border-ink/10 bg-ink/[0.05] px-3 py-2.5">
           <svg className="shrink-0 animate-bounce" width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M12 4v14M6 13l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <p className="min-w-0 flex-1 text-xs font-medium text-[#9ca3af]">{t.requestSent.trackHint}</p>
+          <p className="min-w-0 flex-1 text-xs font-medium text-muted">{t.requestSent.trackHint}</p>
         </div>
 
         <button
           onClick={onClose}
           className="mt-4 w-full rounded-2xl py-3 text-sm font-bold text-[#1a1005]"
-          style={{ background: "linear-gradient(135deg, #fbbf24, #f59e0b)" }}
+          style={{ background: "linear-gradient(135deg, var(--pmj-gold), #f59e0b)" }}
         >
           {t.requestSent.cta}
         </button>

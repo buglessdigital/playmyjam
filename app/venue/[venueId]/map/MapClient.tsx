@@ -69,7 +69,7 @@ export default function MapClient({ venueId, venues }: Props) {
       className="fixed inset-x-0 top-0 z-0 overflow-hidden"
       style={{
         bottom: "calc(4rem + var(--pmj-request-bar, 0px))",
-        background: "radial-gradient(120% 80% at 50% 40%, #1b1030 0%, #0f0a18 70%)",
+        background: "radial-gradient(120% 80% at 50% 40%, var(--pmj-glow) 0%, var(--pmj-bg) 70%)",
       }}
     >
       <VenueMap
@@ -84,11 +84,11 @@ export default function MapClient({ venueId, venues }: Props) {
       {/* Başlık haritanın üstünde yüzer */}
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between px-4 pb-8 pt-12"
-        style={{ background: "linear-gradient(180deg, rgba(15,10,24,0.92) 0%, rgba(15,10,24,0) 100%)" }}
+        style={{ background: "linear-gradient(180deg, rgb(var(--pmj-bg-rgb) / 0.92) 0%, rgb(var(--pmj-bg-rgb) / 0) 100%)" }}
       >
         <div>
-          <h1 className="text-xl font-bold text-white">{t.venueMap.title}</h1>
-          <p className="text-xs text-[#9ca3af]">{t.venueMap.subtitle}</p>
+          <h1 className="text-xl font-bold text-ink">{t.venueMap.title}</h1>
+          <p className="text-xs text-muted">{t.venueMap.subtitle}</p>
         </div>
         <div className="pointer-events-auto flex items-center gap-2">
           {/* Başka mekana karekodla geç: uygulamada eklenti, tarayıcıda/PWA'da kamera */}
@@ -103,13 +103,13 @@ export default function MapClient({ venueId, venues }: Props) {
 
       {!mapReady && venues.length > 0 && (
         <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
-          <span className="rounded-full bg-black/40 px-4 py-2 text-xs text-[#9ca3af]">{t.venueMap.loading}</span>
+          <span className="rounded-full bg-black/40 px-4 py-2 text-xs text-muted">{t.venueMap.loading}</span>
         </div>
       )}
 
       {venues.length === 0 && (
         <div className="absolute inset-0 z-[5] flex items-center justify-center px-8 text-center">
-          <p className="rounded-2xl border border-white/10 bg-[#0f0a18]/80 px-5 py-4 text-sm text-[#9ca3af]">
+          <p className="rounded-2xl border border-ink/10 bg-canvas/80 px-5 py-4 text-sm text-muted">
             {t.venueMap.empty}
           </p>
         </div>

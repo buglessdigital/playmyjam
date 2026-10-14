@@ -13,7 +13,7 @@ export default function Coin({ size = 22 }: { size?: number }) {
         </linearGradient>
       </defs>
       <circle cx="12" cy="12" r="11" fill={`url(#${id})`} />
-      <circle cx="12" cy="12" r="10.5" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
+      <circle cx="12" cy="12" r="10.5" stroke="rgb(var(--pmj-ink-rgb) / 0.4)" strokeWidth="0.8" />
       <circle cx="12" cy="12" r="8.4" stroke="rgba(120,53,15,0.4)" strokeWidth="0.9" />
       <path d="M10.6 14.8V9.1l4-1v6.1" stroke="#78350f" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx="9.4" cy="14.9" r="1.7" fill="#78350f" />

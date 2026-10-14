@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { LngLatBounds, Map as MapLibre, Marker, setWorkerUrl } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { loadPmjMapStyle } from "@/lib/map-style";
+import { useResolvedTheme } from "@/lib/theme";
 import type { MapVenue } from "@/lib/venue-map";
 
 // Yalnızca bu sayfada yüklenir (MapClient dinamik içe aktarır): maplibre
@@ -73,6 +74,7 @@ function highlight(markers: Map<string, { el: HTMLElement }>, selectedSlug: stri
 }
 
 export default function VenueMap({ venues, currentSlug, selectedSlug, bottomInset, onSelect, onReady }: Props) {
+  const theme = useResolvedTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibre | null>(null);
   const markersRef = useRef(new Map<string, { marker: Marker; el: HTMLElement }>());
@@ -92,7 +94,7 @@ export default function VenueMap({ venues, currentSlug, selectedSlug, bottomInse
     let map: MapLibre | null = null;
     const markers = markersRef.current;
 
-    loadPmjMapStyle(abort.signal).then((style) => {
+    loadPmjMapStyle(abort.signal, theme).then((style) => {
       if (abort.signal.aborted) return;
       map = new MapLibre({
         container,
@@ -142,7 +144,7 @@ export default function VenueMap({ venues, currentSlug, selectedSlug, bottomInse
       map?.remove();
       mapRef.current = null;
     };
-  }, [venues, currentSlug]);
+  }, [venues, currentSlug, theme]);
 
   // Seçili iğne öne çıkar ve kartın üstünde kalacak şekilde ortalanır
   useEffect(() => {
@@ -178,7 +180,7 @@ const MARKER_CSS = `
 .pmj-marker-ring {
   width: 44px; height: 44px; border-radius: 9999px; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
-  background: #1a0e2a; color: #fff; font: 700 14px/1 system-ui, sans-serif;
+  background: var(--pmj-surface); color: var(--pmj-ink); font: 700 14px/1 system-ui, sans-serif;
   border: 2.5px solid #e91e8c;
   box-shadow: 0 0 0 4px rgba(233,30,140,0.18), 0 6px 18px rgba(0,0,0,0.55);
   transition: transform .2s ease, box-shadow .2s ease;
@@ -193,13 +195,13 @@ const MARKER_CSS = `
 }
 .pmj-marker-label {
   max-width: 120px; padding: 2px 8px; border-radius: 9999px;
-  background: rgba(15,10,24,0.88); border: 1px solid rgba(255,255,255,0.1);
-  color: #fff; font: 600 11px/1.4 system-ui, sans-serif;
+  background: rgb(var(--pmj-bg-rgb) / 0.88); border: 1px solid rgb(var(--pmj-ink-rgb) / 0.1);
+  color: var(--pmj-ink); font: 600 11px/1.4 system-ui, sans-serif;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib.maplibregl-compact {
-  background: rgba(15,10,24,0.75) !important; color: #6b7280;
+  background: rgb(var(--pmj-bg-rgb) / 0.75) !important; color: var(--pmj-subtle);
 }
-.maplibregl-ctrl-attrib a { color: #9ca3af !important; }
-.maplibregl-ctrl-attrib-button { filter: invert(1) opacity(.6); }
+.maplibregl-ctrl-attrib a { color: var(--pmj-muted) !important; }
+html:not([data-theme="light"]) .maplibregl-ctrl-attrib-button { filter: invert(1) opacity(.6); }
 `;

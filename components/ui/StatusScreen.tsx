@@ -15,7 +15,7 @@ export default function StatusScreen({
   footnote?: ReactNode;
 }) {
   return (
-    <main className="flex min-h-dvh w-full flex-col items-center justify-center bg-[#0f0a18] px-6 py-16 text-white">
+    <main className="flex min-h-dvh w-full flex-col items-center justify-center bg-canvas px-6 py-16 text-ink">
       <div className="w-full max-w-md">
         <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">{eyebrow}</p>
         <h1 className="mt-3 text-2xl font-bold">{title}</h1>
@@ -30,4 +30,4 @@ export default function StatusScreen({
 export const primaryButtonClass =
   "rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white active:bg-purple-700";
 export const secondaryButtonClass =
-  "rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm text-white active:bg-white/10";
+  "rounded-xl border border-ink/15 bg-ink/5 px-5 py-2.5 text-sm text-ink active:bg-ink/10";

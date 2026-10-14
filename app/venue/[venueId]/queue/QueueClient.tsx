@@ -227,9 +227,9 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
   const waitPriorityMs = waitMs(remainingMs, waitEntries, true);
 
   return (
-    <div className="min-h-screen bg-[#0f0a18]">
+    <div className="min-h-screen bg-canvas">
       <div className="flex items-center justify-between px-5 pt-12 pb-4">
-        <h1 className="min-w-0 truncate text-white font-bold text-lg">{venueName || venueId}</h1>
+        <h1 className="min-w-0 truncate text-ink font-bold text-lg">{venueName || venueId}</h1>
         <div className="flex shrink-0 items-center gap-2">
           {/* Dil anahtarı yalnızca misafirde başlıkta: üye onu profil sayfasından
               değiştirir, başlık üç düğmeyle kalabalıklaşmasın */}
@@ -238,21 +238,21 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
           {isMember ? (
             <Link
               href={`/venue/${venueId}/tokens`}
-              className="flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-[#1a0e2a] px-3 transition-transform active:scale-95"
+              className="flex h-8 items-center gap-1.5 rounded-full border border-ink/10 bg-surface px-3 transition-transform active:scale-95"
               aria-label={t.browse.balanceAria}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fbbf24" strokeWidth="2" /><circle cx="12" cy="12" r="4" stroke="#fbbf24" strokeWidth="2" /></svg>
               {tokenBalance === null ? (
-                <span className="h-3.5 w-4 animate-pulse rounded bg-white/10" />
+                <span className="h-3.5 w-4 animate-pulse rounded bg-ink/10" />
               ) : (
-                <span className="text-sm font-bold text-white">{tokenBalance}</span>
+                <span className="text-sm font-bold text-ink">{tokenBalance}</span>
               )}
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /></svg>
             </Link>
           ) : (
             <Link
               href={venueLoginPath(venueId, `/venue/${venueId}/queue`)}
-              className="flex h-8 items-center rounded-full border border-[#e91e8c]/40 bg-[#e91e8c]/15 px-3 text-xs font-bold text-white transition-transform active:scale-95"
+              className="flex h-8 items-center rounded-full border border-[#e91e8c]/40 bg-[#e91e8c]/15 px-3 text-xs font-bold text-ink transition-transform active:scale-95"
             >
               {t.queue.login}
             </Link>
@@ -274,16 +274,16 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
 
       {/* Bekleme süreleri yalnızca oynatıcı canlıyken anlamlı — kapalıyken sıra ilerlemiyor */}
       {!playerOffline && (
-      <div className="mx-5 mb-4 rounded-2xl overflow-hidden" style={{ background: "#1a0e2a" }}>
+      <div className="mx-5 mb-4 rounded-2xl overflow-hidden" style={{ background: "var(--pmj-surface)" }}>
         <div className="flex">
-          <div className="flex-1 flex items-center gap-3 px-4 py-3 border-r border-white/10">
+          <div className="flex-1 flex items-center gap-3 px-4 py-3 border-r border-ink/10">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="9" stroke="#9ca3af" strokeWidth="1.5" />
               <path d="M12 7v5l3 3" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             <div>
-              <p className="text-[#6b7280] text-[10px]">{t.queue.normalWait}</p>
-              <p className="text-white font-bold text-sm">{formatWait(waitNormalMs)}</p>
+              <p className="text-subtle text-[10px]">{t.queue.normalWait}</p>
+              <p className="text-ink font-bold text-sm">{formatWait(waitNormalMs)}</p>
             </div>
           </div>
           <div className="flex-1 flex items-center gap-3 px-4 py-3">
@@ -291,7 +291,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#e91e8c" />
             </svg>
             <div>
-              <p className="text-[#6b7280] text-[10px]">{t.queue.priorityWait}</p>
+              <p className="text-subtle text-[10px]">{t.queue.priorityWait}</p>
               <p className="font-bold text-sm" style={{ color: "#e91e8c" }}>{formatWait(waitPriorityMs)}</p>
             </div>
           </div>
@@ -302,7 +302,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
       <div
         onClick={() => openSongDetail(nowPlaying?.song_id ?? null)}
         className={`mx-5 rounded-3xl p-5 mb-5 ${nowPlaying?.songs ? "cursor-pointer transition-transform active:scale-[0.99]" : ""}`}
-        style={{ background: "linear-gradient(145deg, #2d1045 0%, #1a0e2a 100%)", border: "1px solid rgba(233,30,140,0.15)" }}
+        style={{ background: "linear-gradient(145deg, var(--pmj-hero) 0%, var(--pmj-surface) 100%)", border: "1px solid rgba(233,30,140,0.15)" }}
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -313,7 +313,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                 ))}
               </div>
             )}
-            <span className="text-white font-bold text-sm">{t.queue.nowPlaying}</span>
+            <span className="text-ink font-bold text-sm">{t.queue.nowPlaying}</span>
           </div>
           {isLive && (
             <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(233,30,140,0.2)", color: "#e91e8c" }}>{t.queue.live}</span>
@@ -332,9 +332,9 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
             >
               <div className="absolute inset-0 flex items-center justify-center">
                 {nowPlaying?.songs?.album_cover_url ? (
-                  <Image src={nowPlaying.songs.album_cover_url} alt="" width={64} height={64} className="w-16 h-16 rounded-full object-cover" style={{ boxShadow: "0 0 0 3px rgba(255,255,255,0.1)" }} />
+                  <Image src={nowPlaying.songs.album_cover_url} alt="" width={64} height={64} className="w-16 h-16 rounded-full object-cover" style={{ boxShadow: "0 0 0 3px rgb(var(--pmj-ink-rgb) / 0.1)" }} />
                 ) : (
-                  <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
+                  <div className="w-16 h-16 rounded-full bg-ink/10 flex items-center justify-center">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#6b7280" strokeWidth="1.8" strokeLinecap="round" /><circle cx="6" cy="18" r="3" stroke="#6b7280" strokeWidth="1.8" /></svg>
                   </div>
                 )}
@@ -344,27 +344,27 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
 
           {loaded ? (
             <>
-              <h2 className="text-white font-bold text-xl text-center">{nowPlaying?.songs?.title ?? t.queue.nothingPlaying}</h2>
-              <p className="text-[#9ca3af] text-sm mb-4">{nowPlaying?.songs?.artist ?? ""}</p>
+              <h2 className="text-ink font-bold text-xl text-center">{nowPlaying?.songs?.title ?? t.queue.nothingPlaying}</h2>
+              <p className="text-muted text-sm mb-4">{nowPlaying?.songs?.artist ?? ""}</p>
             </>
           ) : (
             <>
-              <div className="h-6 w-44 rounded-lg bg-white/10 animate-pulse mb-1" />
-              <div className="h-4 w-28 rounded-lg bg-white/10 animate-pulse mb-4" />
+              <div className="h-6 w-44 rounded-lg bg-ink/10 animate-pulse mb-1" />
+              <div className="h-4 w-28 rounded-lg bg-ink/10 animate-pulse mb-4" />
             </>
           )}
 
           {/* Oynatıcı kapalıyken ilerleme donmuş olur; sayaç göstermek yanıltıcı */}
           {playerOffline ? (
-            <span className="text-xs font-semibold" style={{ color: "#fbbf24" }}>{t.playerOffline.badge}</span>
+            <span className="text-xs font-semibold" style={{ color: "var(--pmj-gold)" }}>{t.playerOffline.badge}</span>
           ) : (
             <div className="w-full">
-              <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mb-1.5">
+              <div className="w-full h-1 bg-ink/10 rounded-full overflow-hidden mb-1.5">
                 <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${progressPct}%`, background: "linear-gradient(90deg, #e91e8c, #8b5cf6)" }} />
               </div>
               <div className="flex justify-between">
-                <span className="text-[#6b7280] text-xs">{formatTime(progressMs)}</span>
-                <span className="text-[#6b7280] text-xs">{formatTime(dur === 1 ? 0 : dur)}</span>
+                <span className="text-subtle text-xs">{formatTime(progressMs)}</span>
+                <span className="text-subtle text-xs">{formatTime(dur === 1 ? 0 : dur)}</span>
               </div>
             </div>
           )}
@@ -373,24 +373,24 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
 
       <div className="px-5">
         <div className="flex justify-between items-center mb-3">
-          <h3 className="text-white font-bold text-base">{t.queue.upNext}</h3>
-          <span className="text-[#9ca3af] text-xs">{loaded ? fmt(t.queue.countInQueue, { n: queue.length }) : ""}</span>
+          <h3 className="text-ink font-bold text-base">{t.queue.upNext}</h3>
+          <span className="text-muted text-xs">{loaded ? fmt(t.queue.countInQueue, { n: queue.length }) : ""}</span>
         </div>
 
         {!loaded ? (
           <div className="space-y-2 pb-6">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-2xl animate-pulse" style={{ background: "#1a0e2a" }}>
-                <div className="w-12 h-12 rounded-xl bg-white/10 flex-shrink-0" />
+              <div key={i} className="flex items-center gap-3 p-3 rounded-2xl animate-pulse" style={{ background: "var(--pmj-surface)" }}>
+                <div className="w-12 h-12 rounded-xl bg-ink/10 flex-shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-4 w-3/4 rounded bg-white/10" />
-                  <div className="h-3 w-1/2 rounded bg-white/10" />
+                  <div className="h-4 w-3/4 rounded bg-ink/10" />
+                  <div className="h-3 w-1/2 rounded bg-ink/10" />
                 </div>
               </div>
             ))}
           </div>
         ) : queue.length === 0 ? (
-          <div className="text-center py-12 text-[#6b7280] text-sm">{t.queue.empty}</div>
+          <div className="text-center py-12 text-subtle text-sm">{t.queue.empty}</div>
         ) : (
           <div className="space-y-2 pb-6">
             {queue.map((item, idx) => (
@@ -403,19 +403,19 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                   // otomatik/mekan nötr.
                   item.tokens_spent > 0
                     ? item.priority
-                      ? { background: "linear-gradient(90deg, rgba(233,30,140,0.16), #1a0e2a 55%)", borderLeft: "3px solid #e91e8c" }
-                      : { background: "linear-gradient(90deg, rgba(139,92,246,0.16), #1a0e2a 55%)", borderLeft: "3px solid #8b5cf6" }
-                    : { background: "#1a0e2a", borderLeft: "3px solid transparent" }
+                      ? { background: "linear-gradient(90deg, rgba(233,30,140,0.16), var(--pmj-surface) 55%)", borderLeft: "3px solid #e91e8c" }
+                      : { background: "linear-gradient(90deg, rgba(139,92,246,0.16), var(--pmj-surface) 55%)", borderLeft: "3px solid #8b5cf6" }
+                    : { background: "var(--pmj-surface)", borderLeft: "3px solid transparent" }
                 }
               >
-                <div className="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden bg-[#0f0a18]">
+                <div className="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden bg-canvas">
                   {item.songs.album_cover_url && (
                     <Image src={item.songs.album_cover_url} alt={item.songs.title} width={48} height={48} className="w-full h-full object-cover" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white font-semibold text-sm truncate">{item.songs.title}</p>
-                  <p className="text-[#6b7280] text-xs truncate">{item.songs.artist}</p>
+                  <p className="text-ink font-semibold text-sm truncate">{item.songs.title}</p>
+                  <p className="text-subtle text-xs truncate">{item.songs.artist}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {item.tokens_spent > 0 && (
@@ -424,14 +424,14 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                       style={
                         item.priority
                           ? { background: "rgba(233,30,140,0.15)", color: "#e91e8c" }
-                          : { background: "rgba(139,92,246,0.15)", color: "#a78bfa" }
+                          : { background: "rgba(139,92,246,0.15)", color: "var(--pmj-violet)" }
                       }
                     >
                       {item.priority ? t.queue.priorityBadge : t.queue.tokenBadge}
                     </span>
                   )}
                   {!playerOffline && (
-                    <span className="text-xs font-bold" style={{ color: item.priority ? "#e91e8c" : "#9ca3af" }}>{formatWait(getRowWaitMs(idx))}</span>
+                    <span className="text-xs font-bold" style={{ color: item.priority ? "#e91e8c" : "var(--pmj-muted)" }}>{formatWait(getRowWaitMs(idx))}</span>
                   )}
                   <button
                     onClick={(e) => {
@@ -447,7 +447,7 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                         wait_ms: playerOffline ? undefined : getRowWaitMs(idx),
                       });
                     }}
-                    className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10"
+                    className="w-7 h-7 flex items-center justify-center rounded-full bg-ink/10"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="10" stroke="#9ca3af" strokeWidth="1.5" />

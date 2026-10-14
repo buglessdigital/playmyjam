@@ -9,6 +9,7 @@ import NotificationWatcher from "@/components/notifications/NotificationWatcher"
 import RequestStatusBar from "@/components/venue/RequestStatusBar";
 import UiTracker from "@/components/venue/UiTracker";
 import AppDownloadBanner from "@/components/venue/AppDownloadBanner";
+import ThemeSync from "@/components/venue/ThemeSync";
 
 interface Props {
   children: React.ReactNode;
@@ -17,7 +18,8 @@ interface Props {
 
 export default function VenueLayoutClient({ children, params }: Props) {
   return (
-    <div className="relative min-h-screen w-full bg-[#0f0a18]">
+    <div className="relative min-h-screen w-full bg-canvas">
+      <ThemeSync />
       <Suspense fallback={<main className="w-full">{children}</main>}>
         <VenueLayoutContent params={params}>{children}</VenueLayoutContent>
       </Suspense>

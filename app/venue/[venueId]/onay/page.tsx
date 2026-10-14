@@ -50,9 +50,9 @@ function ConsentPageContent({ params }: Props) {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f0a18] max-w-md mx-auto px-6 pt-12 pb-10">
-      <h1 className="text-2xl font-bold text-white mb-2">{t.consent.title}</h1>
-      <p className="text-[#9ca3af] text-sm mb-6">{t.consent.sub}</p>
+    <div className="min-h-screen bg-canvas max-w-md mx-auto px-6 pt-12 pb-10">
+      <h1 className="text-2xl font-bold text-ink mb-2">{t.consent.title}</h1>
+      <p className="text-muted text-sm mb-6">{t.consent.sub}</p>
 
       {error && (
         <div className="mb-4 px-4 py-2.5 rounded-xl text-sm text-red-400 bg-red-500/10 border border-red-500/20">

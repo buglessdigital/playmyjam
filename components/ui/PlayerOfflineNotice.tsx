@@ -35,7 +35,7 @@ export default function PlayerOfflineNotice({
         />
       </svg>
       <div>
-        <p className="text-sm font-semibold" style={{ color: "#fbbf24" }}>
+        <p className="text-sm font-semibold" style={{ color: "var(--pmj-gold)" }}>
           {copy.title}
         </p>
         {!compact && <p className="mt-0.5 text-xs text-[#d97706]">{copy.desc}</p>}

@@ -117,7 +117,7 @@ export default function EnablePushPrompt() {
     >
       <div
         className="w-full max-w-sm rounded-t-3xl p-6 sm:rounded-3xl"
-        style={{ background: "#1a0e2a" }}
+        style={{ background: "var(--pmj-surface)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
@@ -135,7 +135,7 @@ export default function EnablePushPrompt() {
           </svg>
         </div>
 
-        <h2 id="push-prompt-title" className="text-center text-lg font-bold text-white">
+        <h2 id="push-prompt-title" className="text-center text-lg font-bold text-ink">
           {t.pushPrompt.title}
         </h2>
 
@@ -145,10 +145,10 @@ export default function EnablePushPrompt() {
           <BlockedHelp onRecovered={() => setState("done")} />
         ) : (
           <>
-            <p className="mt-2 text-center text-sm text-[#9ca3af]">{t.pushPrompt.desc}</p>
+            <p className="mt-2 text-center text-sm text-muted">{t.pushPrompt.desc}</p>
             <ul className="mt-4 flex flex-col gap-2.5">
               {[t.pushPrompt.why1, t.pushPrompt.why2, t.pushPrompt.why3].map((why) => (
-                <li key={why} className="flex gap-2 text-xs leading-relaxed text-[#d1d5db]">
+                <li key={why} className="flex gap-2 text-xs leading-relaxed text-soft">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "#e91e8c" }} />
                   {why}
                 </li>
@@ -170,7 +170,7 @@ export default function EnablePushPrompt() {
 
         <button
           onClick={later}
-          className="mt-3 w-full text-center text-xs font-medium text-[#9ca3af]"
+          className="mt-3 w-full text-center text-xs font-medium text-muted"
         >
           {state === "denied" ? t.common.close : t.pushPrompt.later}
         </button>

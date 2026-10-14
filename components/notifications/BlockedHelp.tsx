@@ -92,18 +92,18 @@ export default function BlockedHelp({ onRecovered }: { onRecovered?: () => void 
           : t.blocked.desktop;
 
   return (
-    <div className="mt-2 rounded-xl border border-[#fbbf24]/25 bg-[#fbbf24]/[0.07] p-3">
-      <p className="text-xs font-semibold text-white">{t.blocked.title}</p>
-      <p className="mt-1 text-[11px] leading-relaxed text-[#9ca3af]">{t.blocked.intro}</p>
-      <p className="mt-2 text-[11px] leading-relaxed text-[#e5e7eb]">{steps}</p>
+    <div className="mt-2 rounded-xl border border-gold/25 bg-gold/[0.07] p-3">
+      <p className="text-xs font-semibold text-ink">{t.blocked.title}</p>
+      <p className="mt-1 text-[11px] leading-relaxed text-muted">{t.blocked.intro}</p>
+      <p className="mt-2 text-[11px] leading-relaxed text-soft">{steps}</p>
       {state === "still" && (
         <p className="mt-2 text-[11px] text-[#fca5a5]">{t.blocked.stillBlocked}</p>
       )}
       <button
         onClick={() => recover(true)}
         disabled={busy}
-        className="mt-2.5 flex h-9 w-full items-center justify-center rounded-lg text-xs font-bold text-white disabled:opacity-50"
-        style={{ background: "rgba(255,255,255,0.1)" }}
+        className="mt-2.5 flex h-9 w-full items-center justify-center rounded-lg text-xs font-bold text-ink disabled:opacity-50"
+        style={{ background: "rgb(var(--pmj-ink-rgb) / 0.1)" }}
       >
         {busy ? t.blocked.checking : t.blocked.recheck}
       </button>

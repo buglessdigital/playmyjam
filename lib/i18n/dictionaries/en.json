@@ -783,6 +783,7 @@
     "qrScan": "Scan QR",
     "qrInstructions": "Point at the PlayMyJam QR code on your table",
     "qrCancel": "Cancel",
-    "qrInvalid": "This isn't a PlayMyJam QR code. Scan the code on the table plaque."
+    "qrInvalid": "This isn't a PlayMyJam QR code. Scan the code on the table plaque.",
+    "qrCameraDenied": "Couldn't access the camera. Allow camera access in your browser settings, or scan with your phone's camera."
   }
 }

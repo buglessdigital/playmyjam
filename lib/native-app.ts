@@ -64,6 +64,14 @@ interface CapacitorBridge {
         cb: (action: { notification: { data?: Record<string, unknown> } }) => void
       ): Promise<Listener> | Listener;
     };
+    /** Kendi eklentimiz (yalnız Android): status bar + hareket çubuğu şeridinin zemini */
+    PmjSystemBars?: {
+      setColors: (opts: { background: string; dark: boolean }) => Promise<void>;
+    };
+    /** @capacitor/status-bar — iOS'ta saat/pil yazılarının rengi ("DARK" = açık renk yazı) */
+    StatusBar?: {
+      setStyle: (opts: { style: "DARK" | "LIGHT" }) => Promise<void>;
+    };
     /** Kendi eklentimiz: cihaz doğrulama kanıtı (App Attest/DeviceCheck · Play Integrity) */
     PmjDevice?: {
       getProof: (opts: { nonce: string }) => Promise<{ proof: string }>;
@@ -183,4 +191,22 @@ export function nativeHaptic(kind: "tap" | "success" | "error"): void {
       ? haptics.impact({ style: "LIGHT" })
       : haptics.notification({ type: kind === "success" ? "SUCCESS" : "ERROR" });
   void done.catch(() => {});
+}
+
+/**
+ * Status bar şeridini sayfanın temasına uydurur; tema değişince çağrılmalı.
+ * Kabuk koyu temayla (#0f0a18, açık renk yazı) başlar, o yüzden yalnız
+ * açık tema eklenince gerekir. Android 15+ şeridi boyatmaya izin vermiyor —
+ * orada görünen pencere zemini PmjSystemBars ile değişir (renk saklanır,
+ * sonraki açılış doğru renkle başlar). iOS şeridi zaten sayfanın zeminiyle
+ * doldurur, yalnız yazı rengi ayarlanır. Tarayıcıda hiçbir şey yapmaz.
+ */
+export function nativeSetSystemBars(opts: { background: string; dark: boolean }): void {
+  const plugins = nativePlugins();
+  if (!plugins) return;
+  const done =
+    nativePlatform() === "android"
+      ? plugins.PmjSystemBars?.setColors(opts)
+      : plugins.StatusBar?.setStyle({ style: opts.dark ? "DARK" : "LIGHT" });
+  void done?.catch(() => {});
 }

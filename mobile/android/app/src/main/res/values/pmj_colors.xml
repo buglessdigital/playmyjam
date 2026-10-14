@@ -2,4 +2,6 @@
 <resources>
     <!-- Bildirim simgesinin vurgu rengi -->
     <color name="pmj_pink">#E91E8C</color>
+    <!-- Sitenin zemini (globals.css bg-primary); status bar şeridi de bu -->
+    <color name="pmj_bg">#0F0A18</color>
 </resources>

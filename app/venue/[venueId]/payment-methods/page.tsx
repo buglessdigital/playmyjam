@@ -31,7 +31,7 @@ export default function PaymentMethodsPage() {
           className="w-9 h-9 flex items-center justify-center rounded-full bg-ink/10"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M15 18l-6-6 6-6" stroke="var(--pmj-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
         <h1 className="text-ink font-bold text-xl">{t.paymentMethods.title}</h1>
@@ -73,7 +73,7 @@ export default function PaymentMethodsPage() {
               {card.isDefault && (
                 <span
                   className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                  style={{ background: "rgba(233,30,140,0.2)", color: "#e91e8c" }}
+                  style={{ background: "rgba(233,30,140,0.2)", color: "var(--pmj-pink-text)" }}
                 >
                   {t.paymentMethods.defaultBadge}
                 </span>
@@ -107,7 +107,7 @@ export default function PaymentMethodsPage() {
             className="w-full py-4 rounded-2xl font-bold text-ink border-2 border-dashed border-ink/20 hover:border-[#e91e8c]/40 hover:bg-ink/5 transition-all flex items-center justify-center gap-2"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M12 5v14M5 12h14" stroke="white" strokeWidth="2" strokeLinecap="round" />
+              <path d="M12 5v14M5 12h14" stroke="var(--pmj-ink)" strokeWidth="2" strokeLinecap="round" />
             </svg>
             {t.paymentMethods.addCard}
           </button>

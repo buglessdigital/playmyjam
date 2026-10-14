@@ -130,7 +130,7 @@ export default function SongDetailClient(props: Props) {
       <p style={{ color: "var(--pmj-muted)", fontSize: 14, marginBottom: 16 }}>{t.songPage.notFound}</p>
       <button
         onClick={() => router.back()}
-        style={{ padding: "10px 20px", borderRadius: 12, background: "rgb(var(--pmj-ink-rgb) / 0.08)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.15)", color: "white", fontSize: 14, cursor: "pointer" }}
+        style={{ padding: "10px 20px", borderRadius: 12, background: "rgb(var(--pmj-ink-rgb) / 0.08)", border: "1px solid rgb(var(--pmj-ink-rgb) / 0.15)", color: "var(--pmj-ink)", fontSize: 14, cursor: "pointer" }}
       >
         {t.songPage.goBack}
       </button>
@@ -610,12 +610,12 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
             onClick={() => router.back()}
             style={{ width: 36, height: 36, borderRadius: "50%", background: "none", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="var(--pmj-ink)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             {dbSongId && (
               <button onClick={toggleFavorite} style={{ width: 38, height: 38, borderRadius: "50%", background: "none", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill={isFavorite ? "#e91e8c" : "none"}><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke={isFavorite ? "#e91e8c" : "white"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill={isFavorite ? "#e91e8c" : "none"}><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke={isFavorite ? "#e91e8c" : "var(--pmj-ink)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
             )}
             {track.external_url && (
@@ -625,7 +625,7 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
                 rel="noopener noreferrer"
                 style={{ width: 38, height: 38, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}
               >
-                <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M14 3h7v7M21 3l-9 9M19 14v5a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M14 3h7v7M21 3l-9 9M19 14v5a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h5" stroke="var(--pmj-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </a>
             )}
           </div>
@@ -648,7 +648,7 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
             style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: 0, background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
             aria-label={t.songPage.similarAria}
           >
-            <h1 style={{ color: "white", fontWeight: 700, fontSize: 21, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.title}</h1>
+            <h1 style={{ color: "var(--pmj-ink)", fontWeight: 700, fontSize: 21, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.title}</h1>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
           <p style={{ color: "var(--pmj-muted)", fontSize: 15, margin: "4px 0 0" }}>{track.artist}</p>
@@ -666,12 +666,12 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 24, marginTop: 14 }}>
               <div>
-                <p style={{ color: "white", fontSize: 13, fontWeight: 700, margin: 0 }}>{formatWait(waitNormalMs)}</p>
+                <p style={{ color: "var(--pmj-ink)", fontSize: 13, fontWeight: 700, margin: 0 }}>{formatWait(waitNormalMs)}</p>
                 <p style={{ color: "var(--pmj-subtle)", fontSize: 11, margin: "2px 0 0" }}>{t.songPage.normalWait}</p>
               </div>
               <div style={{ width: 1, height: 28, background: "rgb(var(--pmj-ink-rgb) / 0.1)" }} />
               <div>
-                <p style={{ color: "#e91e8c", fontSize: 13, fontWeight: 700, margin: 0 }}>{formatWait(waitPriorityMs)}</p>
+                <p style={{ color: "var(--pmj-pink-text)", fontSize: 13, fontWeight: 700, margin: 0 }}>{formatWait(waitPriorityMs)}</p>
                 <p style={{ color: "var(--pmj-subtle)", fontSize: 11, margin: "2px 0 0" }}>{t.songPage.priorityWait}</p>
               </div>
             </div>
@@ -684,22 +684,22 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
             onClick={() => setLyricsOpen(true)}
             style={{ ...pillStyle, background: "rgb(var(--pmj-ink-rgb) / 0.08)", border: "none", cursor: "pointer" }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13M9 9l12-2" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            <span style={{ color: "white", fontSize: 13, fontWeight: 600 }}>{t.songPage.lyrics}</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13M9 9l12-2" stroke="var(--pmj-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <span style={{ color: "var(--pmj-ink)", fontSize: 13, fontWeight: 600 }}>{t.songPage.lyrics}</span>
           </button>
           {dbSongId && (
             <button
               onClick={toggleFavorite}
               style={{ ...pillStyle, background: "rgb(var(--pmj-ink-rgb) / 0.08)", border: "none", cursor: "pointer" }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill={isFavorite ? "#e91e8c" : "none"}><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke={isFavorite ? "#e91e8c" : "white"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              <span style={{ color: "white", fontSize: 13, fontWeight: 600 }}>{isFavorite ? t.songPage.favorited : t.songPage.favorite}</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill={isFavorite ? "#e91e8c" : "none"}><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke={isFavorite ? "#e91e8c" : "var(--pmj-ink)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <span style={{ color: "var(--pmj-ink)", fontSize: 13, fontWeight: 600 }}>{isFavorite ? t.songPage.favorited : t.songPage.favorite}</span>
             </button>
           )}
           {playCount > 0 && (
             <span style={{ ...pillStyle, background: "rgba(233,30,140,0.12)" }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="#e91e8c" strokeWidth="2" /><circle cx="18" cy="16" r="3" stroke="#e91e8c" strokeWidth="2" /></svg>
-              <span style={{ color: "#e91e8c", fontSize: 13, fontWeight: 600 }}>{fmt(t.songPage.playedTimes, { n: playCount })}</span>
+              <span style={{ color: "var(--pmj-pink-text)", fontSize: 13, fontWeight: 600 }}>{fmt(t.songPage.playedTimes, { n: playCount })}</span>
             </span>
           )}
           {track.release_date && (
@@ -768,7 +768,7 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
         <div ref={queueSectionRef} style={{ padding: "20px 20px 40px", scrollMarginTop: 8 }}>
           <p style={{ color: "var(--pmj-subtle)", fontSize: 12, margin: 0 }}>{t.songPage.playingFrom}</p>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "4px 0 14px" }}>
-            <h3 style={{ color: "white", fontSize: 17, fontWeight: 700, margin: 0 }}>{t.songPage.venueQueue}</h3>
+            <h3 style={{ color: "var(--pmj-ink)", fontSize: 17, fontWeight: 700, margin: 0 }}>{t.songPage.venueQueue}</h3>
             {fullQueue.length > 0 && <span style={{ color: "var(--pmj-muted)", fontSize: 12 }}>{fmt(t.queue.countInQueue, { n: fullQueue.length })}</span>}
           </div>
 
@@ -809,10 +809,10 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
                 )}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ color: "white", fontWeight: 600, fontSize: 14, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{npDetail.songs.title}</p>
+                <p style={{ color: "var(--pmj-ink)", fontWeight: 600, fontSize: 14, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{npDetail.songs.title}</p>
                 <p style={{ color: "var(--pmj-muted)", fontSize: 12, margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{npDetail.songs.artist}</p>
               </div>
-              <span style={{ color: "#e91e8c", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{npDetail.is_playing ? t.songPage.playingBadge : t.songPage.pausedBadge}</span>
+              <span style={{ color: "var(--pmj-pink-text)", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{npDetail.is_playing ? t.songPage.playingBadge : t.songPage.pausedBadge}</span>
             </div>
           )}
 
@@ -838,25 +838,25 @@ function SongDetail({ venueId, venueDbId, track, requestCost, priorityCost, toke
                     cursor: isThisSong ? "default" : "pointer",
                   }}
                 >
-                  <span style={{ width: 18, textAlign: "center", color: isThisSong ? "#e91e8c" : "var(--pmj-subtle)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{idx + 1}</span>
+                  <span style={{ width: 18, textAlign: "center", color: isThisSong ? "var(--pmj-pink-text)" : "var(--pmj-subtle)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{idx + 1}</span>
                   <div style={{ width: 44, height: 44, borderRadius: 10, overflow: "hidden", background: "var(--pmj-bg)", flexShrink: 0 }}>
                     {item.songs.album_cover_url && (
                       <Image src={item.songs.album_cover_url} alt={item.songs.title} width={44} height={44} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: "white", fontWeight: 600, fontSize: 14, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.songs.title}</p>
+                    <p style={{ color: "var(--pmj-ink)", fontWeight: 600, fontSize: 14, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.songs.title}</p>
                     <p style={{ color: "var(--pmj-subtle)", fontSize: 12, margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.songs.artist}</p>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                     {isThisSong && (
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>{t.songPage.thisSong}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "rgba(233,30,140,0.15)", color: "var(--pmj-pink-text)" }}>{t.songPage.thisSong}</span>
                     )}
                     {item.priority && (
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "rgba(233,30,140,0.15)", color: "#e91e8c" }}>{t.queue.priorityBadge}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: "rgba(233,30,140,0.15)", color: "var(--pmj-pink-text)" }}>{t.queue.priorityBadge}</span>
                     )}
                     {!playerOffline && (
-                      <span style={{ color: item.priority ? "#e91e8c" : "var(--pmj-muted)", fontSize: 12, fontWeight: 700 }}>{formatWait(getQueueWaitMs(idx))}</span>
+                      <span style={{ color: item.priority ? "var(--pmj-pink-text)" : "var(--pmj-muted)", fontSize: 12, fontWeight: 700 }}>{formatWait(getQueueWaitMs(idx))}</span>
                     )}
                   </div>
                 </div>

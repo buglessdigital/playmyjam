@@ -242,7 +242,7 @@ export default function SearchView({ venueSongMap, favoriteIds, actionFor, recen
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
           aria-label={artistFilter ? t.search.exitArtistAria : t.search.closeAria}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="var(--pmj-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
         <div className="relative flex-1">
           <input

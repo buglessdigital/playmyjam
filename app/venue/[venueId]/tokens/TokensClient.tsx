@@ -321,7 +321,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
               aria-label={t.common.back}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-ink/10 transition-transform active:scale-95"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--pmj-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
           )}
           <h1 className="text-lg font-bold text-ink">{t.tokens.title}</h1>

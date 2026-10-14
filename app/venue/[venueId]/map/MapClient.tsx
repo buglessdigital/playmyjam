@@ -103,7 +103,7 @@ export default function MapClient({ venueId, venues }: Props) {
 
       {!mapReady && venues.length > 0 && (
         <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
-          <span className="rounded-full bg-black/40 px-4 py-2 text-xs text-muted">{t.venueMap.loading}</span>
+          <span className="on-media rounded-full bg-black/40 px-4 py-2 text-xs text-muted">{t.venueMap.loading}</span>
         </div>
       )}
 

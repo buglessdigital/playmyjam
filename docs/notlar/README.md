@@ -90,4 +90,4 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Avukat görüşü (telif/lisans)](pmj-hukuki-gorus-2026-10.md) — müzik bizde saklanmadıkça telif riski yok, MESAM/MÜYAP mekanın işi, YouTube gri alan, jeton = oyun jetonu modeli (araştırılacak); ses/video dosyası ASLA saklanmaz
 - [Kilit dosyası npm tuzağı](pmj-kilit-dosyasi-npm-tuzagi.md) — yerel npm @emnapi kayıtlarını + libc alanlarını siliyor, CI npm ci kırılıyor; kilidi main'den alıp elle güncelle
 - [Mobil uygulama](pmj-mobil-uygulama-2026-10.md) — Capacitor kabuğu (web ile aynı kod), yalnız müşteri; iOS'ta Apple IAP; hediye 1 jeton kayıtlı hesap+cihaz başına, doğrulayıcı gelene kadar fail-closed; 0076 ŞART
-- [Müşteri paneli açık tema](pmj-acik-tema-2026-10.md) — renkler --pmj-* değişkenlerinde (bg-canvas, text-ink…); yeni bileşende sabit koyu renk yazma; seçici onaya kadar beta işaretli cihazda
+- [Müşteri paneli açık tema](pmj-acik-tema-2026-10.md) — renkler --pmj-* değişkenlerinde (bg-canvas, text-ink…); yeni bileşende sabit koyu renk yazma; 15 Eki'den beri herkese açık (varsayılan koyu)

@@ -127,13 +127,13 @@ export default function VenueMap({ venues, currentSlug, selectedSlug, bottomInse
         markers.set(venue.slug, { marker, el });
       }
 
-      // İlk görünüm: tüm mekanlar sığsın; tek mekan varsa ona yakın
+      // İlk görünüm: tüm mekanlar sığsın (üstte başlık + arama barı); tek mekan varsa ona yakın
       if (venues.length === 1) {
         map.jumpTo({ center: [venues[0].lng, venues[0].lat], zoom: 14 });
       } else if (venues.length > 1) {
         const bounds = new LngLatBounds();
         for (const v of venues) bounds.extend([v.lng, v.lat]);
-        map.fitBounds(bounds, { padding: { top: 90, bottom: 60, left: 50, right: 50 }, maxZoom: 14, duration: 0 });
+        map.fitBounds(bounds, { padding: { top: 160, bottom: 60, left: 50, right: 50 }, maxZoom: 14, duration: 0 });
       }
     });
 

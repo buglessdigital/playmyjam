@@ -757,6 +757,9 @@
     "directions": "Yol tarifi",
     "cardError": "Mekan bilgisi alınamadı",
     "dragHint": "Daha fazlası için yukarı kaydır",
+    "searchPlaceholder": "Mekan ara",
+    "searchEmpty": "Bu isimde mekan yok",
+    "searchClear": "Aramayı temizle",
     "genres": {
       "electronic": "Elektronik",
       "pop": "Pop",

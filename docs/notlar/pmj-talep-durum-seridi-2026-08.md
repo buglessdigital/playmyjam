@@ -33,6 +33,13 @@ kapanır (kapatılanlar localStorage `pmj-dismissed-rejections`). Öncelik:
 onaylı > bekleyen > reddedilen. Red push'u zaten vardı, artık dokununca aynı
 aramaya götürüyor (`url` eklendi).
 
+**Misafirde şerit hiç çıkmıyordu (15 Eki 2026):** misafir oturumu ilk talep
+gönderilirken açılıyor (`lib/guest-session.ts`); şerit kullanıcıyı yalnız ilk
+yüklemede sorduğu için "oturum yok" deyip dinlemeye hiç başlamıyordu — onay
+sayfa yenilenene kadar görünmüyordu. Artık `onAuthStateChange` ile kullanıcı
+sonradan gelince kurulur. Oturumu sonradan açılabilen her istemci bileşeninde
+aynı tuzak var.
+
 Açık kalan fikir: çaldırma penceresini onay anında değil, müşteri uygulamayı
 açınca başlatmak (tavanlı) — `song_requests.seen_at` kolonu gerektirir, ürün
 kararı verilmedi.

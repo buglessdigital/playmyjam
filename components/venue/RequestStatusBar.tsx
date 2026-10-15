@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { resolveVenueDbId } from "@/lib/venue-db-id";
 import { savePendingAdd } from "@/lib/pending-add";
@@ -122,18 +123,26 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
   // Yoklama efekti aynı sorguyu tekrar kurmasın diye tazeleyici ref'te durur
   const refreshRef = useRef<(() => void) | null>(null);
 
+  // Oturum sonradan da açılabilir: misafir oturumu ilk talep gönderilirken
+  // kuruluyor (lib/guest-session). Kullanıcı yalnızca ilk yüklemede sorulursa
+  // şerit "oturum yok" deyip hiç dinlemeye başlamıyor, onay hiç görünmüyordu.
+  const [userId, setUserId] = useState<string | null>(null);
   useEffect(() => {
-    if (onRequestsPage) return;
+    // İlk olay (INITIAL_SESSION) mevcut oturumu lokal cache'ten verir — ağ çağrısı yok
+    const { data } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+      setUserId(session?.user.id ?? null);
+    });
+    return () => data.subscription.unsubscribe();
+  }, [supabase]);
+
+  useEffect(() => {
+    if (onRequestsPage || !userId) return;
 
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let cleanupListeners = () => {};
 
     (async () => {
-      // getSession lokal cache'ten okur — ağ çağrısı yapmaz
-      const { data: sessionData } = await supabase.auth.getSession();
-      const user = sessionData.session?.user;
-      if (!user || cancelled) return;
 
       // Slug → id: ortak çözücü (sekme ömrü boyunca tek sorgu, önbellekli).
       // Elle `or(id.eq.<slug>,...)` yazılırsa uuid kolonuna metin gider ve
@@ -141,16 +150,16 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
       const venueDbId = await resolveVenueDbId(venueId);
       if (!venueDbId || cancelled) return;
 
-      await load(user.id, venueDbId);
+      await load(userId, venueDbId);
       if (cancelled) return;
 
-      const refresh = () => load(user.id, venueDbId);
+      const refresh = () => load(userId, venueDbId);
 
       channel = supabase
-        .channel(`req_bar:${user.id}`)
+        .channel(`req_bar:${userId}`)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "song_requests", filter: `user_id=eq.${user.id}` },
+          { event: "*", schema: "public", table: "song_requests", filter: `user_id=eq.${userId}` },
           refresh
         )
         .subscribe();
@@ -180,7 +189,7 @@ export default function RequestStatusBar({ venueId }: { venueId: string }) {
       refreshRef.current = null;
       if (channel) supabase.removeChannel(channel);
     };
-  }, [supabase, venueId, load, onRequestsPage]);
+  }, [supabase, venueId, load, onRequestsPage, userId]);
 
   // Geri sayım ve yoklama yalnızca gösterilecek satır varken döner
   const hasRows = rows.length > 0;

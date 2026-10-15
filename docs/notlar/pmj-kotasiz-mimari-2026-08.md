@@ -33,8 +33,8 @@ Artık metin küçültülmüyor + başlık tutmazsa sanatçıdan ikinci sorgu at
 Gerçek havuzda isabet 11/12'den 36/36'ya çıktı.
 
 **Bitti (2-4. aşama, aynı gün):**
-- `search.list` KODDAN TAMAMEN SİLİNDİ (`lib/youtube.ts`). Geri koymak isteyen
-  olursa dosyadaki yorum sebebini anlatıyor.
+- `search.list` KODDAN TAMAMEN SİLİNDİ (`lib/youtube.ts`). **15 Eki 2026'da yalnız
+  talep onayı için, günlük tavanla geri geldi**, bkz. [[pmj-talep-youtube-arama-2026-10]].
 - `findInPool` (0 birim) + `resolveVideoLink` (yapıştırılan bağlantı, videos.list
   = 1 birim, kota dolarsa oEmbed'e düşer, süre 0 kalır).
 - Bildirim ikiye ayrıldı: havuzda tanınıyorsa "Onayla" düğmesi (tek tuş, eski

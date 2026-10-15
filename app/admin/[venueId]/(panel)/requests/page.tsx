@@ -77,6 +77,8 @@ function RequestsPageContent({ params }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   // Havuzda tanınmayan talep: kart altında "YouTube bağlantısını yapıştır" açılır
   const [linkFor, setLinkFor] = useState<string | null>(null);
+  // Neden yapıştırma gerekiyor: arama kotası mı bitti, şarkı mı bulunamadı
+  const [linkReason, setLinkReason] = useState<string | null>(null);
   const [linkValue, setLinkValue] = useState("");
   // Bildirim üstünden gelinen talep (?act=...): kart en üstte vurgulanır
   const highlightId = searchParams.get("act");
@@ -174,6 +176,7 @@ function RequestsPageContent({ params }: Props) {
       // Hata gibi göstermek yerine yapıştırma alanını aç.
       if (body?.code === "needs_link") {
         setLinkFor(id);
+        setLinkReason(body.error ?? null);
         setLinkValue("");
         return;
       }
@@ -204,8 +207,8 @@ function RequestsPageContent({ params }: Props) {
         gönderiyor. Onaylarsan şarkı <span className="text-white font-medium">10 dakikalığına tek seferlik</span>{" "}
         çalınabilir hale gelir — kalıcı listene eklenmez. Karar için senin de 10 dakikan var.
         <br />
-        Şarkı sistemde tanınmıyorsa tek yapman gereken YouTube bağlantısını yapıştırmak; bir kez
-        yapıştırdığın şarkı bir daha sorulmaz.
+        Şarkı sistemde yoksa YouTube&apos;da otomatik aranır, onaylaman yeterli. Günlük arama kotası
+        bittiyse YouTube bağlantısını kopyalayıp yapıştırırsın; bir kez yapıştırdığın şarkı bir daha sorulmaz.
       </p>
 
       <AdminPushBanner />
@@ -307,7 +310,7 @@ function RequestsPageContent({ params }: Props) {
                 <div className="px-5 pb-4 -mt-1">
                   <div className="rounded-xl border border-[#fbbf24]/25 bg-[#fbbf24]/[0.06] p-3">
                     <p className="text-[#fbbf24] text-xs mb-2.5">
-                      Bu şarkı sistemde yok. YouTube&apos;da bul, bağlantıyı yapıştır.
+                      {linkReason ?? "Bu şarkı sistemde yok. YouTube'da bul, bağlantıyı yapıştır."}
                     </p>
                     <a
                       href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${artist} ${title}`)}`}

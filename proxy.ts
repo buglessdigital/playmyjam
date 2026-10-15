@@ -149,12 +149,18 @@ export async function proxy(req: NextRequest) {
 
     const { userId, isAnonymous, response } = await getVenueSession(req);
 
-    // Bu venue'ya özel cookie'yi kontrol et — başka mekanların session'ı geçersiz.
-    // Cross-venue otomatik yönlendirme yok: A mekanı kullanıcısı B'nin login'inde formu görür.
+    // Bu venue'ya özel cookie'yi kontrol et — başka mekanların çerezi geçersiz.
+    // Ama oturumu açık kişi (misafir dahil) başka mekandan geldiğinde çerez
+    // burada kurulur: yoksa haritadan geçen kullanıcı yeni mekanda misafir
+    // görünüyor, "Giriş" çipi onu forma götürüyordu. Kimlik aynı, bakiye global;
+    // ensureVenueSession da aynı köprüyü ilk hesap gerektiren dokunuşta kuruyor.
+    // Çıkış Supabase oturumunu da kapattığı için bilerek çıkan biri geri bağlanmaz.
     const venueAuthCookie = req.cookies.get(venueAuthCookieName(venueId));
-    const isMember = !!userId && venueAuthCookie?.value === userId;
+    if (userId && venueAuthCookie?.value !== userId) {
+      setVenueAuthCookie(response, venueId, userId);
+    }
 
-    if (!isMember) {
+    if (!userId) {
       // Arayüz "hesap açık" sanmasın: erişim düştüyse ipucu çerezi de düşer,
       // yoksa misafir 401 yiyen butonlara basmaya devam ederdi
       if (req.cookies.get(venueMemberCookieName(venueId))) {

@@ -3,7 +3,12 @@ import { sendPushToUser, sendPushToVenueAdmins } from "@/lib/push";
 import { reportIssue } from "@/lib/ops-log";
 import { signRequestActionToken } from "@/lib/session";
 import { pickBestMatch } from "@/lib/song-match";
-import { getVideoDetails, YouTubeQuotaError, type TrackDetails } from "@/lib/youtube";
+import { getVideoDetails, searchVideos, YouTubeQuotaError, type TrackDetails } from "@/lib/youtube";
+import {
+  canSearchYouTube,
+  markYouTubeQuotaExhausted,
+  recordYouTubeSearch,
+} from "@/lib/youtube-search-budget";
 import { fetchOEmbed, parseVideoId } from "@/lib/youtube-oembed";
 
 // Talep onay akışının tek karar noktası (bkz. 0045 migration). Hem panel
@@ -48,9 +53,8 @@ async function slugFor(venueId: string): Promise<string | null> {
  *      (bkz. scripts/seed-catalog.ts)
  *   2. search_cache — geçmişte YouTube'dan gelmiş sorgular
  *
- * Eskiden burada 3. bir katman vardı: search.list (100 birim). Kaldırıldı —
- * kalabalık bir gecede tek başına günlük kotayı bitirebiliyordu. Havuzda
- * bulunamayan şarkı artık admin'in yapıştırdığı bağlantıyla çözülür
+ * Havuzda bulunamayan şarkı için YouTube araması (100 birim) ayrı adımdır:
+ * searchYouTubeForRequest. Kota bittiyse admin bağlantı yapıştırır
  * (resolveVideoLink).
  *
  * Her katmanda aday listesinden EN İYİ SÜRÜM seçilir (lib/song-match.ts) —
@@ -101,7 +105,7 @@ export async function findInPool(title: string, artist: string): Promise<TrackDe
   if (localHit) return localHit as unknown as TrackDetails;
 
   // 2) Eski arama önbelleği
-  const cacheKey = `${artist} ${title}`.trim().toLocaleLowerCase("tr");
+  const cacheKey = searchCacheKey(title, artist);
   const { data: cached } = await supabaseAdmin
     .from("search_cache")
     .select("results")
@@ -113,17 +117,83 @@ export async function findInPool(title: string, artist: string): Promise<TrackDe
   return cachedHit?.youtube_video_id ? cachedHit : null;
 }
 
-const NEEDS_LINK: ResolveFailure = {
-  error: "Bu şarkı havuzda yok — YouTube bağlantısını yapıştır",
-  status: 422,
-  code: "needs_link",
+function searchCacheKey(title: string, artist: string): string {
+  return `${artist} ${title}`.trim().toLocaleLowerCase("tr");
+}
+
+type SearchOutcome = { hit: TrackDetails } | { miss: "no_budget" | "not_found" };
+
+/**
+ * Havuzda olmayan talebi YouTube'da arar (search.list = 100 birim, günlük
+ * tavanlı — bkz. lib/youtube-search-budget.ts). Sonuç search_cache'e yazılır:
+ * talep düşerken yapılan arama onay anında findInPool'dan bedavaya geri gelir.
+ *
+ * Eşleşme yoksa ilk sonuç ALINMAZ — admin bildirimde müşterinin yazdığını
+ * görüp kör onaylıyor, alakasız video çalmasın. O durumda boş sonuç
+ * önbelleğe yazılır (aynı talep için ikinci kez 100 birim yakılmaz) ve admin
+ * bağlantıyı kendisi yapıştırır.
+ */
+async function searchYouTubeForRequest(title: string, artist: string): Promise<SearchOutcome> {
+  const cacheKey = searchCacheKey(title, artist);
+  const { data: cached } = await supabaseAdmin
+    .from("search_cache")
+    .select("query")
+    .eq("query", cacheKey)
+    .maybeSingle();
+  // Daha önce arandı ve findInPool'da tutmadı → YouTube'da da yok
+  if (cached) return { miss: "not_found" };
+
+  if (!(await canSearchYouTube())) return { miss: "no_budget" };
+
+  let results: TrackDetails[];
+  try {
+    await recordYouTubeSearch();
+    results = await searchVideos(`${artist} ${title}`.trim());
+  } catch (err) {
+    if (err instanceof YouTubeQuotaError) {
+      await markYouTubeQuotaExhausted();
+      return { miss: "no_budget" };
+    }
+    // Geçici hata: önbelleğe yazılmaz, bir sonraki deneme yeniden arar
+    return { miss: "not_found" };
+  }
+
+  const hit = pickBestMatch({ suggested_title: title, suggested_artist: artist }, results);
+  await supabaseAdmin
+    .from("search_cache")
+    .upsert(
+      { query: cacheKey, results: hit ? results : [], cached_at: new Date().toISOString() },
+      { onConflict: "query" }
+    );
+  return hit ? { hit } : { miss: "not_found" };
+}
+
+/** Havuz → YouTube araması. Bildirim ve onay aynı sırayı izler. */
+async function findPlayable(title: string, artist: string): Promise<SearchOutcome> {
+  const pooled = await findInPool(title, artist);
+  if (pooled) return { hit: pooled };
+  return searchYouTubeForRequest(title, artist);
+}
+
+const NEEDS_LINK: Record<"no_budget" | "not_found", ResolveFailure> = {
+  no_budget: {
+    error: "YouTube arama kotası bugünlük doldu — YouTube'dan bağlantıyı kopyalayıp yapıştır",
+    status: 422,
+    code: "needs_link",
+  },
+  not_found: {
+    error: "Şarkı otomatik bulunamadı — YouTube'dan bağlantıyı kopyalayıp yapıştır",
+    status: 422,
+    code: "needs_link",
+  },
 };
 
 export async function resolveSuggestion(
   title: string,
   artist: string
 ): Promise<TrackDetails | ResolveFailure> {
-  return (await findInPool(title, artist)) ?? NEEDS_LINK;
+  const found = await findPlayable(title, artist);
+  return "hit" in found ? found.hit : NEEDS_LINK[found.miss];
 }
 
 /**
@@ -324,12 +394,12 @@ export async function rejectSuggestion(request: SuggestionRow): Promise<void> {
 /**
  * Yeni talep geldiğinde mekan adminlerine bildirim atar.
  *
- * İKİ TÜR BİLDİRİM — ayrımı burada, talep düşer düşmez yapılır (havuz sorgusu
- * 0 kota birimi):
- *   A) Şarkı havuzda TANINIYOR → bildirimde "Onayla" düğmesi. Tek dokunuş,
- *      panel hiç açılmaz. Vakaların çoğu bu (bkz. scripts/seed-catalog.ts).
- *   B) Tanınmıyor → onaylanacak somut bir video yok. Düğme konmaz; admin
- *      bildirime dokunur, panelde YouTube bağlantısını yapıştırır.
+ * İKİ TÜR BİLDİRİM — ayrımı burada, talep düşer düşmez yapılır:
+ *   A) Şarkı havuzda TANINIYOR ya da YouTube aramasında bulundu (100 birim,
+ *      günlük tavanlı) → bildirimde "Onayla" düğmesi. Tek dokunuş, panel hiç
+ *      açılmaz; onay anında sonuç search_cache'ten gelir, ikinci arama yok.
+ *   B) Bulunamadı ya da arama kotası bitti → onaylanacak somut bir video yok.
+ *      Düğme konmaz; admin bildirime dokunur, panelde bağlantıyı yapıştırır.
  *
  * Neden tek düğme: iki düğmeli bildirimde Android'de basılan düğme ile sunucuya
  * ulaşan komutun ters eşleştiği ölçüldü (13 Ağu 2026 — "Onayla"ya basıldığında
@@ -354,9 +424,10 @@ export async function notifyAdminsOfRequest(params: {
   );
   const url = `/admin/${params.venueSlug}/requests?act=${params.requestId}&t=${encodeURIComponent(token)}`;
 
-  // Havuz yoklaması kotasız — başarısız olursa B türü bildirim atılır (yani
-  // admin panele yönlendirilir), akış durmaz
-  const known = await findInPool(params.title, params.artist).catch(() => null);
+  // Başarısız olursa B türü bildirim atılır (yani admin panele yönlendirilir),
+  // akış durmaz
+  const found = await findPlayable(params.title, params.artist).catch(() => null);
+  const known = found && "hit" in found ? found.hit : null;
 
   await sendPushToVenueAdmins(params.venueId, {
     title: "Yeni şarkı talebi",

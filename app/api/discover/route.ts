@@ -3,6 +3,7 @@ import { discoverTracks, type DiscoverTrack } from "@/lib/discover";
 import { searchPool } from "@/lib/pool-search";
 import { searchTokens } from "@/lib/search-match";
 import { fold } from "@/lib/song-match";
+import { baseTitle, leadArtist, rankDiscover } from "@/lib/discover-rank";
 import { clientIp, consumeRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 // Müşteri aramasında mekan listesinin altındaki "listede yok" sonuçları.
@@ -12,9 +13,10 @@ import { clientIp, consumeRateLimit, tooManyRequests } from "@/lib/rate-limit";
 // İki kaynak, sırayla:
 //   1. Ortak havuz (songs) — talep onaylanınca şarkı havuzda bulunur, mekan
 //      bildirimden tek dokunuşla onaylar. Bu yüzden ÖNCE bunlar gösterilir.
-//   2. Apple Music + Deezer — havuzda olmayan şarkılar. Onayda havuzda karşılık
-//      çıkmazsa mekan YouTube bağlantısı yapıştırmak zorunda kalır; müşteri
-//      bunları ancak havuzdakilerin altında görür.
+//   2. Apple Music + Deezer — havuzda olmayan şarkılar. Onayda YouTube'da
+//      aranır (kota bittiyse mekan bağlantı yapıştırır).
+// İkisi tek alaka ölçüsüyle birlikte sıralanır; aynı kademede havuz önce
+// (bkz. lib/discover-rank.ts).
 //
 // Dış kaynaklar anahtarsız ve günlük kotasız olduğu için buradaki sınır kota
 // değil, kötüye kullanım savunması. Yanıt ayrıca CDN'de tutulur: aynı sorgu
@@ -61,22 +63,9 @@ export async function GET(req: NextRequest) {
     return true;
   });
 
-  // Havuz izlenmeye göre geliyor; "manga"da "Alex Manga"nın klibi maNga'nın
-  // önüne geçmesin diye alaka önce gelir: sanatçı/başlık sorgunun kendisi >
-  // her kelime tam kelime olarak geçiyor > kelime başka bir kelimenin içinde.
-  // Sıralama kararlı — aynı kademede izlenme sırası korunur.
-  const fq = fold(q);
-  const queryWords = searchTokens(q);
-  const relevance = (s: { title: string; artist: string }) => {
-    const title = fold(baseTitle(s.title));
-    const artist = fold(leadArtist(s.artist));
-    const words = new Set(`${title} ${artist}`.split(" "));
-    return (title === fq || artist === fq ? 2 : 0) + (queryWords.every((w) => words.has(w)) ? 1 : 0);
-  };
-  const ranked = poolSongs
-    .map((song) => ({ song, score: relevance(song) }))
-    .sort((a, b) => b.score - a.score)
-    .map((entry) => entry.song);
+  // Havuzun en alakalı 15'i seçilir (izlenme sırası aynı kademede korunur);
+  // dış sonuçlarla birlikte son sıralama aşağıda (bkz. lib/discover-rank.ts)
+  const ranked = rankDiscover(q, poolSongs, []);
 
   const pool: DiscoverTrack[] = ranked.slice(0, POOL_LIMIT).map((s) => ({
     key: `yt:${s.youtube_video_id}`,
@@ -98,7 +87,7 @@ export async function GET(req: NextRequest) {
     return !poolKeys.some((p) => p.title.includes(title) && (!artist || p.artist.includes(artist) || (p.artist !== "" && artist.includes(p.artist))));
   });
 
-  const tracks = [...pool, ...rest];
+  const tracks = rankDiscover(q, pool, rest);
 
   return NextResponse.json(
     { tracks },
@@ -115,14 +104,4 @@ export async function GET(req: NextRequest) {
       },
     }
   );
-}
-
-/** "Blinding Lights (Live On The 2020 MTV VMAs)" → "Blinding Lights" */
-function baseTitle(title: string): string {
-  return title.replace(/\s*[([].*$/, "").trim() || title;
-}
-
-/** "The Weeknd ft. ROSALÍA" → "The Weeknd" */
-function leadArtist(artist: string): string {
-  return artist.split(/,|&|\s(?:ft|feat|featuring)\.?\s/i)[0].trim();
 }

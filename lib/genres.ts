@@ -138,18 +138,20 @@ export function genreFamily(raw: string): GenreFamily | `raw:${string}` {
 export type GenreShare = { key: string; share: number };
 
 /**
- * Sanatçı başına çalma sayısı + sanatçının türü → tür payları (en büyükten).
- * Türü bilinmeyen sanatçılar paydaya girmez: payı "türünü bildiğimiz
- * çalmaların" içinde hesaplanır. `coverage` o bilinen kısmın tüm çalmalara oranı.
+ * Ham türe göre çalma sayıları → tür ailesi payları (en büyükten). Her çalma
+ * kendi şarkısının türüne sayılır (bkz. 0079): 300 pop + 300 rock çalma
+ * %50-%50'dir, pop'taki 300 çalma tek bir şarkı olsa bile. Türü bilinmeyen
+ * çalmalar paydaya girmez: pay "türünü bildiğimiz çalmaların" içinde
+ * hesaplanır. `coverage` o bilinen kısmın tüm çalmalara oranı.
  */
 export function genreShares(
-  artists: { plays: number; genre: string | null | undefined }[],
+  rows: { plays: number; genre: string | null | undefined }[],
   limit = 3
 ): { shares: GenreShare[]; coverage: number } {
   const totals = new Map<string, number>();
   let known = 0;
   let all = 0;
-  for (const a of artists) {
+  for (const a of rows) {
     all += a.plays;
     if (!a.genre) continue;
     known += a.plays;

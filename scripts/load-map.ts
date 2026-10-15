@@ -245,11 +245,14 @@ async function main() {
   console.log(`\ntoplam ${samples.length} istek, ${(samples.length / elapsed).toFixed(1)} istek/sn`);
 
   await sleep(5000); // arka plandaki tür aramaları bitsin
-  const { data: genres } = await db.from("artist_genres").select("genre");
+  // Şarkı türleri (0079); test şarkıları her kurulumda yeniden yaratıldığı
+  // için bunların önbelleği hep soğuk başlar
+  const { data: genres } = await db
+    .from("song_genres")
+    .select("genre, songs!inner(youtube_video_id)")
+    .like("songs.youtube_video_id", "maptest-%");
   const rows = (genres ?? []) as { genre: string | null }[];
-  console.log(
-    `tür önbelleği: ${rows.length}/${ARTISTS.length} sanatçı kayıtlı, ${rows.filter((r) => r.genre).length} türü bulundu`
-  );
+  console.log(`tür önbelleği: ${rows.length} şarkı kayıtlı, ${rows.filter((r) => r.genre).length} türü bulundu`);
   console.log("\nVeriyi silmek için: npm run load:map -- --cleanup");
 }
 

@@ -2,7 +2,7 @@ import { cacheLife, cacheTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { isPlayerOnline } from "@/lib/player-status";
 import { genreShares, type GenreShare } from "@/lib/genres";
-import { fillArtistGenres, readArtistGenres, artistKey } from "@/lib/artist-genre";
+import { fillSongGenres, type SongForGenre } from "@/lib/song-genre";
 import { runInBackground } from "@/lib/background";
 
 // Müşteri panelindeki "Mekanlar" haritası (bkz. 0073).
@@ -65,16 +65,21 @@ export type VenueMapCard = {
   topSongs: (MapSong & { plays: number })[];
   /** Tür aileleri, en büyük pay önce (bkz. lib/genres.ts) */
   genres: GenreShare[];
-  /** İstatistiğin kapsadığı gün sayısı ve toplam çalma */
+  /** En çok çalınan şarkıların kapsadığı gün sayısı ve toplam çalma */
   days: number;
+  /** Tür paylarının kapsadığı gün sayısı */
+  genreDays: number;
   totalPlays: number;
 };
 
 const STATS_DAYS = 90;
+/** Tür payı son 30 günün çalmalarından: her çalma şarkısının türüne bir sayılır */
+const GENRE_DAYS = 30;
 const UP_NEXT = 10;
-/** Kart açılırken en fazla bu kadar sanatçının türü iTunes'tan beklenir */
+/** Kart açılırken en fazla bu kadar şarkının türü iTunes'tan beklenir */
 const SYNC_GENRE_LOOKUPS = 8;
-/** Arka planda bir kartta en fazla bu kadar sanatçıya bakılır (iTunes ~20 istek/dk) */
+/** Arka planda bir kartta en fazla bu kadar şarkıya bakılır (iTunes ~20 istek/dk);
+ *  kalanı /api/cron/song-genres doldurur */
 const BACKGROUND_GENRE_LOOKUPS = 12;
 
 type SongJoin = { title: string; artist: string; album_cover_url: string | null } | null;
@@ -118,8 +123,9 @@ async function buildVenueMapCard(slug: string): Promise<VenueMapCard | null> {
   if (!venue || venue.status !== "active" || venue.latitude == null) return null;
 
   const since = new Date(Date.now() - STATS_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const genreSince = new Date(Date.now() - GENRE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  const [npRes, queueRes, statsRes] = await Promise.all([
+  const [npRes, queueRes, statsRes, genreRes] = await Promise.all([
     supabaseAdmin
       .from("now_playing")
       .select("is_playing, last_heartbeat_at, songs(title, artist, album_cover_url)")
@@ -135,7 +141,8 @@ async function buildVenueMapCard(slug: string): Promise<VenueMapCard | null> {
       .order("added_at", { ascending: true })
       .order("id", { ascending: true })
       .limit(UP_NEXT),
-    supabaseAdmin.rpc("venue_top_played", { p_venue_id: venue.id, p_since: since }),
+    supabaseAdmin.rpc("venue_top_played", { p_venue_id: venue.id, p_since: since, p_artists: 0 }),
+    supabaseAdmin.rpc("venue_genre_plays", { p_venue_id: venue.id, p_since: genreSince }),
   ]);
 
   const np = npRes.data as { is_playing: boolean; last_heartbeat_at: string | null; songs: SongJoin } | null;
@@ -149,10 +156,9 @@ async function buildVenueMapCard(slug: string): Promise<VenueMapCard | null> {
     })
     .filter((r): r is MapSong & { priority: boolean } => r !== null);
 
-  const stats = (statsRes.data ?? { total: 0, songs: [], artists: [] }) as {
+  const stats = (statsRes.data ?? { total: 0, songs: [] }) as {
     total: number;
     songs: { title: string; artist: string; album_cover_url: string | null; plays: number }[];
-    artists: { artist: string; plays: number }[];
   };
 
   const topSongs = stats.songs.map((s) => ({
@@ -162,7 +168,8 @@ async function buildVenueMapCard(slug: string): Promise<VenueMapCard | null> {
     plays: s.plays,
   }));
 
-  const genres = await venueGenres(stats.artists);
+  // 0079 yoksa RPC hata verir: tür alanı boş kalır, kartın geri kalanı çalışır
+  const genres = await venueGenres((genreRes.data ?? { total: 0, genres: [], missing: [] }) as GenrePlays);
 
   return {
     slug: venue.slug,
@@ -178,34 +185,47 @@ async function buildVenueMapCard(slug: string): Promise<VenueMapCard | null> {
     topSongs,
     genres,
     days: STATS_DAYS,
+    genreDays: GENRE_DAYS,
     totalPlays: stats.total,
   };
 }
 
-// Türü bilinmeyen sanatçılar iTunes'tan öğrenilir. Kartın ilk açılışında tür
-// hiç bilinmiyorsa en çok çalınan birkaçı beklenir (boş "tür" alanı
-// göstermemek için); geri kalanı yanıttan sonra arka planda tamamlanır.
-async function venueGenres(artists: { artist: string; plays: number }[]): Promise<GenreShare[]> {
-  if (artists.length === 0) return [];
-  const { genres, stale } = await readArtistGenres(artists.map((a) => a.artist));
+type GenrePlays = {
+  total: number;
+  /** Ham iTunes türü başına çalma sayısı */
+  genres: { genre: string; plays: number }[];
+  /** Türü henüz bilinmeyen şarkılar, en çok çalınan önce */
+  missing: (SongForGenre & { plays: number })[];
+};
 
-  const withGenre = () =>
-    artists.map((a) => ({ plays: a.plays, genre: genres.get(artistKey(a.artist)) }));
+// Türü bilinmeyen şarkılar iTunes'tan öğrenilir. Bilinen pay yarının altındaysa
+// en çok çalınan birkaçı beklenir (boş "tür" alanı göstermemek için); birkaçı
+// daha yanıttan sonra arka planda, geri kalanı cron'da tamamlanır.
+async function venueGenres(stats: GenrePlays): Promise<GenreShare[]> {
+  if (stats.total === 0) return [];
 
-  let result = genreShares(withGenre());
-  if (stale.length === 0) return result.shares;
+  const rows = (): { plays: number; genre: string | null }[] => {
+    const known = stats.genres.reduce((n, g) => n + g.plays, 0);
+    return [...stats.genres, { plays: stats.total - known, genre: null }];
+  };
 
-  let rest = stale;
+  let result = genreShares(rows());
+  let rest = stats.missing;
+  if (rest.length === 0) return result.shares;
+
   if (result.coverage < 0.5) {
-    const learned = await fillArtistGenres(stale.slice(0, SYNC_GENRE_LOOKUPS));
-    for (const [k, g] of learned) genres.set(k, g);
-    result = genreShares(withGenre());
-    rest = stale.slice(SYNC_GENRE_LOOKUPS);
+    const learned = await fillSongGenres(rest.slice(0, SYNC_GENRE_LOOKUPS));
+    for (const song of rest.slice(0, SYNC_GENRE_LOOKUPS)) {
+      const genre = learned.get(song.id);
+      if (genre) stats.genres.push({ genre, plays: song.plays });
+    }
+    result = genreShares(rows());
+    rest = rest.slice(SYNC_GENRE_LOOKUPS);
   }
   if (rest.length) {
     const batch = rest.slice(0, BACKGROUND_GENRE_LOOKUPS);
     runInBackground(async () => {
-      await fillArtistGenres(batch);
+      await fillSongGenres(batch);
     });
   }
   return result.shares;

@@ -1,6 +1,6 @@
 ---
 name: pmj-mekan-haritasi-2026-10
-description: Müşteri panelinde "Mekanlar" haritası (alt menüde ŞARKI SEÇ ile JETON AL arası); konum super admin'de Google Maps linkinden; tür iTunes'tan; 0073 ŞART
+description: Müşteri panelinde "Mekanlar" haritası (alt menüde ŞARKI SEÇ ile JETON AL arası); konum super admin'de Google Maps linkinden; tür 15 Eki'den beri ŞARKI bazında (son 30 gün, her çalma 1); 0073+0079 ŞART
 metadata:
   type: project
 ---
@@ -21,10 +21,19 @@ dokununca kapanır.
   sunucu IP'sine göre varsayılanı (Galata linki havalimanını verdi). Çıkmazsa elle enlem/boylam.
   Yalnız Google alan adlarına istek (SSRF). Sunucu fra1 → çerez onayı çerezi gönderiliyor.
   **Tarayıcı User-Agent GÖNDERME:** kısa link tarayıcıya 302 yerine JS ara sayfası (200) veriyor.
-- **Tür** `lib/artist-genre.ts`: iTunes `entity=song&attribute=artistTerm` ile sanatçının
-  şarkılarının en sık `primaryGenreName`'i (sanatçı aramasından isabetli). Aileler
-  `lib/genres.ts` (Dance/House/Electronic → Elektronik). Kart açılırken bilinen pay <%50
-  ise 8 sanatçı beklenir, kalanı `after()` ile; NULL = bulunamadı, 30 günde bir yeniden.
+- **Tür (15 Eki 2026'dan beri, 0079):** son **30 günün her çalması** kendi ŞARKISININ
+  türüne 1 sayılır — 300 pop + 300 rock çalma = %50-%50, pop'takiler tek şarkı olsa
+  bile ("en çok çalınan şarkılar" 90 günde kaldı; kartta `genreDays`). Kullanıcı
+  sanatçı bazlı eski yöntemi reddetti (pop sanatçısının rock şarkısı pop sayılıyordu,
+  ilk 30 sanatçı dışı hiç sayılmıyordu). `song_genres` (songs'a kolon EKLENMEDİ),
+  `venue_genre_plays` RPC'si ham türe göre toplar. `lib/song-genre.ts`: iTunes'ta
+  "sanatçı + ad", `pickBestMatch` + sanatçının iTunes SANATÇI alanında geçmesi şart
+  (yoksa "X Type Beat" kayıtları eşleşiyordu). Şarkı bulunamazsa sanatçının türüne
+  düşülür (`artist_genres`, `source='artist'`). Prod örnekleminde 30/40 şarkı doğrudan
+  bulundu. Mekan başına ayda ~100-250 farklı şarkı → asıl dolum `/api/cron/song-genres`
+  (10 dk'da bir, 3 sn aralık, 240 sn, 3 ardışık sınır hatasında durur); kart açılırken
+  bilinen pay <%50 ise 8 şarkı beklenir, 12'si `after()` ile. Aileler `lib/genres.ts`
+  (Dance/House/Electronic → Elektronik). NULL = bulunamadı, 30 günde bir yeniden.
 - **Harita** maplibre-gl 6 + OpenFreeMap (anahtarsız, ticari serbest), stil istemcide
   boyanıyor (`lib/map-style.ts`). **Tuzak:** maplibre worker'ı kendi modülünün yanında
   arar, bundler kırar → `predev`/`prebuild` worker'ı `public/vendor/maplibre/`'e kopyalar
@@ -42,4 +51,5 @@ dokununca kapanır.
 **Why:** Müşteri başka PlayMyJam mekanlarını ve müzik zevklerini görsün (keşif motoru
 fikrinin ilk adımı, bkz. [[pmj-kesif-motoru-fikri]]).
 **How to apply:** 0073 koddan önce prod'a; tersi de kırmaz (harita boş, düzenleme ekranı
-konum kolonları olmadan açılır). Yeni mekan eklenince konumu girilmezse haritada çıkmaz.
+konum kolonları olmadan açılır). 0079 da koddan önce; yoksa yalnız tür alanı boş kalır.
+0079 staging'e 15 Eki'de Supabase bağlayıcısıyla uygulandı (bu ağda 5432 kapalı). Yeni mekan eklenince konumu girilmezse haritada çıkmaz.

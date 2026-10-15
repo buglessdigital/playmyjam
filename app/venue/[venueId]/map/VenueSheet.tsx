@@ -362,7 +362,7 @@ function CardBody({ card }: { card: VenueMapCard }) {
       )}
 
       {/* En çok çalan tür */}
-      <Section title={t.venueMap.topGenre} hint={fmt(t.venueMap.lastDays, { days: card.days })}>
+      <Section title={t.venueMap.topGenre} hint={fmt(t.venueMap.lastDays, { days: card.genreDays })}>
         {topGenre ? (
           <div className="flex flex-col gap-2.5">
             <div className="flex items-end justify-between gap-3">

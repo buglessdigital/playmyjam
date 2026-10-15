@@ -28,6 +28,13 @@ iner, alaka (tam eşleşme > tam kelime) izlenmeden önce gelir. Havuz sorgusu
 hata verirse yanıt CDN'de yalnız 60 sn tutulur. En az bir kelime 3+ harf değilse
 havuz yoklanmaz.
 
+**15 Eki 2026 (akşam) — tek sıralama:** havuz artık dış sonuçların önüne
+koşulsuz geçmiyor; ikisi `lib/discover-rank.ts` kademeleriyle birlikte dizilir
+(aynı kademede havuz önce). Kelime yalnız sanatçı adının parçasında geçiyorsa
+("bang" → "Bang Music") ya da başka bir kelimenin içindeyse ("BANGTANTV") kademe
+düşer; dans provası/koreografi/derleme videoları cezalı. "bang" aramasında
+15 yerin yarısını bunlar kaplıyordu.
+
 Kaynaklar `lib/discover.ts`: **iTunes Search API** (`country=TR`) + **Deezer public
 API** — ikisi de anahtarsız, günlük kotasız. Spotify bilerek seçilmedi (yeni
 uygulamalar development mode'da başlıyor + geliştirici politikası verinin başka

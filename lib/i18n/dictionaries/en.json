@@ -757,6 +757,9 @@
     "directions": "Directions",
     "cardError": "Couldn't load venue info",
     "dragHint": "Swipe up for more",
+    "searchPlaceholder": "Search venues",
+    "searchEmpty": "No venue by that name",
+    "searchClear": "Clear search",
     "genres": {
       "electronic": "Electronic",
       "pop": "Pop",

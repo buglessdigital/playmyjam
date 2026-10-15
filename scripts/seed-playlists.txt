@@ -1299,3 +1299,47 @@ UULBlHBOK-OlllK5rSDlS8nA  # JungleOfficial — Jungle (9 video)
 UUUWsoFzN8u06K5NJ7E2d91g  # rusowsky — rusowsky (38 video)
 UUsdXkstc8jFC3zpMYdEz_zA  # Chris Stapleton — Chris Stapleton (25 video)
 UUMNJ63oR69YW1zL5-fB1muA  # Miranda Lambert — Miranda Lambert (369 video)
+
+# İsimden bulunan sanatçı kanalları (channels.list?forHandle) — 2026-10-11
+# Türk plak şirketi kanallarından gelen, kendi kanalı havuzda görünmeyen
+# sanatçılar. Şarkıları seed-catalog.ts --harvest çeker.
+UU6Un447Y8ZFX97_Ob7Tn4PA  # Hidra — Hidra (5 video)
+UUytNwI1U9CNwq3VA9GZO0qg  # Tepki — Tepki (108 video)
+UU3_a7txI2nxDP6VTH0EojrQ  # ayben — Ayben (3 video)
+UUUCaS4exqTDsx8t5Y5S9zsg  # Reckol — Reckol (2 video)
+UUjIg0KHC-pKA2aKzDHjYLmA  # Allame Official — Allame (196 video)
+
+# İsimden bulunan sanatçı kanalları (channels.list?forHandle) — 2026-10-14
+# Türk plak şirketi kanallarından gelen, kendi kanalı havuzda görünmeyen
+# sanatçılar. Şarkıları seed-catalog.ts --harvest çeker.
+UUBdw1JsKWPjyV0Jc4ZwYt4g  # orhangencebay — Orhan Gencebay (21 video)
+UUK6fvHZJWqcSTuKHzUEkUbw  # Selda Bağcan — Selda Bağcan (369 video)
+UUoT9ss8UZTqpBbF3orJBj-g  # Ferman Akgül — Ferman Akgül (13 video)
+UUHvTi74g73WgfL3f2A4w6Hg  # coskunsabah — Coşkun Sabah (1 video)
+UUci4OlrwUTfrECqsCfdra4g  # Ebru Şallı — Ebru Şallı (51 video)
+UUAiIoGma3y6xKbh777BmjYQ  # Ahiyan — Ahiyan (108 video)
+UU-9Wc7AI_EWomr2rKsyIgeQ  # ozbiofficial — Ozbi (3 video)
+UUeT2r3vkmwvhv0BIQGSBWFA  # Rubato — Rubato (54 video)
+UUaXjIkENDlFEZicLA1zBlNw  # Pentagram a.k.a. Mezarkabul — Pentagram (96 video)
+
+# Havuzdaki şarkılarının kanalından bulunan ama hiç hasat edilmemiş kanallar — 2026-10-14
+UU-7fJF4x8vV7Ynyp47h-Zow  # Sagopa Kajmer (resmi kanal)
+UUrZQUrA6BDe9ELGIcR5q3lQ  # NormEnderVEVO
+UUQMOs-DuFKfWNpJhw4EYwbQ  # Elif Buse Doğan
+UUOFV6mgax6eFgrrXtMp93JQ  # Basemode Records (Tankurt Manas, Khontkar)
+
+# Kullanıcının verdiği YouTube Music linklerinden — 2026-10-15
+UUu2qb23DLKR8ZYwz44cHtyg  # Sıla Gençoğlu (178 video)
+UUuqlUePGoHsW9OKWFl5PLFg  # Tankurt Manas (127 video)
+UU5kvrlBkq31r5e36YP9UO6g  # ŞEHİNŞAH (285 video)
+UUFVzWCK50ZYWUhuIS6Y0C0A  # Burak Bulut (35 video)
+UU9xcN9l1r41S30J909gVipw  # Ozan Doğulu (142 video)
+UUQHF3PQPPm-ZJgPTjN2CTig  # Hakan Peker - Topic (237 video)
+
+# İsimden bulunan sanatçı kanalları (channels.list?forHandle) — 2026-10-15
+# Türk plak şirketi kanallarından gelen, kendi kanalı havuzda görünmeyen
+# sanatçılar. Şarkıları seed-catalog.ts --harvest çeker.
+UUCur7RVrsHtfd576KhgJbNQ  # Kenan Doğulu — Kenan Doğulu (334 video)
+UUaaDLpncBDlaY3pKaczUAbQ  # YalinOfficial — Yalın (5 video)
+UUFWOCsO264XTkBYc3UCvnMA  # mabelmatiz — Mabel Matiz (228 video)
+UUDCGpxIR3Oq-jXSNzagrSmg  # Can Bonomo — Can Bonomo (213 video)

@@ -137,16 +137,37 @@ export async function refreshVideoMetadata(
   return result;
 }
 
-// search.list (100 birim) BURADAN KALDIRILDI — 22 Ağu 2026.
-// Tek bir kalabalık gece günlük kotanın tamamını bitirebiliyordu ve kota artışı
-// başvurusu onay beklerken bu risk taşınamazdı. Yerine geçen yol:
-//   • ortak havuz (songs) — tohumlanmış katalog, 0 birim (scripts/seed-catalog.ts)
-//   • admin'in yapıştırdığı bağlantı — videos.list, talep başına 1 birim
-// Ayrıntı: lib/request-approval.ts (findInPool / resolveVideoLink).
+// search.list (100 birim) — 22 Ağu 2026'da kaldırılmıştı, 15 Eki 2026'da YALNIZ
+// talep onayı için geri geldi. Tek bir kalabalık gece günlük kotanın tamamını
+// bitirebildiği için çağrı doğrudan yapılmaz: günlük tavanı ve "kota bitti"
+// kilidi lib/youtube-search-budget.ts'te; tek çağıran lib/request-approval.ts
+// (havuzda bulunamayan talep). Kota bitince admin bağlantı yapıştırır.
 //
-// Şarkı detay kabuğu da artık buraya gelmiyor: bkz. lib/track-lookup.ts.
-// Bu dosyada kalan çağrılar yalnızca playlist içe aktarma ve günlük senkron —
-// ikisi de 1 birim/50 şarkı ve senkronun günlük tavanı 1000 birim.
+// Şarkı detay kabuğu buraya gelmiyor: bkz. lib/track-lookup.ts.
+// Diğer çağrılar playlist içe aktarma ve günlük senkron — ikisi de
+// 1 birim/50 şarkı ve senkronun günlük tavanı 1000 birim.
+
+/** search.list (100 birim) + videos.list (1 birim): çalınabilir sonuçlar, YouTube sırasıyla */
+export async function searchVideos(query: string, maxResults = 10): Promise<TrackDetails[]> {
+  const params = new URLSearchParams({
+    part: "snippet",
+    q: query,
+    type: "video",
+    videoEmbeddable: "true",
+    regionCode: "TR",
+    maxResults: String(maxResults),
+    key: API_KEY,
+  });
+  const data = await fetchJson<{ items?: Array<{ id?: { videoId?: string } }> }>(
+    `${API_BASE}/search?${params}`
+  );
+  const ids = (data.items ?? []).map((i) => i.id?.videoId).filter((id): id is string => !!id);
+  if (ids.length === 0) return [];
+  // videos.list sırayı korumaz; YouTube'un alaka sırasını geri kur
+  const details = await getVideoDetails(ids);
+  const byId = new Map(details.map((d) => [d.youtube_video_id, d]));
+  return ids.map((id) => byId.get(id)).filter((d): d is TrackDetails => !!d);
+}
 
 // Playlist URL'sinden ("...list=PL..." veya çıplak kimlik) playlist id çıkarır
 export function parsePlaylistId(input: string): string | null {

@@ -41,5 +41,5 @@ GİRMEZ — katalog, playlist rotasyonu ve auto-fill hiç etkilenmez. Müşteri 
   panelde 182 saatlik "bekleyen" talepler kalıyordu. Panel listesi ve rozet
   süresi geçeni cron'u beklemeden gizler. Durum adı 'expired' ("Süre doldu"),
   'rejected' değil — müşteri şeridi ve geçmiş bunu zaten tanıyor.
-- Onay başına 1 YouTube araması (100 birim) — önce yerel songs, sonra search_cache.
+- Önce yerel songs, sonra search_cache, sonra YouTube araması (15 Eki 2026'dan beri, günlük tavanlı), en son admin bağlantı yapıştırır — bkz. [[pmj-talep-youtube-arama-2026-10]].
 - İlgili: [[pmj-oneri-akisi-2026-08]], [[pmj-push-stats-2026-07]], [[pmj-playlist-queue-2026-08]]

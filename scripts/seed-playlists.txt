@@ -864,8 +864,6 @@ UUpDJl2EmP7Oh90Vylx0dZtA  # Spinnin' Records (13545 video)
 UU_pwIXKXNm5KGhdEVzmY60A  # STONE MUSIC (14846 video)
 UUqTwKvjbTENZDGbz2si47ag  # GRM Daily (15831 video)
 UUGZXYc32ri4D0gSLPf2pZXQ  # Armada Music TV (15898 video)
-UUweOkPb1wVVH0Q0Tlj4a5Pw  # 1theK (원더케이) (23064 video)
-UUq-Fj5jknLsUf-MWSy4_brA  # T-Series (27244 video)
 
 # İsimden bulunan sanatçı kanalları (channels.list?forHandle) — 2026-09-30
 # Türk plak şirketi kanallarından gelen, kendi kanalı havuzda görünmeyen
@@ -1343,3 +1341,6 @@ UUCur7RVrsHtfd576KhgJbNQ  # Kenan Doğulu — Kenan Doğulu (334 video)
 UUaaDLpncBDlaY3pKaczUAbQ  # YalinOfficial — Yalın (5 video)
 UUFWOCsO264XTkBYc3UCvnMA  # mabelmatiz — Mabel Matiz (228 video)
 UUDCGpxIR3Oq-jXSNzagrSmg  # Can Bonomo — Can Bonomo (213 video)
+
+# Sanatçının kendi kanalı (Topic değil) — 2026-10-16
+UU1EbG2bRB_xNR7Gp1ffZbbg  # Mela Bedel

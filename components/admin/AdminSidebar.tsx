@@ -81,6 +81,16 @@ const navItems = (venueId: string): NavItem[] => [
     ),
   },
   {
+    href: `/admin/${venueId}/faq`,
+    label: "Sık Sorulanlar",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1.1-1.5 2.2M12 17h.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
     href: `/admin/${venueId}/settings`,
     label: "Ayarlar",
     icon: (

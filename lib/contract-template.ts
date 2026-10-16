@@ -31,10 +31,13 @@ type TemplateInput = {
   unitPrice: number;
 };
 
+// legacy: türün eski adları. Eski adla onaylanmış belgeler hâlâ o türe sayılır;
+// yoksa yeni sürüm onaylanınca eskisi geri çekilmez (retireOlderAccepted).
 export const DOCUMENT_KINDS = [
-  { kind: "service", title: "Hizmet ve Gelir Paylaşım Sözleşmesi" },
-  { kind: "kvkk", title: "Kişisel Verilerin Korunması ve Gizlilik Protokolü" },
-  { kind: "music", title: "Müzik Lisansı ve Tazmin Taahhütnamesi" },
+  { kind: "service", title: "Hizmet ve Gelir Paylaşım Sözleşmesi", legacy: [] },
+  { kind: "kvkk", title: "Kişisel Verilerin Korunması ve Gizlilik Protokolü", legacy: [] },
+  // 16 Eki 2026: "Lisans" adı PlayMyJam lisans veriyormuş gibi okunuyordu
+  { kind: "music", title: "Müzik Kullanımı ve Tazmin Taahhütnamesi", legacy: ["Müzik Lisansı ve Tazmin Taahhütnamesi"] },
 ] as const;
 
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number]["kind"];
@@ -42,7 +45,7 @@ export type DocumentKind = (typeof DOCUMENT_KINDS)[number]["kind"];
 const suffix = (title: string) => `${COMPANY.brand} ${title}`;
 
 export function documentKindOf(title: string): DocumentKind | null {
-  return DOCUMENT_KINDS.find((d) => title.endsWith(suffix(d.title)))?.kind ?? null;
+  return DOCUMENT_KINDS.find((d) => [d.title, ...d.legacy].some((t) => title.endsWith(suffix(t))))?.kind ?? null;
 }
 
 // Belgelerin otomatik oluşması için dolu olması gereken koşullar.
@@ -157,7 +160,7 @@ Bu sözleşme, Platform'un Mekan'da kullanılmasına, Müşterilerin Platform ü
 6.3. Hakediş KDV hariç tutardır; Mekan faturasına yasal KDV'yi ekler. Mekan, Hakediş tutarı için ${COMPANY.tradeName} adına (vergi no ${COMPANY.taxNumber}) mevzuata uygun fatura düzenleyerek ${COMPANY.email} adresine iletir. Fatura, Hakediş dökümüyle birlikte ödemenin ön koşuludur; faturanın gecikmesi hâlinde ödeme günü fatura tarihinden itibaren işler.
 6.4. Hakediş dökümü ${COMPANY.brand} mekan paneli ve/veya ${blank(c?.billing_email, "[E-POSTA]")} adresi üzerinden Mekan'a iletilir. Dökümde Ücretli Jetonlar ve kesintiler Satış Kanalına göre ayrı gösterilir. Mekan, dökümdeki itirazını tebliğden itibaren 15 gün içinde yazılı olarak bildirir; bu süre içinde itiraz edilmeyen döküm kesinleşir.
 6.5. Toplam Hakedişi 100 TL'nin altında kalan Dönemin tutarı izleyen Dönemin Hakedişine eklenerek ödenebilir.
-6.6. ${COMPANY.brand}, bu sözleşmeden doğan alacaklarını (5.5. maddedeki mahsuplar ve Müzik Lisansı ve Tazmin Taahhütnamesi'nden doğan rücu alacakları dahil) Mekan'ın Hakedişinden takas ve mahsup edebilir.
+6.6. ${COMPANY.brand}, bu sözleşmeden doğan alacaklarını (5.5. maddedeki mahsuplar ve Müzik Kullanımı ve Tazmin Taahhütnamesi'nden doğan rücu alacakları dahil) Mekan'ın Hakedişinden takas ve mahsup edebilir.
 
 7. TARAFLARIN YÜKÜMLÜLÜKLERİ
 
@@ -170,7 +173,7 @@ Bu sözleşme, Platform'un Mekan'da kullanılmasına, Müşterilerin Platform ü
 
 8. MÜZİK İÇERİĞİ VE LİSANSLAR
 
-Platform, Mekan'ın kendi ses sisteminde çalınacak şarkıların istenmesini ve sıralanmasını sağlayan bir araçtır; ${COMPANY.brand} Mekan'a eserlerin umuma iletimi ya da temsili için lisans vermez. İşletmedeki müzik ve görüntü kullanımına ilişkin izin, lisans ve sorumluluk hususları, bu sözleşmenin eki olan Müzik Lisansı ve Tazmin Taahhütnamesi'nde düzenlenmiştir.
+Platform, Mekan'ın kendi ses sisteminde çalınacak şarkıların istenmesini ve sıralanmasını sağlayan bir araçtır; ${COMPANY.brand} Mekan'a eserlerin umuma iletimi ya da temsili için lisans vermez. İşletmedeki müzik ve görüntü kullanımına ilişkin izin, lisans ve sorumluluk hususları, bu sözleşmenin eki olan Müzik Kullanımı ve Tazmin Taahhütnamesi'nde düzenlenmiştir.
 
 9. MARKA VE TANITIM
 
@@ -197,7 +200,7 @@ Tarafların gizlilik yükümlülükleri ve kişisel verilerin işlenmesi, bu sö
 13. SÜRE VE FESİH
 
 13.1. Sözleşme ${start} tarihinde yürürlüğe girer ve ${term}.
-13.2. Taraflardan birinin bu sözleşmeye ya da eklerine aykırı davranması ve aykırılığı yazılı ihtardan itibaren 7 gün içinde gidermemesi hâlinde diğer taraf sözleşmeyi yazılı bildirimle derhal feshedebilir. Müzik Lisansı ve Tazmin Taahhütnamesi'ne aykırılık ihtara gerek olmaksızın haklı fesih sebebidir.
+13.2. Taraflardan birinin bu sözleşmeye ya da eklerine aykırı davranması ve aykırılığı yazılı ihtardan itibaren 7 gün içinde gidermemesi hâlinde diğer taraf sözleşmeyi yazılı bildirimle derhal feshedebilir. Müzik Kullanımı ve Tazmin Taahhütnamesi'ne aykırılık ihtara gerek olmaksızın haklı fesih sebebidir.
 13.3. ${COMPANY.brand}, Mekan'ın Platform'u mevzuata aykırı ya da ${COMPANY.brand}'ın itibarını zedeleyecek biçimde kullandığını tespit ederse Mekan'ın Platform erişimini inceleme süresince askıya alabilir.
 13.4. Fesih tarihine kadar oluşmuş Hakedişler, varsa mahsuplar yapıldıktan sonra 6. maddeye göre ödenir.
 13.5. Sözleşme sona erdiğinde Mekan, ${COMPANY.brand}'a ait QR kodları ve tanıtım materyallerini 7 gün içinde kaldırır ve varsa ${COMPANY.brand}'a ait ekipmanı iade eder.
@@ -220,7 +223,7 @@ Bu sözleşmeden doğacak uyuşmazlıklarda Türk hukuku uygulanır; İzmir Mahk
 
 ${n[1]}. EKLER VE ONAY
 
-Ek-1 Kişisel Verilerin Korunması ve Gizlilik Protokolü ve Ek-2 Müzik Lisansı ve Tazmin Taahhütnamesi bu sözleşmenin ayrılmaz parçasıdır.
+Ek-1 Kişisel Verilerin Korunması ve Gizlilik Protokolü ve Ek-2 Müzik Kullanımı ve Tazmin Taahhütnamesi bu sözleşmenin ayrılmaz parçasıdır.
 
 ${approval("sözleşmeyi")}`;
 }

@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import AdminPanelShell from "@/components/admin/AdminPanelShell";
 import { getVenueBranding } from "@/lib/venue-cache";
 
@@ -31,6 +33,25 @@ export async function generateMetadata({
   };
 }
 
+// generateMetadata params'ı okuyor (mekan adı + mekana özel manifest), kabuk
+// ise bilerek statik. Next 16 bu ikiliyi "statik sayfada bekletilen metadata"
+// diye geliştirme ekranında hata olarak gösteriyordu; bu işaret metadata'nın
+// istek anında akmasının bilinçli olduğunu söyler. Hiçbir şey çizmez ve
+// Suspense içinde olduğu için kabuğun statik ön-render'ını bozmaz.
+// Bkz. node_modules/next/dist/docs/.../generate-metadata.md "With Cache Components".
+async function Connection() {
+  await connection();
+  return null;
+}
+
+function DynamicMetadataMarker() {
+  return (
+    <Suspense>
+      <Connection />
+    </Suspense>
+  );
+}
+
 export default function AdminPanelLayout({
   children,
   params,
@@ -40,5 +61,10 @@ export default function AdminPanelLayout({
 }) {
   // params bilerek çözülmüyor: kabuk statik kalsın, mekan kimliğini istemci
   // tarafındaki Suspense sınırları çözsün.
-  return <AdminPanelShell params={params}>{children}</AdminPanelShell>;
+  return (
+    <>
+      <AdminPanelShell params={params}>{children}</AdminPanelShell>
+      <DynamicMetadataMarker />
+    </>
+  );
 }

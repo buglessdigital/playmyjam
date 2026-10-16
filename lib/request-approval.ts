@@ -78,31 +78,56 @@ export async function findInPool(title: string, artist: string): Promise<TrackDe
   const COLUMNS =
     "youtube_video_id, title, artist, album_cover_url, duration_ms, channel_title, view_count";
 
-  let { data: localRows } = await supabaseAdmin
-    .from("songs")
-    .select(COLUMNS)
-    .eq("embeddable", true)
-    .ilike("title", `%${likeCore}%`)
-    .order("view_count", { ascending: false })
-    .limit(50);
+  const artistCore = artist.split(/[,&]/)[0].replace(/[%_,()\\]/g, "").trim();
 
-  // Başlık yazımı tutmadıysa (çevirmen, farklı imla, apostrof) sanatçıdan gir:
-  // eleme zaten lib/song-match.ts'te, buradaki sorgu yalnızca aday topluyor.
-  if (!localRows || localRows.length === 0) {
-    const artistCore = artist.split(/[,&]/)[0].replace(/[%_,()\\]/g, "").trim();
-    if (artistCore.length > 1) {
-      ({ data: localRows } = await supabaseAdmin
-        .from("songs")
-        .select(COLUMNS)
-        .eq("embeddable", true)
-        .ilike("artist", `%${artistCore}%`)
-        .order("view_count", { ascending: false })
-        .limit(100));
-    }
+  // a) Başlık + sanatçı BİRLİKTE. Kısa başlıklar ("Gece", "Git", "Aşk", "Sor")
+  //    binlerce şarkıda geçiyor; yalnız başlıkla aranınca en çok izlenen 50
+  //    aday hep başka sanatçıların oluyor, doğru şarkı aday listesine hiç
+  //    girmiyordu (16 Eki 2026: PMJ listesi içe aktarımında 107 "havuzda yok"un
+  //    çoğu buydu). İkisi birlikte aranınca aday listesi küçük ve doğru.
+  // b) Yalnız başlık — sanatçı farklı yazılmış olabilir (feat., kanal adı).
+  // c) Yalnız sanatçı — başlık yazımı tutmadıysa (çeviri, imla, apostrof).
+  // Eleme ve sürüm seçimi her adımda lib/song-match.ts'te; sorgular yalnızca aday topluyor.
+  const attempts = [
+    artistCore.length > 1 && likeCore
+      ? () =>
+          supabaseAdmin
+            .from("songs")
+            .select(COLUMNS)
+            .eq("embeddable", true)
+            .ilike("title", `%${likeCore}%`)
+            .ilike("artist", `%${artistCore}%`)
+            .order("view_count", { ascending: false })
+            .limit(50)
+      : null,
+    likeCore
+      ? () =>
+          supabaseAdmin
+            .from("songs")
+            .select(COLUMNS)
+            .eq("embeddable", true)
+            .ilike("title", `%${likeCore}%`)
+            .order("view_count", { ascending: false })
+            .limit(50)
+      : null,
+    artistCore.length > 1
+      ? () =>
+          supabaseAdmin
+            .from("songs")
+            .select(COLUMNS)
+            .eq("embeddable", true)
+            .ilike("artist", `%${artistCore}%`)
+            .order("view_count", { ascending: false })
+            .limit(100)
+      : null,
+  ];
+
+  for (const attempt of attempts) {
+    if (!attempt) continue;
+    const { data: localRows } = await attempt();
+    const localHit = pickBestMatch(request, localRows ?? []);
+    if (localHit) return localHit as unknown as TrackDetails;
   }
-
-  const localHit = pickBestMatch(request, localRows ?? []);
-  if (localHit) return localHit as unknown as TrackDetails;
 
   // 2) Eski arama önbelleği
   const cacheKey = searchCacheKey(title, artist);

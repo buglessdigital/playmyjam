@@ -5,8 +5,9 @@ import { useId, useMemo, useState } from "react";
 import type { VenueListItem } from "@/lib/venue-cache";
 import VenueLogo from "@/components/VenueLogo";
 import { fmt, useT } from "@/lib/i18n";
+import { useNativePlatform } from "@/lib/native-app";
 
-const PINK_GRADIENT = "linear-gradient(135deg, #ff2d9c 0%, #e91e8c 45%, #a8125f 100%)";
+const FOCUS_RING = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff2d9c]";
 
 // Logosu olmayan mekanlar için baş harf avatarı: mekan adından deterministik gradient
 const AVATAR_GRADIENTS = [
@@ -62,14 +63,11 @@ export default function VenueGrid({ venues }: { venues: VenueListItem[] }) {
   if (venues.length === 0) {
     return (
       <div className="mx-auto max-w-md">
-        <div
-          className="rounded-2xl border border-white/[0.08] px-6 py-12 text-center"
-          style={{ background: "#160d24" }}
-        >
-          <p className="text-sm font-bold text-white">{t.venuesPage.emptyTitle}</p>
-          <p className="mt-2 text-xs leading-relaxed text-[#9ca3af]">
+        <div className="rounded-2xl border border-white/15 bg-[#160d24] px-6 py-12 text-center">
+          <p className="text-lg font-bold text-white">{t.venuesPage.emptyTitle}</p>
+          <p className="mt-2 text-base leading-relaxed text-[#9ca3af]">
             {t.venuesPage.emptyDescPrefix}{" "}
-            <Link href="/#iletisim" className="text-[#e91e8c] underline">
+            <Link href="/#iletisim" className="text-white underline underline-offset-4">
               {t.venuesPage.emptyDescLink}
             </Link>
             .
@@ -90,28 +88,27 @@ export default function VenueGrid({ venues }: { venues: VenueListItem[] }) {
       />
 
       {filtered.length === 0 ? (
-        <div
-          className="mx-auto mt-8 max-w-md rounded-2xl border border-white/[0.08] px-6 py-10 text-center"
-          style={{ background: "#160d24" }}
-        >
-          <p className="text-sm font-bold text-white">
+        <div className="mt-8 rounded-2xl border border-white/15 bg-[#160d24] px-6 py-10 text-center">
+          <p className="text-lg font-bold text-white">
             {fmt(t.venuesPage.noMatchTitle, { query: query.trim() })}
           </p>
-          <p className="mt-2 text-xs leading-relaxed text-[#9ca3af]">{t.venuesPage.noMatchDesc}</p>
+          <p className="mx-auto mt-2 max-w-md text-base leading-relaxed text-[#9ca3af]">{t.venuesPage.noMatchDesc}</p>
           <button
             type="button"
             onClick={() => setQuery("")}
-            className="mt-4 rounded-xl border border-white/12 bg-white/5 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/10"
+            className={`mt-5 min-h-11 rounded-full border border-white/30 px-5 text-sm font-semibold text-white transition-colors hover:border-white ${FOCUS_RING}`}
           >
             {t.venuesPage.searchClear}
           </button>
         </div>
       ) : (
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((v) => (
-            <VenueCard key={v.slug} venue={v} />
+            <li key={v.slug}>
+              <VenueCard venue={v} />
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       <MoreVenuesSoon />
@@ -119,40 +116,47 @@ export default function VenueGrid({ venues }: { venues: VenueListItem[] }) {
   );
 }
 
+// Kartın tamamı mekanı açar (başlıktaki bağlantı kartı kaplar); "Canlı sıra"
+// ayrı bir bağlantı olarak üstte durur — iç içe <a> olmadan iki hedef.
 function VenueCard({ venue: v }: { venue: VenueListItem }) {
   const t = useT();
 
   return (
-    <div
-      className="flex flex-col rounded-2xl border border-white/[0.07] p-5 transition-colors hover:border-[#e91e8c]/35"
-      style={{ background: "#160d24" }}
-    >
+    <div className="group relative flex h-full flex-col rounded-2xl border border-white/15 bg-[#160d24] p-5 transition-colors hover:border-[#ff2d9c] has-[a:focus-visible]:border-[#ff2d9c]">
       <div className="flex items-center gap-4">
-        <VenueLogo
-          name={v.name}
-          logoUrl={v.logo_url}
-          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-xl font-black text-white"
-          style={{ boxShadow: "0 8px 20px -8px rgba(233,30,140,0.4)" }}
-          fallbackStyle={{ background: venueGradient(v.name) }}
-        />
+        {/* Ad başlıkta zaten okunuyor; logo ekran okuyucuda tekrar etmesin */}
+        <span aria-hidden className="shrink-0">
+          <VenueLogo
+            name={v.name}
+            logoUrl={v.logo_url}
+            className="flex h-16 w-16 items-center justify-center rounded-xl text-2xl font-black text-white"
+            fallbackStyle={{ background: venueGradient(v.name) }}
+          />
+        </span>
         <div className="min-w-0">
-          <h2 className="truncate text-base font-extrabold text-white">{v.name}</h2>
-          <p className="mt-0.5 truncate text-xs text-[#9ca3af]">
+          <h2 className="font-display text-xl font-bold leading-tight text-white">
+            <Link
+              href={`/venue/${v.slug}`}
+              className="outline-none after:absolute after:inset-0 after:rounded-2xl after:content-['']"
+            >
+              {v.name}
+            </Link>
+          </h2>
+          <p className="mt-1 line-clamp-2 text-sm text-[#9ca3af]">
             {v.tagline?.trim() || t.venuesPage.defaultTagline}
           </p>
         </div>
       </div>
-      <div className="mt-5 flex items-center gap-2">
-        <Link
-          href={`/venue/${v.slug}`}
-          className="flex-1 rounded-xl py-2.5 text-center text-sm font-bold text-white transition-transform active:scale-[0.97]"
-          style={{ background: PINK_GRADIENT, boxShadow: "0 8px 22px -8px rgba(233,30,140,0.55)" }}
-        >
+      <div className="mt-auto flex items-center justify-between gap-3 pt-5">
+        <span aria-hidden className="inline-flex items-center gap-2 text-sm font-bold text-[#ff8fd0] group-hover:text-white">
           {t.venuesPage.open}
-        </Link>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
         <Link
           href={`/venue/${v.slug}/browse`}
-          className="rounded-xl border border-white/12 bg-white/5 px-3.5 py-2.5 text-sm font-semibold text-[#9ca3af] transition-colors hover:bg-white/10 hover:text-white"
+          className={`relative z-10 inline-flex min-h-11 items-center rounded-full border border-white/25 px-4 text-sm font-semibold text-[#e5e7eb] transition-colors hover:border-white hover:text-white ${FOCUS_RING}`}
           aria-label={fmt(t.venuesPage.liveQueueAria, { venue: v.name })}
         >
           {t.venuesPage.queue}
@@ -180,15 +184,12 @@ function VenueSearchBar({
   const searching = value.trim().length > 0;
 
   return (
-    <div className="mx-auto max-w-xl">
-      <label htmlFor={inputId} className="sr-only">
+    <div>
+      <label htmlFor={inputId} className="mb-2 block text-sm font-semibold text-[#e5e7eb]">
         {t.venuesPage.searchLabel}
       </label>
-      <div
-        className="flex items-center gap-3 rounded-2xl border border-white/[0.08] px-4 py-3 focus-within:border-[#e91e8c]/45"
-        style={{ background: "#160d24" }}
-      >
-        <span className="text-[#9ca3af]">{SEARCH_ICON}</span>
+      <div className="flex min-h-14 items-center gap-3 rounded-2xl border border-white/30 bg-white/[0.04] px-4 transition-colors hover:border-white/50 focus-within:border-[#ff2d9c] focus-within:ring-2 focus-within:ring-[#ff2d9c]/50">
+        <span className="text-[#c7cad1]">{SEARCH_ICON}</span>
         <input
           id={inputId}
           type="search"
@@ -197,19 +198,19 @@ function VenueSearchBar({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={t.venuesPage.searchPlaceholder}
-          className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-[#6b7280]"
+          className="min-w-0 flex-1 bg-transparent py-3 text-base text-white outline-none placeholder:text-[#8b8f99]"
         />
         {searching && (
           <button
             type="button"
             onClick={() => onChange("")}
-            className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-[#9ca3af] transition-colors hover:text-white"
+            className={`shrink-0 rounded-lg px-2 py-2 text-sm font-semibold text-[#c7cad1] transition-colors hover:text-white ${FOCUS_RING}`}
           >
             {t.venuesPage.searchClear}
           </button>
         )}
       </div>
-      <p className="mt-2 text-center text-xs text-[#6b7280]" aria-live="polite">
+      <p className="mt-2 text-sm text-[#9ca3af]" aria-live="polite">
         {searching
           ? fmt(t.venuesPage.searchResultCount, { count, total })
           : fmt(t.venuesPage.venueCount, { count: total })}
@@ -223,15 +224,9 @@ function MoreVenuesSoon() {
   const t = useT();
 
   return (
-    <div
-      className="mt-8 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-[#e91e8c]/30 px-6 py-7 text-center"
-      style={{ background: "rgba(233,30,140,0.05)" }}
-    >
-      <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#e91e8c]">
-        {t.venuesPage.soonBadge}
-      </span>
-      <p className="text-sm font-extrabold text-white sm:text-base">{t.venuesPage.soonTitle}</p>
-      <p className="max-w-md text-xs leading-relaxed text-[#9ca3af]">{t.venuesPage.soonDesc}</p>
+    <div className="mt-12 border-t border-white/15 pt-8">
+      <p className="font-display text-xl font-bold text-white">{t.venuesPage.soonTitle}</p>
+      <p className="mt-2 max-w-xl text-base leading-relaxed text-[#9ca3af]">{t.venuesPage.soonDesc}</p>
     </div>
   );
 }
@@ -240,23 +235,25 @@ export function VenuesPageIntro() {
   const t = useT();
 
   return (
-    <div className="text-center">
-      <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#e91e8c]">{t.footer.venues}</p>
-      <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl">{t.venuesPage.heading}</h1>
-      <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-[#9ca3af] sm:text-base">
-        {t.venuesPage.desc}
-      </p>
+    <div>
+      <h1 className="font-display text-4xl font-extrabold leading-[1.02] tracking-tight text-white sm:text-6xl">
+        {t.venuesPage.heading}
+      </h1>
+      <p className="mt-4 max-w-xl text-lg leading-relaxed text-[#d1d5db]">{t.venuesPage.desc}</p>
     </div>
   );
 }
 
 export function VenuesPageOutro() {
   const t = useT();
+  const inApp = useNativePlatform() !== null;
+  // Mağaza uygulamasında mekan sahibi bağlantısı yok (bkz. SiteHeader)
+  if (inApp) return null;
 
   return (
-    <p className="mt-10 text-center text-xs text-[#6b7280]">
+    <p className="mt-6 text-base text-[#9ca3af]">
       {t.venuesPage.ctaPrefix}{" "}
-      <Link href="/#iletisim" className="text-[#e91e8c] underline hover:text-[#ff2d9c]">
+      <Link href="/mekan-kayit" className="font-semibold text-white underline decoration-white/30 underline-offset-4 hover:decoration-[#ff2d9c]">
         {t.venuesPage.ctaLink}
       </Link>
     </p>

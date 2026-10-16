@@ -13,7 +13,12 @@
     "contact": "Contact",
     "registerVenue": "Register Your Venue",
     "findVenue": "Find a Venue",
-    "venueLogin": "Venue Login"
+    "venueLogin": "Venue Login",
+    "back": "Back",
+    "home": "Home",
+    "menu": "Menu",
+    "close": "Close",
+    "forOwners": "Venue owners"
   },
   "footer": {
     "tagline": "PlayMyJam is a digital song request platform that hands the music queue to guests in cafés and entertainment venues. Operated by {company}.",
@@ -45,66 +50,33 @@
   },
   "home": {
     "hero": {
-      "badge": "PlayMyJam · In-venue digital song request platform",
-      "titleLead": "With PlayMyJam, the music here is",
-      "titleAccent": "yours to pick",
-      "sub": "PlayMyJam opens up the playback queue to guests at cafés and entertainment venues. Get your tokens, add your song to the queue, and follow it play out second by second — you're the DJ now.",
-      "exploreVenues": "Explore Venues",
-      "seePricing": "View Pricing",
-      "ownerCta": "Are you a venue owner? Register your venue for free",
-      "sslBadge": "SSL secure payment",
-      "instantBadge": "Instant delivery"
-    },
-    "mockup": {
-      "venue": "Venue",
-      "live": "LIVE",
-      "nowPlaying": "Now Playing",
-      "upNext": "Up Next",
-      "requestSong": "Request a Song"
-    },
-    "value": {
-      "instantTitle": "Instant digital delivery",
-      "instantDesc": "The tokens will be in your account as soon as payment is confirmed — no waiting, no shipping.",
-      "walletTitle": "One wallet, every venue",
-      "walletDesc": "Your balance works at every venue that uses PlayMyJam — switch venues and your tokens come with you.",
-      "secureTitle": "Secure payment",
-      "secureDesc": "256-bit SSL, licensed payment infrastructure; your card information is not stored with us."
+      "sub": "Scan the QR code at your venue, pick a song and hear it on the speakers a few minutes later. No app download needed.",
+      "ownerCta": "I own a venue",
+      "kicker": "Cafés · Bars · Restaurants · Clubs",
+      "titleLine1": "The next song",
+      "titleLine2": "is on you.",
+      "findVenue": "Find your venue",
+      "hint": "Already at the venue? The QR code on your table takes you straight to the queue.",
+      "deckLabel": "Tonight's queue",
+      "nowPlaying": "Now playing",
+      "priority": "Priority"
     },
     "steps": {
-      "heading": "The stage is yours in three steps",
-      "openTitle": "Open the venue",
-      "openDesc": "Scan the QR code at the venue you're in, or tap its link — the app opens in your browser, no download required.",
-      "buyTitle": "Get your token",
-      "buyDesc": "Choose the package that suits you or the desired number of single tokens; your balance will be instantly credited after a secure payment.",
-      "requestTitle": "Request your song",
-      "requestDesc": "Choose your song from the venue's catalog, add it to the queue in normal or priority order, and follow its playback live."
-    },
-    "venues": {
-      "headingLine1": "Open the music to your guests,",
-      "headingLine2": "keep the control",
-      "desc": "PlayMyJam adds a new layer of interaction to the venue: guests request songs, and you manage them from a single panel. The venue always decides which song can be played.",
-      "cta": "Register your venue for free",
-      "queueTitle": "Live queue management",
-      "queueDesc": "Approve, sort, or reject requests from a single panel; tokens for rejected requests are automatically returned to the guest.",
-      "hardwareTitle": "No extra hardware needed",
-      "hardwareDesc": "It works with your existing screen and sound setup; setup is as simple as a browser tab.",
-      "statsTitle": "Statistics panel",
-      "statsDesc": "The most requested songs, peak hours, and request volume — the music pulse of the venue, all on one screen.",
-      "guestTitle": "Guest interaction",
-      "guestDesc": "Guests become involved in the music, spend more time in the venue, and you remain the music curator."
-    },
-    "apply": {
-      "eyebrow": "Venue Registration",
-      "heading": "Register your venue on PlayMyJam",
-      "desc": "Fill out the form, and our team will contact you to set up the panel for your venue. Installation is free and requires no additional hardware — your existing screen and sound system will suffice.",
-      "directContact": "If you prefer to contact us directly:"
+      "heading": "How does it work?",
+      "scanTitle": "Scan the QR",
+      "scanDesc": "The code on the table or wall opens the venue's page in your browser. No sign-up required.",
+      "pickTitle": "Pick your song",
+      "pickDesc": "Browse or search the venue's playlists. Not there? Send a request.",
+      "payTitle": "Queue it with a token",
+      "payDesc": "Choose the normal or priority queue. Payment is secured by iyzico and tokens load instantly.",
+      "listenTitle": "Hear it play",
+      "listenDesc": "Follow the queue live on your phone."
     },
     "pricing": {
-      "eyebrow": "Pricing",
       "heading": "One transparent price",
-      "desc": "Tokens are used to request songs. The price is the same at every venue; tokens are credited to your account instantly after payment and are valid at every venue using PlayMyJam. All prices include VAT.",
+      "desc": "Songs are requested with tokens. A token costs the same at every venue; it loads to your account right after payment and works at every PlayMyJam venue. All prices include VAT.",
       "unit": "1 token = {price} TL",
-      "unitNote": "· buy as many as you like",
+      "unitNote": "Buy as many as you like.",
       "mostPopular": "Most Popular",
       "tokens": "tokens",
       "perToken": "₺{price}/token",
@@ -114,7 +86,15 @@
       "legalPrefix": "Purchases are subject to the",
       "legalMiddle": "and the",
       "legalDeliveryTerms": "Delivery and Return Terms",
-      "legalSuffix": ". You have the right to a refund within 14 days on packages whose tokens are unused."
+      "legalSuffix": ". You have the right to a refund within 14 days on packages whose tokens are unused.",
+      "noticeLabel": "Good to know",
+      "noticeTitle": "How many tokens per song? It depends on the venue.",
+      "noticeDesc": "A token costs the same everywhere, but each venue decides how many tokens it takes to add a song to the queue.",
+      "noticeNormalTitle": "Normal queue",
+      "noticeNormalDesc": "A fixed amount set by the venue.",
+      "noticePriorityTitle": "Priority queue",
+      "noticePriorityDesc": "Jumps ahead in the queue; the cost goes up as the queue gets busier.",
+      "noticeConfirm": "The cost is shown clearly before you add the song — no surprises."
     },
     "faq": {
       "heading": "Frequently Asked Questions",
@@ -129,29 +109,44 @@
       "q5": "How much will my song request cost in tokens?",
       "a5": "The number of tokens required for normal and priority queue requests is determined by the venue and is clearly displayed on the screen before submitting a request. Priority requests are moved to the front of the queue.",
       "q6": "How can I use PlayMyJam for my venue?",
-      "a6": "Simply contact us via the email or phone in the contact section. No extra hardware is required for setup; the venue's existing screen/speaker setup and a browser are enough."
+      "a6": "Just fill in the Register Your Venue form and our team will call you. Setup is free; your existing screen/speaker setup and a browser are all you need."
     },
     "contact": {
-      "heading": "Contact Us",
-      "desc": "For questions, refund requests, or to set up PlayMyJam at your venue, you can reach us through any of the channels below.",
+      "heading": "Contact",
+      "desc": "Write or call us for questions, refunds or venue setup.",
       "email": "Email",
       "phone": "Phone",
       "address": "Address",
       "operator": "Business owner: {legalName} — {brand}"
+    },
+    "doors": {
+      "guestLabel": "If you're a guest",
+      "guestTitle": "Have a say in the music",
+      "guest1": "Pick from the venue's playlists; if your song isn't there, request it and it joins the queue once the venue approves.",
+      "guest2": "Your tokens work at every PlayMyJam venue.",
+      "guest3": "Watch the queue live; if the venue declines your request, your tokens are refunded.",
+      "guestCta": "See venues",
+      "venueLabel": "If you own a venue",
+      "venueTitle": "Let guests choose, keep the final say",
+      "venue1": "Setup is free; your existing screen and speakers are enough, no extra hardware.",
+      "venue2": "You decide which playlists play and what guests can pick from.",
+      "venue3": "You earn a share of guest requests and track it in your dashboard.",
+      "venueCta": "Register your venue",
+      "venueLogin": "Already registered? Sign in"
     }
   },
   "venuesPage": {
-    "heading": "Pick your venue, take over the stage",
-    "desc": "The venues that use PlayMyJam are listed below. Open the venue you're in, browse the song catalog, and add a song to the queue with your token — your balance is valid at all venues.",
+    "heading": "Which venue are you at?",
+    "desc": "Pick your venue, see the queue, add your song. Your tokens work everywhere.",
     "emptyTitle": "No venues listed yet",
     "emptyDescPrefix": "If you want PlayMyJam set up at your venue,",
     "emptyDescLink": "contact us",
     "defaultTagline": "Song requests are open",
     "open": "Open Venue",
-    "queue": "Queue",
+    "queue": "Live queue",
     "liveQueueAria": "{venue} live queue",
     "ctaPrefix": "Want to see your venue here?",
-    "ctaLink": "Contact us",
+    "ctaLink": "Register your venue",
     "searchLabel": "Search venues",
     "searchPlaceholder": "Type a venue name — e.g. cafe, bar, stage",
     "searchClear": "Clear",
@@ -159,7 +154,6 @@
     "venueCount": "{count} venues listed",
     "noMatchTitle": "No venue matches “{query}”",
     "noMatchDesc": "Check the spelling, or clear the search to browse every venue. The one you're looking for may not be on PlayMyJam yet.",
-    "soonBadge": "Coming soon",
     "soonTitle": "Many more venues very soon",
     "soonDesc": "New venues are joining PlayMyJam one after another. Keep an eye on the list — your hangout will be here soon too."
   },
@@ -678,10 +672,11 @@
     "messagePlaceholder": "The venue's capacity, the music setup, or anything else you'd like to ask...",
     "sending": "Sending…",
     "submit": "Submit Application",
-    "consent": "By submitting the form, you agree to the processing of your contact information for the purpose of evaluating your application. Installation is free; no additional hardware is required."
+    "consent": "By submitting the form, you agree to the processing of your contact information for the purpose of evaluating your application. Installation is free; no additional hardware is required.",
+    "requiredNote": "Fields marked * are required.",
+    "requiredSr": "(required)"
   },
   "venueAdminLogin": {
-    "eyebrow": "Venue Login",
     "heading": "Pick your venue, open your panel",
     "desc": "Are you a venue owner? Search for your venue, select it and sign in with your panel username and password. From the panel you manage the queue, edit your playlists and see your stats.",
     "step1Title": "1. Find your venue",
@@ -804,5 +799,16 @@
     "dark": "Dark",
     "light": "Light",
     "system": "System"
+  },
+  "venueRegister": {
+    "title": "Register your venue on PlayMyJam",
+    "desc": "Fill in the form and our team will call you to set up your dashboard together. Setup is free.",
+    "nextHeading": "What happens next?",
+    "next1": "Your application reaches us and our team calls you.",
+    "next2": "We open your venue's dashboard together and add your playlists.",
+    "next3": "You put QR codes on the tables and guests start requesting songs.",
+    "loginPrefix": "Is your venue already registered?",
+    "loginLink": "Sign in to your dashboard",
+    "directContact": "Rather talk to someone directly?"
   }
 }

@@ -8,9 +8,8 @@ export function VenueAdminLoginIntro() {
 
   return (
     <div className="text-center">
-      <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#e91e8c]">{t.venueAdminLogin.eyebrow}</p>
-      <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl">{t.venueAdminLogin.heading}</h1>
-      <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-[#9ca3af] sm:text-base">
+      <h1 className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl">{t.venueAdminLogin.heading}</h1>
+      <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-[#d1d5db]">
         {t.venueAdminLogin.desc}
       </p>
     </div>

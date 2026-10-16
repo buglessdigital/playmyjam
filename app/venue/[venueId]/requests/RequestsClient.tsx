@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { currentDict, fmt, useT } from "@/lib/i18n";
+import Coin from "@/components/ui/Coin";
 
 type Request = {
   id: string;
@@ -212,7 +213,7 @@ export default function RequestsClient() {
                 <p className="text-ink font-semibold text-sm truncate">{req.songs.title}</p>
                 <p className="text-subtle text-xs">{req.songs.artist}</p>
                 {req.tokens_spent && (
-                  <p className="text-muted text-xs mt-0.5">{fmt(t.requestsPage.tokensLine, { n: req.tokens_spent })}{req.priority ? t.requestsPage.prioritySuffix : ""}</p>
+                  <p className="flex items-center gap-1 text-muted text-xs mt-0.5"><Coin size={13} />{fmt(t.requestsPage.tokensLine, { n: req.tokens_spent })}{req.priority ? t.requestsPage.prioritySuffix : ""}</p>
                 )}
               </div>
               <div className="text-right flex-shrink-0">

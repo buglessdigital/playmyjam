@@ -8,6 +8,7 @@ import { deepLinkToPath, nativePlatform, nativePlugins } from "@/lib/native-app"
 import { publishTokenBalance } from "@/lib/token-balance-store";
 import NativePush from "@/components/native/NativePush";
 import { fmt, useT } from "@/lib/i18n";
+import Coin from "@/components/ui/Coin";
 
 // Mağaza uygulamasının (Capacitor kabuğu) WebView'i ile web kodu arasındaki
 // yapıştırıcı. Normal tarayıcıda hiçbir şey yapmaz, hiçbir şey çizmez.
@@ -140,7 +141,10 @@ export default function NativeAppBridge() {
           role="status"
           className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+12px)] z-[60] mx-auto max-w-md rounded-2xl border border-[#e91e8c]/40 bg-sheet/95 px-4 py-3 text-center shadow-xl backdrop-blur"
         >
-          <p className="text-sm font-bold text-ink">{t.nativeApp.giftTitle}</p>
+          <p className="flex items-center justify-center gap-2 text-sm font-bold text-ink">
+            <Coin size={20} />
+            {t.nativeApp.giftTitle}
+          </p>
           <p className="mt-0.5 text-xs text-lilac">{fmt(t.nativeApp.giftBody, { n: giftTokens })}</p>
         </div>
       )}

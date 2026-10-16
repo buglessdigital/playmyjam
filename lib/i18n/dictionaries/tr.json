@@ -13,7 +13,12 @@
     "contact": "İletişim",
     "registerVenue": "Mekanını Kaydet",
     "findVenue": "Mekanı Bul",
-    "venueLogin": "Mekan Girişi"
+    "venueLogin": "Mekan Girişi",
+    "back": "Geri",
+    "home": "Ana sayfa",
+    "menu": "Menü",
+    "close": "Kapat",
+    "forOwners": "Mekan sahipleri"
   },
   "footer": {
     "tagline": "PlayMyJam, kafe ve eğlence mekanlarında müzik sırasını misafirlere açan dijital şarkı istek platformudur. {company} tarafından işletilmektedir.",
@@ -45,66 +50,33 @@
   },
   "home": {
     "hero": {
-      "badge": "PlayMyJam · Mekan içi dijital şarkı istek platformu",
-      "titleLead": "PlayMyJam ile mekanda müziği",
-      "titleAccent": "sen seç",
-      "sub": "PlayMyJam, kafe ve eğlence mekanlarında çalma sırasını misafirlere açar. Jetonunu al, şarkını kuyruğa ekle, çalma anını saniye saniye takip et — DJ artık sensin.",
-      "exploreVenues": "Mekanları Keşfet",
-      "seePricing": "Fiyatları Gör",
-      "ownerCta": "Mekan sahibi misin? Mekanını ücretsiz kaydet",
-      "sslBadge": "SSL güvenli ödeme",
-      "instantBadge": "Anında teslimat"
-    },
-    "mockup": {
-      "venue": "Mekan",
-      "live": "CANLI",
-      "nowPlaying": "Şu An Çalıyor",
-      "upNext": "Sıradakiler",
-      "requestSong": "Şarkı İste"
-    },
-    "value": {
-      "instantTitle": "Anında dijital teslimat",
-      "instantDesc": "Jetonlar ödeme onaylanır onaylanmaz hesabında — bekleme yok, kargo yok.",
-      "walletTitle": "Tek cüzdan, tüm mekanlar",
-      "walletDesc": "Bakiyen PlayMyJam kullanan her mekanda geçerli; mekan değiştir, jetonun seninle gelsin.",
-      "secureTitle": "Güvenli ödeme",
-      "secureDesc": "256-bit SSL, lisanslı ödeme altyapısı; kart bilgilerin bizde saklanmaz."
+      "sub": "Bulunduğun mekanın QR kodunu okut, şarkını seç, birkaç dakika sonra hoparlörden duy. Uygulama indirmen gerekmez.",
+      "ownerCta": "Mekan sahibiyim",
+      "kicker": "Kafe · Bar · Restoran · Kulüp",
+      "titleLine1": "Sıradaki şarkı",
+      "titleLine2": "senden.",
+      "findVenue": "Mekanını bul",
+      "hint": "Mekandaysan masadaki QR kod seni doğrudan sıraya götürür.",
+      "deckLabel": "Bu akşamın sırası",
+      "nowPlaying": "Şimdi çalıyor",
+      "priority": "Öncelikli"
     },
     "steps": {
-      "heading": "Üç adımda sahne senin",
-      "openTitle": "Mekanı aç",
-      "openDesc": "Bulunduğun mekandaki QR kodu okut veya mekan bağlantısına dokun — uygulama tarayıcıda açılır, indirme gerekmez.",
-      "buyTitle": "Jetonunu al",
-      "buyDesc": "Sana uygun paketi veya istediğin adette tekli jetonu seç; güvenli ödemenin ardından bakiyen anında yüklenir.",
-      "requestTitle": "Şarkını iste",
-      "requestDesc": "Mekanın kataloğundan şarkını seç, normal ya da öncelikli sırayla kuyruğa ekle, çalma anını canlı takip et."
-    },
-    "venues": {
-      "headingLine1": "Müziği misafirine aç,",
-      "headingLine2": "kontrolü elinde tut",
-      "desc": "PlayMyJam mekanına yeni bir etkileşim katmanı ekler: misafirler şarkı ister, sen tek panelden yönetirsin. Hangi şarkının çalınabileceğine her zaman mekan karar verir.",
-      "cta": "Mekanını ücretsiz kaydet",
-      "queueTitle": "Canlı kuyruk yönetimi",
-      "queueDesc": "İstekleri tek panelden onayla, sırala veya reddet; reddedilen isteklerin jetonu misafire otomatik iade edilir.",
-      "hardwareTitle": "Ek donanım gerekmez",
-      "hardwareDesc": "Mevcut ekran ve ses düzeninle çalışır; kurulum bir tarayıcı sekmesi kadar basit.",
-      "statsTitle": "İstatistik paneli",
-      "statsDesc": "En çok istenen şarkılar, yoğun saatler ve istek hacmi — mekanının müzik nabzı tek ekranda.",
-      "guestTitle": "Misafir etkileşimi",
-      "guestDesc": "Misafirler müziğe ortak olur, mekanda daha uzun vakit geçirir; müzik küratörlüğü sende kalır."
-    },
-    "apply": {
-      "eyebrow": "Mekan Kaydı",
-      "heading": "Mekanını PlayMyJam'e kaydet",
-      "desc": "Formu doldur, ekibimiz seninle iletişime geçip mekanının panelini kursun. Kurulum ücretsizdir ve ek donanım gerektirmez — mevcut ekran ve ses düzenin yeterli.",
-      "directContact": "Tercihen doğrudan ulaşmak istersen:"
+      "heading": "Nasıl çalışır?",
+      "scanTitle": "QR'ı okut",
+      "scanDesc": "Masadaki ya da duvardaki karekod mekanın sayfasını tarayıcında açar. Üye olmak şart değil.",
+      "pickTitle": "Şarkını seç",
+      "pickDesc": "Mekanın listelerine göz at ya da ara. Listede yoksa istek gönder.",
+      "payTitle": "Jetonla sıraya ekle",
+      "payDesc": "Normal ya da öncelikli sıra seç. Ödeme iyzico güvencesinde, jeton anında yüklenir.",
+      "listenTitle": "Hoparlörden duy",
+      "listenDesc": "Sıranın nasıl ilerlediğini telefonundan canlı izle."
     },
     "pricing": {
-      "eyebrow": "Fiyatlandırma",
       "heading": "Şeffaf ve tek fiyat",
-      "desc": "Şarkı istemek için jeton kullanılır. Fiyat tüm mekanlarda aynıdır, jetonlar ödemenin ardından anında hesabına yüklenir ve PlayMyJam kullanan tüm mekanlarda geçerlidir. Tüm fiyatlara KDV dahildir.",
+      "desc": "Şarkı istemek için jeton kullanılır. Jetonun fiyatı tüm mekanlarda aynıdır; ödemenin ardından anında hesabına yüklenir ve PlayMyJam kullanan tüm mekanlarda geçerlidir. Tüm fiyatlara KDV dahildir.",
       "unit": "1 jeton = {price} TL",
-      "unitNote": "· istediğin adette satın alabilirsin",
+      "unitNote": "İstediğin adette satın alabilirsin.",
       "mostPopular": "En Popüler",
       "tokens": "jeton",
       "perToken": "₺{price}/jeton",
@@ -114,7 +86,15 @@
       "legalPrefix": "Satın alımlar",
       "legalMiddle": "ve",
       "legalDeliveryTerms": "Teslimat ve İade Şartları",
-      "legalSuffix": "'na tabidir. Kullanılmamış paketlerde 14 gün içinde iade hakkın vardır."
+      "legalSuffix": "'na tabidir. Kullanılmamış paketlerde 14 gün içinde iade hakkın vardır.",
+      "noticeLabel": "Bilmen gereken",
+      "noticeTitle": "Bir şarkı kaç jeton? Mekana göre değişir.",
+      "noticeDesc": "Jetonun fiyatı her yerde aynı, ama bir şarkıyı sıraya eklemek için kaç jeton gerektiğine her mekan kendisi karar verir.",
+      "noticeNormalTitle": "Normal sıra",
+      "noticeNormalDesc": "Mekanın belirlediği sabit tutar.",
+      "noticePriorityTitle": "Öncelikli sıra",
+      "noticePriorityDesc": "Sıranın önüne geçer; sıra kalabalıklaştıkça tutarı artar.",
+      "noticeConfirm": "Tutar, şarkıyı eklemeden önce ekranda açıkça yazar — sürpriz yok."
     },
     "faq": {
       "heading": "Sık sorulan sorular",
@@ -129,29 +109,44 @@
       "q5": "Şarkı isteğim ne kadar jeton tutar?",
       "a5": "Normal sıra isteği ve öncelikli sıra isteği için gereken jeton adedi mekana göre belirlenir ve istek göndermeden önce ekranda açıkça gösterilir. Öncelikli istekler sırada öne alınır.",
       "q6": "Mekanım için PlayMyJam'i nasıl kullanabilirim?",
-      "a6": "İletişim bölümündeki e-posta veya telefon üzerinden bize ulaşman yeterli. Kurulum için ek donanım gerekmez; mekandaki mevcut ekran/hoparlör düzeni ve bir tarayıcı yeterlidir."
+      "a6": "Mekanını Kaydet formunu doldurman yeterli, ekibimiz seni arar. Kurulum ücretsizdir; mekandaki mevcut ekran/hoparlör düzeni ve bir tarayıcı yeterlidir."
     },
     "contact": {
-      "heading": "Bize ulaş",
-      "desc": "Soruların, iade taleplerin veya mekanına PlayMyJam kurmak için aşağıdaki kanalların hepsinden bize ulaşabilirsin.",
+      "heading": "İletişim",
+      "desc": "Soru, iade talebi ya da mekan kurulumu için yaz veya ara.",
       "email": "E-posta",
       "phone": "Telefon",
       "address": "Adres",
       "operator": "İşletme sahibi: {legalName} — {brand}"
+    },
+    "doors": {
+      "guestLabel": "Misafirsen",
+      "guestTitle": "Müziğe sen de karış",
+      "guest1": "Mekanın şarkı listelerinden seç; aradığın yoksa iste, mekan onaylarsa sıraya girer.",
+      "guest2": "Jetonun PlayMyJam kullanan her mekanda geçerli.",
+      "guest3": "Sıranı canlı izle; mekan isteğini reddederse jetonun iade edilir.",
+      "guestCta": "Mekanları gör",
+      "venueLabel": "Mekan sahibiysen",
+      "venueTitle": "Misafirin seçsin, son söz senin olsun",
+      "venue1": "Kurulum ücretsiz; mevcut ekranın ve hoparlörün yeterli, ek cihaz gerekmez.",
+      "venue2": "Hangi listelerin çalacağına ve misafirin neleri seçebileceğine sen karar verirsin.",
+      "venue3": "Misafir isteklerinden gelir payı alırsın; dökümünü panelinden takip edersin.",
+      "venueCta": "Mekanını kaydet",
+      "venueLogin": "Zaten kayıtlıyım, panele gir"
     }
   },
   "venuesPage": {
-    "heading": "Mekanını seç, sahneyi devral",
-    "desc": "PlayMyJam kullanan mekanlar aşağıda. Bulunduğun mekanı aç, şarkı kataloğuna göz at ve jetonunla sıraya şarkı ekle — bakiyen tüm mekanlarda geçerli.",
+    "heading": "Hangi mekandasın?",
+    "desc": "Mekanını seç, sırayı gör, şarkını ekle. Jetonun tüm mekanlarda geçerli.",
     "emptyTitle": "Henüz listelenen mekan yok",
     "emptyDescPrefix": "Mekanına PlayMyJam kurmak istersen",
     "emptyDescLink": "bize ulaş",
     "defaultTagline": "Şarkı istekleri açık",
     "open": "Mekanı Aç",
-    "queue": "Sıra",
+    "queue": "Canlı sıra",
     "liveQueueAria": "{venue} canlı sıra",
     "ctaPrefix": "Mekanını burada görmek ister misin?",
-    "ctaLink": "Bize ulaş",
+    "ctaLink": "Mekanını kaydet",
     "searchLabel": "Mekan ara",
     "searchPlaceholder": "Mekan adı yaz — örn. kafe, bar, sahne",
     "searchClear": "Temizle",
@@ -159,7 +154,6 @@
     "venueCount": "{count} mekan listeleniyor",
     "noMatchTitle": "“{query}” ile eşleşen mekan yok",
     "noMatchDesc": "Yazımı kontrol et ya da aramayı temizleyip tüm mekanlara göz at. Aradığın mekan henüz PlayMyJam'de olmayabilir.",
-    "soonBadge": "Yakında",
     "soonTitle": "Çok yakında çok daha fazla mekan",
     "soonDesc": "Yeni mekanlar sırayla PlayMyJam'e katılıyor. Listeyi takipte kal — takıldığın mekan da yakında burada olacak."
   },
@@ -678,10 +672,11 @@
     "messagePlaceholder": "Mekanının kapasitesi, müzik düzeni veya sormak istediklerin…",
     "sending": "Gönderiliyor…",
     "submit": "Başvuruyu Gönder",
-    "consent": "Formu göndererek iletişim bilgilerinin başvurunun değerlendirilmesi amacıyla işlenmesini kabul edersin. Kurulum ücretsizdir, ek donanım gerekmez."
+    "consent": "Formu göndererek iletişim bilgilerinin başvurunun değerlendirilmesi amacıyla işlenmesini kabul edersin. Kurulum ücretsizdir, ek donanım gerekmez.",
+    "requiredNote": "* işaretli alanlar zorunludur.",
+    "requiredSr": "(zorunlu)"
   },
   "venueAdminLogin": {
-    "eyebrow": "Mekan Girişi",
     "heading": "Mekanını seç, panele gir",
     "desc": "Mekan sahibi misin? Mekanını aratıp seç, panel kullanıcı adın ve şifrenle giriş yap. Panelden kuyruğu yönetir, playlistlerini düzenler ve istatistiklerini görürsün.",
     "step1Title": "1. Mekanını bul",
@@ -804,5 +799,16 @@
     "dark": "Koyu",
     "light": "Açık",
     "system": "Sistem"
+  },
+  "venueRegister": {
+    "title": "Mekanını PlayMyJam'e kaydet",
+    "desc": "Formu doldur, ekibimiz seni arayıp panelini birlikte kursun. Kurulum ücretsizdir.",
+    "nextHeading": "Sonra ne olacak?",
+    "next1": "Başvurun bize ulaşır, ekibimiz seni arar.",
+    "next2": "Mekanının panelini birlikte açarız, listelerini ekleriz.",
+    "next3": "Masalara QR kodları koyarsın, misafirlerin şarkı istemeye başlar.",
+    "loginPrefix": "Mekanın zaten kayıtlı mı?",
+    "loginLink": "Panele giriş yap",
+    "directContact": "Form yerine konuşmayı tercih edersen:"
   }
 }

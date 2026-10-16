@@ -1,287 +1,257 @@
 "use client";
 
 import Link from "next/link";
-import IyzicoBand from "@/components/ui/IyzicoBand";
-import PhoneMockup from "@/components/landing/PhoneMockup";
-import VenueApplicationForm from "@/components/landing/VenueApplicationForm";
+import Coin from "@/components/ui/Coin";
+import SoundBackdrop from "@/components/landing/SoundBackdrop";
 import { COMPANY } from "@/lib/company-info";
 import { fmt, useT } from "@/lib/i18n";
+import { useNativePlatform } from "@/lib/native-app";
 
 // Ana sayfanın metin taşıyan bölümleri. Sayfanın kendisi sunucu bileşeni olarak
 // kalır (fiyatlar cache'li stream edilir); yalnızca bu bölümler istemciye iner ki
 // dil değişimi yeniden istek atmadan uygulansın.
+//
+// Görsel dil: kulüp afişi / plak kapağı. Degrade yazı, parlayan rozet ve
+// ikon-kutulu kart ızgarası bilinçli olarak yok; vurgu düz pembe + büyük tipografi.
 
-const PINK_GRADIENT = "linear-gradient(135deg, #ff2d9c 0%, #e91e8c 45%, #a8125f 100%)";
+const FOCUS_RING = "focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#ff2d9c]";
 
-const LOCK_ICON = (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-    <rect x="4" y="10" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="2" />
-    <path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="2" />
+const ARROW = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
-const BOLT_ICON = (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-  </svg>
-);
+// Örnek sıra — tanınmış şarkılar, gerçek bir mekanın verisi değil
+const DEMO_QUEUE = [
+  { title: "Billie Jean", artist: "Michael Jackson", priority: true },
+  { title: "Hotel California", artist: "Eagles", priority: false },
+  { title: "Sweet Child O' Mine", artist: "Guns N' Roses", priority: false },
+];
 
 export function HeroSection() {
   const t = useT();
+  const inApp = useNativePlatform() !== null;
 
   return (
-    <section className="relative mx-auto grid w-full max-w-6xl items-center gap-14 px-5 pb-20 pt-16 lg:grid-cols-[1.1fr_0.9fr] lg:pt-24">
-      <div className="text-center lg:text-left">
-        <span
-          className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold text-[#ff8fd0]"
-          style={{ background: "rgba(233,30,140,0.08)", border: "1px solid rgba(233,30,140,0.22)" }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-            <path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="2" />
-            <circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="2" />
-          </svg>
-          {t.home.hero.badge}
-        </span>
-        <h1 className="mt-6 text-4xl font-black leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-[56px]">
-          {t.home.hero.titleLead}{" "}
-          <span
-            className="bg-clip-text text-transparent"
-            style={{ backgroundImage: "linear-gradient(100deg, #ff2d9c, #b18cff)" }}
-          >
-            {t.home.hero.titleAccent}
-          </span>
-        </h1>
-        <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-[#9ca3af] sm:text-base lg:mx-0">
-          {t.home.hero.sub}
-        </p>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
-          <Link
-            href="/mekanlar"
-            className="rounded-2xl px-7 py-4 text-base font-bold text-white transition-transform active:scale-[0.98]"
-            style={{ background: PINK_GRADIENT, boxShadow: "0 12px 36px -10px rgba(233,30,140,0.6)" }}
-          >
-            {t.home.hero.exploreVenues}
-          </Link>
-          <a
-            href="#fiyatlar"
-            className="rounded-2xl border border-white/15 bg-white/5 px-7 py-4 text-base font-semibold text-white transition-colors hover:bg-white/10"
-          >
-            {t.home.hero.seePricing}
-          </a>
+    <section className="relative isolate overflow-hidden border-b border-white/[0.06]">
+      <SoundBackdrop className="absolute inset-0 -z-10 h-full w-full" />
+      {/* Yazının okunduğu sol tarafı koyulaştır, analizör sağda daha canlı kalsın */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          background:
+            "linear-gradient(90deg, rgba(15,10,24,0.92) 0%, rgba(15,10,24,0.7) 45%, rgba(15,10,24,0.2) 100%)",
+        }}
+      />
+
+      <div className="mx-auto grid w-full max-w-7xl items-center gap-12 px-5 pb-28 pt-14 sm:px-6 lg:min-h-[calc(100dvh-72px)] lg:grid-cols-[1.15fr_0.85fr] lg:pb-36 lg:pt-10">
+        <div>
+          <p className="font-tag text-xs uppercase tracking-[0.18em] text-[#c7cad1]">{t.home.hero.kicker}</p>
+          <h1 className="font-display mt-5 text-[56px] font-extrabold leading-[0.92] tracking-[-0.03em] text-white sm:text-[80px] lg:text-[104px]">
+            {t.home.hero.titleLine1}
+            <br />
+            <span className="text-[#ff2d9c]">{t.home.hero.titleLine2}</span>
+          </h1>
+          <p className="mt-7 max-w-lg text-base leading-relaxed text-[#d1d5db] sm:text-lg">{t.home.hero.sub}</p>
+
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Link
+              href="/mekanlar"
+              className={`inline-flex min-h-14 items-center justify-center gap-3 rounded-full bg-[#e91e8c] px-8 text-base font-bold text-white transition-colors hover:bg-[#ff2d9c] ${FOCUS_RING}`}
+            >
+              {t.home.hero.findVenue}
+              {ARROW}
+            </Link>
+            {!inApp && (
+              <Link
+                href="/mekan-kayit"
+                className={`inline-flex min-h-14 items-center justify-center rounded-full border-2 border-white/25 px-8 text-base font-bold text-white transition-colors hover:border-white hover:bg-white hover:text-[#0f0a18] ${FOCUS_RING}`}
+              >
+                {t.home.hero.ownerCta}
+              </Link>
+            )}
+          </div>
+
+          <p className="mt-6 flex max-w-md items-start gap-2.5 text-sm text-[#9ca3af]">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden className="mt-0.5 shrink-0">
+              <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2" stroke="currentColor" strokeWidth="1.8" />
+            </svg>
+            {t.home.hero.hint}
+          </p>
         </div>
 
-        {/* Mekan sahipleri kayıt formunu ilk ekranda görsün */}
-        <a
-          href="#mekan-basvuru"
-          className="mt-5 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-[#ff8fd0] transition-colors hover:text-white"
-          style={{ background: "rgba(233,30,140,0.08)", border: "1px solid rgba(233,30,140,0.22)" }}
-        >
-          {t.home.hero.ownerCta}
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </a>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 lg:justify-start">
-          <span className="flex items-center gap-1.5 text-xs text-[#9ca3af]">
-            {LOCK_ICON}
-            {t.home.hero.sslBadge}
-          </span>
-          <span className="flex items-center gap-1.5 text-xs text-[#9ca3af]">
-            {BOLT_ICON}
-            {t.home.hero.instantBadge}
-          </span>
-          <IyzicoBand />
-        </div>
+        <TurntableArt />
       </div>
-
-      <PhoneMockup />
     </section>
   );
 }
 
-export function ValuePropsSection() {
+// Sağdaki görsel: dönen plak + üstüne bırakılmış kağıt setlist. Telefon
+// mockup'ı yerine — her SaaS sayfasında olan şey değil, müziğin kendisi.
+function TurntableArt() {
   const t = useT();
 
-  const items = [
-    {
-      title: t.home.value.instantTitle,
-      desc: t.home.value.instantDesc,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="#e91e8c" strokeWidth="2" strokeLinejoin="round" />
-        </svg>
-      ),
-    },
-    {
-      title: t.home.value.walletTitle,
-      desc: t.home.value.walletDesc,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <rect x="2" y="6" width="20" height="14" rx="3" stroke="#e91e8c" strokeWidth="2" />
-          <path d="M2 10h20M16 15h2" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      ),
-    },
-    {
-      title: t.home.value.secureTitle,
-      desc: t.home.value.secureDesc,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z" stroke="#e91e8c" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M9 12l2 2 4-4" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ),
-    },
-  ];
+  return (
+    <div aria-hidden className="relative mx-auto hidden h-[520px] w-full max-w-[520px] lg:block">
+      <div className="vinyl vinyl-spin absolute right-0 top-0 h-[440px] w-[440px] rounded-full">
+        {/* Etiketin ortasında jetonumuz — plakla birlikte döner */}
+        <div className="absolute inset-[34%] flex items-center justify-center rounded-full bg-[#c2126f] shadow-[inset_0_0_0_6px_rgba(0,0,0,0.12)]">
+          <Coin size={104} />
+        </div>
+      </div>
+
+      {/* Pikap kolu */}
+      <svg className="absolute right-[-18px] top-[-10px]" width="140" height="300" viewBox="0 0 140 300" fill="none">
+        <circle cx="110" cy="30" r="22" fill="#1f1a28" stroke="#3a3346" strokeWidth="2" />
+        <circle cx="110" cy="30" r="7" fill="#6b6478" />
+        <path d="M110 30 L 96 220 L 70 262" stroke="#b9b3c4" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="52" y="252" width="30" height="20" rx="3" transform="rotate(-35 67 262)" fill="#d9d4e0" />
+      </svg>
+
+      {/* Kağıt setlist */}
+      <div className="absolute bottom-0 left-0 w-[300px] -rotate-[4deg] text-[#1a1420] shadow-[0_30px_60px_-20px_rgba(0,0,0,0.8)]">
+        <div className="ticket-edge h-2 bg-[#f3eee4]" />
+        <div className="bg-[#f3eee4] px-5 pb-5 pt-3">
+          <p className="font-tag text-[10px] uppercase tracking-[0.2em] text-[#7a6f86]">{t.home.hero.deckLabel}</p>
+          <div className="mt-3 flex items-center justify-between gap-3 border-b border-dashed border-[#1a1420]/25 pb-3">
+            <div className="min-w-0">
+              <p className="font-tag text-[10px] uppercase tracking-[0.14em] text-[#c2126f]">{t.home.hero.nowPlaying}</p>
+              <p className="font-display truncate text-lg font-bold leading-tight">Bohemian Rhapsody</p>
+              <p className="text-xs text-[#5b5266]">Queen</p>
+            </div>
+            <span className="flex h-6 items-end gap-[3px]">
+              {[0, 0.2, 0.4, 0.1].map((d) => (
+                <span key={d} className="eq-bar w-[3px] rounded-sm bg-[#c2126f]" style={{ height: "100%", animationDelay: `${d}s` }} />
+              ))}
+            </span>
+          </div>
+          <ol className="mt-3 space-y-2.5">
+            {DEMO_QUEUE.map((s, i) => (
+              <li key={s.title} className="flex items-baseline gap-3">
+                <span className="font-tag w-4 text-xs text-[#7a6f86]">{i + 1}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{s.title}</span>
+                  <span className="block truncate text-[11px] text-[#5b5266]">{s.artist}</span>
+                </span>
+                {s.priority && (
+                  <span className="font-tag rounded-sm bg-[#1a1420] px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-[#f3eee4]">
+                    {t.home.hero.priority}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// İki kapı: misafir ve mekan sahibi aynı ekranda kendi yolunu bulsun.
+// id'ler eski bağlantılar (/#mekanlar, /#mekan-basvuru) kırılmasın diye burada.
+export function AudienceSection() {
+  const t = useT();
+  const inApp = useNativePlatform() !== null;
+
+  const guest = [t.home.doors.guest1, t.home.doors.guest2, t.home.doors.guest3];
+  const venue = [t.home.doors.venue1, t.home.doors.venue2, t.home.doors.venue3];
 
   return (
-    <section className="mx-auto w-full max-w-6xl px-5 pb-4">
-      <div className="grid gap-4 sm:grid-cols-3">
-        {items.map((v) => (
-          <div
-            key={v.title}
-            className="flex items-start gap-4 rounded-2xl border border-white/[0.07] p-5"
-            style={{ background: "rgba(255,255,255,0.02)" }}
-          >
-            <span
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-              style={{ background: "rgba(233,30,140,0.1)", border: "1px solid rgba(233,30,140,0.25)" }}
+    <section id="mekanlar" aria-label={`${t.home.doors.guestLabel} / ${t.home.doors.venueLabel}`} className="scroll-mt-24">
+      <div className={`grid ${inApp ? "" : "lg:grid-cols-2"}`}>
+        <div className="border-b border-white/[0.06] px-5 py-16 sm:px-10 lg:px-14 lg:py-20">
+          <div className={`mx-auto max-w-xl ${inApp ? "" : "lg:ml-auto lg:mr-0"}`}>
+            <p className="font-tag text-xs uppercase tracking-[0.18em] text-[#ff8fd0]">{t.home.doors.guestLabel}</p>
+            <h2 className="font-display mt-4 text-4xl font-extrabold leading-[1.02] tracking-tight text-white sm:text-5xl">
+              {t.home.doors.guestTitle}
+            </h2>
+            <ul className="mt-8 space-y-4">
+              {guest.map((line) => (
+                <li key={line} className="flex gap-4 text-base leading-relaxed text-[#d1d5db]">
+                  <span aria-hidden className="mt-3 h-px w-5 shrink-0 bg-[#ff2d9c]" />
+                  {line}
+                </li>
+              ))}
+            </ul>
+            <Link
+              href="/mekanlar"
+              className={`mt-10 inline-flex min-h-12 items-center gap-3 rounded-full bg-white px-7 text-base font-bold text-[#0f0a18] transition-colors hover:bg-[#ffd6ec] ${FOCUS_RING}`}
             >
-              {v.icon}
-            </span>
-            <div>
-              <p className="text-sm font-bold text-white">{v.title}</p>
-              <p className="mt-1 text-xs leading-relaxed text-[#9ca3af]">{v.desc}</p>
+              {t.home.doors.guestCta}
+              {ARROW}
+            </Link>
+          </div>
+        </div>
+
+        {!inApp && (
+          <div id="mekan-basvuru" className="scroll-mt-24 bg-[#c2126f] px-5 py-16 sm:px-10 lg:px-14 lg:py-20">
+            <div className="mx-auto max-w-xl lg:ml-0">
+              <p className="font-tag text-xs uppercase tracking-[0.18em] text-white/80">{t.home.doors.venueLabel}</p>
+              <h2 className="font-display mt-4 text-4xl font-extrabold leading-[1.02] tracking-tight text-white sm:text-5xl">
+                {t.home.doors.venueTitle}
+              </h2>
+              <ul className="mt-8 space-y-4">
+                {venue.map((line) => (
+                  <li key={line} className="flex gap-4 text-base leading-relaxed text-white">
+                    <span aria-hidden className="mt-3 h-px w-5 shrink-0 bg-white" />
+                    {line}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
+                <Link
+                  href="/mekan-kayit"
+                  className="inline-flex min-h-12 items-center justify-center gap-3 rounded-full bg-[#0f0a18] px-7 text-base font-bold text-white transition-colors hover:bg-black focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+                >
+                  {t.home.doors.venueCta}
+                  {ARROW}
+                </Link>
+                <Link
+                  href="/mekan-girisi"
+                  className="inline-flex min-h-12 items-center text-base font-semibold text-white underline decoration-white/50 underline-offset-4 hover:decoration-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+                >
+                  {t.home.doors.venueLogin}
+                </Link>
+              </div>
             </div>
           </div>
-        ))}
+        )}
       </div>
     </section>
   );
 }
 
+// Adımlar bir plak arka kapağındaki parça listesi gibi: A1, A2, B1, B2.
 export function HowItWorksSection() {
   const t = useT();
 
   const steps = [
-    { title: t.home.steps.openTitle, desc: t.home.steps.openDesc },
-    { title: t.home.steps.buyTitle, desc: t.home.steps.buyDesc },
-    { title: t.home.steps.requestTitle, desc: t.home.steps.requestDesc },
+    { side: "A1", title: t.home.steps.scanTitle, desc: t.home.steps.scanDesc },
+    { side: "A2", title: t.home.steps.pickTitle, desc: t.home.steps.pickDesc },
+    { side: "B1", title: t.home.steps.payTitle, desc: t.home.steps.payDesc },
+    { side: "B2", title: t.home.steps.listenTitle, desc: t.home.steps.listenDesc },
   ];
 
   return (
-    <section id="nasil-calisir" className="mx-auto w-full max-w-6xl scroll-mt-24 px-5 py-20">
-      <div className="text-center">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#e91e8c]">{t.nav.howItWorks}</p>
-        <h2 className="mt-3 text-3xl font-black text-white sm:text-4xl">{t.home.steps.heading}</h2>
-      </div>
-      <div className="mt-12 grid gap-4 sm:grid-cols-3">
-        {steps.map((s, i) => (
-          <div
-            key={s.title}
-            className="relative rounded-2xl border border-white/[0.07] p-6"
-            style={{ background: "#160d24" }}
+    <section id="nasil-calisir" className="mx-auto w-full max-w-6xl scroll-mt-24 px-5 py-20 sm:px-6 lg:py-28">
+      <h2 className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+        {t.home.steps.heading}
+      </h2>
+      <ol className="mt-12 border-t border-white/15">
+        {steps.map((s) => (
+          <li
+            key={s.side}
+            className="grid gap-2 border-b border-white/15 py-7 sm:grid-cols-[80px_minmax(0,1fr)_minmax(0,1.3fr)] sm:items-baseline sm:gap-8"
           >
-            <span
-              className="flex h-11 w-11 items-center justify-center rounded-xl text-base font-black text-white"
-              style={{ background: PINK_GRADIENT, boxShadow: "0 8px 20px -6px rgba(233,30,140,0.5)" }}
-            >
-              {i + 1}
-            </span>
-            <h3 className="mt-5 text-lg font-bold text-white">{s.title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-[#9ca3af]">{s.desc}</p>
-          </div>
+            <span className="font-tag text-sm text-[#ff8fd0]">{s.side}</span>
+            <h3 className="font-display text-2xl font-bold text-white sm:text-3xl">{s.title}</h3>
+            <p className="text-base leading-relaxed text-[#9ca3af]">{s.desc}</p>
+          </li>
         ))}
-      </div>
-    </section>
-  );
-}
-
-export function ForVenuesSection() {
-  const t = useT();
-
-  const features = [
-    { title: t.home.venues.queueTitle, desc: t.home.venues.queueDesc },
-    { title: t.home.venues.hardwareTitle, desc: t.home.venues.hardwareDesc },
-    { title: t.home.venues.statsTitle, desc: t.home.venues.statsDesc },
-    { title: t.home.venues.guestTitle, desc: t.home.venues.guestDesc },
-  ];
-
-  return (
-    <section id="mekanlar" className="scroll-mt-24 border-y border-white/[0.06] py-20" style={{ background: "#120b1e" }}>
-      <div className="mx-auto grid w-full max-w-6xl items-center gap-12 px-5 lg:grid-cols-2">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#e91e8c]">{t.nav.forVenues}</p>
-          <h2 className="mt-3 text-3xl font-black text-white sm:text-4xl">
-            {t.home.venues.headingLine1}
-            <br />
-            {t.home.venues.headingLine2}
-          </h2>
-          <p className="mt-4 max-w-md text-sm leading-relaxed text-[#9ca3af] sm:text-base">
-            {t.home.venues.desc}
-          </p>
-          <div className="mt-7 flex flex-wrap items-center gap-3">
-            <a
-              href="#mekan-basvuru"
-              className="inline-block rounded-2xl px-6 py-3.5 text-sm font-bold text-white transition-transform active:scale-[0.98]"
-              style={{ background: PINK_GRADIENT, boxShadow: "0 10px 28px -10px rgba(233,30,140,0.6)" }}
-            >
-              {t.home.venues.cta}
-            </a>
-            {/* Zaten kayıtlı mekanlar başvuru formunu doldurmasın, doğrudan panele gitsin */}
-            <Link
-              href="/mekan-girisi"
-              className="inline-block rounded-2xl border border-white/12 px-6 py-3.5 text-sm font-bold text-[#c7cad1] transition-colors hover:bg-white/[0.06] hover:text-white"
-            >
-              {t.venueAdminLogin.homeCta}
-            </Link>
-          </div>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {features.map((f) => (
-            <div
-              key={f.title}
-              className="rounded-2xl border border-white/[0.07] p-5"
-              style={{ background: "#160d24" }}
-            >
-              <p className="text-sm font-bold text-white">{f.title}</p>
-              <p className="mt-1.5 text-xs leading-relaxed text-[#9ca3af]">{f.desc}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// Mekan kayıt formu — talepler super admin panelindeki "Mekan Talepleri"ne düşer
-export function VenueApplicationSection() {
-  const t = useT();
-
-  return (
-    <section id="mekan-basvuru" className="mx-auto w-full max-w-3xl scroll-mt-24 px-5 py-20">
-      <div className="text-center">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#e91e8c]">{t.home.apply.eyebrow}</p>
-        <h2 className="mt-3 text-3xl font-black text-white sm:text-4xl">{t.home.apply.heading}</h2>
-        <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-[#9ca3af] sm:text-base">
-          {t.home.apply.desc}
-        </p>
-      </div>
-
-      <div className="mt-10">
-        <VenueApplicationForm />
-      </div>
-
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-[#6b7280]">
-        <span>{t.home.apply.directContact}</span>
-        <a href={`mailto:${COMPANY.email}`} className="text-[#9ca3af] hover:text-white">
-          {COMPANY.email}
-        </a>
-        <a href={`tel:${COMPANY.phone.replace(/\s/g, "")}`} className="text-[#9ca3af] hover:text-white">
-          {COMPANY.phone}
-        </a>
-      </div>
+      </ol>
     </section>
   );
 }
@@ -299,33 +269,29 @@ export function FaqSection() {
   ];
 
   return (
-    <section id="sss" className="mx-auto w-full max-w-3xl scroll-mt-24 px-5 py-20">
-      <div className="text-center">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#e91e8c]">{t.nav.faq}</p>
-        <h2 className="mt-3 text-3xl font-black text-white sm:text-4xl">{t.home.faq.heading}</h2>
-      </div>
-      <div className="mt-10 space-y-3">
-        {faqs.map((f) => (
-          <details
-            key={f.q}
-            className="faq-item group rounded-2xl border border-white/[0.08] transition-colors open:border-[#e91e8c]/30"
-            style={{ background: "#160d24" }}
-          >
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4">
-              <span className="text-sm font-bold text-white sm:text-[15px]">{f.q}</span>
-              <svg
-                className="faq-chevron shrink-0 transition-transform"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
+    <section id="sss" className="scroll-mt-24 border-t border-white/[0.06]">
+      <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-20 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:py-28">
+        <h2 className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+          {t.home.faq.heading}
+        </h2>
+        <div className="border-t border-white/15">
+          {faqs.map((f) => (
+            <details key={f.q} className="faq-item group border-b border-white/15">
+              <summary
+                className={`flex min-h-16 cursor-pointer list-none items-center justify-between gap-6 py-5 ${FOCUS_RING} focus-visible:outline-offset-0`}
               >
-                <path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </summary>
-            <p className="px-5 pb-5 text-sm leading-relaxed text-[#9ca3af]">{f.a}</p>
-          </details>
-        ))}
+                <span className="text-base font-semibold text-white sm:text-lg">{f.q}</span>
+                <span
+                  aria-hidden
+                  className="faq-chevron font-tag flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/20 text-lg leading-none text-white transition-transform"
+                >
+                  +
+                </span>
+              </summary>
+              <p className="max-w-2xl pb-6 text-base leading-relaxed text-[#9ca3af]">{f.a}</p>
+            </details>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -335,73 +301,43 @@ export function FaqSection() {
 export function ContactSection() {
   const t = useT();
 
-  return (
-    <section id="iletisim" className="mx-auto w-full max-w-6xl scroll-mt-24 px-5 pb-24 pt-4">
-      <div className="text-center">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#e91e8c]">{t.nav.contact}</p>
-        <h2 className="mt-3 text-3xl font-black text-white sm:text-4xl">{t.home.contact.heading}</h2>
-        <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-[#9ca3af]">
-          {t.home.contact.desc}
-        </p>
-      </div>
+  const rows = [
+    { label: t.home.contact.email, value: COMPANY.email, href: `mailto:${COMPANY.email}` },
+    { label: t.home.contact.phone, value: COMPANY.phone, href: `tel:${COMPANY.phone.replace(/\s/g, "")}` },
+    { label: t.home.contact.address, value: COMPANY.address, href: null },
+  ];
 
-      <div className="mx-auto mt-10 grid max-w-3xl gap-4 sm:grid-cols-3">
-        <a
-          href={`mailto:${COMPANY.email}`}
-          className="rounded-2xl border border-white/[0.07] p-5 text-center transition-colors hover:border-[#e91e8c]/40"
-          style={{ background: "#160d24" }}
-        >
-          <span
-            className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl"
-            style={{ background: "rgba(233,30,140,0.1)", border: "1px solid rgba(233,30,140,0.25)" }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <rect x="2" y="4" width="20" height="16" rx="3" stroke="#e91e8c" strokeWidth="2" />
-              <path d="M2 7l10 7L22 7" stroke="#e91e8c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-          <p className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-[#9ca3af]">{t.home.contact.email}</p>
-          <p className="mt-1 break-all text-sm font-semibold text-white">{COMPANY.email}</p>
-        </a>
-        <a
-          href={`tel:${COMPANY.phone.replace(/\s/g, "")}`}
-          className="rounded-2xl border border-white/[0.07] p-5 text-center transition-colors hover:border-[#e91e8c]/40"
-          style={{ background: "#160d24" }}
-        >
-          <span
-            className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl"
-            style={{ background: "rgba(233,30,140,0.1)", border: "1px solid rgba(233,30,140,0.25)" }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.4 2.1L8.1 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.6 2z"
-                stroke="#e91e8c"
-                strokeWidth="2"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </span>
-          <p className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-[#9ca3af]">{t.home.contact.phone}</p>
-          <p className="mt-1 text-sm font-semibold text-white">{COMPANY.phone}</p>
-        </a>
-        <div className="rounded-2xl border border-white/[0.07] p-5 text-center" style={{ background: "#160d24" }}>
-          <span
-            className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl"
-            style={{ background: "rgba(233,30,140,0.1)", border: "1px solid rgba(233,30,140,0.25)" }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z" stroke="#e91e8c" strokeWidth="2" strokeLinejoin="round" />
-              <circle cx="12" cy="10" r="3" stroke="#e91e8c" strokeWidth="2" />
-            </svg>
-          </span>
-          <p className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-[#9ca3af]">{t.home.contact.address}</p>
-          <p className="mt-1 text-sm font-semibold leading-relaxed text-white">{COMPANY.address}</p>
+  return (
+    <section id="iletisim" className="scroll-mt-24 border-t border-white/[0.06]">
+      <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-20 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:py-24">
+        <div>
+          <h2 className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+            {t.home.contact.heading}
+          </h2>
+          <p className="mt-4 max-w-sm text-base leading-relaxed text-[#9ca3af]">{t.home.contact.desc}</p>
+        </div>
+        <div>
+          <dl className="border-t border-white/15">
+            {rows.map((r) => (
+              <div key={r.label} className="grid gap-1 border-b border-white/15 py-5 sm:grid-cols-[140px_1fr] sm:gap-6">
+                <dt className="font-tag text-xs uppercase tracking-[0.16em] text-[#9ca3af] sm:pt-1">{r.label}</dt>
+                <dd className="text-lg font-semibold text-white">
+                  {r.href ? (
+                    <a href={r.href} className={`break-all underline decoration-white/25 underline-offset-4 hover:decoration-[#ff2d9c] ${FOCUS_RING}`}>
+                      {r.value}
+                    </a>
+                  ) : (
+                    r.value
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-5 text-sm text-[#6b7280]">
+            {fmt(t.home.contact.operator, { legalName: COMPANY.legalName, brand: COMPANY.brand })}
+          </p>
         </div>
       </div>
-
-      <p className="mt-6 text-center text-xs text-[#6b7280]">
-        {fmt(t.home.contact.operator, { legalName: COMPANY.legalName, brand: COMPANY.brand })}
-      </p>
     </section>
   );
 }

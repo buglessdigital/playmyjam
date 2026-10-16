@@ -5,14 +5,13 @@ import SiteHeader from "@/components/landing/SiteHeader";
 import SiteFooter from "@/components/landing/SiteFooter";
 import PricingSection from "@/components/landing/PricingSection";
 import {
+  AudienceSection,
   ContactSection,
   FaqSection,
-  ForVenuesSection,
   HeroSection,
   HowItWorksSection,
-  ValuePropsSection,
-  VenueApplicationSection,
 } from "@/components/landing/LandingSections";
+import { landingFontVars } from "@/components/landing/fonts";
 
 // SEO metadata sunucuda üretilir ve Türkçe kalır: dil tercihi istemcide tutulduğu
 // için burada okunamaz (kök layout'un statikliği korunuyor).
@@ -31,25 +30,13 @@ async function Packages() {
 
 export default function HomePage() {
   return (
-    <div id="top" className="min-h-dvh bg-[#0f0a18]">
+    <div id="top" className={`min-h-dvh bg-[#0f0a18] ${landingFontVars}`}>
       <SiteHeader />
 
-      <main className="relative overflow-hidden">
-        {/* Arka plan ışımaları */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-[560px]"
-          style={{
-            background:
-              "radial-gradient(60% 55% at 30% 0%, rgba(233,30,140,0.14), transparent 70%), radial-gradient(50% 45% at 80% 10%, rgba(139,92,246,0.12), transparent 70%)",
-          }}
-        />
-
+      <main>
         <HeroSection />
-        <ValuePropsSection />
+        <AudienceSection />
         <HowItWorksSection />
-        <ForVenuesSection />
-        <VenueApplicationSection />
 
         <Suspense fallback={null}>
           <Packages />

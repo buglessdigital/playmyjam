@@ -15,6 +15,7 @@ import { usePlayerOnline } from "@/lib/use-player-online";
 import { useCustomerAddsPaused } from "@/lib/use-customer-adds";
 import { coalesce, subscribeVenueLive } from "@/lib/venue-live";
 import { fmt, useT } from "@/lib/i18n";
+import Coin from "@/components/ui/Coin";
 import {
   fetchManualQueueEntries,
   formatWait,
@@ -241,13 +242,13 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
               className="flex h-8 items-center gap-1.5 rounded-full border border-ink/10 bg-surface px-3 transition-transform active:scale-95"
               aria-label={t.browse.balanceAria}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fbbf24" strokeWidth="2" /><circle cx="12" cy="12" r="4" stroke="#fbbf24" strokeWidth="2" /></svg>
+              <Coin size={18} />
               {tokenBalance === null ? (
                 <span className="h-3.5 w-4 animate-pulse rounded bg-ink/10" />
               ) : (
                 <span className="text-sm font-bold text-ink">{tokenBalance}</span>
               )}
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" /></svg>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#e91e8c" strokeWidth="2.5" strokeLinecap="round" /></svg>
             </Link>
           ) : (
             <Link
@@ -420,13 +421,14 @@ export default function QueueClient({ venueId, venueName, venueDbId }: Props) {
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {item.tokens_spent > 0 && (
                     <span
-                      className="text-xs font-bold px-1.5 py-0.5 rounded-full"
+                      className="inline-flex items-center gap-1 text-xs font-bold pl-0.5 pr-1.5 py-0.5 rounded-full"
                       style={
                         item.priority
                           ? { background: "rgba(233,30,140,0.15)", color: "var(--pmj-pink-text)" }
                           : { background: "rgba(139,92,246,0.15)", color: "var(--pmj-violet)" }
                       }
                     >
+                      <Coin size={14} />
                       {item.priority ? t.queue.priorityBadge : t.queue.tokenBadge}
                     </span>
                   )}

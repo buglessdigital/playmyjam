@@ -384,6 +384,7 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                   <Radio selected={isSel} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
+                      <Coin size={20} />
                       <p className="text-[19px] font-extrabold leading-none text-ink tabular-nums">
                         {rowTokens} <span className="text-xs font-medium text-muted">{t.tokens.tokenUnit}</span>
                       </p>
@@ -423,7 +424,8 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                     >
                       −
                     </button>
-                    <span className="min-w-20 text-center text-lg font-extrabold text-ink tabular-nums">
+                    <span className="flex min-w-20 items-center justify-center gap-1.5 text-lg font-extrabold text-ink tabular-nums">
+                      <Coin size={18} />
                       {rowTokens}
                     </span>
                     <button
@@ -509,8 +511,9 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className={`text-sm font-bold tabular-nums ${positive ? "text-[#4ade80]" : "text-[#e91e8c]"}`}>
+                      <p className={`flex items-center justify-end gap-1 text-sm font-bold tabular-nums ${positive ? "text-[#4ade80]" : "text-[#e91e8c]"}`}>
                         {positive ? `+${tx.amount}` : tx.amount}
+                        <Coin size={14} />
                       </p>
                       <p className="mt-0.5 text-[10px] text-subtle tabular-nums">{fmt(t.tokens.balanceAfter, { n: tx.balance_after })}</p>
                     </div>
@@ -539,7 +542,8 @@ export default function TokensClient({ venueId, initialPackages, initialSelected
         <div className="mx-auto flex w-full max-w-md items-center gap-3">
           <div className="min-w-0 shrink-0">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-subtle">{t.tokens.selected}</p>
-            <p className="mt-1 text-lg font-extrabold leading-none text-ink tabular-nums">
+            <p className="mt-1 flex items-center gap-1.5 text-lg font-extrabold leading-none text-ink tabular-nums">
+              <Coin size={18} />
               {fmt(t.tokens.selectedValue, { n: buyTokens })}
             </p>
           </div>

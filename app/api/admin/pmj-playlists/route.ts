@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
-import { finishVenuePmj, listPmjPlaylistsForVenue, setVenuePmjIntent } from "@/lib/pmj-playlists";
+import {
+  excludeVenuePmjSong,
+  finishVenuePmj,
+  getVenuePmjView,
+  listPmjPlaylistsForVenue,
+  restoreVenuePmjSongs,
+  setVenuePmjIntent,
+} from "@/lib/pmj-playlists";
 import { withActor } from "@/lib/actor";
 import { reportIssue } from "@/lib/ops-log";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -13,19 +20,49 @@ async function handleGET(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
   try {
+    // ?id= → orta panoda tek listenin şarkıları (mekanın çıkardıkları hariç)
+    const id = req.nextUrl.searchParams.get("id");
+    if (id) {
+      const view = await getVenuePmjView(session.venue_id, id);
+      if (!view) return NextResponse.json({ error: "PMJ listesi bulunamadı" }, { status: 404 });
+      return NextResponse.json({ view });
+    }
     return NextResponse.json({ playlists: await listPmjPlaylistsForVenue(session.venue_id) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Okunamadı" }, { status: 500 });
   }
 }
 
-// { pmj_playlist_id, visible }
+// { pmj_playlist_id, visible }                 → listeyi müşteriye aç/kapat
+// { pmj_playlist_id, exclude_song_id }         → şarkıyı bu mekan için listeden çıkar
+// { pmj_playlist_id, restore_excluded: true }  → çıkarılanları geri getir
 async function handlePOST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
 
   const body = await req.json().catch(() => null);
   const pmjId = typeof body?.pmj_playlist_id === "string" ? body.pmj_playlist_id : "";
+
+  if (pmjId && typeof body?.exclude_song_id === "string") {
+    try {
+      await excludeVenuePmjSong(session.venue_id, pmjId, body.exclude_song_id);
+      return NextResponse.json({ ok: true });
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Çıkarılamadı" }, { status: 500 });
+    }
+  }
+
+  if (pmjId && body?.restore_excluded === true) {
+    try {
+      await restoreVenuePmjSongs(session.venue_id, pmjId);
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Geri alınamadı" }, { status: 500 });
+    }
+    // Liste mekanda açıksa geri gelen şarkılar katalogla eşitlenir (açıkken)
+    const venueId = session.venue_id;
+    after(() => finishVenuePmj(venueId, pmjId).catch(() => {}));
+    return NextResponse.json({ ok: true });
+  }
   if (!pmjId || typeof body?.visible !== "boolean") {
     return NextResponse.json({ error: "Eksik alan" }, { status: 400 });
   }

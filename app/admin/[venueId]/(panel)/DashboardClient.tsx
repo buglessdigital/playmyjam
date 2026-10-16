@@ -8,6 +8,7 @@ import LibraryPane from "@/components/admin/home/LibraryPane";
 import PaneResizer from "@/components/admin/home/PaneResizer";
 import PlayerBar from "@/components/admin/home/PlayerBar";
 import PlaylistRail from "@/components/admin/home/PlaylistRail";
+import PmjListPane from "@/components/admin/home/PmjListPane";
 import QueuePane from "@/components/admin/home/QueuePane";
 import { ALL, useLibrary } from "@/components/admin/home/useLibrary";
 import { usePlayback } from "@/components/admin/home/usePlayback";
@@ -83,6 +84,9 @@ function AdminDashboardContent({ params }: Props) {
   const [modal, setModal] = useState<ModalKind>(youtubeReturn ? "import" : null);
   // Dar ekranda üç sütun sığmaz: aynı anda tek pano gösterilir
   const [pane, setPane] = useState<Pane>("songs");
+  // Orta panoda PMJ listesi açıksa onun kimliği (0081); kendi listesi seçilince kapanır
+  const [pmjView, setPmjView] = useState<string | null>(null);
+  const [pmjReload, setPmjReload] = useState(0);
   const railWidth = useSyncExternalStore(subscribeRail, readRailWidth, () => RAIL_DEFAULT);
   const setRailWidth = useCallback((w: number) => writeRailWidth(w), []);
   const resetRailWidth = useCallback(() => writeRailWidth(RAIL_DEFAULT), []);
@@ -138,17 +142,31 @@ function AdminDashboardContent({ params }: Props) {
             onNewList={() => setModal("newList")}
             onPick={() => setPane("songs")}
             onRename={() => setModal("rename")}
+            pmjActiveId={pmjView}
+            onOpenPmj={setPmjView}
+            onPmjChanged={() => setPmjReload((n) => n + 1)}
           />
         </div>
 
         <div className={`${pane === "songs" ? "flex" : "hidden"} lg:flex flex-col min-h-0 h-full min-w-0`}>
-          <LibraryPane
-            lib={lib}
-            playback={playback}
-            onAddSong={() => setModal("addSong")}
-            onImportPlaylist={() => setModal("import")}
-            onRename={() => setModal("rename")}
-          />
+          {pmjView ? (
+            <PmjListPane
+              key={pmjView}
+              pmjId={pmjView}
+              reloadKey={pmjReload}
+              lib={lib}
+              playback={playback}
+              onClose={() => setPmjView(null)}
+            />
+          ) : (
+            <LibraryPane
+              lib={lib}
+              playback={playback}
+              onAddSong={() => setModal("addSong")}
+              onImportPlaylist={() => setModal("import")}
+              onRename={() => setModal("rename")}
+            />
+          )}
         </div>
 
         <div

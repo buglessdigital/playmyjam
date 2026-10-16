@@ -11,7 +11,17 @@ type PmjList = { id: string; name: string; song_count: number; visible: boolean 
  * otomatik çalmaya girmez — yalnızca müşterinin seçebileceği şarkılara eklenir.
  * PMJ listeyi güncelledikçe açık listeler kendiliğinden güncellenir.
  */
-export default function PmjListsBar() {
+export default function PmjListsBar({
+  activeId,
+  onOpen,
+  onChanged,
+}: {
+  // Orta panoda açık olan PMJ listesi
+  activeId: string | null;
+  onOpen: (id: string) => void;
+  // Bir listenin görünürlüğü değişti: orta pano tazelensin
+  onChanged: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [lists, setLists] = useState<PmjList[] | null>(null);
   const [error, setError] = useState("");
@@ -57,6 +67,7 @@ export default function PmjListsBar() {
         throw new Error(d?.error ?? "İşlem başarısız");
       }
       confirmed.current.set(id, visible);
+      onChanged();
     } catch (err) {
       // Bekleyen yeni bir istek yoksa ekran sunucunun bildiği son duruma döner
       if (!wanted.current.has(id)) {
@@ -125,14 +136,20 @@ export default function PmjListsBar() {
             <div
               key={l.id}
               className="flex items-center gap-2 rounded-xl px-2.5 py-2"
-              style={{ background: "rgba(255,255,255,0.03)" }}
+              style={{
+                background: activeId === l.id ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.03)",
+                border: `1px solid ${activeId === l.id ? "rgba(245,158,11,0.45)" : "transparent"}`,
+              }}
             >
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold truncate" style={{ color: l.visible ? "#e5e7eb" : "#9ca3af" }}>
+              <button onClick={() => onOpen(l.id)} className="min-w-0 flex-1 text-left" title="Şarkıları göster">
+                <p
+                  className="text-[13px] font-semibold truncate"
+                  style={{ color: activeId === l.id ? "#fbbf24" : l.visible ? "#e5e7eb" : "#9ca3af" }}
+                >
                   {l.name}
                 </p>
                 <p className="text-[11px] text-[#6b7280]">{l.song_count} şarkı</p>
-              </div>
+              </button>
               <button
                 onClick={() => setVisible(l, !l.visible)}
                 aria-pressed={l.visible}

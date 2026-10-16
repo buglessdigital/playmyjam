@@ -71,6 +71,16 @@ const navItems = (venueId: string): NavItem[] => [
     ),
   },
   {
+    href: `/admin/${venueId}/payouts`,
+    label: "Hakedişler",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <rect x="2.5" y="5" width="19" height="14" rx="2" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M2.5 9.5h19M6.5 15h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     href: `/admin/${venueId}/settings`,
     label: "Ayarlar",
     icon: (

@@ -3,6 +3,7 @@ import { sendPushToUser, sendPushToVenueAdmins } from "@/lib/push";
 import { reportIssue } from "@/lib/ops-log";
 import { signRequestActionToken } from "@/lib/session";
 import { pickBestMatch } from "@/lib/song-match";
+import { searchTokens, tokenPattern } from "@/lib/search-match";
 import { getVideoDetails, searchVideos, YouTubeQuotaError, type TrackDetails } from "@/lib/youtube";
 import {
   canSearchYouTube,
@@ -64,12 +65,9 @@ export async function findInPool(title: string, artist: string): Promise<TrackDe
   const request = { suggested_title: title, suggested_artist: artist };
 
   // 1) Ortak havuz.
-  //    LIKE için başlığın parantezli eki atılır: talep "Kuzu Kuzu (Remastered)"
-  //    diye gelse de YouTube başlığı sade olabiliyor, ham metinle arayınca kaçıyor.
-  //
-  //    DİKKAT — metin KÜÇÜLTÜLMEZ: JS "İ" harfini "i"ye indirirken Postgres onu
-  //    "i̇" (i + birleşik nokta) yapıyor, ilike hiçbir zaman tutmuyordu.
-  //    ("Rüyanda Görsen İnanma" havuzda dururken 0 aday dönüyordu.)
+  //    Başlığın parantezli eki atılır: talep "Kuzu Kuzu (Remastered)" diye gelse
+  //    de YouTube başlığı sade olabiliyor. Büyük/küçük harf ve Türkçe harfler
+  //    aşağıda tokenPattern ile ele alınır (ilike İ/ı'da tutmuyordu).
   const likeCore = title
     .replace(/[([].*$/, "")
     .replace(/[%_,()\\]/g, "")
@@ -78,31 +76,42 @@ export async function findInPool(title: string, artist: string): Promise<TrackDe
   const COLUMNS =
     "youtube_video_id, title, artist, album_cover_url, duration_ms, channel_title, view_count";
 
-  let { data: localRows } = await supabaseAdmin
-    .from("songs")
-    .select(COLUMNS)
-    .eq("embeddable", true)
-    .ilike("title", `%${likeCore}%`)
-    .order("view_count", { ascending: false })
-    .limit(50);
+  const artistCore = artist.split(/[,&]/)[0].replace(/[%_,()\\]/g, "").trim();
+  const titleTokens = searchTokens(likeCore).slice(0, 6);
+  const artistTokens = searchTokens(artistCore).slice(0, 4);
 
-  // Başlık yazımı tutmadıysa (çevirmen, farklı imla, apostrof) sanatçıdan gir:
-  // eleme zaten lib/song-match.ts'te, buradaki sorgu yalnızca aday topluyor.
-  if (!localRows || localRows.length === 0) {
-    const artistCore = artist.split(/[,&]/)[0].replace(/[%_,()\\]/g, "").trim();
-    if (artistCore.length > 1) {
-      ({ data: localRows } = await supabaseAdmin
-        .from("songs")
-        .select(COLUMNS)
-        .eq("embeddable", true)
-        .ilike("artist", `%${artistCore}%`)
-        .order("view_count", { ascending: false })
-        .limit(100));
+  // Adaylar katalog aramasıyla AYNI kuralla toplanır (lib/search-match.ts): her
+  // kelime başlık + sanatçı birleşiminde bir yerde geçmeli, Türkçe harfler eşit
+  // sayılır. Düz ilike iki yerde kaçırıyordu (16 Eki 2026, PMJ listesi içe
+  // aktarımı):
+  //   * Kısa başlıklar ("Gece", "Git", "Aşk", "Sor") binlerce şarkıda geçiyor;
+  //     yalnız başlıkla alınan en çok izlenen 50 aday hep başka sanatçılarındı.
+  //   * Büyük harfli başlık ("YALNIZ ÇİÇEK"): Postgres I'yı ı'ya değil i'ye
+  //     indirdiği için "Yalnız" hiç tutmuyordu. Sanatçı alanına kanal adı düşmüş
+  //     kayıtlar da ("netd müzik") sanatçı adı başlıkta geçtiği için ancak
+  //     başlık + sanatçı birleşiminde aranınca bulunuyor.
+  // Sıra: a) başlık + sanatçı kelimeleri birlikte, b) yalnız başlık, c) yalnız
+  // sanatçı. Eleme ve sürüm seçimi her adımda lib/song-match.ts'te.
+  const candidates = (tokens: string[], limit: number) => {
+    let query = supabaseAdmin.from("songs").select(COLUMNS).eq("embeddable", true);
+    for (const token of tokens) {
+      const pattern = tokenPattern(token);
+      query = query.or(`title.imatch.${pattern},artist.imatch.${pattern}`);
     }
-  }
+    return query.order("view_count", { ascending: false }).limit(limit);
+  };
 
-  const localHit = pickBestMatch(request, localRows ?? []);
-  if (localHit) return localHit as unknown as TrackDetails;
+  const attempts: [string[], number][] = [
+    [[...titleTokens, ...artistTokens], 50],
+    [titleTokens, 50],
+    [artistTokens, 100],
+  ];
+  for (const [tokens, limit] of attempts) {
+    if (tokens.length === 0) continue;
+    const { data: localRows } = await candidates(tokens, limit);
+    const localHit = pickBestMatch(request, localRows ?? []);
+    if (localHit) return localHit as unknown as TrackDetails;
+  }
 
   // 2) Eski arama önbelleği
   const cacheKey = searchCacheKey(title, artist);

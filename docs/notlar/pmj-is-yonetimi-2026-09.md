@@ -10,7 +10,7 @@ metadata:
 
 Super admin'e iş yönetimi eklendi (18 Eyl 2026): /super-admin/crm (aday hattı + görüşme kaydı), /tasks, /contracts, /payouts, dashboard'da BusinessOverview. Mekan Talepleri'nde "CRM'e Aktar".
 
-Hakediş modeli (kullanıcının tanımı): **mekan payı = mekan komisyon % × (ciro − KDV − banka komisyonu − ek kesinti)**. Ciro = harcanan jeton (wallet_transactions kind='spend') × güncel birim fiyat. Kesinti oranları app_settings.payout_settings'te (varsayılan KDV 20, banka 0 — kullanıcı iyzico oranını girmeli). Her venue_payouts satırı oranların kopyasını saklar.
+Hakediş modeli (kullanıcının tanımı): **mekan payı = mekan komisyon % × (ciro − KDV − banka komisyonu − ek kesinti)**. Ciro = harcanan jeton (wallet_transactions kind='spend') × güncel birim fiyat. **(16 Eki 2026'dan beri: dönem sonu fiyatı, oranlar dönem başı, kanal başına — bkz. [[pmj-sozlesme-revizyonu-2026-10]].)** Kesinti oranları app_settings.payout_settings'te (varsayılan KDV 20, banka 0 — kullanıcı iyzico oranını girmeli). Her venue_payouts satırı oranların kopyasını saklar.
 
 **Why:** Ledger TL tutmuyor; bedava (grant/demo) jetonla ödenmiş jeton ayırt edilemiyor — hepsi ciroya sayılıyor.
 

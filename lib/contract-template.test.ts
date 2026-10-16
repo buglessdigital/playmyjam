@@ -21,7 +21,7 @@ const full: ContractFields = {
   contact_phone: "05550000000",
   notes: "",
 };
-const settings = { vat_rate: 20, bank_fee_pct: 3.49, other_pct: 0 };
+const settings = { vat_rate: 20, bank_fee_pct: 3.49, apple_fee_pct: 15, other_pct: 0 };
 
 test("eksik koşullar listelenir", () => {
   assert.equal(missingContractFields(null).length, 11);
@@ -41,7 +41,15 @@ test("tam koşullarla üç belge, boşluksuz üretilir", () => {
     assert.match(d.body, /Örnek Gıda Ltd\. Şti\./);
   }
   const service = docs[0].body;
-  assert.match(service, /net cironun %40'idir/);
+  assert.match(service, /net ciroya %40 oranı uygulanarak bulunur/);
+  // Ciro dönem sonu fiyatıyla, kanallar ayrı; Apple komisyonu oran yazılmadan (Apple belirler)
+  assert.match(service, /Dönemin son günü geçerli olan birim fiyatla/);
+  assert.match(service, /App Store üzerinden satılan Ücretli Jetonların KDV hariç cirosu/);
+  assert.doesNotMatch(service, /%15/);
+  assert.match(service, /Hakediş KDV hariç tutardır; Mekan faturasına yasal KDV'yi ekler/);
+  assert.match(service, /Vergi dairesi \/ no: Ege \/ 9591047099/);
+  assert.match(service, /Bugless Digital adına/);
+  assert.match(service, /taneryildirim@playmyjam\.com\.tr/);
   assert.match(service, /%3,49/);
   assert.match(service, /ayın 10\. günü/);
   assert.match(service, /TR00 0000 0000/);

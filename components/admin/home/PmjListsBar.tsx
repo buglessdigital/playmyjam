@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import ListCover from "./ListCover";
+import { prefetchPmjViews } from "./pmj-view-cache";
 
-type PmjList = { id: string; name: string; song_count: number; visible: boolean };
+type PmjList = { id: string; name: string; song_count: number; visible: boolean; covers: string[] };
 
 /**
  * Sol raydaki "PMJ Listeleri" çubuğu (0081): PMJ'nin hazırladığı listeler.
@@ -11,50 +13,104 @@ type PmjList = { id: string; name: string; song_count: number; visible: boolean 
  * otomatik çalmaya girmez — yalnızca müşterinin seçebileceği şarkılara eklenir.
  * PMJ listeyi güncelledikçe açık listeler kendiliğinden güncellenir.
  */
-export default function PmjListsBar() {
+export default function PmjListsBar({
+  activeId,
+  onOpen,
+  onChanged,
+}: {
+  // Orta panoda açık olan PMJ listesi
+  activeId: string | null;
+  onOpen: (id: string, name: string) => void;
+  // Bir listenin görünürlüğü değişti: orta pano tazelensin
+  onChanged: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [lists, setLists] = useState<PmjList[] | null>(null);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState<string | null>(null);
 
-  const load = () => {
-    setError("");
+  // setState yalnızca promise içinde: effect gövdesinde senkron çağrı yok
+  const fetchLists = () =>
     fetch("/api/admin/pmj-playlists")
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
         if (!ok) throw new Error(d?.error ?? "Listeler yüklenemedi");
-        setLists(d.playlists as PmjList[]);
+        const loaded = d.playlists as PmjList[];
+        setLists(loaded);
+        setError("");
+        // Görünümler arkada iner; kullanıcı tıkladığında hazır olur
+        prefetchPmjViews(loaded.map((l) => l.id));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Listeler yüklenemedi"));
-  };
+
+  // Çubuk kapalıyken de bir kez yüklenir — ama panelin kendi açılış yüklemesi
+  // (katalog, kuyruk, listeler) BİTTİKTEN sonra. Hemen başlatınca o istekle
+  // yarışıp bütün paneli yavaşlatıyordu. Tarayıcı boşalınca (en geç 4 sn).
+  useEffect(() => {
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    let idle: number | undefined;
+    const timer = setTimeout(() => {
+      if (w.requestIdleCallback) idle = w.requestIdleCallback(() => void fetchLists(), { timeout: 2000 });
+      else void fetchLists();
+    }, 2000);
+    return () => {
+      clearTimeout(timer);
+      if (idle !== undefined) w.cancelIdleCallback?.(idle);
+    };
+  }, []);
 
   const toggleOpen = () => {
     const next = !open;
     setOpen(next);
-    if (next && lists === null) load();
+    if (next && lists === null) void fetchLists();
   };
 
-  const setVisible = async (list: PmjList, visible: boolean) => {
-    if (busy) return;
-    setBusy(list.id);
-    setError("");
-    setLists((prev) => prev?.map((l) => (l.id === list.id ? { ...l, visible } : l)) ?? prev);
+  // Liste başına istek kuyruğu: göz düğmesi kendi listelerdeki gibi İYİMSER —
+  // ekran anında değişir, istek arkada gider. Biri yoldayken yeniden basılırsa
+  // yalnızca SON istenen durum, o istek bitince gönderilir; böylece istekler
+  // sunucuya sırasıyla varır ve hızlı aç-kapada son söz ekrandakiyle aynı olur.
+  const inFlight = useRef(new Set<string>());
+  const wanted = useRef(new Map<string, boolean>());
+  const confirmed = useRef(new Map<string, boolean>());
+
+  const send = async (id: string) => {
+    if (inFlight.current.has(id) || !wanted.current.has(id)) return;
+    const visible = wanted.current.get(id)!;
+    wanted.current.delete(id);
+    inFlight.current.add(id);
     try {
       const res = await fetch("/api/admin/pmj-playlists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pmj_playlist_id: list.id, visible }),
+        body: JSON.stringify({ pmj_playlist_id: id, visible }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => null);
         throw new Error(d?.error ?? "İşlem başarısız");
       }
+      confirmed.current.set(id, visible);
+      onChanged();
     } catch (err) {
-      setLists((prev) => prev?.map((l) => (l.id === list.id ? { ...l, visible: !visible } : l)) ?? prev);
+      // Bekleyen yeni bir istek yoksa ekran sunucunun bildiği son duruma döner
+      if (!wanted.current.has(id)) {
+        const last = confirmed.current.get(id);
+        if (last !== undefined) setLists((prev) => prev?.map((l) => (l.id === id ? { ...l, visible: last } : l)) ?? prev);
+      }
       setError(err instanceof Error ? err.message : "İşlem başarısız");
     } finally {
-      setBusy(null);
+      inFlight.current.delete(id);
+      void send(id);
     }
+  };
+
+  const setVisible = (list: PmjList, visible: boolean) => {
+    setError("");
+    if (!confirmed.current.has(list.id)) confirmed.current.set(list.id, list.visible);
+    setLists((prev) => prev?.map((l) => (l.id === list.id ? { ...l, visible } : l)) ?? prev);
+    wanted.current.set(list.id, visible);
+    void send(list.id);
   };
 
   const openCount = lists?.filter((l) => l.visible).length ?? 0;
@@ -69,12 +125,17 @@ export default function PmjListsBar() {
         aria-expanded={open}
         className="w-full text-left px-3.5 py-3 flex items-center gap-3"
       >
-        <span
-          className="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center text-[11px] font-black"
-          style={{ background: "rgba(245,158,11,0.18)", color: "#fbbf24" }}
-        >
-          PMJ
-        </span>
+        {/* İlk listenin kapakları; liste yüklenmeden PMJ rozeti */}
+        {lists?.[0]?.covers.length ? (
+          <ListCover covers={lists[0].covers} size={40} />
+        ) : (
+          <span
+            className="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center text-[11px] font-black"
+            style={{ background: "rgba(245,158,11,0.18)", color: "#fbbf24" }}
+          >
+            PMJ
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-[#fde68a]">PMJ Listeleri</p>
           <p className="text-[#9ca3af] text-[11px] mt-0.5">
@@ -104,19 +165,27 @@ export default function PmjListsBar() {
             <div
               key={l.id}
               className="flex items-center gap-2 rounded-xl px-2.5 py-2"
-              style={{ background: "rgba(255,255,255,0.03)" }}
+              style={{
+                background: activeId === l.id ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.03)",
+                border: `1px solid ${activeId === l.id ? "rgba(245,158,11,0.45)" : "transparent"}`,
+              }}
             >
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold truncate" style={{ color: l.visible ? "#e5e7eb" : "#9ca3af" }}>
+              <button onClick={() => onOpen(l.id, l.name)} className="shrink-0" title="Şarkıları göster" tabIndex={-1}>
+                <ListCover covers={l.covers} size={36} />
+              </button>
+              <button onClick={() => onOpen(l.id, l.name)} className="min-w-0 flex-1 text-left" title="Şarkıları göster">
+                <p
+                  className="text-[13px] font-semibold truncate"
+                  style={{ color: activeId === l.id ? "#fbbf24" : l.visible ? "#e5e7eb" : "#9ca3af" }}
+                >
                   {l.name}
                 </p>
                 <p className="text-[11px] text-[#6b7280]">{l.song_count} şarkı</p>
-              </div>
+              </button>
               <button
                 onClick={() => setVisible(l, !l.visible)}
-                disabled={busy !== null}
                 aria-pressed={l.visible}
-                className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors disabled:opacity-50"
+                className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors"
                 style={{
                   background: l.visible ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.05)",
                   color: l.visible ? "#22c55e" : "#6b7280",
@@ -127,15 +196,11 @@ export default function PmjListsBar() {
                     : "Müşteriye kapalı — açmak için tıklayın"
                 }
               >
-                {busy === l.id ? (
-                  <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                ) : (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                     <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
                     <circle cx="12" cy="12" r="2.6" stroke="currentColor" strokeWidth="1.8" />
                     {!l.visible && <path d="M3 3l18 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />}
                   </svg>
-                )}
               </button>
             </div>
           ))}

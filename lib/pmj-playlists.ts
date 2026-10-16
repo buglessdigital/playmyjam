@@ -245,8 +245,42 @@ async function syncLinkedPlaylist(venueId: string, playlistId: string, songs: At
       .eq("playlist_id", playlistId)
       .in("song_id", toRemove.slice(i, i + 200));
   }
-  if (toAdd.length > 0) await attachSongsToPlaylist(venueId, playlistId, toAdd);
+  if (toAdd.length > 0) {
+    try {
+      await attachSongsToPlaylist(venueId, playlistId, toAdd);
+    } finally {
+      // attachSongsToPlaylist önce katalog satırını (venue_songs), SONRA liste
+      // üyeliğini yazar. Arada liste kapatılırsa (bağlı satır silindi) üyelik
+      // yazılamaz ve katalog satırı hiçbir listeye bağlı olmadan kalır —
+      // playlist_visible/autoplay_ok varsayılanları "açık" olduğu için müşteriye
+      // görünür ve otomatik çalardı (16 Eki 2026, Biralem'de 870 satır).
+      await pruneOrphanCatalogRows(venueId, toAdd.map((s) => s.id));
+    }
+  }
   if (toRemove.length > 0) revalidateTag(`venue-songs-${venueId}`, "max");
+}
+
+// Verilen şarkılardan mekanda HİÇBİR listeye üye olmayan katalog satırlarını
+// siler (0026 trigger'ının yalnızca üyelik silinince yaptığı temizliğin aynısı).
+async function pruneOrphanCatalogRows(venueId: string, songIds: string[]): Promise<void> {
+  for (let i = 0; i < songIds.length; i += 200) {
+    const chunk = songIds.slice(i, i + 200);
+    const { data: members, error } = await supabaseAdmin
+      .from("playlist_songs")
+      .select("song_id")
+      .eq("venue_id", venueId)
+      .in("song_id", chunk);
+    if (error) throw new Error(error.message);
+    const kept = new Set((members ?? []).map((m) => m.song_id as string));
+    const orphans = chunk.filter((id) => !kept.has(id));
+    if (orphans.length === 0) continue;
+    const { error: delErr } = await supabaseAdmin
+      .from("venue_songs")
+      .delete()
+      .eq("venue_id", venueId)
+      .in("song_id", orphans);
+    if (delErr) throw new Error(delErr.message);
+  }
 }
 
 /** PMJ listesini açmış bütün mekanları günceller. Dönen sayı mekan sayısıdır. */
@@ -258,85 +292,254 @@ export async function syncSubscribers(pmjId: string): Promise<number> {
   if (!linked?.length) return 0;
   const songs = await pmjSongsForAttach(pmjId);
   for (const link of linked) {
-    await syncLinkedPlaylist(link.venue_id as string, link.id as string, songs);
+    const excluded = await excludedSongIds(link.venue_id as string, pmjId);
+    await syncLinkedPlaylist(
+      link.venue_id as string,
+      link.id as string,
+      excluded.size ? songs.filter((s) => !excluded.has(s.id)) : songs
+    );
   }
   return linked.length;
 }
 
-export type VenuePmjPlaylist = { id: string; name: string; song_count: number; visible: boolean };
+export type VenuePmjPlaylist = {
+  id: string;
+  name: string;
+  song_count: number;
+  visible: boolean;
+  /** Listenin ilk şarkılarının kapakları — panelde kendi listeler gibi mozaik */
+  covers: string[];
+};
+
+// Her listenin ilk 4 kapağı: liste başına tek küçük sorgu, hepsi birlikte
+async function pmjCovers(ids: string[]): Promise<Map<string, string[]>> {
+  const rows = await Promise.all(
+    ids.map((id) =>
+      supabaseAdmin
+        .from("pmj_playlist_songs")
+        .select("songs(album_cover_url)")
+        .eq("pmj_playlist_id", id)
+        .order("position")
+        .limit(8)
+    )
+  );
+  const map = new Map<string, string[]>();
+  ids.forEach((id, i) => {
+    const covers = ((rows[i].data ?? []) as unknown as { songs: { album_cover_url: string | null } | null }[])
+      .map((r) => r.songs?.album_cover_url)
+      .filter((c): c is string => !!c);
+    map.set(id, [...new Set(covers)].slice(0, 4));
+  });
+  return map;
+}
 
 export async function listPmjPlaylistsForVenue(venueId: string): Promise<VenuePmjPlaylist[]> {
   const [lists, { data: mine }] = await Promise.all([
     listPmjPlaylists(),
-    supabaseAdmin.from("playlists").select("pmj_playlist_id").eq("venue_id", venueId).not("pmj_playlist_id", "is", null),
+    supabaseAdmin
+      .from("playlists")
+      .select("pmj_playlist_id")
+      .eq("venue_id", venueId)
+      .eq("customer_visible", true)
+      .not("pmj_playlist_id", "is", null),
   ]);
   const open = new Set((mine ?? []).map((m) => m.pmj_playlist_id as string));
-  return lists
-    .filter((l) => l.song_count > 0)
-    .map((l) => ({ id: l.id, name: l.name, song_count: l.song_count, visible: open.has(l.id) }));
+  const shown = lists.filter((l) => l.song_count > 0);
+  const covers = await pmjCovers(shown.map((l) => l.id));
+  return shown.map((l) => ({
+    id: l.id,
+    name: l.name,
+    song_count: l.song_count,
+    visible: open.has(l.id),
+    covers: covers.get(l.id) ?? [],
+  }));
 }
 
 /**
- * Mekanda PMJ listesini müşteriye açar (visible=true) ya da kapatır. Açmak bağlı
- * playlist satırını kurar; kapatmak siler — yalnızca o listeden gelen şarkılar
- * katalogdan düşer.
+ * Mekanda PMJ listesini müşteriye açma/kapatma — İKİ ADIM:
+ *
+ * 1) setVenuePmjIntent (istek içinde, hızlı): niyet hemen yazılır.
+ *    Kapatma: bağlı satır customer_visible=false olur — müşteride anında kaybolur
+ *    (0040 trigger'ı, ~0,1 sn). Açma: bağlı satır kurulur ya da yeniden açılır.
+ * 2) finishVenuePmj (yanıttan sonra, after()): ağır iş. Açmada şarkılar
+ *    eşitlenir (900 şarkı ~4 sn), kapatmada satır silinir (cascade + katalog
+ *    temizliği).
+ *
+ * Neden iki adım: düğme hızlı aç-kapa yapılırsa arka plan işleri sırasız
+ * bitebilir. Son söz hep 1. adımın yazdığı customer_visible'dadır: silme yalnızca
+ * liste HÂLÂ kapalıysa uygulanır, eşitleme yalnızca HÂLÂ açıksa.
  */
-export async function setVenuePmjPlaylist(venueId: string, pmjId: string, visible: boolean): Promise<void> {
-  if (!visible) {
-    const { error } = await supabaseAdmin
-      .from("playlists")
-      .delete()
-      .eq("venue_id", venueId)
-      .eq("pmj_playlist_id", pmjId);
-    if (error) throw new Error(error.message);
-    revalidateTag(`venue-songs-${venueId}`, "max");
-    return;
-  }
-
-  const { data: pmj } = await supabaseAdmin.from("pmj_playlists").select("id, name").eq("id", pmjId).maybeSingle();
-  if (!pmj) throw new Error("PMJ listesi bulunamadı");
-
-  let { data: link } = await supabaseAdmin
+export async function setVenuePmjIntent(venueId: string, pmjId: string, visible: boolean): Promise<void> {
+  const { data: link } = await supabaseAdmin
     .from("playlists")
     .select("id")
     .eq("venue_id", venueId)
     .eq("pmj_playlist_id", pmjId)
     .maybeSingle();
 
-  if (!link) {
-    // queue_position null: otomatik çalmaya hiç girmez. customer_visible true:
-    // listenin varlık sebebi müşterinin görmesi.
-    const { data: created, error } = await supabaseAdmin
+  if (!visible) {
+    if (!link) return;
+    const { error } = await supabaseAdmin.from("playlists").update({ customer_visible: false }).eq("id", link.id);
+    if (error) throw new Error(error.message);
+    revalidateTag(`venue-songs-${venueId}`, "max");
+    return;
+  }
+
+  if (link) {
+    const { error } = await supabaseAdmin.from("playlists").update({ customer_visible: true }).eq("id", link.id);
+    if (error) throw new Error(error.message);
+    revalidateTag(`venue-songs-${venueId}`, "max");
+    return;
+  }
+
+  const { data: pmj } = await supabaseAdmin.from("pmj_playlists").select("name").eq("id", pmjId).maybeSingle();
+  if (!pmj) throw new Error("PMJ listesi bulunamadı");
+  // queue_position null: otomatik çalmaya hiç girmez
+  const { error } = await supabaseAdmin.from("playlists").insert({
+    venue_id: venueId,
+    name: pmj.name,
+    is_active: false,
+    sort_order: 100_000,
+    queue_position: null,
+    customer_visible: true,
+    pmj_playlist_id: pmjId,
+  });
+  // Aynı anda iki tık: eşsiz indeks ikinciyi reddeder, satır zaten var
+  if (error && error.code !== "23505") throw new Error(error.message);
+}
+
+export async function finishVenuePmj(venueId: string, pmjId: string): Promise<void> {
+  const { data: link } = await supabaseAdmin
+    .from("playlists")
+    .select("id, customer_visible")
+    .eq("venue_id", venueId)
+    .eq("pmj_playlist_id", pmjId)
+    .maybeSingle();
+  if (!link) return;
+
+  if (link.customer_visible) {
+    const [songs, excluded] = await Promise.all([pmjSongsForAttach(pmjId), excludedSongIds(venueId, pmjId)]);
+    await syncLinkedPlaylist(venueId, link.id as string, songs.filter((s) => !excluded.has(s.id)));
+  } else {
+    // Arada yeniden açıldıysa silme hiçbir satır bulmaz
+    const { error } = await supabaseAdmin
       .from("playlists")
-      .insert({
-        venue_id: venueId,
-        name: pmj.name,
-        is_active: false,
-        sort_order: 100_000,
-        queue_position: null,
-        customer_visible: true,
-        pmj_playlist_id: pmjId,
-      })
-      .select("id")
-      .single();
-    // Aynı anda iki tık: eşsiz indeks ikinciyi reddeder, var olanla devam edilir
-    if (error?.code === "23505") {
-      ({ data: link } = await supabaseAdmin
-        .from("playlists")
-        .select("id")
-        .eq("venue_id", venueId)
-        .eq("pmj_playlist_id", pmjId)
-        .maybeSingle());
-    } else if (error || !created) {
-      throw new Error(error?.message ?? "Liste açılamadı");
-    } else {
-      link = created;
+      .delete()
+      .eq("id", link.id)
+      .eq("customer_visible", false);
+    if (error) throw new Error(error.message);
+  }
+  revalidateTag(`venue-songs-${venueId}`, "max");
+}
+
+/* ---------- mekanın PMJ listesi görünümü + çıkarılan şarkılar (0082) ---------- */
+
+// Mekanın bu PMJ listesinden çıkardığı şarkılar: eşitleme bunları atlar
+async function excludedSongIds(venueId: string, pmjId: string): Promise<Set<string>> {
+  const { data, error } = await fetchAllRows<{ song_id: string }>((from, to) =>
+    supabaseAdmin
+      .from("venue_pmj_exclusions")
+      .select("song_id")
+      .eq("venue_id", venueId)
+      .eq("pmj_playlist_id", pmjId)
+      .order("song_id")
+      .range(from, to)
+  );
+  if (error) throw new Error(error.message);
+  return new Set(data.map((r) => r.song_id));
+}
+
+export type VenuePmjSong = PmjSong & {
+  /** Liste mekanda açıksa katalog satırı (müşteriden gizle/göster için) */
+  venue_song_id: string | null;
+  in_venue_list: boolean | null;
+};
+
+export type VenuePmjView = {
+  id: string;
+  name: string;
+  visible: boolean;
+  excluded: number;
+  songs: VenuePmjSong[];
+};
+
+/** Mekan panelinin orta panosu: PMJ listesinin şarkıları (mekanın çıkardıkları hariç). */
+export async function getVenuePmjView(venueId: string, pmjId: string): Promise<VenuePmjView | null> {
+  const [{ data: pmj }, songs, excluded, { data: link }] = await Promise.all([
+    supabaseAdmin.from("pmj_playlists").select("id, name").eq("id", pmjId).maybeSingle(),
+    getPmjPlaylistSongs(pmjId),
+    excludedSongIds(venueId, pmjId),
+    supabaseAdmin
+      .from("playlists")
+      .select("id, customer_visible")
+      .eq("venue_id", venueId)
+      .eq("pmj_playlist_id", pmjId)
+      .maybeSingle(),
+  ]);
+  if (!pmj) return null;
+
+  const shown = songs.filter((s) => !excluded.has(s.id));
+  const catalog = new Map<string, { id: string; in_venue_list: boolean }>();
+  if (link) {
+    // Parçalar sırayla değil birlikte: 900 şarkı = 5 sorgu, her biri bir gidiş-dönüş
+    const ids = shown.map((s) => s.id);
+    const chunks = Array.from({ length: Math.ceil(ids.length / 200) }, (_, i) => ids.slice(i * 200, i * 200 + 200));
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        supabaseAdmin.from("venue_songs").select("id, song_id, in_venue_list").eq("venue_id", venueId).in("song_id", chunk)
+      )
+    );
+    for (const { data, error } of results) {
+      if (error) throw new Error(error.message);
+      for (const r of data ?? []) catalog.set(r.song_id as string, { id: r.id as string, in_venue_list: r.in_venue_list as boolean });
     }
   }
-  if (!link) throw new Error("Liste açılamadı");
 
-  await syncLinkedPlaylist(venueId, link.id as string, await pmjSongsForAttach(pmjId));
+  return {
+    id: pmj.id as string,
+    name: pmj.name as string,
+    visible: !!link?.customer_visible,
+    excluded: excluded.size,
+    songs: shown.map((s) => ({
+      ...s,
+      venue_song_id: catalog.get(s.id)?.id ?? null,
+      in_venue_list: catalog.get(s.id)?.in_venue_list ?? null,
+    })),
+  };
+}
+
+/** Şarkıyı bu mekan için PMJ listesinden çıkarır; PMJ güncellense de geri gelmez. */
+export async function excludeVenuePmjSong(venueId: string, pmjId: string, songId: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("venue_pmj_exclusions")
+    .upsert({ venue_id: venueId, pmj_playlist_id: pmjId, song_id: songId }, { ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+
+  const { data: link } = await supabaseAdmin
+    .from("playlists")
+    .select("id")
+    .eq("venue_id", venueId)
+    .eq("pmj_playlist_id", pmjId)
+    .maybeSingle();
+  if (!link) return;
+  // Üyelik silinince 0026 trigger'ı şarkı başka listede yoksa katalogdan da düşürür
+  const { error: delErr } = await supabaseAdmin
+    .from("playlist_songs")
+    .delete()
+    .eq("playlist_id", link.id)
+    .eq("song_id", songId);
+  if (delErr) throw new Error(delErr.message);
   revalidateTag(`venue-songs-${venueId}`, "max");
+}
+
+/** Mekanın bu PMJ listesinden çıkardığı bütün şarkıları geri getirir. */
+export async function restoreVenuePmjSongs(venueId: string, pmjId: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("venue_pmj_exclusions")
+    .delete()
+    .eq("venue_id", venueId)
+    .eq("pmj_playlist_id", pmjId);
+  if (error) throw new Error(error.message);
 }
 
 /* ---------- içe aktarım: satırları havuzdaki şarkılara bağlama ---------- */

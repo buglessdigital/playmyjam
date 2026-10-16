@@ -78,8 +78,10 @@ const day = (iso: string | null) =>
 const groupIban = (iban: string) => iban.replace(/\s+/g, "").replace(/(.{4})/g, "$1 ").trim();
 
 function parties(venueName: string, c: ContractFields | null) {
-  return `${COMPANY.brand} / Hizmet Sağlayıcı: ${COMPANY.legalName} (“${COMPANY.brand}”)
-     Adres: ${COMPANY.address}
+  return `${COMPANY.brand} / Hizmet Sağlayıcı: ${COMPANY.tradeName} (“${COMPANY.brand}”)
+     Vergi dairesi / no: ${COMPANY.taxOffice} / ${COMPANY.taxNumber}
+     Adres: ${COMPANY.legalAddress}
+     Yazışma adresi: ${COMPANY.address}
      E-posta: ${COMPANY.email} · Telefon: ${COMPANY.phone}
 
 Mekan: ${blank(c?.legal_name, "[TİCARİ UNVAN]")} (“Mekan”)
@@ -101,10 +103,11 @@ function serviceContract({ venueName, contract: c, settings, unitPrice }: Templa
     ? `${day(c.end_date)} tarihine kadar geçerlidir. Taraflardan biri bitiş tarihinden en az 30 gün önce yazılı olarak aksini bildirmedikçe sözleşme aynı koşullarla birer yıllık sürelerle kendiliğinden uzar`
     : "süresizdir. Taraflardan her biri 30 gün önceden yazılı bildirimde bulunarak sözleşmeyi feshedebilir";
   const deductions = [
-    `KDV (%${formatNumber(settings.vat_rate)})`,
-    `ödeme kuruluşu / banka komisyonu (%${formatNumber(settings.bank_fee_pct)})`,
-    settings.other_pct > 0 ? `diğer yasal kesintiler (%${formatNumber(settings.other_pct)})` : "varsa diğer yasal kesintiler",
-  ].join(", ");
+    `ciroya dahil KDV (%${formatNumber(settings.vat_rate)})`,
+    `iyzico ile satılan Ücretli Jetonların cirosu üzerinden ödeme kuruluşu / banka komisyonu (%${formatNumber(settings.bank_fee_pct)})`,
+    "App Store üzerinden satılan Ücretli Jetonların KDV hariç cirosu üzerinden, Apple'ın PlayMyJam'a fiilen uyguladığı App Store komisyonu",
+    settings.other_pct > 0 ? `brüt ciro üzerinden diğer yasal kesintiler (%${formatNumber(settings.other_pct)})` : "varsa diğer yasal kesintiler",
+  ].join("; ");
   const special = c?.notes?.trim()
     ? `\n\n17. ÖZEL ŞARTLAR\n\n${c.notes.trim()}\n\nÖzel şartlar ile bu sözleşmenin diğer hükümleri çelişirse özel şartlar uygulanır.`
     : "";
@@ -120,6 +123,7 @@ Platform: ${COMPANY.brand} web uygulaması, mekan paneli, müzik oynatıcı ve b
 Müşteri: Mekan'ı ziyaret eden ve Platform'u kullanan gerçek kişi.
 Jeton: Müşterinin Platform'da şarkı istemek için kullandığı, ${COMPANY.brand} tarafından satılan dijital hizmet birimi.
 Ücretli Jeton: Müşterinin bedelini ödeyerek satın aldığı jeton. ${COMPANY.brand}'ın hediye, promosyon, telafi ya da test amacıyla ücretsiz verdiği jetonlar Ücretli Jeton sayılmaz.
+Satış Kanalı: Jetonun satıldığı yol. Web sitesi ve Android uygulamasında anlaşmalı ödeme kuruluşu iyzico (“iyzico”), iOS uygulamasında Apple'ın uygulama içi satın alma sistemi (“App Store”).
 Dönem: Bir takvim ayı (Türkiye saati ile ayın ilk günü 00:00 ile son günü 23:59 arası).
 
 3. KONU
@@ -128,20 +132,21 @@ Bu sözleşme, Platform'un Mekan'da kullanılmasına, Müşterilerin Platform ü
 
 4. JETON SATIŞI VE TAHSİLAT
 
-4.1. Jeton ${COMPANY.brand}'ın kendi hizmet ürünüdür. Jeton satışı ${COMPANY.brand} adına ve hesabına yapılır; bedeli ${COMPANY.brand} tarafından, anlaşmalı ödeme kuruluşu aracılığıyla tahsil edilir ve Müşteriye ${COMPANY.brand} tarafından belge düzenlenir.
+4.1. Jeton ${COMPANY.brand}'ın kendi hizmet ürünüdür. Jeton satışı ${COMPANY.brand} adına ve hesabına yapılır. Bedel, iyzico ile yapılan satışlarda ${COMPANY.brand} tarafından iyzico aracılığıyla tahsil edilir ve Müşteriye ${COMPANY.brand} tarafından belge düzenlenir; App Store üzerinden yapılan satışlarda ise Apple'ın kuralları gereği Apple tarafından tahsil edilir ve satış belgesi Apple'ın kurallarına tabidir.
 4.2. Mekan, jeton ya da şarkı isteği için Müşteriden doğrudan bedel tahsil etmez ve jeton satışı yapmaz.
 4.3. Hakediş, Müşteri adına tahsil edilip Mekan'a aktarılan bir tutar değildir. Hakediş, Platform'un Mekan'da sunulmasına imkân tanınması ve Mekan'ın 7. maddedeki yükümlülükleri karşılığında ${COMPANY.brand}'ın kendi gelirinden Mekan'a ödediği bedeldir.
-4.4. Jeton birim fiyatını ${COMPANY.brand} belirler. Sözleşme tarihindeki birim fiyat ${formatNumber(unitPrice)} TL'dir (KDV dahil). Fiyat değişiklikleri yürürlükten en az 7 gün önce Mekan'a bildirilir.
-4.5. Müşterinin jeton satın alma, iade ve kullanım ilişkisi yalnızca ${COMPANY.brand} ile Müşteri arasındadır. Kullanılmamış jetonlara ilişkin tüm sorumluluk ${COMPANY.brand}'a aittir.
+4.4. Jeton birim fiyatını ${COMPANY.brand} belirler. Sözleşme tarihindeki birim fiyat ${formatNumber(unitPrice)} TL'dir (KDV dahil). App Store üzerinden satılan jetonun birim fiyatı, Apple'ın fiyat basamakları nedeniyle bundan farklı olabilir; ${COMPANY.brand} tarafından belirlenir ve App Store'da ilan edilir. Fiyat değişiklikleri yürürlükten en az 7 gün önce Mekan'a bildirilir.
+4.5. Müşterinin jeton satın alma, iade ve kullanım ilişkisi yalnızca ${COMPANY.brand} ile Müşteri arasındadır; App Store üzerinden yapılan satışlarda iade talepleri ayrıca Apple'ın kurallarına tabidir. Kullanılmamış jetonlara ilişkin tüm sorumluluk ${COMPANY.brand}'a aittir.
 
 5. HAKEDİŞ
 
-5.1. Ciro: Bir Dönem içinde Mekan'da harcanan Ücretli Jeton adedi × harcama anındaki jeton birim fiyatıdır.
-5.2. Net ciro: Cirodan ${deductions} düşüldükten sonra kalan tutardır.
-5.3. Mekan'ın Hakedişi, net cironun ${commission}'idir.
-5.4. Müşteriye iade edilen ya da kart sahibinin itirazı (ters ibraz) sonucu geri alınan ödemelere karşılık gelen jetonlar ciroya dahil edilmez. Bu jetonlar için Hakediş ödenmişse ödenen tutar izleyen Dönem Hakedişlerinden mahsup edilir.
-5.5. Kesinti oranları yasal düzenleme ya da ödeme kuruluşu kaynaklı olarak değişirse yeni oranlar değişikliği izleyen Dönemden itibaren uygulanır ve Mekan'a bildirilir.
-5.6. Platform kayıtlarında teknik bir hata nedeniyle yanlış hesaplanan Hakediş, hata tespit edildiğinde izleyen Dönemde düzeltilir.
+5.1. Ciro: Bir Dönem içinde Mekan'da harcanan Ücretli Jetonların her Satış Kanalı için ayrı ayrı, o kanalda Dönemin son günü geçerli olan birim fiyatla çarpılmasıyla bulunan tutarların toplamıdır (KDV dahil).
+5.2. Bir Müşterinin bakiyesinde ücretsiz jeton ile Ücretli Jeton birlikte bulunuyorsa önce Ücretli Jeton harcanmış sayılır. Farklı Satış Kanallarından alınmış Ücretli Jetonlar birlikte bulunuyorsa, harcanan Ücretli Jetonun kanallara dağılımı bu jetonların bakiyedeki oranına göre belirlenir.
+5.3. Net ciro: Cirodan ${deductions} düşüldükten sonra kalan tutardır.
+5.4. Mekan'ın Hakedişi, net ciroya ${commission} oranı uygulanarak bulunur.
+5.5. Müşteriye iade edilen ya da kart sahibinin itirazı (ters ibraz) sonucu geri alınan ödemelere karşılık gelen jetonlar ciroya dahil edilmez. Bu jetonlar için Hakediş ödenmişse ödenen tutar izleyen Dönem Hakedişlerinden mahsup edilir.
+5.6. Kesinti oranları yasal düzenleme, ödeme kuruluşu ya da Apple kaynaklı olarak değişirse yeni oranlar değişikliği izleyen Dönemden itibaren uygulanır ve Mekan'a bildirilir.
+5.7. Platform kayıtlarında teknik bir hata nedeniyle yanlış hesaplanan Hakediş, hata tespit edildiğinde izleyen Dönemde düzeltilir.
 
 6. ÖDEME VE FATURA
 
@@ -149,10 +154,10 @@ Bu sözleşme, Platform'un Mekan'da kullanılmasına, Müşterilerin Platform ü
      IBAN: ${c?.iban ? groupIban(c.iban) : "[IBAN]"}
      Hesap sahibi: ${blank(c?.account_holder, "[HESAP SAHİBİ]")}
 6.2. Ödeme yalnızca Mekan adına ya da Mekan'ın ticari unvanına kayıtlı hesaba yapılır; üçüncü kişi hesabına ödeme yapılmaz. Hesap değişikliği ancak Mekan'ın yazılı bildirimi ve bu değişikliği içeren güncel sözleşmenin onaylanmasıyla geçerli olur.
-6.3. Mekan, Hakediş tutarı için mevzuata uygun fatura düzenleyerek ${COMPANY.email} adresine iletir. Fatura, Hakediş dökümüyle birlikte ödemenin ön koşuludur; faturanın gecikmesi hâlinde ödeme günü fatura tarihinden itibaren işler.
-6.4. Hakediş dökümü ${COMPANY.brand} mekan paneli ve/veya ${blank(c?.billing_email, "[E-POSTA]")} adresi üzerinden Mekan'a iletilir. Mekan, dökümdeki itirazını tebliğden itibaren 15 gün içinde yazılı olarak bildirir; bu süre içinde itiraz edilmeyen döküm kesinleşir.
+6.3. Hakediş KDV hariç tutardır; Mekan faturasına yasal KDV'yi ekler. Mekan, Hakediş tutarı için ${COMPANY.tradeName} adına (vergi no ${COMPANY.taxNumber}) mevzuata uygun fatura düzenleyerek ${COMPANY.email} adresine iletir. Fatura, Hakediş dökümüyle birlikte ödemenin ön koşuludur; faturanın gecikmesi hâlinde ödeme günü fatura tarihinden itibaren işler.
+6.4. Hakediş dökümü ${COMPANY.brand} mekan paneli ve/veya ${blank(c?.billing_email, "[E-POSTA]")} adresi üzerinden Mekan'a iletilir. Dökümde Ücretli Jetonlar ve kesintiler Satış Kanalına göre ayrı gösterilir. Mekan, dökümdeki itirazını tebliğden itibaren 15 gün içinde yazılı olarak bildirir; bu süre içinde itiraz edilmeyen döküm kesinleşir.
 6.5. Toplam Hakedişi 100 TL'nin altında kalan Dönemin tutarı izleyen Dönemin Hakedişine eklenerek ödenebilir.
-6.6. ${COMPANY.brand}, bu sözleşmeden doğan alacaklarını (5.4. maddedeki mahsuplar ve Müzik Lisansı ve Tazmin Taahhütnamesi'nden doğan rücu alacakları dahil) Mekan'ın Hakedişinden takas ve mahsup edebilir.
+6.6. ${COMPANY.brand}, bu sözleşmeden doğan alacaklarını (5.5. maddedeki mahsuplar ve Müzik Lisansı ve Tazmin Taahhütnamesi'nden doğan rücu alacakları dahil) Mekan'ın Hakedişinden takas ve mahsup edebilir.
 
 7. TARAFLARIN YÜKÜMLÜLÜKLERİ
 
@@ -161,11 +166,11 @@ Bu sözleşme, Platform'un Mekan'da kullanılmasına, Müşterilerin Platform ü
 7.3. Mekan, Platform'a ait QR kodları ve tanıtım materyallerini Müşterilerin kolayca görebileceği yerlerde bulundurur ve açık olduğu saatlerde Platform oynatıcısını çalışır tutmaya özen gösterir.
 7.4. Mekan, Müşterilere Platform'a ilişkin yanıltıcı bilgi vermez; çalışanlarının Platform'u bu sözleşmeye uygun kullanmasını sağlar.
 7.5. Mekan, panel kullanıcı adı ve şifrelerini gizli tutar ve yalnızca yetkili çalışanlarıyla paylaşır; hesabıyla yapılan işlemlerden sorumludur. Yetkisiz kullanım şüphesini derhal ${COMPANY.brand}'a bildirir.
-7.6. Mekan, işletmesinin faaliyetine ilişkin tüm izin ve ruhsatların kendisinde bulunduğunu ve Platform'u yürürlükteki mevzuata aykırı biçimde kullanmayacağını kabul eder.
+7.6. İşletmenin faaliyetine ilişkin izin ve ruhsatlar ile Platform'un işletmede yürürlükteki mevzuata uygun kullanılmasından doğan sorumluluk münhasıran Mekan'a aittir.
 
 8. MÜZİK İÇERİĞİ VE LİSANSLAR
 
-Platform, Mekan'ın kendi ses sisteminde çalınacak şarkıların istenmesini ve sıralanmasını sağlayan bir araçtır; ${COMPANY.brand} Mekan'a eserlerin umuma iletimi ya da temsili için lisans vermez. İşletmede müzik kullanımı için gerekli izinler ve bunlara ilişkin sorumluluk, bu sözleşmenin eki olan Müzik Lisansı ve Tazmin Taahhütnamesi'nde düzenlenmiştir.
+Platform, Mekan'ın kendi ses sisteminde çalınacak şarkıların istenmesini ve sıralanmasını sağlayan bir araçtır; ${COMPANY.brand} Mekan'a eserlerin umuma iletimi ya da temsili için lisans vermez. İşletmedeki müzik ve görüntü kullanımına ilişkin izin, lisans ve sorumluluk hususları, bu sözleşmenin eki olan Müzik Lisansı ve Tazmin Taahhütnamesi'nde düzenlenmiştir.
 
 9. MARKA VE TANITIM
 
@@ -178,7 +183,7 @@ Platform, Mekan'ın kendi ses sisteminde çalınacak şarkıların istenmesini v
 10.1. Platform; müzik içerik sağlayıcıları (YouTube dahil), ödeme kuruluşları, barındırma ve internet hizmet sağlayıcıları gibi üçüncü taraf hizmetlere bağlı çalışır. Bu hizmetlerdeki kesinti, değişiklik ya da içerik kaldırılması ile Mekan'ın cihaz, ses sistemi veya internet bağlantısından kaynaklanan aksaklıklar ${COMPANY.brand}'ın kusuru sayılmaz.
 10.2. ${COMPANY.brand}, planlı bakım ve güncellemeler için Platform'u geçici olarak durdurabilir; mümkün olduğunca Mekan'ın yoğun saatleri dışında yapar.
 10.3. Taraflar, dolaylı zararlardan ve yoksun kalınan kârdan birbirine karşı sorumlu değildir.
-10.4. ${COMPANY.brand}'ın bu sözleşmeden doğan toplam sorumluluğu, zarara yol açan olaydan önceki son 3 Dönemde Mekan'a ödenen Hakedişler toplamı ile sınırlıdır.
+10.4. ${COMPANY.brand}'ın bu sözleşmeden doğan toplam tazminat sorumluluğu, zarara yol açan olaydan önceki son 12 Dönemde Mekan'a ödenen Hakedişler toplamı ile sınırlıdır; bu toplam 25.000 TL'nin altındaysa sınır 25.000 TL'dir. Bu sınır, Mekan'a ödenmesi gereken Hakedişleri kapsamaz.
 10.5. 10.3 ve 10.4. maddelerdeki sınırlamalar kast ve ağır ihmal hâllerinde uygulanmaz.
 
 11. MÜCBİR SEBEP
@@ -245,12 +250,13 @@ Bu protokol, Sözleşme kapsamında işlenen kişisel verilerin 6698 sayılı Ki
 3.5. Mekan, verilerin yetkisiz kişilerce ele geçirildiğini ya da ele geçirildiğinden şüphelendiğini öğrendiği anda ve en geç 24 saat içinde ${COMPANY.email} adresine bildirir ve ${COMPANY.brand}'ın Kişisel Verileri Koruma Kurulu'na ve ilgililere yapacağı bildirimler için gereken bilgi ve desteği sağlar.
 3.6. Mekan, bir Müşteriden KVKK md. 11 kapsamında başvuru alırsa başvuruyu yanıtlamadan en geç 3 iş günü içinde ${COMPANY.brand}'a iletir.
 3.7. Sözleşme sona erdiğinde Mekan'ın Müşteri verilerine erişimi sona erer; Mekan elinde herhangi bir surette bulunan Müşteri verilerini derhal imha eder.
+3.8. ${COMPANY.brand}, KVKK md. 12/3 uyarınca Mekan'ın bu protokolden doğan yükümlülüklerine uyumunu denetleme hakkına sahiptir. Mekan, ${COMPANY.brand}'ın yazılı talebi üzerine, talepte belirtilen makul süre içinde ve her hâlde 10 iş gününü aşmamak üzere, uyumu gösteren bilgi ve belgeleri sunar ve denetim için gerekli iş birliğini sağlar. Yerinde inceleme gerekmesi hâlinde inceleme, en az 5 iş günü önceden yazılı bildirimde bulunularak, Mekan'ın çalışma saatleri içinde ve olağan faaliyetini aksatmayacak şekilde yapılır.
 
 4. MEKAN YETKİLİ VE ÇALIŞANLARININ VERİLERİ
 
-4.1. ${COMPANY.brand}, Mekan yetkili ve çalışanlarının kimlik ve iletişim bilgilerini (ad-soyad, kullanıcı adı, e-posta, telefon), panel işlem kayıtlarını, IP adresi ve tarayıcı bilgilerini, sözleşme onay kayıtlarını ve ödeme için gereken banka bilgilerini veri sorumlusu sıfatıyla işler.
+4.1. ${COMPANY.brand}, Mekan yetkili ve çalışanlarının kimlik ve iletişim bilgilerini (ad-soyad, kullanıcı adı, e-posta, telefon), panel işlem kayıtlarını, IP adresi, tarayıcı ve cihaz bilgilerini, bildirim abonelik bilgilerini, sözleşme onay kayıtlarını ve ödeme için gereken banka bilgilerini veri sorumlusu sıfatıyla işler.
 4.2. Bu veriler; Sözleşme'nin kurulması ve ifası, Hakediş ödemelerinin yapılması, panel güvenliğinin sağlanması, hukuki yükümlülüklerin yerine getirilmesi ve olası uyuşmazlıklarda hakların korunması amaçlarıyla, KVKK md. 5/2 (c), (ç), (e) ve (f) hukuki sebeplerine dayanılarak işlenir.
-4.3. Bu veriler; yalnızca yukarıdaki amaçlarla sınırlı olarak ödeme kuruluşları, bankalar, muhasebe ve hukuk danışmanları, yetkili kamu kurumları ile Platform'un barındırma, veritabanı ve e-posta altyapısını sağlayan hizmet sağlayıcılara aktarılabilir. Bu hizmet sağlayıcıların bir kısmının sunucuları yurt dışında bulunabilir; bu aktarımlar KVKK md. 9'a uygun olarak yürütülür.
+4.3. Bu veriler; yalnızca yukarıdaki amaçlarla sınırlı olarak ödeme kuruluşları, bankalar, muhasebe ve hukuk danışmanları, yetkili kamu kurumları ile Platform'un barındırma, veritabanı ve e-posta altyapısını sağlayan hizmet sağlayıcılara aktarılabilir. Bu hizmet sağlayıcıların bir kısmının sunucuları yurt dışında bulunabilir; bu aktarımlar KVKK md. 9 ve Kişisel Verilerin Yurt Dışına Aktarılmasına İlişkin Usul ve Esaslar Hakkında Yönetmelik uyarınca, standart sözleşme dahil uygun güvenceler sağlanarak yürütülür.
 4.4. Veriler Sözleşme süresince ve Sözleşme'nin sona ermesinden sonra ilgili mevzuatta öngörülen saklama süreleri (vergi mevzuatı için 5 yıl, ticari defter ve belgeler için 10 yıl) boyunca saklanır, ardından silinir, yok edilir ya da anonim hâle getirilir.
 4.5. İlgili kişiler KVKK md. 11'deki haklarını ${COMPANY.email} adresine başvurarak kullanabilir.
 4.6. Mekan, verilerini ${COMPANY.brand}'a ilettiği ya da panele kullanıcı olarak eklediği çalışanlarını bu madde hakkında bilgilendirmekle yükümlüdür.
@@ -267,7 +273,7 @@ Mekan'ın bu protokole aykırılığı Sözleşme'nin haklı nedenle feshi sebeb
 
 7. SÜRE
 
-Bu protokol Sözleşme ile birlikte yürürlüğe girer ve Sözleşme süresince geçerlidir; 3.7 ve 5.3. maddeler ile saklama yükümlülükleri Sözleşme'nin sona ermesinden sonra da geçerliliğini korur.
+Bu protokol Sözleşme ile birlikte yürürlüğe girer ve Sözleşme süresince geçerlidir; 3.7, 3.8 ve 5.3. maddeler ile saklama yükümlülükleri Sözleşme'nin sona ermesinden sonra da geçerliliğini korur.
 
 8. ONAY
 
@@ -283,38 +289,44 @@ ${parties(venueName, c)}
 
 2. PLATFORM'UN NİTELİĞİ
 
-2.1. Platform, müzik içeriklerine üçüncü taraf platformlar (YouTube dahil) ve ${COMPANY.brand} kataloğu üzerinden erişerek, Mekan'ın kendi ses sisteminde çalınacak şarkıların Müşterilerce istenmesini ve sıralanmasını sağlayan bir araçtır.
-2.2. ${COMPANY.brand}, 5846 sayılı Fikir ve Sanat Eserleri Kanunu (“FSEK”) kapsamındaki eserlerin ve bağlantılı hak konularının Mekan'da umuma iletimi, temsili ya da çoğaltılması için Mekan'a herhangi bir lisans vermez, satmaz ya da devretmez. Jeton bedeli bir müzik lisansı bedeli değildir.
+2.1. Platform, Müşterilerin Mekan'da çalınmasını istedikleri şarkıları seçmesini ve bu isteklerin sıraya alınmasını sağlayan bir yazılım aracıdır. Şarkılar, Mekan'ın cihazında, YouTube gibi üçüncü taraf platformların kendi oynatıcıları aracılığıyla ve bu platformların sunucularından çalınır.
+2.2. ${COMPANY.brand} hiçbir ses ya da görüntü dosyasını barındırmaz, saklamaz, çoğaltmaz ya da iletmez. ${COMPANY.brand} kataloğu yalnızca şarkı adı, sanatçı adı, kapak görseli bağlantısı ve üçüncü taraf platformdaki içeriğe ait bağlantı bilgisinden oluşur.
+2.3. Eserlerin ve bağlantılı hak konularının işletmede umuma iletimi, temsili ve ses ya da görüntü sistemleri aracılığıyla yayımı Mekan tarafından, Mekan'ın kendi cihaz ve sistemleriyle gerçekleştirilir; ${COMPANY.brand} bu iletim ve temsilin tarafı değildir.
+2.4. ${COMPANY.brand}, 5846 sayılı Fikir ve Sanat Eserleri Kanunu (“FSEK”) kapsamındaki eserler ve bağlantılı hak konuları için Mekan'a herhangi bir lisans ya da izin vermez, satmaz, devretmez ve bu konuda aracılık etmez. Jeton bedeli bir müzik ya da görüntü lisansı bedeli değildir.
 
-3. MEKAN'IN BEYAN VE TAAHHÜTLERİ
+3. İZİN VE LİSANSLARA İLİŞKİN SORUMLULUK
+
+3.1. İşletmede müzik ve görüntü kullanımı için ilgili mevzuat uyarınca gerekebilecek izin ve lisanslara (meslek birlikleri dahil) ilişkin her türlü karar, bunların bedelleri ve izin ya da lisansın bulunmamasından veya kapsamının aşılmasından doğabilecek her türlü hukuki, idari ve cezai sorumluluk münhasıran Mekan'a aittir.
+3.2. ${COMPANY.brand}'ın Mekan'ın izin ya da lisans durumunu araştırma, denetleme, takip etme veya sağlama yükümlülüğü yoktur. Mekan'ın Platform'u kullanması, ${COMPANY.brand}'ın bu konuda bir beyanı, onayı ya da güvencesi olarak yorumlanamaz.
+
+4. MEKAN'IN KULLANIM TAAHHÜTLERİ
 
 Mekan;
-3.1. İşletmesinde umuma açık müzik kullanımı için gereken meslek birliği izinlerini (eser sahipleri adına MESAM ve MSG, fonogram yapımcıları adına MÜ-YAP, icracı sanatçılar adına MÜYORBİR ve MÜZİKBİR olmak üzere ilgili tüm meslek birliklerinden, doğrudan ya da ortak lisanslama birimi aracılığıyla) almış olduğunu ya da Platform'u kullanmaya başlamadan önce alacağını,
-3.2. Bu izinleri Sözleşme süresince geçerli tutacağını; izinlerden herhangi birinin sona ermesi, askıya alınması ya da iptali hâlinde durumu derhal ${COMPANY.brand}'a bildireceğini ve izin yeniden alınana kadar Platform'u kullanmayacağını,
-3.3. ${COMPANY.brand}'ın talebi üzerine izin belgelerinin suretlerini 7 gün içinde ibraz edeceğini,
-3.4. Platform üzerinden erişilen içerikleri indirmeyeceğini, kaydetmeyeceğini, çoğaltmayacağını ve Platform dışında kullanmayacağını; üçüncü taraf platformların kullanım koşullarını ihlal edecek teknik müdahalelerde bulunmayacağını,
-3.5. İşletmesinde çalınan içerikten, ses seviyesinden ve çalma saatlerinin gürültü, çevre ve belediye mevzuatına uygunluğundan sorumlu olduğunu; genel ahlaka, kamu düzenine ya da mekanın niteliğine uygun olmayan istekleri panel üzerinden engelleyeceğini
+4.1. Platform üzerinden çalınan içerikleri yalnızca Sözleşme'de belirtilen işletmede çalacağını; canlı yayın, sosyal medya, radyo, başka bir işletme ya da herhangi bir yolla işletme dışına iletmeyeceğini ve kaydetmeyeceğini,
+4.2. Platform üzerinden erişilen içerikleri indirmeyeceğini, çoğaltmayacağını ve Platform dışında kullanmayacağını; Platform'a ya da üçüncü taraf platformların oynatıcılarına, Platform'un sunduğu işlevler dışında teknik müdahalede bulunmayacağını (reklam engelleme ve içerik indirme araçları dahil),
+4.3. İşletmesinde çalınan içerikten, ses seviyesinden ve çalma saatlerinin gürültü, çevre ve belediye mevzuatına uygunluğundan sorumlu olduğunu; genel ahlaka, kamu düzenine ya da işletmenin niteliğine uygun olmayan istekleri öğrendiği anda panel üzerinden engelleyeceğini
 kabul, beyan ve taahhüt eder.
 
-4. ÜÇÜNCÜ TARAF İÇERİKLER
+5. ÜÇÜNCÜ TARAF İÇERİKLER
 
-Mekan, Platform'da erişilen içeriklerin üçüncü taraf platformların kullanım koşullarına tabi olduğunu; içeriklerin hak sahipleri ya da ilgili platformlar tarafından kaldırılabileceğini, erişime kapatılabileceğini ya da bölgesel kısıtlamaya tabi olabileceğini ve bu durumun ${COMPANY.brand}'ın kusuru sayılmayacağını kabul eder.
+Mekan, Platform'da erişilen içeriklerin üçüncü taraf platformların kullanım koşullarına tabi olduğunu; içeriklerin hak sahipleri ya da ilgili platformlar tarafından kaldırılabileceğini, erişime kapatılabileceğini ya da bölgesel kısıtlamaya tabi olabileceğini ve bu durumun ${COMPANY.brand}'ın kusuru sayılmayacağını kabul eder. ${COMPANY.brand}, üçüncü taraf içeriklerin hukuka uygunluğunu, sürekliliğini ya da kalitesini garanti etmez.
 
-5. TAZMİN
+6. TAZMİN
 
-5.1. Mekan'ın 3. maddedeki izinlere sahip olmaması ya da bu taahhütnameye aykırı davranması nedeniyle ${COMPANY.brand}'a karşı ileri sürülen her türlü talep, dava, idari para cezası, tazminat, yargılama gideri ve makul avukatlık ücreti Mekan tarafından karşılanır.
-5.2. ${COMPANY.brand} böyle bir talebi öğrendiğinde Mekan'a makul süre içinde bildirir ve Mekan'ın savunmaya katılmasına imkân tanır.
-5.3. ${COMPANY.brand} bu kapsamda bir ödeme yapmak zorunda kalırsa ödediği tutarı ödeme tarihinden itibaren işleyecek yasal faiziyle birlikte Mekan'dan rücu eder ve Hakedişten mahsup edebilir.
+6.1. Mekan'ın işletmesindeki müzik ve görüntü kullanımı, izin ya da lisans durumu veya bu taahhütnameye aykırılık nedeniyle ${COMPANY.brand}'a, yöneticilerine ya da çalışanlarına karşı ileri sürülen her türlü talep, dava, icra takibi, idari para cezası, tazminat, yargılama gideri ve makul avukatlık ücreti Mekan tarafından karşılanır; Mekan, ${COMPANY.brand}'ı bu taleplerden ari tutar.
+6.2. ${COMPANY.brand} böyle bir talebi öğrendiğinde Mekan'a makul süre içinde bildirir ve Mekan'ın savunmaya katılmasına imkân tanır. ${COMPANY.brand}, Mekan'a savunma imkânı tanımadan talebi kabul eder ya da sulh olursa, Mekan'ın rücu borcu ancak talebin haklı olduğu ölçüde doğar.
+6.3. ${COMPANY.brand} bu kapsamda bir ödeme yapmak zorunda kalırsa, ödediği tutarı ödeme tarihinden itibaren işleyecek avans faiziyle birlikte Mekan'dan rücu eder ve Hakedişten mahsup edebilir. Mekan, mahsupla karşılanmayan tutarı ilk yazılı talepten itibaren 7 gün içinde öder.
+6.4. Sözleşme'nin 10. maddesindeki sorumluluk sınırlamaları, Mekan'ın bu madde kapsamındaki yükümlülüklerine uygulanmaz.
 
-6. ASKIYA ALMA VE FESİH
+7. ASKIYA ALMA VE FESİH
 
-Mekan'ın 3. maddedeki izinlere sahip olmadığının anlaşılması ya da bu taahhütnameye aykırı davranması hâlinde ${COMPANY.brand}, Mekan'ın Platform erişimini derhal askıya alabilir ve Sözleşme'yi ihtara gerek olmaksızın haklı nedenle feshedebilir.
+Mekan'ın işletmesindeki müzik ya da görüntü kullanımı nedeniyle ${COMPANY.brand}'a karşı bir talep yöneltilmesi; meslek birliği, hak sahibi, üçüncü taraf platform ya da yetkili makam tarafından Mekan veya ${COMPANY.brand} hakkında bu kullanımla ilgili bir işlem başlatılması ya da Mekan'ın bu taahhütnameye aykırı davranması hâlinde ${COMPANY.brand}, Mekan'ın Platform erişimini derhal askıya alabilir ve Sözleşme'yi ihtara gerek olmaksızın haklı nedenle feshedebilir. Askı süresince Mekan'ın uğrayabileceği zararlardan ${COMPANY.brand} sorumlu değildir.
 
-7. SÜRE
+8. SÜRE
 
-Bu taahhütname Sözleşme ile birlikte yürürlüğe girer ve Sözleşme süresince geçerlidir. 5. madde, Sözleşme süresince gerçekleşen olaylar bakımından Sözleşme'nin sona ermesinden sonra da geçerliliğini korur.
+Bu taahhütname Sözleşme ile birlikte yürürlüğe girer ve Sözleşme süresince geçerlidir. 3. ve 6. maddeler, Sözleşme süresince gerçekleşen olaylar bakımından Sözleşme'nin sona ermesinden sonra da geçerliliğini korur.
 
-8. ONAY
+9. ONAY
 
 ${approval("taahhütnameyi")}`;
 }

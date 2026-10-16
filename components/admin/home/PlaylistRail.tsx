@@ -17,8 +17,15 @@ export default function PlaylistRail({
   onNewList,
   onPick,
   onRename,
+  pmjActiveId,
+  onOpenPmj,
+  onPmjChanged,
 }: {
   lib: Library;
+  // Orta panoda açık PMJ listesi (yoksa null) ve onu açan/kapatan geri çağrılar
+  pmjActiveId: string | null;
+  onOpenPmj: (id: string | null, name?: string) => void;
+  onPmjChanged: () => void;
   onNewList: () => void;
   // Dar ekranda liste seçilince şarkı panosuna geçilir
   onPick?: () => void;
@@ -53,6 +60,7 @@ export default function PlaylistRail({
 
   const setSelectedId = (id: string) => {
     selectList(id);
+    onOpenPmj(null);
     onPick?.();
   };
 
@@ -87,7 +95,7 @@ export default function PlaylistRail({
         <button
           onClick={() => setSelectedId(ALL)}
           className="text-left rounded-2xl px-3.5 py-3 shrink-0 transition-all flex items-center gap-3"
-          style={railStyle(viewId === ALL, false)}
+          style={railStyle(viewId === ALL && !pmjActiveId, false)}
         >
           <ListCover covers={catalogCovers} size={40} />
           <div className="min-w-0">
@@ -102,7 +110,16 @@ export default function PlaylistRail({
         </button>
 
         {/* PMJ'nin hazır listeleri (0081): mekanın kendi listelerinden ayrı */}
-        {!listFiltered && <PmjListsBar />}
+        {!listFiltered && (
+          <PmjListsBar
+            activeId={pmjActiveId}
+            onOpen={(id, name) => {
+              onOpenPmj(id, name);
+              onPick?.();
+            }}
+            onChanged={onPmjChanged}
+          />
+        )}
 
         {visiblePlaylists.map((p) => {
           const total = countFor(p.id);
@@ -118,7 +135,7 @@ export default function PlaylistRail({
             <div
               key={p.id}
               className="group rounded-2xl shrink-0 transition-all flex items-stretch"
-              style={railStyle(viewId === p.id, filtering && matches === 0)}
+              style={railStyle(viewId === p.id && !pmjActiveId, filtering && matches === 0)}
             >
               <button onClick={() => setSelectedId(p.id)} className="text-left px-3.5 py-3 flex-1 min-w-0 flex items-center gap-3">
                 {/* Kapağın üstünde beliren play: sırayı beklemeden bu listeyi çalar */}

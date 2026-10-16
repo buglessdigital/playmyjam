@@ -16,6 +16,7 @@ metadata:
 2. Excel okuyucu bağımlılıksız (`lib/xlsx-read.ts`, Node zlib); .xls desteklenmez. HYPERLINK() ve hücre köprüsünün ADRESİ okunur.
 3. Linkli satır: havuzda yoksa `videos.list` ile eklenir (50 = 1 birim), kategori kuralı YOK (seçilmiş liste). Linksiz satır `findInPool` (talep onayının eşleştirmesi) — yanlış sürüm seçebilir, önizlemede "ad ile bulundu" rozetiyle işaretli.
 4. **Migration'ı Claude MCP `execute_sql` ile uygular** (claude.ai → Connectors → Supabase'de Execute SQL "Always allow"). Bağlayıcı `drop`/`delete` içeren SQL'i AYRICA onaya bağlıyor ve bu oturumlarda onay penceresi çıkmadığı için reddediliyor → migration'ları drop'suz yaz (`create or replace trigger`, `do $$ if not exists … create policy`). Ofis ağı Postgres'i (5432/6543) el sıkışmada kesiyor, `db:migrate` yalnız başka ağdan çalışır. Kayıt için `supabase_migrations.schema_migrations`'a elle satır eklenir.
-5. Aynı adla yeniden yükleme = içeriği değiştir (sıra Excel'deki sıra), abonelere senkron.
+5. **Mekanda aç/kapa İKİ ADIM** (`setVenuePmjIntent` istekte, `finishVenuePmj` `after()`'da): 900 şarkılık liste ~4-6 sn sürüyordu (DB ölçümü: 1,4 sn katalog + 1,7 sn üyelik, gerisi gidiş-dönüş). Kapatma önce `customer_visible=false` (müşteriden anında gizler), silme arkada ve yalnız hâlâ kapalıysa — hızlı aç-kapada son sözü bu bayrak söyler.
+6. Aynı adla yeniden yükleme = içeriği değiştir (sıra Excel'deki sıra), abonelere senkron.
 
 Bkz. [[pmj-playlist-customer-visibility-2026-08]], [[pmj-talep-onay-akisi-2026-08]], [[pmj-hedefli-hasat-2026-10]].

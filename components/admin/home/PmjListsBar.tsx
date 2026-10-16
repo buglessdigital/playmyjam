@@ -41,9 +41,23 @@ export default function PmjListsBar({
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Listeler yüklenemedi"));
 
-  // Çubuk kapalıyken de açılışta bir kez yüklenir
+  // Çubuk kapalıyken de bir kez yüklenir — ama panelin kendi açılış yüklemesi
+  // (katalog, kuyruk, listeler) BİTTİKTEN sonra. Hemen başlatınca o istekle
+  // yarışıp bütün paneli yavaşlatıyordu. Tarayıcı boşalınca (en geç 4 sn).
   useEffect(() => {
-    void fetchLists();
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    let idle: number | undefined;
+    const timer = setTimeout(() => {
+      if (w.requestIdleCallback) idle = w.requestIdleCallback(() => void fetchLists(), { timeout: 2000 });
+      else void fetchLists();
+    }, 2000);
+    return () => {
+      clearTimeout(timer);
+      if (idle !== undefined) w.cancelIdleCallback?.(idle);
+    };
   }, []);
 
   const toggleOpen = () => {

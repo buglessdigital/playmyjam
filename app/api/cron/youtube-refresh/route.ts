@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { syncPlaylistSources } from "@/lib/playlist-sync";
-import { refreshStaleMetadata, type MetadataRefreshResult } from "@/lib/metadata-refresh";
+import { refreshStaleMetadata, reportMetadataRefresh, type MetadataRefreshResult } from "@/lib/metadata-refresh";
 import { withActor } from "@/lib/actor";
 import { reportIssue } from "@/lib/ops-log";
 
@@ -72,19 +72,8 @@ async function handleGET(req: NextRequest) {
     });
   }
   const quotaExceeded = refresh?.stopped === "quota";
-  if (refresh && refresh.failed > 0) {
-    await reportIssue({
-      area: "cron",
-      kind: "metadata_refresh_partial",
-      severity: refresh.stopped === "db" ? "error" : "warn",
-      message:
-        refresh.stopped === "db"
-          ? "Metadata tazeleme veritabanı hataları yüzünden yarıda kaldı"
-          : "Metadata tazelemede bazı satırlar yazılamadı, yarın tekrar denenecek",
-      detail: { failed: refresh.failed, retries: refresh.writeRetries, refreshed: refresh.refreshed, target: refresh.target },
-      error: refresh.writeError,
-    });
-  }
+  // Hedefin kalanını öğlen telafi turu tamamlar; burada yalnız gerçek risk
+  if (refresh) await reportMetadataRefresh(refresh, { lastRunOfDay: false });
 
   // 3) Playlist senkronu. Kota zaten dolduysa hiç denenmez — dokunulmayan
   //    kaynakların sırası bozulmadan yarına devreder.

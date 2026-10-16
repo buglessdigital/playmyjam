@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { refreshVideoMetadata, YouTubeQuotaError, type VideoRefresh } from "@/lib/youtube";
 import { purgeUnplayableSong } from "@/lib/playlist";
+import { reportIssue } from "@/lib/ops-log";
 
 // YouTube Developer Policy III.E.4: 30 günden eski metadata tazelenmeli.
 //
@@ -75,7 +76,14 @@ type Row = {
   embeddable: boolean;
 };
 
-export async function refreshStaleMetadata(deadline: number): Promise<MetadataRefreshResult> {
+// Telafi turu (app/api/cron/metadata-catchup) yalnız günün açığını kapatır:
+// son bu kadar saatte tazelenen satırlar günlük hedeften düşülür, kota artmaz
+const CATCH_UP_WINDOW_HOURS = 20;
+
+export async function refreshStaleMetadata(
+  deadline: number,
+  opts: { catchUp?: boolean } = {}
+): Promise<MetadataRefreshResult> {
   const ms = { count: 0, select: 0, youtube: 0, write: 0, purge: 0 };
   const timed = async <T>(key: keyof typeof ms, fn: () => Promise<T>): Promise<T> => {
     const t = Date.now();
@@ -92,7 +100,18 @@ export async function refreshStaleMetadata(deadline: number): Promise<MetadataRe
     supabaseAdmin.from("songs").select("id", { count: "estimated", head: true })
   );
   const pool = count ?? 0;
-  const target = Math.min(MAX_BATCH, Math.max(MIN_BATCH, Math.ceil(pool / CYCLE_DAYS)));
+  let target = Math.min(MAX_BATCH, Math.max(MIN_BATCH, Math.ceil(pool / CYCLE_DAYS)));
+  if (opts.catchUp) {
+    const since = new Date(Date.now() - CATCH_UP_WINDOW_HOURS * 3_600_000).toISOString();
+    const { count: done, error } = await timed("count", async () =>
+      supabaseAdmin
+        .from("songs")
+        .select("id", { count: "exact", head: true })
+        .gt("metadata_refreshed_at", since)
+    );
+    if (error) throw new Error(`günün tazelenen satırları sayılamadı: ${error.message}`);
+    target = Math.max(0, target - (done ?? 0));
+  }
   const result: MetadataRefreshResult = {
     pool, target, refreshed: 0, delisted: 0, purged: 0, failed: 0, writeRetries: 0, writeError: null, units: 0, stopped: "done", ms,
   };
@@ -202,7 +221,7 @@ export async function refreshStaleMetadata(deadline: number): Promise<MetadataRe
     return (data ?? []) as string[];
   }
 
-  while (result.refreshed + result.delisted + result.failed < target) {
+  while (target > 0 && result.refreshed + result.delisted + result.failed < target) {
     const remaining = target - result.refreshed - result.delisted - result.failed;
     // Bir kez yeniden denenir: ilk deneme soğuk önbellekte sınıra dayanırsa
     // okuduğu sayfalar ikinciyi hızlandırır (4 Eki 2026: 7,9 sn → 0,13 sn).
@@ -249,4 +268,75 @@ export async function refreshStaleMetadata(deadline: number): Promise<MetadataRe
   }
 
   return result;
+}
+
+// 30 gün kuralına uyum durumu: gerçek risk yalnız budur. Tek tek yazılamayan
+// satırlar (süre sınırına denk gelen son dilim, zaman aşımı) ertesi tura en
+// eski olarak kalır ve risk değildir — 6-16 Eki 2026 her gün "bazı satırlar
+// yazılamadı" uyarısı düştü, hiçbiri 30 günü aşmadı.
+export const DUE_SOON_DAYS = 28;
+
+export async function metadataCompliance(): Promise<{ overdue: number; dueSoon: number }> {
+  const before = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+  const [over, soon] = await Promise.all([
+    supabaseAdmin.from("songs").select("id", { count: "exact", head: true }).lt("metadata_refreshed_at", before(30)),
+    supabaseAdmin
+      .from("songs")
+      .select("id", { count: "exact", head: true })
+      .lt("metadata_refreshed_at", before(DUE_SOON_DAYS)),
+  ]);
+  if (over.error || soon.error) throw new Error((over.error ?? soon.error)!.message);
+  return { overdue: over.count ?? 0, dueSoon: soon.count ?? 0 };
+}
+
+// Tur sonu raporu: yalnız gerçek sorun Sorunlar ekranına (ve Sentry'ye) düşer.
+//   * veritabanı tekrar tekrar düştü (stopped "db") → hata
+//   * 30 günü geçen satır var → hata
+//   * günün son turundan sonra 2 gün içinde 30 günü dolacak satır kaldı → uyarı
+//     (sabah turundan sonra sorulmaz: öğlen telafi turu kalanı tamamlar)
+export async function reportMetadataRefresh(
+  refresh: MetadataRefreshResult,
+  opts: { lastRunOfDay: boolean }
+): Promise<void> {
+  const detail = {
+    failed: refresh.failed,
+    retries: refresh.writeRetries,
+    refreshed: refresh.refreshed,
+    target: refresh.target,
+    stopped: refresh.stopped,
+  };
+  if (refresh.stopped === "db") {
+    await reportIssue({
+      area: "cron",
+      kind: "metadata_refresh_partial",
+      severity: "error",
+      message: "Metadata tazeleme veritabanı hataları yüzünden yarıda kaldı",
+      detail,
+      error: refresh.writeError,
+    });
+  }
+  let compliance: { overdue: number; dueSoon: number };
+  try {
+    compliance = await metadataCompliance();
+  } catch {
+    // Sayım düşerse bir sonraki tur yeniden bakar; tazelemenin kendisi bitti
+    return;
+  }
+  if (compliance.overdue > 0) {
+    await reportIssue({
+      area: "cron",
+      kind: "metadata_overdue",
+      severity: "error",
+      message: `${compliance.overdue} şarkının metadata'sı 30 günü geçti (YouTube kuralı)`,
+      detail: { ...detail, ...compliance },
+    });
+  } else if (opts.lastRunOfDay && compliance.dueSoon > 0) {
+    await reportIssue({
+      area: "cron",
+      kind: "metadata_due_soon",
+      severity: "warn",
+      message: `${compliance.dueSoon} şarkının metadata'sı 2 gün içinde 30 günü dolduracak — turlar yetişmiyor`,
+      detail: { ...detail, ...compliance },
+    });
+  }
 }

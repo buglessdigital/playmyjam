@@ -8,6 +8,10 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/cron/metadata-catchup",
+      "schedule": "0 8 * * *"
+    },
+    {
       "path": "/api/cron/catalog-new",
       "schedule": "0 6 * * *"
     },

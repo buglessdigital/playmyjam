@@ -166,11 +166,11 @@ Bu sözleşme, Platform'un Mekan'da kullanılmasına, Müşterilerin Platform ü
 7.3. Mekan, Platform'a ait QR kodları ve tanıtım materyallerini Müşterilerin kolayca görebileceği yerlerde bulundurur ve açık olduğu saatlerde Platform oynatıcısını çalışır tutmaya özen gösterir.
 7.4. Mekan, Müşterilere Platform'a ilişkin yanıltıcı bilgi vermez; çalışanlarının Platform'u bu sözleşmeye uygun kullanmasını sağlar.
 7.5. Mekan, panel kullanıcı adı ve şifrelerini gizli tutar ve yalnızca yetkili çalışanlarıyla paylaşır; hesabıyla yapılan işlemlerden sorumludur. Yetkisiz kullanım şüphesini derhal ${COMPANY.brand}'a bildirir.
-7.6. Mekan, işletmesinin faaliyetine ilişkin tüm izin ve ruhsatların kendisinde bulunduğunu ve Platform'u yürürlükteki mevzuata aykırı biçimde kullanmayacağını kabul eder.
+7.6. İşletmenin faaliyetine ilişkin izin ve ruhsatlar ile Platform'un işletmede yürürlükteki mevzuata uygun kullanılmasından doğan sorumluluk münhasıran Mekan'a aittir.
 
 8. MÜZİK İÇERİĞİ VE LİSANSLAR
 
-Platform, Mekan'ın kendi ses sisteminde çalınacak şarkıların istenmesini ve sıralanmasını sağlayan bir araçtır; ${COMPANY.brand} Mekan'a eserlerin umuma iletimi ya da temsili için lisans vermez. İşletmede müzik kullanımı için gerekli izinler ve bunlara ilişkin sorumluluk, bu sözleşmenin eki olan Müzik Lisansı ve Tazmin Taahhütnamesi'nde düzenlenmiştir.
+Platform, Mekan'ın kendi ses sisteminde çalınacak şarkıların istenmesini ve sıralanmasını sağlayan bir araçtır; ${COMPANY.brand} Mekan'a eserlerin umuma iletimi ya da temsili için lisans vermez. İşletmedeki müzik ve görüntü kullanımına ilişkin izin, lisans ve sorumluluk hususları, bu sözleşmenin eki olan Müzik Lisansı ve Tazmin Taahhütnamesi'nde düzenlenmiştir.
 
 9. MARKA VE TANITIM
 
@@ -289,38 +289,44 @@ ${parties(venueName, c)}
 
 2. PLATFORM'UN NİTELİĞİ
 
-2.1. Platform, müzik içeriklerine üçüncü taraf platformlar (YouTube dahil) ve ${COMPANY.brand} kataloğu üzerinden erişerek, Mekan'ın kendi ses sisteminde çalınacak şarkıların Müşterilerce istenmesini ve sıralanmasını sağlayan bir araçtır.
-2.2. ${COMPANY.brand}, 5846 sayılı Fikir ve Sanat Eserleri Kanunu (“FSEK”) kapsamındaki eserlerin ve bağlantılı hak konularının Mekan'da umuma iletimi, temsili ya da çoğaltılması için Mekan'a herhangi bir lisans vermez, satmaz ya da devretmez. Jeton bedeli bir müzik lisansı bedeli değildir.
+2.1. Platform, Müşterilerin Mekan'da çalınmasını istedikleri şarkıları seçmesini ve bu isteklerin sıraya alınmasını sağlayan bir yazılım aracıdır. Şarkılar, Mekan'ın cihazında, YouTube gibi üçüncü taraf platformların kendi oynatıcıları aracılığıyla ve bu platformların sunucularından çalınır.
+2.2. ${COMPANY.brand} hiçbir ses ya da görüntü dosyasını barındırmaz, saklamaz, çoğaltmaz ya da iletmez. ${COMPANY.brand} kataloğu yalnızca şarkı adı, sanatçı adı, kapak görseli bağlantısı ve üçüncü taraf platformdaki içeriğe ait bağlantı bilgisinden oluşur.
+2.3. Eserlerin ve bağlantılı hak konularının işletmede umuma iletimi, temsili ve ses ya da görüntü sistemleri aracılığıyla yayımı Mekan tarafından, Mekan'ın kendi cihaz ve sistemleriyle gerçekleştirilir; ${COMPANY.brand} bu iletim ve temsilin tarafı değildir.
+2.4. ${COMPANY.brand}, 5846 sayılı Fikir ve Sanat Eserleri Kanunu (“FSEK”) kapsamındaki eserler ve bağlantılı hak konuları için Mekan'a herhangi bir lisans ya da izin vermez, satmaz, devretmez ve bu konuda aracılık etmez. Jeton bedeli bir müzik ya da görüntü lisansı bedeli değildir.
 
-3. MEKAN'IN BEYAN VE TAAHHÜTLERİ
+3. İZİN VE LİSANSLARA İLİŞKİN SORUMLULUK
+
+3.1. İşletmede müzik ve görüntü kullanımı için ilgili mevzuat uyarınca gerekebilecek izin ve lisanslara (meslek birlikleri dahil) ilişkin her türlü karar, bunların bedelleri ve izin ya da lisansın bulunmamasından veya kapsamının aşılmasından doğabilecek her türlü hukuki, idari ve cezai sorumluluk münhasıran Mekan'a aittir.
+3.2. ${COMPANY.brand}'ın Mekan'ın izin ya da lisans durumunu araştırma, denetleme, takip etme veya sağlama yükümlülüğü yoktur. Mekan'ın Platform'u kullanması, ${COMPANY.brand}'ın bu konuda bir beyanı, onayı ya da güvencesi olarak yorumlanamaz.
+
+4. MEKAN'IN KULLANIM TAAHHÜTLERİ
 
 Mekan;
-3.1. İşletmesinde umuma açık müzik kullanımı için gereken meslek birliği izinlerini (eser sahipleri adına MESAM ve MSG, fonogram yapımcıları adına MÜ-YAP, icracı sanatçılar adına MÜYORBİR ve MÜZİKBİR olmak üzere ilgili tüm meslek birliklerinden, doğrudan ya da ortak lisanslama birimi aracılığıyla) almış olduğunu ya da Platform'u kullanmaya başlamadan önce alacağını,
-3.2. Bu izinleri Sözleşme süresince geçerli tutacağını; izinlerden herhangi birinin sona ermesi, askıya alınması ya da iptali hâlinde durumu derhal ${COMPANY.brand}'a bildireceğini ve izin yeniden alınana kadar Platform'u kullanmayacağını,
-3.3. ${COMPANY.brand}'ın talebi üzerine izin belgelerinin suretlerini 7 gün içinde ibraz edeceğini,
-3.4. Platform üzerinden erişilen içerikleri indirmeyeceğini, kaydetmeyeceğini, çoğaltmayacağını ve Platform dışında kullanmayacağını; üçüncü taraf platformların kullanım koşullarını ihlal edecek teknik müdahalelerde bulunmayacağını,
-3.5. İşletmesinde çalınan içerikten, ses seviyesinden ve çalma saatlerinin gürültü, çevre ve belediye mevzuatına uygunluğundan sorumlu olduğunu; genel ahlaka, kamu düzenine ya da mekanın niteliğine uygun olmayan istekleri panel üzerinden engelleyeceğini
+4.1. Platform üzerinden çalınan içerikleri yalnızca Sözleşme'de belirtilen işletmede çalacağını; canlı yayın, sosyal medya, radyo, başka bir işletme ya da herhangi bir yolla işletme dışına iletmeyeceğini ve kaydetmeyeceğini,
+4.2. Platform üzerinden erişilen içerikleri indirmeyeceğini, çoğaltmayacağını ve Platform dışında kullanmayacağını; Platform'a ya da üçüncü taraf platformların oynatıcılarına, Platform'un sunduğu işlevler dışında teknik müdahalede bulunmayacağını (reklam engelleme ve içerik indirme araçları dahil),
+4.3. İşletmesinde çalınan içerikten, ses seviyesinden ve çalma saatlerinin gürültü, çevre ve belediye mevzuatına uygunluğundan sorumlu olduğunu; genel ahlaka, kamu düzenine ya da işletmenin niteliğine uygun olmayan istekleri öğrendiği anda panel üzerinden engelleyeceğini
 kabul, beyan ve taahhüt eder.
 
-4. ÜÇÜNCÜ TARAF İÇERİKLER
+5. ÜÇÜNCÜ TARAF İÇERİKLER
 
-Mekan, Platform'da erişilen içeriklerin üçüncü taraf platformların kullanım koşullarına tabi olduğunu; içeriklerin hak sahipleri ya da ilgili platformlar tarafından kaldırılabileceğini, erişime kapatılabileceğini ya da bölgesel kısıtlamaya tabi olabileceğini ve bu durumun ${COMPANY.brand}'ın kusuru sayılmayacağını kabul eder.
+Mekan, Platform'da erişilen içeriklerin üçüncü taraf platformların kullanım koşullarına tabi olduğunu; içeriklerin hak sahipleri ya da ilgili platformlar tarafından kaldırılabileceğini, erişime kapatılabileceğini ya da bölgesel kısıtlamaya tabi olabileceğini ve bu durumun ${COMPANY.brand}'ın kusuru sayılmayacağını kabul eder. ${COMPANY.brand}, üçüncü taraf içeriklerin hukuka uygunluğunu, sürekliliğini ya da kalitesini garanti etmez.
 
-5. TAZMİN
+6. TAZMİN
 
-5.1. Mekan'ın 3. maddedeki izinlere sahip olmaması ya da bu taahhütnameye aykırı davranması nedeniyle ${COMPANY.brand}'a karşı ileri sürülen her türlü talep, dava, idari para cezası, tazminat, yargılama gideri ve makul avukatlık ücreti Mekan tarafından karşılanır.
-5.2. ${COMPANY.brand} böyle bir talebi öğrendiğinde Mekan'a makul süre içinde bildirir ve Mekan'ın savunmaya katılmasına imkân tanır.
-5.3. ${COMPANY.brand} bu kapsamda bir ödeme yapmak zorunda kalırsa ödediği tutarı ödeme tarihinden itibaren işleyecek yasal faiziyle birlikte Mekan'dan rücu eder ve Hakedişten mahsup edebilir.
+6.1. Mekan'ın işletmesindeki müzik ve görüntü kullanımı, izin ya da lisans durumu veya bu taahhütnameye aykırılık nedeniyle ${COMPANY.brand}'a, yöneticilerine ya da çalışanlarına karşı ileri sürülen her türlü talep, dava, icra takibi, idari para cezası, tazminat, yargılama gideri ve makul avukatlık ücreti Mekan tarafından karşılanır; Mekan, ${COMPANY.brand}'ı bu taleplerden ari tutar.
+6.2. ${COMPANY.brand} böyle bir talebi öğrendiğinde Mekan'a makul süre içinde bildirir ve Mekan'ın savunmaya katılmasına imkân tanır. ${COMPANY.brand}, Mekan'a savunma imkânı tanımadan talebi kabul eder ya da sulh olursa, Mekan'ın rücu borcu ancak talebin haklı olduğu ölçüde doğar.
+6.3. ${COMPANY.brand} bu kapsamda bir ödeme yapmak zorunda kalırsa, ödediği tutarı ödeme tarihinden itibaren işleyecek avans faiziyle birlikte Mekan'dan rücu eder ve Hakedişten mahsup edebilir. Mekan, mahsupla karşılanmayan tutarı ilk yazılı talepten itibaren 7 gün içinde öder.
+6.4. Sözleşme'nin 10. maddesindeki sorumluluk sınırlamaları, Mekan'ın bu madde kapsamındaki yükümlülüklerine uygulanmaz.
 
-6. ASKIYA ALMA VE FESİH
+7. ASKIYA ALMA VE FESİH
 
-Mekan'ın 3. maddedeki izinlere sahip olmadığının anlaşılması ya da bu taahhütnameye aykırı davranması hâlinde ${COMPANY.brand}, Mekan'ın Platform erişimini derhal askıya alabilir ve Sözleşme'yi ihtara gerek olmaksızın haklı nedenle feshedebilir.
+Mekan'ın işletmesindeki müzik ya da görüntü kullanımı nedeniyle ${COMPANY.brand}'a karşı bir talep yöneltilmesi; meslek birliği, hak sahibi, üçüncü taraf platform ya da yetkili makam tarafından Mekan veya ${COMPANY.brand} hakkında bu kullanımla ilgili bir işlem başlatılması ya da Mekan'ın bu taahhütnameye aykırı davranması hâlinde ${COMPANY.brand}, Mekan'ın Platform erişimini derhal askıya alabilir ve Sözleşme'yi ihtara gerek olmaksızın haklı nedenle feshedebilir. Askı süresince Mekan'ın uğrayabileceği zararlardan ${COMPANY.brand} sorumlu değildir.
 
-7. SÜRE
+8. SÜRE
 
-Bu taahhütname Sözleşme ile birlikte yürürlüğe girer ve Sözleşme süresince geçerlidir. 5. madde, Sözleşme süresince gerçekleşen olaylar bakımından Sözleşme'nin sona ermesinden sonra da geçerliliğini korur.
+Bu taahhütname Sözleşme ile birlikte yürürlüğe girer ve Sözleşme süresince geçerlidir. 3. ve 6. maddeler, Sözleşme süresince gerçekleşen olaylar bakımından Sözleşme'nin sona ermesinden sonra da geçerliliğini korur.
 
-8. ONAY
+9. ONAY
 
 ${approval("taahhütnameyi")}`;
 }

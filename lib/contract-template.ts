@@ -250,12 +250,13 @@ Bu protokol, Sözleşme kapsamında işlenen kişisel verilerin 6698 sayılı Ki
 3.5. Mekan, verilerin yetkisiz kişilerce ele geçirildiğini ya da ele geçirildiğinden şüphelendiğini öğrendiği anda ve en geç 24 saat içinde ${COMPANY.email} adresine bildirir ve ${COMPANY.brand}'ın Kişisel Verileri Koruma Kurulu'na ve ilgililere yapacağı bildirimler için gereken bilgi ve desteği sağlar.
 3.6. Mekan, bir Müşteriden KVKK md. 11 kapsamında başvuru alırsa başvuruyu yanıtlamadan en geç 3 iş günü içinde ${COMPANY.brand}'a iletir.
 3.7. Sözleşme sona erdiğinde Mekan'ın Müşteri verilerine erişimi sona erer; Mekan elinde herhangi bir surette bulunan Müşteri verilerini derhal imha eder.
+3.8. ${COMPANY.brand}, KVKK md. 12/3 uyarınca Mekan'ın bu protokolden doğan yükümlülüklerine uyumunu denetleme hakkına sahiptir. Mekan, ${COMPANY.brand}'ın yazılı talebi üzerine, talepte belirtilen makul süre içinde ve her hâlde 10 iş gününü aşmamak üzere, uyumu gösteren bilgi ve belgeleri sunar ve denetim için gerekli iş birliğini sağlar. Yerinde inceleme gerekmesi hâlinde inceleme, en az 5 iş günü önceden yazılı bildirimde bulunularak, Mekan'ın çalışma saatleri içinde ve olağan faaliyetini aksatmayacak şekilde yapılır.
 
 4. MEKAN YETKİLİ VE ÇALIŞANLARININ VERİLERİ
 
-4.1. ${COMPANY.brand}, Mekan yetkili ve çalışanlarının kimlik ve iletişim bilgilerini (ad-soyad, kullanıcı adı, e-posta, telefon), panel işlem kayıtlarını, IP adresi ve tarayıcı bilgilerini, sözleşme onay kayıtlarını ve ödeme için gereken banka bilgilerini veri sorumlusu sıfatıyla işler.
+4.1. ${COMPANY.brand}, Mekan yetkili ve çalışanlarının kimlik ve iletişim bilgilerini (ad-soyad, kullanıcı adı, e-posta, telefon), panel işlem kayıtlarını, IP adresi, tarayıcı ve cihaz bilgilerini, bildirim abonelik bilgilerini, sözleşme onay kayıtlarını ve ödeme için gereken banka bilgilerini veri sorumlusu sıfatıyla işler.
 4.2. Bu veriler; Sözleşme'nin kurulması ve ifası, Hakediş ödemelerinin yapılması, panel güvenliğinin sağlanması, hukuki yükümlülüklerin yerine getirilmesi ve olası uyuşmazlıklarda hakların korunması amaçlarıyla, KVKK md. 5/2 (c), (ç), (e) ve (f) hukuki sebeplerine dayanılarak işlenir.
-4.3. Bu veriler; yalnızca yukarıdaki amaçlarla sınırlı olarak ödeme kuruluşları, bankalar, muhasebe ve hukuk danışmanları, yetkili kamu kurumları ile Platform'un barındırma, veritabanı ve e-posta altyapısını sağlayan hizmet sağlayıcılara aktarılabilir. Bu hizmet sağlayıcıların bir kısmının sunucuları yurt dışında bulunabilir; bu aktarımlar KVKK md. 9'a uygun olarak yürütülür.
+4.3. Bu veriler; yalnızca yukarıdaki amaçlarla sınırlı olarak ödeme kuruluşları, bankalar, muhasebe ve hukuk danışmanları, yetkili kamu kurumları ile Platform'un barındırma, veritabanı ve e-posta altyapısını sağlayan hizmet sağlayıcılara aktarılabilir. Bu hizmet sağlayıcıların bir kısmının sunucuları yurt dışında bulunabilir; bu aktarımlar KVKK md. 9 ve Kişisel Verilerin Yurt Dışına Aktarılmasına İlişkin Usul ve Esaslar Hakkında Yönetmelik uyarınca, standart sözleşme dahil uygun güvenceler sağlanarak yürütülür.
 4.4. Veriler Sözleşme süresince ve Sözleşme'nin sona ermesinden sonra ilgili mevzuatta öngörülen saklama süreleri (vergi mevzuatı için 5 yıl, ticari defter ve belgeler için 10 yıl) boyunca saklanır, ardından silinir, yok edilir ya da anonim hâle getirilir.
 4.5. İlgili kişiler KVKK md. 11'deki haklarını ${COMPANY.email} adresine başvurarak kullanabilir.
 4.6. Mekan, verilerini ${COMPANY.brand}'a ilettiği ya da panele kullanıcı olarak eklediği çalışanlarını bu madde hakkında bilgilendirmekle yükümlüdür.
@@ -272,7 +273,7 @@ Mekan'ın bu protokole aykırılığı Sözleşme'nin haklı nedenle feshi sebeb
 
 7. SÜRE
 
-Bu protokol Sözleşme ile birlikte yürürlüğe girer ve Sözleşme süresince geçerlidir; 3.7 ve 5.3. maddeler ile saklama yükümlülükleri Sözleşme'nin sona ermesinden sonra da geçerliliğini korur.
+Bu protokol Sözleşme ile birlikte yürürlüğe girer ve Sözleşme süresince geçerlidir; 3.7, 3.8 ve 5.3. maddeler ile saklama yükümlülükleri Sözleşme'nin sona ermesinden sonra da geçerliliğini korur.
 
 8. ONAY
 

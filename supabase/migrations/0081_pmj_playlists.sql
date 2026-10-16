@@ -109,8 +109,8 @@ begin
 end
 $$;
 
-drop trigger if exists playlist_songs_sync_autoplay on public.playlist_songs;
-create trigger playlist_songs_sync_autoplay
+-- drop'suz yazıldı: Supabase MCP'si drop içeren SQL'i ayrıca onaya bağlıyor
+create or replace trigger playlist_songs_sync_autoplay
   after insert or delete on public.playlist_songs
   for each row execute function public.playlist_songs_sync_autoplay();
 
@@ -119,12 +119,19 @@ create trigger playlist_songs_sync_autoplay
 alter table public.pmj_playlists      enable row level security;
 alter table public.pmj_playlist_songs enable row level security;
 
-drop policy if exists "pmj_playlists_public_read" on public.pmj_playlists;
-create policy "pmj_playlists_public_read" on public.pmj_playlists
-  for select to anon, authenticated using (true);
-
-drop policy if exists "pmj_playlist_songs_public_read" on public.pmj_playlist_songs;
-create policy "pmj_playlist_songs_public_read" on public.pmj_playlist_songs
-  for select to anon, authenticated using (true);
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public'
+                  and tablename = 'pmj_playlists' and policyname = 'pmj_playlists_public_read') then
+    create policy "pmj_playlists_public_read" on public.pmj_playlists
+      for select to anon, authenticated using (true);
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public'
+                  and tablename = 'pmj_playlist_songs' and policyname = 'pmj_playlist_songs_public_read') then
+    create policy "pmj_playlist_songs_public_read" on public.pmj_playlist_songs
+      for select to anon, authenticated using (true);
+  end if;
+end
+$$;
 
 commit;

@@ -19,8 +19,8 @@
 --   1) Playlist kuyruğu: bağlı satırın queue_position'ı daima null (kod), panelin
 --      rayında da görünmez.
 --   2) Katalog yedeği (kuyrukta liste yokken venue_songs'tan rastgele dolum):
---      venue_songs.autoplay_ok yalnızca mekanın KENDİ listelerinden birinde olan
---      şarkılarda true. Yedek bu bayrağı okur (lib/queue-fill.ts).
+--      venue_songs.autoplay_ok yalnızca SADECE PMJ listesinde duran şarkılarda
+--      false. Yedek bu bayrağı okur (lib/queue-fill.ts).
 --
 -- Sıralama: ÖNCE bu SQL, SONRA kod. SQL tek başına davranışı değiştirmez
 -- (henüz hiç PMJ listesi yok, autoplay_ok herkes için true doğar).
@@ -72,25 +72,25 @@ language sql
 security definer
 set search_path = public
 as $$
+  -- false YALNIZCA "sadece PMJ listesinde" demek. Hiçbir listede olmayan eski
+  -- katalog satırları (0026 öncesi) bugünkü gibi otomatik çalmaya açık kalır.
+  with state as (
+    select vs.id,
+           not (
+             exists (select 1 from public.playlist_songs ps join public.playlists p on p.id = ps.playlist_id
+                      where ps.venue_id = vs.venue_id and ps.song_id = vs.song_id and p.pmj_playlist_id is not null)
+             and not exists (select 1 from public.playlist_songs ps join public.playlists p on p.id = ps.playlist_id
+                      where ps.venue_id = vs.venue_id and ps.song_id = vs.song_id and p.pmj_playlist_id is null)
+           ) as ok
+      from public.venue_songs vs
+     where vs.venue_id = p_venue_id
+       and vs.song_id = any(p_song_ids)
+  )
   update public.venue_songs vs
-     set autoplay_ok = exists (
-           select 1
-             from public.playlist_songs ps
-             join public.playlists p on p.id = ps.playlist_id
-            where ps.venue_id = vs.venue_id
-              and ps.song_id = vs.song_id
-              and p.pmj_playlist_id is null
-         )
-   where vs.venue_id = p_venue_id
-     and vs.song_id = any(p_song_ids)
-     and vs.autoplay_ok is distinct from exists (
-           select 1
-             from public.playlist_songs ps
-             join public.playlists p on p.id = ps.playlist_id
-            where ps.venue_id = vs.venue_id
-              and ps.song_id = vs.song_id
-              and p.pmj_playlist_id is null
-         );
+     set autoplay_ok = state.ok
+    from state
+   where vs.id = state.id
+     and vs.autoplay_ok is distinct from state.ok;
 $$;
 
 create or replace function public.playlist_songs_sync_autoplay()

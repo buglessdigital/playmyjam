@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { matchesTokens, searchTokens, songHaystack } from "@/lib/search-match";
 import type { VenuePmjSong, VenuePmjView } from "@/lib/pmj-playlists";
+import { cachedPmjView, fetchPmjView } from "./pmj-view-cache";
 import { formatDur, type Library } from "./useLibrary";
 import type { Playback } from "./usePlayback";
 
@@ -25,19 +26,23 @@ function formatTotal(ms: number) {
  */
 export default function PmjListPane({
   pmjId,
+  name,
   reloadKey,
   lib,
   playback,
   onClose,
 }: {
   pmjId: string;
+  // Çubuktan bilinen ad: veri gelmeden başlık boş kalmasın
+  name: string | null;
   // Çubukta liste açılıp kapanınca görünüm tazelensin
   reloadKey: number;
   lib: Library;
   playback: Playback;
   onClose: () => void;
 }) {
-  const [view, setView] = useState<VenuePmjView | null>(null);
+  // Önbellekte varsa anında gösterilir, arkada tazelenir (bkz. pmj-view-cache.ts)
+  const [view, setView] = useState<VenuePmjView | null>(() => cachedPmjView(pmjId));
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [tick, setTick] = useState(0);
@@ -45,12 +50,10 @@ export default function PmjListPane({
 
   useEffect(() => {
     let alive = true;
-    fetch(`/api/admin/pmj-playlists?id=${pmjId}`)
-      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
-      .then(({ ok, d }) => {
-        if (!alive) return;
-        if (!ok) throw new Error(d?.error ?? "Liste yüklenemedi");
-        setView(d.view as VenuePmjView);
+    fetchPmjView(pmjId)
+      .then((v) => {
+        if (!alive || !v) return;
+        setView(v);
         setError("");
       })
       .catch((err: unknown) => alive && setError(err instanceof Error ? err.message : "Liste yüklenemedi"));
@@ -99,7 +102,7 @@ export default function PmjListPane({
             <p className="text-[11px] font-semibold tracking-widest" style={{ color: "#fbbf24" }}>
               PMJ LİSTESİ
             </p>
-            <h1 className="text-white text-2xl md:text-3xl font-black truncate">{view?.name ?? "…"}</h1>
+            <h1 className="text-white text-2xl md:text-3xl font-black truncate">{view?.name ?? name ?? "…"}</h1>
             {view && (
               <p className="text-[#d1d5db] text-sm mt-1">
                 {view.songs.length} şarkı · {formatTotal(total)} ·{" "}

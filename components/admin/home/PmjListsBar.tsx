@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { prefetchPmjViews } from "./pmj-view-cache";
 
 type PmjList = { id: string; name: string; song_count: number; visible: boolean };
 
@@ -18,7 +19,7 @@ export default function PmjListsBar({
 }: {
   // Orta panoda açık olan PMJ listesi
   activeId: string | null;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, name: string) => void;
   // Bir listenin görünürlüğü değişti: orta pano tazelensin
   onChanged: () => void;
 }) {
@@ -26,21 +27,29 @@ export default function PmjListsBar({
   const [lists, setLists] = useState<PmjList[] | null>(null);
   const [error, setError] = useState("");
 
-  const load = () => {
-    setError("");
+  // setState yalnızca promise içinde: effect gövdesinde senkron çağrı yok
+  const fetchLists = () =>
     fetch("/api/admin/pmj-playlists")
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
         if (!ok) throw new Error(d?.error ?? "Listeler yüklenemedi");
-        setLists(d.playlists as PmjList[]);
+        const loaded = d.playlists as PmjList[];
+        setLists(loaded);
+        setError("");
+        // Görünümler arkada iner; kullanıcı tıkladığında hazır olur
+        prefetchPmjViews(loaded.map((l) => l.id));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Listeler yüklenemedi"));
-  };
+
+  // Çubuk kapalıyken de açılışta bir kez yüklenir
+  useEffect(() => {
+    void fetchLists();
+  }, []);
 
   const toggleOpen = () => {
     const next = !open;
     setOpen(next);
-    if (next && lists === null) load();
+    if (next && lists === null) void fetchLists();
   };
 
   // Liste başına istek kuyruğu: göz düğmesi kendi listelerdeki gibi İYİMSER —
@@ -141,7 +150,7 @@ export default function PmjListsBar({
                 border: `1px solid ${activeId === l.id ? "rgba(245,158,11,0.45)" : "transparent"}`,
               }}
             >
-              <button onClick={() => onOpen(l.id)} className="min-w-0 flex-1 text-left" title="Şarkıları göster">
+              <button onClick={() => onOpen(l.id, l.name)} className="min-w-0 flex-1 text-left" title="Şarkıları göster">
                 <p
                   className="text-[13px] font-semibold truncate"
                   style={{ color: activeId === l.id ? "#fbbf24" : l.visible ? "#e5e7eb" : "#9ca3af" }}

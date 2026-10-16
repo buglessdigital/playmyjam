@@ -446,13 +446,15 @@ export async function getVenuePmjView(venueId: string, pmjId: string): Promise<V
   const shown = songs.filter((s) => !excluded.has(s.id));
   const catalog = new Map<string, { id: string; in_venue_list: boolean }>();
   if (link) {
+    // Parçalar sırayla değil birlikte: 900 şarkı = 5 sorgu, her biri bir gidiş-dönüş
     const ids = shown.map((s) => s.id);
-    for (let i = 0; i < ids.length; i += 200) {
-      const { data, error } = await supabaseAdmin
-        .from("venue_songs")
-        .select("id, song_id, in_venue_list")
-        .eq("venue_id", venueId)
-        .in("song_id", ids.slice(i, i + 200));
+    const chunks = Array.from({ length: Math.ceil(ids.length / 200) }, (_, i) => ids.slice(i * 200, i * 200 + 200));
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        supabaseAdmin.from("venue_songs").select("id, song_id, in_venue_list").eq("venue_id", venueId).in("song_id", chunk)
+      )
+    );
+    for (const { data, error } of results) {
       if (error) throw new Error(error.message);
       for (const r of data ?? []) catalog.set(r.song_id as string, { id: r.id as string, in_venue_list: r.in_venue_list as boolean });
     }

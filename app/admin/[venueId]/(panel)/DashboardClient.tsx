@@ -86,6 +86,7 @@ function AdminDashboardContent({ params }: Props) {
   const [pane, setPane] = useState<Pane>("songs");
   // Orta panoda PMJ listesi açıksa onun kimliği (0081); kendi listesi seçilince kapanır
   const [pmjView, setPmjView] = useState<string | null>(null);
+  const [pmjName, setPmjName] = useState<string | null>(null);
   const [pmjReload, setPmjReload] = useState(0);
   const railWidth = useSyncExternalStore(subscribeRail, readRailWidth, () => RAIL_DEFAULT);
   const setRailWidth = useCallback((w: number) => writeRailWidth(w), []);
@@ -143,7 +144,10 @@ function AdminDashboardContent({ params }: Props) {
             onPick={() => setPane("songs")}
             onRename={() => setModal("rename")}
             pmjActiveId={pmjView}
-            onOpenPmj={setPmjView}
+            onOpenPmj={(id, name) => {
+              setPmjView(id);
+              setPmjName(name ?? null);
+            }}
             onPmjChanged={() => setPmjReload((n) => n + 1)}
           />
         </div>
@@ -153,6 +157,7 @@ function AdminDashboardContent({ params }: Props) {
             <PmjListPane
               key={pmjView}
               pmjId={pmjView}
+              name={pmjName}
               reloadKey={pmjReload}
               lib={lib}
               playback={playback}

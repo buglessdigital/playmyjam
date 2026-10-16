@@ -24,7 +24,7 @@ export default function PlaylistRail({
   lib: Library;
   // Orta panoda açık PMJ listesi (yoksa null) ve onu açan/kapatan geri çağrılar
   pmjActiveId: string | null;
-  onOpenPmj: (id: string | null) => void;
+  onOpenPmj: (id: string | null, name?: string) => void;
   onPmjChanged: () => void;
   onNewList: () => void;
   // Dar ekranda liste seçilince şarkı panosuna geçilir
@@ -113,8 +113,8 @@ export default function PlaylistRail({
         {!listFiltered && (
           <PmjListsBar
             activeId={pmjActiveId}
-            onOpen={(id) => {
-              onOpenPmj(id);
+            onOpen={(id, name) => {
+              onOpenPmj(id, name);
               onPick?.();
             }}
             onChanged={onPmjChanged}

@@ -22,3 +22,5 @@ metadata:
 **21 Eyl 2026 — yeni çıkanlar OTOMATİK:** Vercel cron `/api/cron/catalog-new` her gün 06:00 UTC (kota 07:00 UTC'de sıfırlanır → gecenin artan kotası), tavan 3000 birim / 240 sn. Kaynak: `catalog_topic_uploads()` RPC (text[] döner — tablo dönünce PostgREST 1000'de kesiyordu; kısmi indeks songs_topic_channel_idx ile ~1,6 sn). Durum `catalog_sources` tablosunda (0053, uygulandı); betik de her listeden sonra oraya yazar ve açılışta .seed-state.json'u oraya aktarır. Kayıtlı liste en yeni sayfadan okunur, bilinen şarkıda durur; kayıtsız liste baştan sona okunur. Süzgeç ortak: lib/catalog-row.ts. Commit ile prod'da.
 
 **30 Eyl 2026:** `catalog_topic_uploads()` ~880 bin satırlık havuzda 8 sn sınırını aştı (fonksiyon içinden ~12 sn; 776 bin Topic satırını okuyup 1.673 kanal buluyordu). 0062 özyinelemeli skip scan'e çevirdi: ~0,2 sn, süre artık kanal sayısıyla ölçekleniyor. `DISTINCT` ile az farklı değer arayan sorgularda aynı kalıbı kullan.
+
+**16 Eki 2026 — `--harvest` BIRAKILDI:** elle hasat artık yalnızca seçilmiş kaynakla (`--file` / `--playlist`). Neden ve yeni yöntem: [[pmj-hedefli-hasat-2026-10]].

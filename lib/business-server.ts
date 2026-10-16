@@ -60,8 +60,8 @@ export async function getPayoutSettings(): Promise<PayoutSettings> {
   return parsePayoutSettings(data?.value);
 }
 
-// Ayarın verilen andan ÖNCEKİ son değeri (app_settings_history, 0082).
-// undefined: geçmiş okunamadı (0082 yok) → çağıran güncel değere düşer;
+// Ayarın verilen andan ÖNCEKİ son değeri (app_settings_history, 0083).
+// undefined: geçmiş okunamadı (0083 yok) → çağıran güncel değere düşer;
 // null: o anda ayar henüz hiç tanımlanmamıştı.
 async function settingBefore(key: string, at: Date): Promise<unknown> {
   const { data, error } = await supabaseAdmin
@@ -127,7 +127,7 @@ export async function getVenueUsage(from: string, to: string): Promise<Map<strin
     const tokens = Number(r.tokens);
     // 0057 uygulanmadan önce paid_tokens gelmez: eski davranış (tüm harcama)
     const paid = r.paid_tokens == null ? tokens : Number(r.paid_tokens);
-    // 0082 uygulanmadan önce Apple kırılımı yok (Apple satışı da yok)
+    // 0083 uygulanmadan önce Apple kırılımı yok (Apple satışı da yok)
     const apple = r.apple_paid_tokens == null ? 0 : Number(r.apple_paid_tokens);
     map.set(r.venue_id, { ...r, tokens, paid_tokens: paid, apple_paid_tokens: apple, requests: Number(r.requests) });
   }

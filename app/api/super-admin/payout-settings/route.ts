@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 }
 
 // Oranlar + App Store jeton birim fiyatı. Her değişiklik app_settings_history'ye
-// düşer (0082); hakediş dönemin değerlerini oradan okur (lib/business-server.ts
+// düşer (0083); hakediş dönemin değerlerini oradan okur (lib/business-server.ts
 // getPeriodTerms) — yani bugünkü değişiklik geçmiş dönemleri bozmaz.
 export async function PUT(req: NextRequest) {
   if (!getSuperSession(req)) {

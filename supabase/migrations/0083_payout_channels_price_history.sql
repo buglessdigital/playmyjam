@@ -1,4 +1,4 @@
--- 0082: Hakediş için fiyat/oran geçmişi + Apple (App Store) satış kanalı.
+-- 0083: Hakediş için fiyat/oran geçmişi + Apple (App Store) satış kanalı.
 --
 -- 1) Sözleşme (Hizmet ve Gelir Paylaşım Sözleşmesi md. 5) hakedişi şöyle tanımlar:
 --      birim fiyat      → Dönem SONUNDA geçerli fiyat

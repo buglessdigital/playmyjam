@@ -73,6 +73,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Hedefli hasat](pmj-hedefli-hasat-2026-10.md) — 16 Eki'den beri `--harvest` YOK; eksik ölçümü video kimliğiyle, sanatçının kendi kanalı ülkeye (TR) göre seçilir; RDCLAK listeleri sayfa döngüsüne girer
 - [Supabase projesi](pmj-supabase-hesabi.md) — 17 Eyl 2026 prod quvkscvbsplxkuolvhwe projesine taşındı; 6 Eki'den beri Supabase MCP "playmyjam" org'una bağlı (prod+staging); Vercel pmj artık jettplaycrm-9116 hesabında; DB şifresi .env.new
 - [İş yönetimi (CRM + hakediş + sözleşme onayı)](pmj-is-yonetimi-2026-09.md) — hakediş formülü, yalnız ücretli jeton; 0050+0051+0057 ŞART; koşullar tamsa 3 belge otomatik mekana gider (tür başlık sonekinde)
+- [Sözleşme revizyonu + App Store kanalı](pmj-sozlesme-revizyonu-2026-10.md) — ciro dönem sonu fiyatıyla, oranlar dönem başı, hakediş KDV hariç, Apple jetonu oransal; mekan panelinde Hakedişler; 0082 ŞART ve koddan ÖNCE
 - [Mekan yayılım planı](pmj-yayilim-plani-2026-09.md) — 5→30→…→2000; Pro planlar mekan öncesi son adım, kontrol listesi kararları kayıtlı; 5 mekan için Vercel Hobby + Supabase Free yetmiyor (heartbeat 5 sn, broadcast 1 sn)
 - [Player güvenilirlik turu](pmj-player-guvenilirlik-2026-09.md) — sahiplik kimliği bellekte (sessionStorage DEĞİL), from_video_id, oturum iptalinde çalma izni; c29543b prod
 - [Mekan sayfası (plaket arka yüzü)](pmj-mekan-sayfasi-2026-09.md) — /<slug>/bilgi; 0052 ŞART, 0ff9636 prod'da, hizmet super admin'de açılır, tasarımda reddedilen yönler kayıtlı

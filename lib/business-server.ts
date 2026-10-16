@@ -5,6 +5,7 @@ import {
   PRIORITIES,
   parsePayoutSettings,
   type PayoutSettings,
+  type UnitPrices,
 } from "@/lib/business";
 
 // Serbest metin alanı: string değilse ya da sınırı aşarsa null (→ 400)
@@ -40,8 +41,18 @@ export function optionalDay(v: unknown): string | null | undefined {
 
 export async function getUnitPrice(): Promise<number> {
   const { data } = await supabaseAdmin.from("app_settings").select("value").eq("key", "token_unit_price").maybeSingle();
-  const n = Number(data?.value);
-  return Number.isFinite(n) && n > 0 ? n : 20;
+  return parseUnitPrice(data?.value) ?? 20;
+}
+
+// App Store'daki jeton birim fiyatı; tanımlı değilse null (→ web fiyatı geçerli)
+export async function getAppleUnitPrice(): Promise<number | null> {
+  const { data } = await supabaseAdmin.from("app_settings").select("value").eq("key", "apple_token_unit_price").maybeSingle();
+  return parseUnitPrice(data?.value);
+}
+
+function parseUnitPrice(v: unknown): number | null {
+  const n = Number(v);
+  return v !== null && v !== undefined && Number.isFinite(n) && n > 0 ? n : null;
 }
 
 export async function getPayoutSettings(): Promise<PayoutSettings> {
@@ -49,19 +60,76 @@ export async function getPayoutSettings(): Promise<PayoutSettings> {
   return parsePayoutSettings(data?.value);
 }
 
-// tokens: harcanan tüm jeton; paid_tokens: bunun parayla alınmış kısmı (hakediş buna bakar)
-export type VenueUsage = { venue_id: string; tokens: number; paid_tokens: number; requests: number; last_spend_at: string | null };
+// Ayarın verilen andan ÖNCEKİ son değeri (app_settings_history, 0082).
+// undefined: geçmiş okunamadı (0082 yok) → çağıran güncel değere düşer;
+// null: o anda ayar henüz hiç tanımlanmamıştı.
+async function settingBefore(key: string, at: Date): Promise<unknown> {
+  const { data, error } = await supabaseAdmin
+    .from("app_settings_history")
+    .select("value")
+    .eq("key", key)
+    .lt("effective_at", at.toISOString())
+    .order("effective_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return undefined;
+  return data ? data.value : null;
+}
+
+// İstanbul günü başlangıcı (Türkiye 2016'dan beri sabit UTC+3)
+const istanbulMidnight = (day: string) => new Date(`${day}T00:00:00+03:00`);
+
+export type PeriodTerms = { prices: UnitPrices; settings: PayoutSettings; applePriceSet: boolean };
+
+// Bir dönemin hakedişinde kullanılacak değerler (sözleşme md. 5):
+//   birim fiyatlar   → Dönem SONUNDA geçerli olanlar
+//   kesinti oranları → Dönem BAŞINDA geçerli olanlar (değişiklik izleyen Dönemden itibaren uygulanır)
+// Süren dönemde "son" henüz gelmediği için güncel fiyat döner.
+export async function getPeriodTerms(start: string, end: string): Promise<PeriodTerms> {
+  const endAt = istanbulMidnight(end);
+  const startAt = new Date(istanbulMidnight(start).getTime() + 1); // dönem başındaki değişiklik dahil
+  const [webHist, appleHist, settingsHist, webNow, appleNow, settingsNow] = await Promise.all([
+    settingBefore("token_unit_price", endAt),
+    settingBefore("apple_token_unit_price", endAt),
+    settingBefore("payout_settings", startAt),
+    getUnitPrice(),
+    getAppleUnitPrice(),
+    getPayoutSettings(),
+  ]);
+  const future = endAt.getTime() > Date.now();
+  const web = (future ? null : parseUnitPrice(webHist)) ?? webNow;
+  const apple = future || appleHist === undefined ? appleNow : parseUnitPrice(appleHist);
+  return {
+    prices: { web, apple: apple ?? web },
+    settings: settingsHist == null ? settingsNow : parsePayoutSettings(settingsHist),
+    applePriceSet: apple != null,
+  };
+}
+
+// tokens: harcanan tüm jeton; paid_tokens: bunun parayla alınmış kısmı (hakediş buna bakar);
+// apple_paid_tokens: ücretli jetonun App Store'dan alınmış kısmı
+export type VenueUsage = {
+  venue_id: string;
+  tokens: number;
+  paid_tokens: number;
+  apple_paid_tokens: number;
+  requests: number;
+  last_spend_at: string | null;
+};
 
 // [from, to) günleri arasında mekan bazında harcanan jeton
 export async function getVenueUsage(from: string, to: string): Promise<Map<string, VenueUsage>> {
   const { data, error } = await supabaseAdmin.rpc("venue_token_usage", { p_from: from, p_to: to });
   if (error) throw new Error(error.message);
   const map = new Map<string, VenueUsage>();
-  for (const r of (data ?? []) as (VenueUsage & { paid_tokens?: number })[]) {
+  for (const r of (data ?? []) as (VenueUsage & { paid_tokens?: number; apple_paid_tokens?: number })[]) {
     const tokens = Number(r.tokens);
     // 0057 uygulanmadan önce paid_tokens gelmez: eski davranış (tüm harcama)
     const paid = r.paid_tokens == null ? tokens : Number(r.paid_tokens);
-    map.set(r.venue_id, { ...r, tokens, paid_tokens: paid, requests: Number(r.requests) });
+    // 0082 uygulanmadan önce Apple kırılımı yok (Apple satışı da yok)
+    const apple = r.apple_paid_tokens == null ? 0 : Number(r.apple_paid_tokens);
+    map.set(r.venue_id, { ...r, tokens, paid_tokens: paid, apple_paid_tokens: apple, requests: Number(r.requests) });
   }
   return map;
 }

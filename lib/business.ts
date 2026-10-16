@@ -74,36 +74,50 @@ export const PAYOUT_STATUS_META: Record<PayoutStatus, { label: string; color: st
 // Hakediş kesinti oranları (app_settings.payout_settings)
 export type PayoutSettings = {
   vat_rate: number; // KDV %, fiyata dahil
-  bank_fee_pct: number; // banka / iyzico komisyonu %, brüt ciro üzerinden
+  bank_fee_pct: number; // banka / iyzico komisyonu %, iyzico cirosu (KDV dahil) üzerinden
+  apple_fee_pct: number; // Apple (App Store) komisyonu %, Apple cirosunun KDV hariç kısmı üzerinden
   other_pct: number; // ek kesinti % (stopaj vb.), brüt ciro üzerinden
 };
 
-export const DEFAULT_PAYOUT_SETTINGS: PayoutSettings = { vat_rate: 20, bank_fee_pct: 0, other_pct: 0 };
+export const DEFAULT_PAYOUT_SETTINGS: PayoutSettings = { vat_rate: 20, bank_fee_pct: 0, apple_fee_pct: 0, other_pct: 0 };
 
 export function parsePayoutSettings(raw: unknown): PayoutSettings {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const pct = (v: unknown, fallback: number) => {
     const n = Number(v);
-    return Number.isFinite(n) && n >= 0 && n <= 100 ? n : fallback;
+    return v !== null && v !== undefined && v !== "" && Number.isFinite(n) && n >= 0 && n <= 100 ? n : fallback;
   };
   return {
     vat_rate: pct(o.vat_rate, DEFAULT_PAYOUT_SETTINGS.vat_rate),
     bank_fee_pct: pct(o.bank_fee_pct, DEFAULT_PAYOUT_SETTINGS.bank_fee_pct),
+    apple_fee_pct: pct(o.apple_fee_pct, DEFAULT_PAYOUT_SETTINGS.apple_fee_pct),
     other_pct: pct(o.other_pct, DEFAULT_PAYOUT_SETTINGS.other_pct),
   };
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-// Hakediş = mekan komisyonu × (ciro − KDV − banka komisyonu − ek kesinti)
-export function computePayout(tokens: number, unitPrice: number, s: PayoutSettings, commissionPct: number) {
-  const gross = round2(tokens * unitPrice);
-  const vat = round2(gross - gross / (1 + s.vat_rate / 100));
-  const bankFee = round2((gross * s.bank_fee_pct) / 100);
+// Ücretli jetonun kanallara dağılımı: tokens tümü (Apple dahil), appleTokens Apple kısmı
+export type PaidTokens = { tokens: number; appleTokens: number };
+// Dönemin birim fiyatları; Apple fiyatı tanımlı değilse web fiyatı
+export type UnitPrices = { web: number; apple: number };
+
+// Hakediş = mekan komisyonu × (ciro − KDV − iyzico komisyonu − Apple komisyonu − ek kesinti)
+// (Hizmet ve Gelir Paylaşım Sözleşmesi md. 5 — metin lib/contract-template.ts)
+export function computePayout(paid: PaidTokens, prices: UnitPrices, s: PayoutSettings, commissionPct: number) {
+  const appleTokens = Math.min(Math.max(paid.appleTokens, 0), paid.tokens);
+  const webTokens = paid.tokens - appleTokens;
+  const webGross = round2(webTokens * prices.web);
+  const appleGross = round2(appleTokens * prices.apple);
+  const gross = round2(webGross + appleGross);
+  const vatOf = (g: number) => g - g / (1 + s.vat_rate / 100);
+  const vat = round2(vatOf(gross));
+  const bankFee = round2((webGross * s.bank_fee_pct) / 100);
+  const appleFee = round2(((appleGross - vatOf(appleGross)) * s.apple_fee_pct) / 100);
   const other = round2((gross * s.other_pct) / 100);
-  const net = Math.max(0, round2(gross - vat - bankFee - other));
+  const net = Math.max(0, round2(gross - vat - bankFee - appleFee - other));
   const computed = round2((net * commissionPct) / 100);
-  return { gross, vat, bankFee, other, net, computed };
+  return { webTokens, appleTokens, webGross, appleGross, gross, vat, bankFee, appleFee, other, net, computed };
 }
 
 // ── Dönemler: "YYYY-MM" ay anahtarı, tarihler "YYYY-MM-DD" (İstanbul günü) ──

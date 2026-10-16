@@ -78,8 +78,10 @@ const day = (iso: string | null) =>
 const groupIban = (iban: string) => iban.replace(/\s+/g, "").replace(/(.{4})/g, "$1 ").trim();
 
 function parties(venueName: string, c: ContractFields | null) {
-  return `${COMPANY.brand} / Hizmet Sağlayıcı: ${COMPANY.legalName} (“${COMPANY.brand}”)
-     Adres: ${COMPANY.address}
+  return `${COMPANY.brand} / Hizmet Sağlayıcı: ${COMPANY.legalName} — ${COMPANY.tradeName} (şahıs işletmesi) (“${COMPANY.brand}”)
+     Vergi dairesi / no: ${COMPANY.taxOffice} / ${COMPANY.taxNumber}
+     Adres: ${COMPANY.legalAddress}
+     Yazışma adresi: ${COMPANY.address}
      E-posta: ${COMPANY.email} · Telefon: ${COMPANY.phone}
 
 Mekan: ${blank(c?.legal_name, "[TİCARİ UNVAN]")} (“Mekan”)
@@ -101,10 +103,11 @@ function serviceContract({ venueName, contract: c, settings, unitPrice }: Templa
     ? `${day(c.end_date)} tarihine kadar geçerlidir. Taraflardan biri bitiş tarihinden en az 30 gün önce yazılı olarak aksini bildirmedikçe sözleşme aynı koşullarla birer yıllık sürelerle kendiliğinden uzar`
     : "süresizdir. Taraflardan her biri 30 gün önceden yazılı bildirimde bulunarak sözleşmeyi feshedebilir";
   const deductions = [
-    `KDV (%${formatNumber(settings.vat_rate)})`,
-    `ödeme kuruluşu / banka komisyonu (%${formatNumber(settings.bank_fee_pct)})`,
-    settings.other_pct > 0 ? `diğer yasal kesintiler (%${formatNumber(settings.other_pct)})` : "varsa diğer yasal kesintiler",
-  ].join(", ");
+    `ciroya dahil KDV (%${formatNumber(settings.vat_rate)})`,
+    `iyzico ile satılan Ücretli Jetonların cirosu üzerinden ödeme kuruluşu / banka komisyonu (%${formatNumber(settings.bank_fee_pct)})`,
+    "App Store üzerinden satılan Ücretli Jetonların KDV hariç cirosu üzerinden, Apple'ın PlayMyJam'a fiilen uyguladığı App Store komisyonu",
+    settings.other_pct > 0 ? `brüt ciro üzerinden diğer yasal kesintiler (%${formatNumber(settings.other_pct)})` : "varsa diğer yasal kesintiler",
+  ].join("; ");
   const special = c?.notes?.trim()
     ? `\n\n17. ÖZEL ŞARTLAR\n\n${c.notes.trim()}\n\nÖzel şartlar ile bu sözleşmenin diğer hükümleri çelişirse özel şartlar uygulanır.`
     : "";
@@ -120,6 +123,7 @@ Platform: ${COMPANY.brand} web uygulaması, mekan paneli, müzik oynatıcı ve b
 Müşteri: Mekan'ı ziyaret eden ve Platform'u kullanan gerçek kişi.
 Jeton: Müşterinin Platform'da şarkı istemek için kullandığı, ${COMPANY.brand} tarafından satılan dijital hizmet birimi.
 Ücretli Jeton: Müşterinin bedelini ödeyerek satın aldığı jeton. ${COMPANY.brand}'ın hediye, promosyon, telafi ya da test amacıyla ücretsiz verdiği jetonlar Ücretli Jeton sayılmaz.
+Satış Kanalı: Jetonun satıldığı yol. Web sitesi ve Android uygulamasında anlaşmalı ödeme kuruluşu iyzico (“iyzico”), iOS uygulamasında Apple'ın uygulama içi satın alma sistemi (“App Store”).
 Dönem: Bir takvim ayı (Türkiye saati ile ayın ilk günü 00:00 ile son günü 23:59 arası).
 
 3. KONU
@@ -128,20 +132,21 @@ Bu sözleşme, Platform'un Mekan'da kullanılmasına, Müşterilerin Platform ü
 
 4. JETON SATIŞI VE TAHSİLAT
 
-4.1. Jeton ${COMPANY.brand}'ın kendi hizmet ürünüdür. Jeton satışı ${COMPANY.brand} adına ve hesabına yapılır; bedeli ${COMPANY.brand} tarafından, anlaşmalı ödeme kuruluşu aracılığıyla tahsil edilir ve Müşteriye ${COMPANY.brand} tarafından belge düzenlenir.
+4.1. Jeton ${COMPANY.brand}'ın kendi hizmet ürünüdür. Jeton satışı ${COMPANY.brand} adına ve hesabına yapılır. Bedel, iyzico ile yapılan satışlarda ${COMPANY.brand} tarafından iyzico aracılığıyla tahsil edilir ve Müşteriye ${COMPANY.brand} tarafından belge düzenlenir; App Store üzerinden yapılan satışlarda ise Apple'ın kuralları gereği Apple tarafından tahsil edilir ve satış belgesi Apple'ın kurallarına tabidir.
 4.2. Mekan, jeton ya da şarkı isteği için Müşteriden doğrudan bedel tahsil etmez ve jeton satışı yapmaz.
 4.3. Hakediş, Müşteri adına tahsil edilip Mekan'a aktarılan bir tutar değildir. Hakediş, Platform'un Mekan'da sunulmasına imkân tanınması ve Mekan'ın 7. maddedeki yükümlülükleri karşılığında ${COMPANY.brand}'ın kendi gelirinden Mekan'a ödediği bedeldir.
-4.4. Jeton birim fiyatını ${COMPANY.brand} belirler. Sözleşme tarihindeki birim fiyat ${formatNumber(unitPrice)} TL'dir (KDV dahil). Fiyat değişiklikleri yürürlükten en az 7 gün önce Mekan'a bildirilir.
-4.5. Müşterinin jeton satın alma, iade ve kullanım ilişkisi yalnızca ${COMPANY.brand} ile Müşteri arasındadır. Kullanılmamış jetonlara ilişkin tüm sorumluluk ${COMPANY.brand}'a aittir.
+4.4. Jeton birim fiyatını ${COMPANY.brand} belirler. Sözleşme tarihindeki birim fiyat ${formatNumber(unitPrice)} TL'dir (KDV dahil). App Store üzerinden satılan jetonun birim fiyatı, Apple'ın fiyat basamakları nedeniyle bundan farklı olabilir; ${COMPANY.brand} tarafından belirlenir ve App Store'da ilan edilir. Fiyat değişiklikleri yürürlükten en az 7 gün önce Mekan'a bildirilir.
+4.5. Müşterinin jeton satın alma, iade ve kullanım ilişkisi yalnızca ${COMPANY.brand} ile Müşteri arasındadır; App Store üzerinden yapılan satışlarda iade talepleri ayrıca Apple'ın kurallarına tabidir. Kullanılmamış jetonlara ilişkin tüm sorumluluk ${COMPANY.brand}'a aittir.
 
 5. HAKEDİŞ
 
-5.1. Ciro: Bir Dönem içinde Mekan'da harcanan Ücretli Jeton adedi × harcama anındaki jeton birim fiyatıdır.
-5.2. Net ciro: Cirodan ${deductions} düşüldükten sonra kalan tutardır.
-5.3. Mekan'ın Hakedişi, net cironun ${commission}'idir.
-5.4. Müşteriye iade edilen ya da kart sahibinin itirazı (ters ibraz) sonucu geri alınan ödemelere karşılık gelen jetonlar ciroya dahil edilmez. Bu jetonlar için Hakediş ödenmişse ödenen tutar izleyen Dönem Hakedişlerinden mahsup edilir.
-5.5. Kesinti oranları yasal düzenleme ya da ödeme kuruluşu kaynaklı olarak değişirse yeni oranlar değişikliği izleyen Dönemden itibaren uygulanır ve Mekan'a bildirilir.
-5.6. Platform kayıtlarında teknik bir hata nedeniyle yanlış hesaplanan Hakediş, hata tespit edildiğinde izleyen Dönemde düzeltilir.
+5.1. Ciro: Bir Dönem içinde Mekan'da harcanan Ücretli Jetonların her Satış Kanalı için ayrı ayrı, o kanalda Dönemin son günü geçerli olan birim fiyatla çarpılmasıyla bulunan tutarların toplamıdır (KDV dahil).
+5.2. Bir Müşterinin bakiyesinde ücretsiz jeton ile Ücretli Jeton birlikte bulunuyorsa önce Ücretli Jeton harcanmış sayılır. Farklı Satış Kanallarından alınmış Ücretli Jetonlar birlikte bulunuyorsa, harcanan Ücretli Jetonun kanallara dağılımı bu jetonların bakiyedeki oranına göre belirlenir.
+5.3. Net ciro: Cirodan ${deductions} düşüldükten sonra kalan tutardır.
+5.4. Mekan'ın Hakedişi, net ciroya ${commission} oranı uygulanarak bulunur.
+5.5. Müşteriye iade edilen ya da kart sahibinin itirazı (ters ibraz) sonucu geri alınan ödemelere karşılık gelen jetonlar ciroya dahil edilmez. Bu jetonlar için Hakediş ödenmişse ödenen tutar izleyen Dönem Hakedişlerinden mahsup edilir.
+5.6. Kesinti oranları yasal düzenleme, ödeme kuruluşu ya da Apple kaynaklı olarak değişirse yeni oranlar değişikliği izleyen Dönemden itibaren uygulanır ve Mekan'a bildirilir.
+5.7. Platform kayıtlarında teknik bir hata nedeniyle yanlış hesaplanan Hakediş, hata tespit edildiğinde izleyen Dönemde düzeltilir.
 
 6. ÖDEME VE FATURA
 
@@ -149,10 +154,10 @@ Bu sözleşme, Platform'un Mekan'da kullanılmasına, Müşterilerin Platform ü
      IBAN: ${c?.iban ? groupIban(c.iban) : "[IBAN]"}
      Hesap sahibi: ${blank(c?.account_holder, "[HESAP SAHİBİ]")}
 6.2. Ödeme yalnızca Mekan adına ya da Mekan'ın ticari unvanına kayıtlı hesaba yapılır; üçüncü kişi hesabına ödeme yapılmaz. Hesap değişikliği ancak Mekan'ın yazılı bildirimi ve bu değişikliği içeren güncel sözleşmenin onaylanmasıyla geçerli olur.
-6.3. Mekan, Hakediş tutarı için mevzuata uygun fatura düzenleyerek ${COMPANY.email} adresine iletir. Fatura, Hakediş dökümüyle birlikte ödemenin ön koşuludur; faturanın gecikmesi hâlinde ödeme günü fatura tarihinden itibaren işler.
-6.4. Hakediş dökümü ${COMPANY.brand} mekan paneli ve/veya ${blank(c?.billing_email, "[E-POSTA]")} adresi üzerinden Mekan'a iletilir. Mekan, dökümdeki itirazını tebliğden itibaren 15 gün içinde yazılı olarak bildirir; bu süre içinde itiraz edilmeyen döküm kesinleşir.
+6.3. Hakediş KDV hariç tutardır; Mekan faturasına yasal KDV'yi ekler. Mekan, Hakediş tutarı için ${COMPANY.legalName} — ${COMPANY.tradeName} adına (vergi no ${COMPANY.taxNumber}) mevzuata uygun fatura düzenleyerek ${COMPANY.email} adresine iletir. Fatura, Hakediş dökümüyle birlikte ödemenin ön koşuludur; faturanın gecikmesi hâlinde ödeme günü fatura tarihinden itibaren işler.
+6.4. Hakediş dökümü ${COMPANY.brand} mekan paneli ve/veya ${blank(c?.billing_email, "[E-POSTA]")} adresi üzerinden Mekan'a iletilir. Dökümde Ücretli Jetonlar ve kesintiler Satış Kanalına göre ayrı gösterilir. Mekan, dökümdeki itirazını tebliğden itibaren 15 gün içinde yazılı olarak bildirir; bu süre içinde itiraz edilmeyen döküm kesinleşir.
 6.5. Toplam Hakedişi 100 TL'nin altında kalan Dönemin tutarı izleyen Dönemin Hakedişine eklenerek ödenebilir.
-6.6. ${COMPANY.brand}, bu sözleşmeden doğan alacaklarını (5.4. maddedeki mahsuplar ve Müzik Lisansı ve Tazmin Taahhütnamesi'nden doğan rücu alacakları dahil) Mekan'ın Hakedişinden takas ve mahsup edebilir.
+6.6. ${COMPANY.brand}, bu sözleşmeden doğan alacaklarını (5.5. maddedeki mahsuplar ve Müzik Lisansı ve Tazmin Taahhütnamesi'nden doğan rücu alacakları dahil) Mekan'ın Hakedişinden takas ve mahsup edebilir.
 
 7. TARAFLARIN YÜKÜMLÜLÜKLERİ
 

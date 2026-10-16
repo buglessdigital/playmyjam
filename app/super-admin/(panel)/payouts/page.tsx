@@ -31,6 +31,10 @@ type Payout = {
   bank_fee: number;
   other_pct: number;
   other_amount: number;
+  apple_tokens: number;
+  apple_unit_price: number | null;
+  apple_fee_pct: number;
+  apple_fee: number;
   net_amount: number;
   commission_pct: number;
   computed_amount: number;
@@ -44,12 +48,12 @@ type Payout = {
   notes: string;
 };
 
-type Preview = { gross: number; vat: number; bankFee: number; other: number; net: number; computed: number; due_date: string };
+type Preview = { gross: number; vat: number; bankFee: number; appleFee: number; other: number; net: number; computed: number; due_date: string };
 
 type Row = {
   venue: { id: string; slug: string; name: string; status: string };
   contract: { commission_pct: number; payment_day: number; iban: string; account_holder: string } | null;
-  usage: { tokens: number; paid_tokens: number; requests: number };
+  usage: { tokens: number; paid_tokens: number; apple_paid_tokens: number; requests: number };
   preview: Preview | null;
   payout: Payout | null;
 };
@@ -59,6 +63,7 @@ type MonthData = {
   closed: boolean;
   settings: PayoutSettings;
   unit_price: number;
+  apple_unit_price: number | null;
   rows: Row[];
   orphans: Payout[];
   open: Payout[];
@@ -79,9 +84,38 @@ function Line({ label, value, strong, muted }: { label: string; value: string; s
   );
 }
 
-function SettingsModal({ initial, unitPrice, onClose, onSaved }: { initial: PayoutSettings; unitPrice: number; onClose: () => void; onSaved: () => void }) {
+type CurrentSettings = PayoutSettings & { unit_price: number; apple_unit_price: number | null };
+
+// Modal ayın değil BUGÜNÜN değerlerini düzenler: seçili ay geçmişteyse onun
+// değerleri (dönem başı oranlar / dönem sonu fiyat) farklı olabilir.
+function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [current, setCurrent] = useState<CurrentSettings | null>(null);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    api<CurrentSettings>("/api/super-admin/payout-settings")
+      .then(setCurrent)
+      .catch((e) => setLoadError(e instanceof Error ? e.message : "Yüklenemedi"));
+  }, []);
+
+  return (
+    <Modal title="Kesinti Oranları" onClose={onClose}>
+      {loadError ? (
+        <ErrorBox>{loadError}</ErrorBox>
+      ) : !current ? (
+        <p className="py-6 text-center text-sm text-[#6b7280]">Yükleniyor…</p>
+      ) : (
+        <SettingsForm initial={current} onClose={onClose} onSaved={onSaved} />
+      )}
+    </Modal>
+  );
+}
+
+function SettingsForm({ initial, onClose, onSaved }: { initial: CurrentSettings; onClose: () => void; onSaved: () => void }) {
   const [vat, setVat] = useState(String(initial.vat_rate));
   const [bank, setBank] = useState(String(initial.bank_fee_pct));
+  const [apple, setApple] = useState(String(initial.apple_fee_pct));
+  const [applePrice, setApplePrice] = useState(initial.apple_unit_price == null ? "" : String(initial.apple_unit_price));
   const [other, setOther] = useState(String(initial.other_pct));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -89,13 +123,21 @@ function SettingsModal({ initial, unitPrice, onClose, onSaved }: { initial: Payo
   // 100 TL'lik örnek satışta kesintiler
   const g = 100;
   const v = g - g / (1 + Number(vat || 0) / 100);
-  const net = g - v - (g * Number(bank || 0)) / 100 - (g * Number(other || 0)) / 100;
+  const o = (g * Number(other || 0)) / 100;
+  const netWeb = Math.max(0, g - v - (g * Number(bank || 0)) / 100 - o);
+  const netApple = Math.max(0, g - v - ((g - v) * Number(apple || 0)) / 100 - o);
 
   const save = async () => {
     setSaving(true);
     setError("");
     try {
-      await api("/api/super-admin/payout-settings", "PUT", { vat_rate: Number(vat), bank_fee_pct: Number(bank), other_pct: Number(other) });
+      await api("/api/super-admin/payout-settings", "PUT", {
+        vat_rate: Number(vat),
+        bank_fee_pct: Number(bank),
+        apple_fee_pct: Number(apple),
+        apple_unit_price: applePrice.trim() === "" ? null : Number(applePrice),
+        other_pct: Number(other),
+      });
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kaydedilemedi");
@@ -104,27 +146,36 @@ function SettingsModal({ initial, unitPrice, onClose, onSaved }: { initial: Payo
   };
 
   return (
-    <Modal title="Kesinti Oranları" onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        <p className="text-xs text-[#9ca3af]">
-          Hakediş = mekan komisyonu × (ciro − KDV − banka komisyonu − ek kesinti). Ciro = harcanan jeton × birim fiyat ({formatTL(unitPrice)}).
-          Yeni oranlar yalnızca bundan sonra oluşturulan / yeniden hesaplanan taslaklara uygulanır.
-        </p>
-        <TextInput label="KDV (%) — fiyata dahil" type="number" step="0.01" min="0" max="100" value={vat} onChange={setVat} />
-        <TextInput label="Banka / iyzico komisyonu (%) — brüt ciro üzerinden" type="number" step="0.01" min="0" max="100" value={bank} onChange={setBank} />
-        <TextInput label="Ek kesinti (%) — stopaj vb., brüt ciro üzerinden" type="number" step="0.01" min="0" max="100" value={other} onChange={setOther} />
-        <div className="rounded-xl border border-white/10 p-3 text-xs text-[#9ca3af]">
-          Örnek: 100 TL satışta KDV {formatTL(v)}, net {formatTL(Math.max(0, net))}. %50 komisyonlu mekana {formatTL(Math.max(0, net) / 2)}.
-        </div>
-        {error && <ErrorBox>{error}</ErrorBox>}
-        <div className="flex justify-end gap-2">
-          <Button onClick={onClose}>Vazgeç</Button>
-          <Button variant="primary" onClick={save} disabled={saving}>
-            {saving ? "Kaydediliyor…" : "Kaydet"}
-          </Button>
-        </div>
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-[#9ca3af]">
+        Hakediş = mekan komisyonu × (ciro − KDV − iyzico komisyonu − Apple komisyonu − ek kesinti). Ciro = ücretli jeton × birim fiyat
+        (web {formatTL(initial.unit_price)}). Sözleşme gereği oran değişikliği <b className="text-white">izleyen aydan</b> itibaren
+        uygulanır; birim fiyat ise ayın sonunda geçerli olandır. Değişiklik geçmiş ayları bozmaz.
+      </p>
+      <TextInput label="KDV (%) — fiyata dahil" type="number" step="0.01" min="0" max="100" value={vat} onChange={setVat} />
+      <TextInput label="iyzico / banka komisyonu (%) — iyzico cirosu (KDV dahil) üzerinden" type="number" step="0.01" min="0" max="100" value={bank} onChange={setBank} />
+      <TextInput label="Apple komisyonu (%) — App Store cirosunun KDV hariç kısmı üzerinden" type="number" step="0.01" min="0" max="100" value={apple} onChange={setApple} />
+      <TextInput
+        label="App Store jeton birim fiyatı (TL, KDV dahil) — boş = web fiyatı"
+        type="number"
+        step="0.01"
+        min="0"
+        value={applePrice}
+        onChange={setApplePrice}
+        placeholder={String(initial.unit_price)}
+      />
+      <TextInput label="Ek kesinti (%) — stopaj vb., brüt ciro üzerinden" type="number" step="0.01" min="0" max="100" value={other} onChange={setOther} />
+      <div className="rounded-xl border border-white/10 p-3 text-xs text-[#9ca3af]">
+        Örnek: 100 TL satışta KDV {formatTL(v)} · iyzico satışında net {formatTL(netWeb)} · App Store satışında net {formatTL(netApple)}.
       </div>
-    </Modal>
+      {error && <ErrorBox>{error}</ErrorBox>}
+      <div className="flex justify-end gap-2">
+        <Button onClick={onClose}>Vazgeç</Button>
+        <Button variant="primary" onClick={save} disabled={saving}>
+          {saving ? "Kaydediliyor…" : "Kaydet"}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -190,10 +241,13 @@ function PayoutModal({ payout, row, onClose, onChanged }: { payout: Payout; row?
         </div>
 
         <Card className="p-4">
-          <Line label={`Ücretli jeton × ${formatTL(Number(payout.unit_price))}`} value={`${formatNumber(payout.tokens)} jeton`} muted />
+          <PayoutTokenLines payout={payout} />
           <Line label="Brüt ciro (KDV dahil)" value={formatTL(Number(payout.gross_amount))} />
           <Line label={`KDV (%${formatNumber(Number(payout.vat_rate))})`} value={`− ${formatTL(Number(payout.vat_amount))}`} />
-          <Line label={`Banka komisyonu (%${formatNumber(Number(payout.bank_fee_pct))})`} value={`− ${formatTL(Number(payout.bank_fee))}`} />
+          <Line label={`iyzico komisyonu (%${formatNumber(Number(payout.bank_fee_pct))})`} value={`− ${formatTL(Number(payout.bank_fee))}`} />
+          {Number(payout.apple_tokens) > 0 && (
+            <Line label={`Apple komisyonu (%${formatNumber(Number(payout.apple_fee_pct))})`} value={`− ${formatTL(Number(payout.apple_fee))}`} />
+          )}
           {Number(payout.other_pct) > 0 && (
             <Line label={`Ek kesinti (%${formatNumber(Number(payout.other_pct))})`} value={`− ${formatTL(Number(payout.other_amount))}`} />
           )}
@@ -202,7 +256,13 @@ function PayoutModal({ payout, row, onClose, onChanged }: { payout: Payout; row?
           <Line label={`Mekan komisyonu (%${formatNumber(Number(payout.commission_pct))})`} value={formatTL(Number(payout.computed_amount))} />
           {Number(adjustment || 0) !== 0 && <Line label="Düzeltme" value={formatTL(Number(adjustment))} />}
           <div className="border-t border-white/10 my-1" />
-          <Line label="Ödenecek tutar" value={formatTL(previewAmount)} strong />
+          <Line label="Ödenecek tutar (KDV hariç)" value={formatTL(previewAmount)} strong />
+          {/* Sözleşme md. 6.3: hakediş KDV hariç, mekan faturasına KDV ekler */}
+          <Line
+            label={`Mekan faturası KDV dahil (%${formatNumber(Number(payout.vat_rate))})`}
+            value={formatTL(previewAmount + Math.round(previewAmount * Number(payout.vat_rate)) / 100)}
+            muted
+          />
         </Card>
 
         {iban && (
@@ -293,20 +353,33 @@ function PayoutModal({ payout, row, onClose, onChanged }: { payout: Payout; row?
   );
 }
 
+function PayoutTokenLines({ payout }: { payout: Payout }) {
+  const apple = Number(payout.apple_tokens);
+  if (apple <= 0) {
+    return <Line label={`Ücretli jeton × ${formatTL(Number(payout.unit_price))}`} value={`${formatNumber(payout.tokens)} jeton`} muted />;
+  }
+  return (
+    <>
+      <Line label={`iyzico jetonu × ${formatTL(Number(payout.unit_price))}`} value={`${formatNumber(payout.tokens - apple)} jeton`} muted />
+      <Line label={`App Store jetonu × ${formatTL(Number(payout.apple_unit_price ?? payout.unit_price))}`} value={`${formatNumber(apple)} jeton`} muted />
+    </>
+  );
+}
+
 function csvCell(v: string | number) {
   const s = String(v);
   return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 function downloadCsv(data: MonthData) {
-  const header = ["Mekan", "Dönem", "Ücretli jeton", "Brüt ciro", "KDV", "Banka kom.", "Ek kesinti", "Net ciro", "Komisyon %", "Hakediş", "Düzeltme", "Ödenecek", "Vade", "Durum", "Ödeme tarihi", "Referans", "IBAN", "Hesap sahibi"];
+  const header = ["Mekan", "Dönem", "Ücretli jeton", "App Store jetonu", "Brüt ciro", "KDV", "iyzico kom.", "Apple kom.", "Ek kesinti", "Net ciro", "Komisyon %", "Hakediş", "Düzeltme", "Ödenecek", "Vade", "Durum", "Ödeme tarihi", "Referans", "IBAN", "Hesap sahibi"];
   const n = (x: number) => Number(x).toFixed(2).replace(".", ",");
   const lines = data.rows
     .filter((r) => r.payout)
     .map((r) => {
       const p = r.payout!;
       return [
-        p.venue_name, data.month, p.tokens, n(p.gross_amount), n(p.vat_amount), n(p.bank_fee), n(p.other_amount), n(p.net_amount),
+        p.venue_name, data.month, p.tokens, p.apple_tokens, n(p.gross_amount), n(p.vat_amount), n(p.bank_fee), n(p.apple_fee), n(p.other_amount), n(p.net_amount),
         n(p.commission_pct), n(p.computed_amount), n(p.adjustment), n(p.amount), p.due_date, PAYOUT_STATUS_META[p.status].label,
         p.paid_at ?? "", p.payment_ref, r.contract?.iban ?? "", r.contract?.account_holder ?? "",
       ].map(csvCell).join(";");
@@ -392,6 +465,7 @@ function PayoutsPageContent() {
     return r.preview?.[key] ?? 0;
   };
   const tokens = sumOf((r) => r.usage.paid_tokens);
+  const appleTokens = sumOf((r) => r.usage.apple_paid_tokens ?? 0);
   const freeTokens = sumOf((r) => r.usage.tokens - r.usage.paid_tokens);
   const gross = sumOf((r) => valueOf(r, "gross"));
   const net = sumOf((r) => valueOf(r, "net"));
@@ -437,7 +511,13 @@ function PayoutsPageContent() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
-            <Stat label="Ücretli jeton" value={formatNumber(tokens)} sub={freeTokens > 0 ? `+${formatNumber(freeTokens)} bedava, hesaba girmez` : undefined} />
+            <Stat
+              label="Ücretli jeton"
+              value={formatNumber(tokens)}
+              sub={[appleTokens > 0 && `${formatNumber(appleTokens)} App Store`, freeTokens > 0 && `+${formatNumber(freeTokens)} bedava, hesaba girmez`]
+                .filter(Boolean)
+                .join(" · ") || undefined}
+            />
             <Stat label="Brüt ciro" value={formatTL(gross)} sub="KDV dahil" />
             <Stat label="Net ciro" value={formatTL(net)} sub="kesintiler sonrası" />
             <Stat label="Mekanlara hakediş" value={formatTL(payable)} tone="warn" />
@@ -445,8 +525,11 @@ function PayoutsPageContent() {
           </div>
 
           <p className="text-xs text-[#6b7280] mb-4">
-            Güncel oranlar: birim {formatTL(data.unit_price)} · KDV %{formatNumber(data.settings.vat_rate)} · banka %{formatNumber(data.settings.bank_fee_pct)}
-            {data.settings.other_pct > 0 && ` · ek kesinti %${formatNumber(data.settings.other_pct)}`}
+            Bu ayın değerleri: birim {formatTL(data.unit_price)}
+            {data.apple_unit_price != null && ` (App Store ${formatTL(data.apple_unit_price)})`}
+            {data.closed ? " (ay sonu)" : " (güncel)"} · KDV %{formatNumber(data.settings.vat_rate)} · iyzico %{formatNumber(data.settings.bank_fee_pct)} · Apple %
+            {formatNumber(data.settings.apple_fee_pct)}
+            {data.settings.other_pct > 0 && ` · ek kesinti %${formatNumber(data.settings.other_pct)}`} (oranlar ay başı)
             {data.settings.bank_fee_pct === 0 && <span className="text-[#f59e0b]"> — banka komisyonu henüz girilmemiş</span>}
           </p>
 
@@ -456,7 +539,7 @@ function PayoutsPageContent() {
                 {missingDrafts > draftCount
                   ? `${missingDrafts - draftCount} mekan için hakediş taslağı henüz oluşturulmadı.`
                   : `${draftCount} taslak onay bekliyor.`}{" "}
-                <span className="text-[#6b7280]">Taslaklar güncel oranlarla yeniden hesaplanır; onaylı kayıtlara dokunulmaz.</span>
+                <span className="text-[#6b7280]">Taslaklar ayın fiyat/oranlarıyla yeniden hesaplanır; onaylı kayıtlara dokunulmaz.</span>
               </p>
               <div className="flex gap-2">
                 <Button variant="accent" onClick={generate} disabled={busy}>
@@ -568,10 +651,8 @@ function PayoutsPageContent() {
         </>
       )}
 
-      {settingsOpen && data && (
+      {settingsOpen && (
         <SettingsModal
-          initial={data.settings}
-          unitPrice={data.unit_price}
           onClose={() => setSettingsOpen(false)}
           onSaved={() => {
             setSettingsOpen(false);

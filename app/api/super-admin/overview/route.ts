@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSuperSession } from "@/lib/session";
-import { getPayoutSettings, getUnitPrice, getVenueUsage } from "@/lib/business-server";
+import { getPeriodTerms, getVenueUsage } from "@/lib/business-server";
 import {
   computePayout,
   currentMonth,
@@ -42,8 +42,7 @@ export async function GET(req: NextRequest) {
     openPayouts,
     tasks,
     leads,
-    settings,
-    unitPrice,
+    terms,
   ] = await Promise.all([
     getVenueUsage(monthStart, tomorrow),
     getVenueUsage(prevStart, prevSameDay),
@@ -65,8 +64,7 @@ export async function GET(req: NextRequest) {
       .order("due_at", { ascending: true, nullsFirst: false })
       .limit(200),
     supabaseAdmin.from("crm_leads").select("id, name, stage, next_action, next_action_at, updated_at, city"),
-    getPayoutSettings(),
-    getUnitPrice(),
+    getPeriodTerms(monthStart, monthRange(month).end),
   ]).catch(() => [] as never[]);
 
   if (!venues || venues.error || contracts.error || openPayouts.error || tasks.error || leads.error) {
@@ -76,11 +74,16 @@ export async function GET(req: NextRequest) {
   const sum = (m: Map<string, { tokens: number }>) => [...m.values()].reduce((a, u) => a + u.tokens, 0);
   const contractBy = new Map(contracts.data.map((c) => [c.venue_id, c]));
 
-  // Bu ay oluşan tahmini mekan hakedişi (güncel oranlarla)
+  // Bu ay oluşan tahmini mekan hakedişi (dönemin fiyat/oranlarıyla)
   let payoutEstimate = 0;
   for (const [venueId, u] of usageMonth) {
     const c = contractBy.get(venueId);
-    if (c) payoutEstimate += computePayout(u.paid_tokens, unitPrice, settings, Number(c.commission_pct)).computed;
+    if (c) payoutEstimate += computePayout(
+        { tokens: u.paid_tokens, appleTokens: u.apple_paid_tokens },
+        terms.prices,
+        terms.settings,
+        Number(c.commission_pct)
+      ).computed;
   }
 
   const tokensMonth = sum(usageMonth);
@@ -150,7 +153,7 @@ export async function GET(req: NextRequest) {
     revenue: {
       tokens_used: tokensMonth,
       tokens_used_prev: sum(usagePrevPartial),
-      usage_value: Math.round(paidTokensMonth * unitPrice * 100) / 100,
+      usage_value: Math.round(paidTokensMonth * terms.prices.web * 100) / 100,
       sales_total: Number(sales?.total ?? 0),
       sales_orders: Number(sales?.orders ?? 0),
       sales_total_prev: Number(salesPrevData?.total ?? 0),

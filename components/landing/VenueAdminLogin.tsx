@@ -342,7 +342,7 @@ export default function VenueAdminLogin({ venues }: { venues: VenueListItem[] })
         </Link>
         .{" "}
         {t.venueAdminLogin.applyHintPrefix}{" "}
-        <Link href="/#mekan-basvuru" className="text-[#e91e8c] underline hover:text-[#ff2d9c]">
+        <Link href="/mekan-kayit" className="text-[#e91e8c] underline hover:text-[#ff2d9c]">
           {t.venueAdminLogin.applyHintLink}
         </Link>
         .

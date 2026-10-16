@@ -1,15 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { VENUE_TYPES } from "@/lib/validate";
 import { useT, type Dictionary } from "@/lib/i18n";
 
-const PINK_GRADIENT = "linear-gradient(135deg, #ff2d9c 0%, #e91e8c 45%, #a8125f 100%)";
+// 16px yazı: iOS Safari daha küçük yazılı alana odaklanınca sayfayı yakınlaştırıyor.
+// Kenarlık %30 beyaz: koyu zeminde alan sınırı WCAG 3:1 kontrastını geçsin.
+const FIELD_CLASS =
+  "min-h-12 w-full rounded-xl border border-white/30 bg-white/[0.04] px-4 py-3 text-base text-white outline-none transition-colors placeholder:text-[#8b8f99] hover:border-white/50 focus-visible:border-[#ff2d9c] focus-visible:ring-2 focus-visible:ring-[#ff2d9c]/50";
 
-const FIELD_STYLE = {
-  background: "rgba(255,255,255,0.05)",
-  border: "1px solid rgba(255,255,255,0.12)",
-};
+function FieldLabel({ htmlFor, label, required }: { htmlFor: string; label: string; required?: boolean }) {
+  const t = useT();
+  return (
+    <label htmlFor={htmlFor} className="mb-2 block text-sm font-semibold text-[#e5e7eb]">
+      {label}
+      {required && (
+        <>
+          <span aria-hidden className="ml-1 text-[#ff8fd0]">*</span>
+          <span className="sr-only"> {t.venueForm.requiredSr}</span>
+        </>
+      )}
+    </label>
+  );
+}
 
 function Field({
   label,
@@ -19,6 +32,7 @@ function Field({
   type = "text",
   required = false,
   autoComplete,
+  inputMode,
 }: {
   label: string;
   value: string;
@@ -27,29 +41,29 @@ function Field({
   type?: string;
   required?: boolean;
   autoComplete?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
 }) {
+  const id = useId();
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold text-[#9ca3af]">
-        {label}
-        {required && <span className="ml-0.5 text-[#e91e8c]">*</span>}
-      </span>
+    <div>
+      <FieldLabel htmlFor={id} label={label} required={required} />
       <input
+        id={id}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
         autoComplete={autoComplete}
+        inputMode={inputMode}
         maxLength={120}
-        className="w-full rounded-xl px-3.5 py-3 text-sm text-white outline-none transition-colors placeholder:text-[#4b5563] focus:border-[#e91e8c]/60"
-        style={FIELD_STYLE}
+        className={FIELD_CLASS}
       />
-    </label>
+    </div>
   );
 }
 
-// Ana sayfadaki mekan kayıt formu. Gönderim /api/venue-applications'a düşer,
+// Mekan kayıt formu (/mekan-kayit). Gönderim /api/venue-applications'a düşer,
 // super admin panelindeki "Mekan Talepleri" ekranında listelenir.
 // Seçenek değerleri sunucuda VENUE_TYPES'a karşı doğrulanıyor — etiket çevrilir, değer Türkçe kalır.
 const VENUE_TYPE_KEYS: Record<(typeof VENUE_TYPES)[number], keyof Dictionary["venueForm"]> = {
@@ -76,6 +90,14 @@ export default function VenueApplicationForm() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  const typeId = useId();
+  const messageId = useId();
+  const errorId = useId();
+  // Gönderim sonrası ekran okuyucu ve klavye odağı onay başlığına taşınır
+  const sentHeadingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (sent) sentHeadingRef.current?.focus();
+  }, [sent]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,8 +135,7 @@ export default function VenueApplicationForm() {
   if (sent) {
     return (
       <div
-        className="rounded-3xl border p-8 text-center"
-        style={{ background: "#160d24", borderColor: "rgba(34,197,94,0.3)" }}
+        className="rounded-2xl border-2 border-[#22c55e]/50 bg-[#160d24] p-8 text-center"
       >
         <span
           className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl"
@@ -124,8 +145,10 @@ export default function VenueApplicationForm() {
             <path d="M5 13l4 4L19 7" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </span>
-        <h3 className="mt-5 text-xl font-black text-white">{t.venueForm.sentTitle}</h3>
-        <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[#9ca3af]">
+        <h2 ref={sentHeadingRef} tabIndex={-1} className="font-display mt-5 text-2xl font-extrabold text-white outline-none">
+          {t.venueForm.sentTitle}
+        </h2>
+        <p className="mx-auto mt-3 max-w-md text-base leading-relaxed text-[#d1d5db]">
           {t.venueForm.sentDescPrefix}{" "}
           <span className="font-semibold text-white">{phone}</span> {t.venueForm.sentDescMiddle}{" "}
           <span className="font-semibold text-white">{email}</span> {t.venueForm.sentDescSuffix}
@@ -137,10 +160,11 @@ export default function VenueApplicationForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-3xl border border-white/[0.08] p-6 sm:p-8"
-      style={{ background: "#160d24" }}
+      aria-describedby={error ? errorId : undefined}
+      className="rounded-2xl border border-white/15 bg-[#160d24] p-5 sm:p-8"
     >
-      <div className="grid gap-4 sm:grid-cols-2">
+      <p className="mb-6 text-sm text-[#9ca3af]">{t.venueForm.requiredNote}</p>
+      <div className="grid gap-5 sm:grid-cols-2">
         <Field
           label={t.venueForm.venueName}
           value={venueName}
@@ -165,6 +189,7 @@ export default function VenueApplicationForm() {
           type="tel"
           required
           autoComplete="tel"
+          inputMode="tel"
         />
         <Field
           label={t.venueForm.email}
@@ -182,40 +207,50 @@ export default function VenueApplicationForm() {
           placeholder={t.venueForm.cityPlaceholder}
           autoComplete="address-level2"
         />
-        <label className="block">
-          <span className="mb-1.5 block text-xs font-semibold text-[#9ca3af]">{t.venueForm.venueType}</span>
-          <select
-            value={venueType}
-            onChange={(e) => setVenueType(e.target.value)}
-            className="w-full appearance-none rounded-xl px-3.5 py-3 text-sm text-white outline-none transition-colors focus:border-[#e91e8c]/60"
-            style={FIELD_STYLE}
-          >
-            <option value="" style={{ background: "#160d24" }}>
-              {t.venueForm.selectPlaceholder}
-            </option>
-            {VENUE_TYPES.map((type) => (
-              <option key={type} value={type} style={{ background: "#160d24" }}>
-                {t.venueForm[VENUE_TYPE_KEYS[type]]}
+        <div>
+          <FieldLabel htmlFor={typeId} label={t.venueForm.venueType} />
+          <div className="relative">
+            <select
+              id={typeId}
+              value={venueType}
+              onChange={(e) => setVenueType(e.target.value)}
+              className={`${FIELD_CLASS} appearance-none pr-11`}
+            >
+              <option value="" style={{ background: "#160d24" }}>
+                {t.venueForm.selectPlaceholder}
               </option>
-            ))}
-          </select>
-        </label>
+              {VENUE_TYPES.map((type) => (
+                <option key={type} value={type} style={{ background: "#160d24" }}>
+                  {t.venueForm[VENUE_TYPE_KEYS[type]]}
+                </option>
+              ))}
+            </select>
+            <svg
+              aria-hidden
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[#c7cad1]"
+            >
+              <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        </div>
       </div>
 
-      <label className="mt-4 block">
-        <span className="mb-1.5 block text-xs font-semibold text-[#9ca3af]">
-          {t.venueForm.message}
-        </span>
+      <div className="mt-5">
+        <FieldLabel htmlFor={messageId} label={t.venueForm.message} />
         <textarea
+          id={messageId}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          rows={3}
+          rows={4}
           maxLength={1000}
           placeholder={t.venueForm.messagePlaceholder}
-          className="w-full resize-y rounded-xl px-3.5 py-3 text-sm text-white outline-none transition-colors placeholder:text-[#4b5563] focus:border-[#e91e8c]/60"
-          style={FIELD_STYLE}
+          className={`${FIELD_CLASS} resize-y`}
         />
-      </label>
+      </div>
 
       {/* Bal küpü — ekran okuyucudan ve klavyeden de gizli */}
       <div aria-hidden className="hidden">
@@ -232,7 +267,7 @@ export default function VenueApplicationForm() {
       </div>
 
       {error && (
-        <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        <p id={errorId} role="alert" className="mt-5 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-base text-red-300">
           {error}
         </p>
       )}
@@ -240,13 +275,13 @@ export default function VenueApplicationForm() {
       <button
         type="submit"
         disabled={sending}
-        className="mt-6 w-full rounded-2xl py-4 text-base font-bold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
-        style={{ background: PINK_GRADIENT, boxShadow: "0 12px 32px -12px rgba(233,30,140,0.6)" }}
+        aria-busy={sending}
+        className="mt-7 min-h-14 w-full rounded-full bg-[#e91e8c] text-base font-bold text-white transition-colors hover:bg-[#ff2d9c] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#ff2d9c] disabled:opacity-60"
       >
         {sending ? t.venueForm.sending : t.venueForm.submit}
       </button>
 
-      <p className="mt-4 text-center text-[11px] leading-relaxed text-[#6b7280]">
+      <p className="mt-4 text-center text-sm leading-relaxed text-[#9ca3af]">
         {t.venueForm.consent}
       </p>
     </form>

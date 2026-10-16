@@ -38,7 +38,7 @@ export default function SiteFooter() {
             {/* Mağaza uygulamasında mekan sahibi bağlantıları yok (bkz. SiteHeader) */}
             {!inApp && (
               <>
-                <li><Link href="/#mekan-basvuru" className="text-[#e91e8c] hover:text-[#ff2d9c]">{t.nav.registerVenue}</Link></li>
+                <li><Link href="/mekan-kayit" className="text-[#e91e8c] hover:text-[#ff2d9c]">{t.nav.registerVenue}</Link></li>
                 <li><Link href="/mekan-girisi" className="hover:text-white">{t.footer.venueLogin}</Link></li>
               </>
             )}

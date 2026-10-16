@@ -6,6 +6,7 @@ import Image from "next/image";
 import { formatWait } from "@/lib/wait-time";
 import type { Cooldown } from "./browse-types";
 import { fmt, useI18n } from "@/lib/i18n";
+import Coin from "@/components/ui/Coin";
 import { savePendingAdd } from "@/lib/pending-add";
 import { isGuestAccount } from "@/lib/guest-session";
 import { useRedirectPendingValue } from "@/lib/use-redirect-pending";
@@ -51,7 +52,10 @@ export default function AddSongSheet({
       : null;
   const costLabel = (tokens: number, color: string) => (
     <span className="flex flex-col items-end leading-tight">
-      <span className="font-bold text-sm" style={{ color }}>{fmt(t.addSong.tokensValue, { n: tokens })}</span>
+      <span className="flex items-center gap-1 font-bold text-sm" style={{ color }}>
+        <Coin size={15} />
+        {fmt(t.addSong.tokensValue, { n: tokens })}
+      </span>
       {priceLabel(tokens) && (
         <span className="text-subtle text-[11px] font-semibold tabular-nums">{priceLabel(tokens)}</span>
       )}
@@ -207,8 +211,9 @@ export default function AddSongSheet({
           // anlatmıyordu, "jetonun yetmiyor" kutusuyla birlikte kartı
           // gereksiz yere uzatıyordu. Ne ödeneceği zaten düğmelerin üstünde.
           tokenBalance > 0 && (
-            <p className="text-subtle text-xs mb-4">
+            <p className="flex items-center gap-1 text-subtle text-xs mb-4">
               {t.addSong.balance}{" "}
+              <Coin size={14} />
               <span className="text-ink font-semibold">{fmt(t.addSong.tokensValue, { n: tokenBalance })}</span>
             </p>
           )

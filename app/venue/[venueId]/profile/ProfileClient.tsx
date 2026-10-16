@@ -229,7 +229,7 @@ export default function ProfileClient({ venueId, venueDbId }: Props) {
             ) : (
               <span className="inline-block h-10 w-12 animate-pulse rounded-lg bg-ink/10" />
             )}
-            <span className="self-end pb-1 text-sm font-bold text-gold">{t.profile.tokensUnit}</span>
+            <span className="self-end pb-1 text-sm font-bold text-[#e91e8c]">{t.profile.tokensUnit}</span>
           </div>
           <Link
             href={`/venue/${venueId}/tokens`}

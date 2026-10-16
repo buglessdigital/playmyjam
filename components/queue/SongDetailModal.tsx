@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { formatWait } from "@/lib/wait-time";
 import { fmt, useT } from "@/lib/i18n";
+import Coin from "@/components/ui/Coin";
 
 export interface SongDetail {
   id: string;
@@ -66,7 +67,8 @@ export default function SongDetailModal({ song, onClose }: Props) {
           </div>
           <div className="flex justify-between items-center py-3 border-b border-ink/10">
             <span className="text-muted text-sm">{t.songModal.tokensSpent}</span>
-            <span className="text-sm font-bold" style={{ color: "var(--pmj-pink-text)" }}>
+            <span className="flex items-center gap-1.5 text-sm font-bold" style={{ color: "var(--pmj-pink-text)" }}>
+              <Coin size={16} />
               {fmt(t.songModal.tokensValue, { n: song.tokens_spent })}
             </span>
           </div>

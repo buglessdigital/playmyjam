@@ -145,12 +145,12 @@ body {
   }
 }
 
-/* Landing: SSS akordeon oku */
+/* Landing: SSS akordeonu — "+" işareti açılınca "×" olur */
 details.faq-item summary::-webkit-details-marker {
   display: none;
 }
 details.faq-item[open] .faq-chevron {
-  transform: rotate(180deg);
+  transform: rotate(45deg);
 }
 
 /* Admin paneli: ses kaydırıcısı. Tarayıcı varsayılanı kalın ve mavi odak
@@ -291,4 +291,41 @@ html[data-theme="light"] .pmj-white-logo {
   border-radius: 9999px;
   background: #1d1030;
   opacity: 1;
+}
+
+/* Vitrin (ana sayfa, mekanlar, mekan kaydı): başlık ve etiket fontları
+   components/landing/fonts.ts'ten değişken olarak gelir. */
+.font-display {
+  font-family: var(--font-display), var(--font-geist-sans), system-ui, sans-serif;
+  font-optical-sizing: auto;
+}
+.font-tag {
+  font-family: var(--font-mono-display), ui-monospace, monospace;
+}
+
+/* Vitrin: dönen plak. Oluklar tekrar eden radyal degrade, ışık yansıması
+   konik degrade — görsel dosyası yok. */
+.vinyl {
+  background:
+    conic-gradient(from 30deg, transparent 0 12%, rgba(255, 255, 255, 0.07) 16%, transparent 22% 58%, rgba(255, 255, 255, 0.05) 63%, transparent 70%),
+    repeating-radial-gradient(circle at center, #111 0 1px, #1b1b1f 1.5px 3px),
+    #111;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 40px 80px -30px rgba(0, 0, 0, 0.9);
+}
+@keyframes vinyl-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .vinyl-spin {
+    animation: vinyl-spin 5.4s linear infinite;
+  }
+}
+
+/* Vitrin: kağıt setlist kenarındaki delikli kesim */
+.ticket-edge {
+  background-image: radial-gradient(circle at 7px 50%, #0f0a18 4px, transparent 4.5px);
+  background-size: 14px 14px;
+  background-repeat: repeat-x;
 }

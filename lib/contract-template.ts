@@ -78,7 +78,7 @@ const day = (iso: string | null) =>
 const groupIban = (iban: string) => iban.replace(/\s+/g, "").replace(/(.{4})/g, "$1 ").trim();
 
 function parties(venueName: string, c: ContractFields | null) {
-  return `${COMPANY.brand} / Hizmet Sağlayıcı: ${COMPANY.legalName} — ${COMPANY.tradeName} (şahıs işletmesi) (“${COMPANY.brand}”)
+  return `${COMPANY.brand} / Hizmet Sağlayıcı: ${COMPANY.tradeName} (“${COMPANY.brand}”)
      Vergi dairesi / no: ${COMPANY.taxOffice} / ${COMPANY.taxNumber}
      Adres: ${COMPANY.legalAddress}
      Yazışma adresi: ${COMPANY.address}
@@ -154,7 +154,7 @@ Bu sözleşme, Platform'un Mekan'da kullanılmasına, Müşterilerin Platform ü
      IBAN: ${c?.iban ? groupIban(c.iban) : "[IBAN]"}
      Hesap sahibi: ${blank(c?.account_holder, "[HESAP SAHİBİ]")}
 6.2. Ödeme yalnızca Mekan adına ya da Mekan'ın ticari unvanına kayıtlı hesaba yapılır; üçüncü kişi hesabına ödeme yapılmaz. Hesap değişikliği ancak Mekan'ın yazılı bildirimi ve bu değişikliği içeren güncel sözleşmenin onaylanmasıyla geçerli olur.
-6.3. Hakediş KDV hariç tutardır; Mekan faturasına yasal KDV'yi ekler. Mekan, Hakediş tutarı için ${COMPANY.legalName} — ${COMPANY.tradeName} adına (vergi no ${COMPANY.taxNumber}) mevzuata uygun fatura düzenleyerek ${COMPANY.email} adresine iletir. Fatura, Hakediş dökümüyle birlikte ödemenin ön koşuludur; faturanın gecikmesi hâlinde ödeme günü fatura tarihinden itibaren işler.
+6.3. Hakediş KDV hariç tutardır; Mekan faturasına yasal KDV'yi ekler. Mekan, Hakediş tutarı için ${COMPANY.tradeName} adına (vergi no ${COMPANY.taxNumber}) mevzuata uygun fatura düzenleyerek ${COMPANY.email} adresine iletir. Fatura, Hakediş dökümüyle birlikte ödemenin ön koşuludur; faturanın gecikmesi hâlinde ödeme günü fatura tarihinden itibaren işler.
 6.4. Hakediş dökümü ${COMPANY.brand} mekan paneli ve/veya ${blank(c?.billing_email, "[E-POSTA]")} adresi üzerinden Mekan'a iletilir. Dökümde Ücretli Jetonlar ve kesintiler Satış Kanalına göre ayrı gösterilir. Mekan, dökümdeki itirazını tebliğden itibaren 15 gün içinde yazılı olarak bildirir; bu süre içinde itiraz edilmeyen döküm kesinleşir.
 6.5. Toplam Hakedişi 100 TL'nin altında kalan Dönemin tutarı izleyen Dönemin Hakedişine eklenerek ödenebilir.
 6.6. ${COMPANY.brand}, bu sözleşmeden doğan alacaklarını (5.5. maddedeki mahsuplar ve Müzik Lisansı ve Tazmin Taahhütnamesi'nden doğan rücu alacakları dahil) Mekan'ın Hakedişinden takas ve mahsup edebilir.
@@ -183,7 +183,7 @@ Platform, Mekan'ın kendi ses sisteminde çalınacak şarkıların istenmesini v
 10.1. Platform; müzik içerik sağlayıcıları (YouTube dahil), ödeme kuruluşları, barındırma ve internet hizmet sağlayıcıları gibi üçüncü taraf hizmetlere bağlı çalışır. Bu hizmetlerdeki kesinti, değişiklik ya da içerik kaldırılması ile Mekan'ın cihaz, ses sistemi veya internet bağlantısından kaynaklanan aksaklıklar ${COMPANY.brand}'ın kusuru sayılmaz.
 10.2. ${COMPANY.brand}, planlı bakım ve güncellemeler için Platform'u geçici olarak durdurabilir; mümkün olduğunca Mekan'ın yoğun saatleri dışında yapar.
 10.3. Taraflar, dolaylı zararlardan ve yoksun kalınan kârdan birbirine karşı sorumlu değildir.
-10.4. ${COMPANY.brand}'ın bu sözleşmeden doğan toplam sorumluluğu, zarara yol açan olaydan önceki son 3 Dönemde Mekan'a ödenen Hakedişler toplamı ile sınırlıdır.
+10.4. ${COMPANY.brand}'ın bu sözleşmeden doğan toplam tazminat sorumluluğu, zarara yol açan olaydan önceki son 12 Dönemde Mekan'a ödenen Hakedişler toplamı ile sınırlıdır; bu toplam 25.000 TL'nin altındaysa sınır 25.000 TL'dir. Bu sınır, Mekan'a ödenmesi gereken Hakedişleri kapsamaz.
 10.5. 10.3 ve 10.4. maddelerdeki sınırlamalar kast ve ağır ihmal hâllerinde uygulanmaz.
 
 11. MÜCBİR SEBEP

@@ -47,7 +47,8 @@ test("tam koşullarla üç belge, boşluksuz üretilir", () => {
   assert.match(service, /App Store üzerinden satılan Ücretli Jetonların KDV hariç cirosu/);
   assert.doesNotMatch(service, /%15/);
   assert.match(service, /Hakediş KDV hariç tutardır; Mekan faturasına yasal KDV'yi ekler/);
-  assert.match(service, /Bugless Digital/);
+  assert.match(service, /Vergi dairesi \/ no: Ege \/ 9591047099/);
+  assert.match(service, /Bugless Digital adına/);
   assert.match(service, /taneryildirim@playmyjam\.com\.tr/);
   assert.match(service, /%3,49/);
   assert.match(service, /ayın 10\. günü/);

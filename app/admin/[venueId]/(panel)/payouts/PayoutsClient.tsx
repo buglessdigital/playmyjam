@@ -178,7 +178,7 @@ export default function AdminPayoutsPage() {
           <div className="rounded-2xl border border-white/10 px-5 py-4 mt-6 text-xs text-[#9ca3af] leading-relaxed" style={{ background: "rgba(255,255,255,0.03)" }}>
             <p className="text-white text-sm font-semibold mb-2">Fatura bilgileri</p>
             <p>
-              {COMPANY.legalName} — {COMPANY.tradeName}
+              {COMPANY.tradeName}
               <br />
               Vergi dairesi / no: {COMPANY.taxOffice} / {COMPANY.taxNumber}
               <br />

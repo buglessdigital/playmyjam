@@ -1,11 +1,11 @@
 // Tosla İşim / sanal POS başvurusu için sitede görünmesi zorunlu satıcı bilgileri.
-// Bugless Digital bir şahıs işletmesi: hukuki kişi Taner Yıldırım'ın kendisi.
+// Mekan sözleşmesinde taraf ve fatura unvanı tradeName (Bugless Digital).
 export const COMPANY = {
   brand: "PlayMyJam",
   legalName: "Taner Yıldırım",
   tradeName: "Bugless Digital",
   // Vergi levhasındaki bilgiler (mekan sözleşmesinin taraf bilgisi)
-  taxOffice: "",
+  taxOffice: "Ege",
   taxNumber: "9591047099",
   legalAddress: "Rafetpaşa Mah. Yıldırım Beyazıt Cad. No:226A, Bornova / İZMİR",
   email: "taneryildirim@playmyjam.com.tr",

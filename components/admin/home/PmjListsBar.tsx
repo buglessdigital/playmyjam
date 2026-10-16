@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ListCover from "./ListCover";
 import { prefetchPmjViews } from "./pmj-view-cache";
 
-type PmjList = { id: string; name: string; song_count: number; visible: boolean };
+type PmjList = { id: string; name: string; song_count: number; visible: boolean; covers: string[] };
 
 /**
  * Sol raydaki "PMJ Listeleri" çubuğu (0081): PMJ'nin hazırladığı listeler.
@@ -124,12 +125,17 @@ export default function PmjListsBar({
         aria-expanded={open}
         className="w-full text-left px-3.5 py-3 flex items-center gap-3"
       >
-        <span
-          className="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center text-[11px] font-black"
-          style={{ background: "rgba(245,158,11,0.18)", color: "#fbbf24" }}
-        >
-          PMJ
-        </span>
+        {/* İlk listenin kapakları; liste yüklenmeden PMJ rozeti */}
+        {lists?.[0]?.covers.length ? (
+          <ListCover covers={lists[0].covers} size={40} />
+        ) : (
+          <span
+            className="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center text-[11px] font-black"
+            style={{ background: "rgba(245,158,11,0.18)", color: "#fbbf24" }}
+          >
+            PMJ
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-[#fde68a]">PMJ Listeleri</p>
           <p className="text-[#9ca3af] text-[11px] mt-0.5">
@@ -164,6 +170,9 @@ export default function PmjListsBar({
                 border: `1px solid ${activeId === l.id ? "rgba(245,158,11,0.45)" : "transparent"}`,
               }}
             >
+              <button onClick={() => onOpen(l.id, l.name)} className="shrink-0" title="Şarkıları göster" tabIndex={-1}>
+                <ListCover covers={l.covers} size={36} />
+              </button>
               <button onClick={() => onOpen(l.id, l.name)} className="min-w-0 flex-1 text-left" title="Şarkıları göster">
                 <p
                   className="text-[13px] font-semibold truncate"

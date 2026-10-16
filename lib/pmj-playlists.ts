@@ -302,7 +302,36 @@ export async function syncSubscribers(pmjId: string): Promise<number> {
   return linked.length;
 }
 
-export type VenuePmjPlaylist = { id: string; name: string; song_count: number; visible: boolean };
+export type VenuePmjPlaylist = {
+  id: string;
+  name: string;
+  song_count: number;
+  visible: boolean;
+  /** Listenin ilk şarkılarının kapakları — panelde kendi listeler gibi mozaik */
+  covers: string[];
+};
+
+// Her listenin ilk 4 kapağı: liste başına tek küçük sorgu, hepsi birlikte
+async function pmjCovers(ids: string[]): Promise<Map<string, string[]>> {
+  const rows = await Promise.all(
+    ids.map((id) =>
+      supabaseAdmin
+        .from("pmj_playlist_songs")
+        .select("songs(album_cover_url)")
+        .eq("pmj_playlist_id", id)
+        .order("position")
+        .limit(8)
+    )
+  );
+  const map = new Map<string, string[]>();
+  ids.forEach((id, i) => {
+    const covers = ((rows[i].data ?? []) as unknown as { songs: { album_cover_url: string | null } | null }[])
+      .map((r) => r.songs?.album_cover_url)
+      .filter((c): c is string => !!c);
+    map.set(id, [...new Set(covers)].slice(0, 4));
+  });
+  return map;
+}
 
 export async function listPmjPlaylistsForVenue(venueId: string): Promise<VenuePmjPlaylist[]> {
   const [lists, { data: mine }] = await Promise.all([
@@ -315,9 +344,15 @@ export async function listPmjPlaylistsForVenue(venueId: string): Promise<VenuePm
       .not("pmj_playlist_id", "is", null),
   ]);
   const open = new Set((mine ?? []).map((m) => m.pmj_playlist_id as string));
-  return lists
-    .filter((l) => l.song_count > 0)
-    .map((l) => ({ id: l.id, name: l.name, song_count: l.song_count, visible: open.has(l.id) }));
+  const shown = lists.filter((l) => l.song_count > 0);
+  const covers = await pmjCovers(shown.map((l) => l.id));
+  return shown.map((l) => ({
+    id: l.id,
+    name: l.name,
+    song_count: l.song_count,
+    visible: open.has(l.id),
+    covers: covers.get(l.id) ?? [],
+  }));
 }
 
 /**

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { matchesTokens, searchTokens, songHaystack } from "@/lib/search-match";
 import type { VenuePmjSong, VenuePmjView } from "@/lib/pmj-playlists";
+import ListCover from "./ListCover";
 import { cachedPmjView, fetchPmjView } from "./pmj-view-cache";
 import { formatDur, type Library } from "./useLibrary";
 import type { Playback } from "./usePlayback";
@@ -67,7 +68,9 @@ export default function PmjListPane({
     () => (view?.songs ?? []).filter((s) => tokens.length === 0 || matchesTokens(tokens, songHaystack(s))),
     [view, tokens]
   );
-  const covers = (view?.songs ?? []).slice(0, 4).map((s) => s.album_cover_url).filter((c): c is string => !!c);
+  const covers = [
+    ...new Set((view?.songs ?? []).slice(0, 8).map((s) => s.album_cover_url).filter((c): c is string => !!c)),
+  ].slice(0, 4);
   const total = (view?.songs ?? []).reduce((sum, s) => sum + (s.duration_ms ?? 0), 0);
 
   const restore = async () => {
@@ -87,17 +90,16 @@ export default function PmjListPane({
           className="px-5 pt-5 pb-4 flex items-end gap-4"
           style={{ background: "linear-gradient(180deg, rgba(245,158,11,0.18), rgba(245,158,11,0))" }}
         >
-          <div className="w-28 h-28 rounded-2xl shrink-0 overflow-hidden grid grid-cols-2 bg-black/30">
-            {covers.length === 4 ? (
-              covers.map((c, i) => (
-                <Image key={i} src={c} alt="" width={56} height={56} className="w-full h-full object-cover" unoptimized />
-              ))
-            ) : (
-              <span className="col-span-2 flex items-center justify-center text-2xl font-black" style={{ color: "#fbbf24" }}>
-                PMJ
-              </span>
-            )}
-          </div>
+          {covers.length > 0 ? (
+            <ListCover covers={covers} size={112} rounded="rounded-2xl" />
+          ) : (
+            <span
+              className="w-28 h-28 rounded-2xl shrink-0 flex items-center justify-center text-2xl font-black"
+              style={{ background: "rgba(245,158,11,0.18)", color: "#fbbf24" }}
+            >
+              PMJ
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold tracking-widest" style={{ color: "#fbbf24" }}>
               PMJ LİSTESİ

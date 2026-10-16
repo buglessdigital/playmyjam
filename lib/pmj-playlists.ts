@@ -245,8 +245,42 @@ async function syncLinkedPlaylist(venueId: string, playlistId: string, songs: At
       .eq("playlist_id", playlistId)
       .in("song_id", toRemove.slice(i, i + 200));
   }
-  if (toAdd.length > 0) await attachSongsToPlaylist(venueId, playlistId, toAdd);
+  if (toAdd.length > 0) {
+    try {
+      await attachSongsToPlaylist(venueId, playlistId, toAdd);
+    } finally {
+      // attachSongsToPlaylist önce katalog satırını (venue_songs), SONRA liste
+      // üyeliğini yazar. Arada liste kapatılırsa (bağlı satır silindi) üyelik
+      // yazılamaz ve katalog satırı hiçbir listeye bağlı olmadan kalır —
+      // playlist_visible/autoplay_ok varsayılanları "açık" olduğu için müşteriye
+      // görünür ve otomatik çalardı (16 Eki 2026, Biralem'de 870 satır).
+      await pruneOrphanCatalogRows(venueId, toAdd.map((s) => s.id));
+    }
+  }
   if (toRemove.length > 0) revalidateTag(`venue-songs-${venueId}`, "max");
+}
+
+// Verilen şarkılardan mekanda HİÇBİR listeye üye olmayan katalog satırlarını
+// siler (0026 trigger'ının yalnızca üyelik silinince yaptığı temizliğin aynısı).
+async function pruneOrphanCatalogRows(venueId: string, songIds: string[]): Promise<void> {
+  for (let i = 0; i < songIds.length; i += 200) {
+    const chunk = songIds.slice(i, i + 200);
+    const { data: members, error } = await supabaseAdmin
+      .from("playlist_songs")
+      .select("song_id")
+      .eq("venue_id", venueId)
+      .in("song_id", chunk);
+    if (error) throw new Error(error.message);
+    const kept = new Set((members ?? []).map((m) => m.song_id as string));
+    const orphans = chunk.filter((id) => !kept.has(id));
+    if (orphans.length === 0) continue;
+    const { error: delErr } = await supabaseAdmin
+      .from("venue_songs")
+      .delete()
+      .eq("venue_id", venueId)
+      .in("song_id", orphans);
+    if (delErr) throw new Error(delErr.message);
+  }
 }
 
 /** PMJ listesini açmış bütün mekanları günceller. Dönen sayı mekan sayısıdır. */

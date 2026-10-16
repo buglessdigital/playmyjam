@@ -44,6 +44,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Admin şifre sıfırlama harf duyarsızlığı](pmj-admin-reset-case-2026-08.md) — "mail gitmiyor"un sebebi Resend değil, kullanıcı adı birebir aranıyordu; Mezzanine'ın adı yazım hatalı
 - [Crossfade](pmj-crossfade-2026-08.md) — iki YouTube deck'i A/B; 0039 ŞART, elle atlamada yok, mobilde kapalı
 - [Playlist müşteri aktifliği](pmj-playlist-customer-visibility-2026-08.md) — müşteri yalnızca customer_visible listeleri görür; 0040 ŞART, rayda göz düğmesi, otomatik çalma etkilenmez
+- [PMJ Listeleri](pmj-pmj-listeleri-2026-10.md) — super admin Excel'den ortak liste kurar, mekan raydaki çubuktan açar; abonelik, otomatik çalmaya girmez; 0081 ŞART ve koddan ÖNCE
 - [Admin paneli hızlandırma](pmj-admin-perf-2026-08.md) — 2 tur: `after()` + iyimser güncelleme, sonra render sıklığı (progress artık state değil, kuyruk sanal, slug→id tek sorgu)
 - [Üyelik onayları](pmj-uyelik-onaylari-2026-08.md) — KVKK+şartlar zorunlu, ticari ileti isteğe bağlı (kanun gereği); 0043 ŞART
 - [Dinamik öncelikli ücret](pmj-dynamic-priority-cost-2026-08.md) — taban + her 3 bekleyen normal şarkıya 1 jeton; 0044 ŞART, formül SQL+lib/pricing.ts ikizi

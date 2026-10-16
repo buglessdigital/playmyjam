@@ -2,6 +2,7 @@
 
 import ListCover from "./ListCover";
 import PlaylistRowMenu from "./PlaylistRowMenu";
+import PmjListsBar from "./PmjListsBar";
 import { ALL, type Library } from "./useLibrary";
 
 const railStyle = (selected: boolean, dim: boolean) => ({
@@ -99,6 +100,9 @@ export default function PlaylistRail({
             </p>
           </div>
         </button>
+
+        {/* PMJ'nin hazır listeleri (0081): mekanın kendi listelerinden ayrı */}
+        {!listFiltered && <PmjListsBar />}
 
         {visiblePlaylists.map((p) => {
           const total = countFor(p.id);

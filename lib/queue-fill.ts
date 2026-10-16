@@ -598,13 +598,16 @@ async function runFill(venueId: string): Promise<void> {
         .not("user_id", "is", null)
         .gte("played_at", new Date(cutoff).toISOString()),
       // Çalınabilir katalog: çalınamaz işaretlenen (embed kapalı) ve müşteriye
-      // kapatılmış şarkılar girmez.
+      // kapatılmış şarkılar girmez. Yalnızca PMJ listesinden gelen şarkılar da
+      // girmez (autoplay_ok, 0081): PMJ listeleri müşteri kataloğudur, otomatik
+      // çalmaya karışmaz.
       fetchAllRows<{ song_id: string }>((from, to) =>
         supabaseAdmin
           .from("venue_songs")
           .select("song_id, songs!inner(embeddable)")
           .eq("venue_id", venueId)
           .eq("in_venue_list", true)
+          .eq("autoplay_ok", true)
           .eq("songs.embeddable", true)
           .order("song_id", { ascending: true })
           .range(from, to)

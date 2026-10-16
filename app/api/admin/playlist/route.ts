@@ -86,31 +86,54 @@ async function handleDELETE(req: NextRequest) {
     return NextResponse.json({ error: "Şarkı bulunamadı" }, { status: 404 });
   }
 
+  // PMJ listelerine bağlı satırlar (0081) mekanın listesi değil: içerikleri
+  // PMJ'den gelir. Tek tek şarkı çıkarılamaz; mekan listeyi bütünüyle kapatır.
+  const { data: pmjLists } = await supabaseAdmin
+    .from("playlists")
+    .select("id")
+    .eq("venue_id", session.venue_id)
+    .not("pmj_playlist_id", "is", null);
+  const pmjListIds = (pmjLists ?? []).map((p) => p.id);
+  if (playlistId && pmjListIds.includes(playlistId)) {
+    return NextResponse.json(
+      { error: "PMJ listelerinden şarkı çıkarılamaz — listeyi PMJ Listeleri bölümünden kapatabilirsiniz" },
+      { status: 403 }
+    );
+  }
+
   // playlist_id verilirse yalnızca o listeden çıkarılır; verilmezse şarkı mekanın
-  // tüm listelerinden düşer. Her iki yolda da son üyelik gidince 0026'daki trigger
-  // katalog satırını (venue_songs) siler.
-  const membershipQuery = supabaseAdmin
+  // tüm KENDİ listelerinden düşer (PMJ üyeliği kalır, şarkı müşteride görünmeye
+  // devam eder). Son üyelik gidince 0026'daki trigger katalog satırını siler.
+  let membershipQuery = supabaseAdmin
     .from("playlist_songs")
     .delete()
     .eq("venue_id", session.venue_id)
     .eq("song_id", venueSong.song_id);
+  if (playlistId) membershipQuery = membershipQuery.eq("playlist_id", playlistId);
+  else if (pmjListIds.length > 0) membershipQuery = membershipQuery.not("playlist_id", "in", `(${pmjListIds.join(",")})`);
 
-  const { error } = playlistId
-    ? await membershipQuery.eq("playlist_id", playlistId)
-    : await membershipQuery;
+  const { error } = await membershipQuery;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   // 0026 öncesinden kalmış, hiç üyeliği olmayan katalog satırları için emniyet:
-  // trigger tetiklenmediyse tam silmede satır burada temizlenir.
+  // trigger tetiklenmediyse tam silmede satır burada temizlenir. Bir PMJ
+  // listesinde hâlâ üyeyse satır yaşamalı.
   if (!playlistId) {
-    await supabaseAdmin
-      .from("venue_songs")
-      .delete()
-      .eq("id", venueSongId)
-      .eq("venue_id", session.venue_id);
+    const { count: remaining } = await supabaseAdmin
+      .from("playlist_songs")
+      .select("id", { count: "exact", head: true })
+      .eq("venue_id", session.venue_id)
+      .eq("song_id", venueSong.song_id);
+    if (!remaining) {
+      await supabaseAdmin
+        .from("venue_songs")
+        .delete()
+        .eq("id", venueSongId)
+        .eq("venue_id", session.venue_id);
+    }
   }
 
   // Kuyruk artık saatler ilerisini tuttuğu için listeden çıkarılan şarkı

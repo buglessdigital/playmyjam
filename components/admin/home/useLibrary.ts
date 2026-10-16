@@ -171,6 +171,9 @@ export function useLibrary(
           .from("venue_songs")
           .select("id, play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
           .eq("venue_id", venueDbIdArg)
+          // Yalnızca PMJ listesinden gelen şarkılar mekanın kataloğu sayılmaz
+          // (0081): onlar "PMJ Listeleri" çubuğunda, burada görünmez.
+          .eq("autoplay_ok", true)
           .order("added_at", { ascending: false })
           .order("id", { ascending: true })
           .range(from, to)
@@ -193,6 +196,8 @@ export function useLibrary(
         .from("playlists")
         .select("id, name, queue_position, sort_order, shuffle, customer_visible")
         .eq("venue_id", venueDbIdArg)
+        // PMJ listelerine bağlı satırlar (0081) rayda görünmez — ayrı çubukta
+        .is("pmj_playlist_id", null)
         .order("sort_order", { ascending: true });
       if (data) setPlaylists(data as Playlist[]);
     },
@@ -205,8 +210,9 @@ export function useLibrary(
         (from, to) =>
           supabase
             .from("playlist_songs")
-            .select("playlist_id, song_id, position")
+            .select("playlist_id, song_id, position, playlists!inner(pmj_playlist_id)")
             .eq("venue_id", venueDbIdArg)
+            .is("playlists.pmj_playlist_id", null)
             .order("position", { ascending: true })
             .order("song_id", { ascending: true })
             .range(from, to)

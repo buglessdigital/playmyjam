@@ -16,11 +16,14 @@ export type PlaylistRow = {
 // çalma kuyruğundaki ilk liste, yoksa en baştaki liste, o da yoksa yeni bir tane
 // açılır. Mekanın hiç playlist'i olmaması yalnızca 0026 sonrası açılan mekanlarda
 // olabilir; o liste doğrudan kuyruğa girer, yoksa hiç çalmaz.
+// PMJ listelerine bağlı satırlar (0081) hedef olamaz: içerikleri PMJ'nin, mekanın
+// eklediği şarkı oraya yazılırsa bir sonraki PMJ senkronunda silinirdi.
 export async function getDefaultPlaylistId(venueId: string): Promise<string | null> {
   const { data } = await supabaseAdmin
     .from("playlists")
     .select("id, queue_position")
     .eq("venue_id", venueId)
+    .is("pmj_playlist_id", null)
     .order("queue_position", { ascending: true, nullsFirst: false })
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true })
@@ -38,13 +41,16 @@ export async function getDefaultPlaylistId(venueId: string): Promise<string | nu
   return created?.id ?? null;
 }
 
-// Playlist'in gerçekten bu mekana ait olduğunu doğrular — istemciden gelen id'ye güvenilmez
+// Playlist'in gerçekten bu mekana ait olduğunu doğrular — istemciden gelen id'ye güvenilmez.
+// PMJ listesine bağlı satır (0081) mekanın düzenleyebileceği bir liste değildir:
+// şarkı ekleme, içe aktarma ve senkron hedefi olamaz.
 export async function assertVenuePlaylist(venueId: string, playlistId: string): Promise<boolean> {
   const { data } = await supabaseAdmin
     .from("playlists")
     .select("id")
     .eq("id", playlistId)
     .eq("venue_id", venueId)
+    .is("pmj_playlist_id", null)
     .maybeSingle();
   return !!data;
 }

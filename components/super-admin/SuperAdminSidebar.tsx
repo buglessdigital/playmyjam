@@ -50,6 +50,16 @@ const navItems = [
     ),
   },
   {
+    href: "/super-admin/pmj-playlists",
+    label: "PMJ Listeleri",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M4 6h12M4 11h12M4 16h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M17 14l1.2 2.4 2.6.4-1.9 1.8.5 2.6-2.4-1.3-2.4 1.3.5-2.6-1.9-1.8 2.6-.4L17 14z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/super-admin/analytics",
     label: "Arayüz Analizi",
     icon: (

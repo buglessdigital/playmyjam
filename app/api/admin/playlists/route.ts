@@ -19,6 +19,23 @@ import { withActor } from "@/lib/actor";
 
 const MAX_NAME = 40;
 
+// PMJ listesine bağlı satırlar (0081) mekanın listesi değildir: adı, sırası,
+// içeriği PMJ'den gelir ve otomatik çalmaya giremez. Panelin rayında hiç
+// görünmezler; bu kapı doğrudan API isteğine karşı.
+async function touchesPmjList(venueId: string, ids: string[]): Promise<boolean> {
+  if (ids.length === 0) return false;
+  const { data } = await supabaseAdmin
+    .from("playlists")
+    .select("id")
+    .eq("venue_id", venueId)
+    .in("id", ids)
+    .not("pmj_playlist_id", "is", null)
+    .limit(1);
+  return (data ?? []).length > 0;
+}
+
+const PMJ_LIST_ERROR = "PMJ listeleri yalnızca PMJ Listeleri bölümünden açılıp kapatılır";
+
 function parseName(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const name = value.trim();
@@ -75,6 +92,17 @@ async function handlePATCH(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null);
+
+  if (body?.play !== true) {
+    const ids = [
+      typeof body?.playlist_id === "string" ? body.playlist_id : null,
+      ...(Array.isArray(body?.queue_order) ? body.queue_order : []),
+      ...(Array.isArray(body?.order) ? body.order : []),
+    ].filter((id): id is string => typeof id === "string");
+    if (await touchesPmjList(session.venue_id, ids)) {
+      return NextResponse.json({ error: PMJ_LIST_ERROR }, { status: 403 });
+    }
+  }
 
   // Playlist kuyruğunun sırası (0037): gelen dizi baştan sona queue_position olur.
   // Rotasyon imleci bilerek korunur — sıra değiştirmek çalan listeyi başa sarmaz,
@@ -294,6 +322,7 @@ async function handlePATCH(req: NextRequest) {
           .select("id")
           .eq("id", playlistId)
           .eq("venue_id", session.venue_id)
+          .is("pmj_playlist_id", null)
           .maybeSingle(),
         openerHint
           ? verifyPlaylistOpener(session.venue_id, playlistId, openerHint)
@@ -498,13 +527,16 @@ async function handleDELETE(req: NextRequest) {
 
   const { data: playlist } = await supabaseAdmin
     .from("playlists")
-    .select("id, queue_position")
+    .select("id, queue_position, pmj_playlist_id")
     .eq("id", playlistId)
     .eq("venue_id", session.venue_id)
     .maybeSingle();
 
   if (!playlist) {
     return NextResponse.json({ error: "Playlist bulunamadı" }, { status: 404 });
+  }
+  if (playlist.pmj_playlist_id) {
+    return NextResponse.json({ error: PMJ_LIST_ERROR }, { status: 403 });
   }
 
   const { error } = await supabaseAdmin

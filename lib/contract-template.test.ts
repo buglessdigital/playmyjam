@@ -69,6 +69,13 @@ test("koşul yoksa boşluklar işaretli kalır", () => {
   assert.match(service.body, /\[KOMİSYON\]/);
 });
 
+test("eski adla onaylanmış belge hâlâ kendi türüne sayılır", () => {
+  assert.equal(documentKindOf("Mekan X — PlayMyJam Müzik Lisansı ve Tazmin Taahhütnamesi"), "music");
+  const music = contractDocuments({ venueName: "Mekan X", contract: full, settings, unitPrice: 20 })[2];
+  assert.equal(music.title, "Mekan X — PlayMyJam Müzik Kullanımı ve Tazmin Taahhütnamesi");
+  assert.doesNotMatch(contractDocuments({ venueName: "Mekan X", contract: full, settings, unitPrice: 20 })[0].body, /Müzik Lisansı/);
+});
+
 test("elle yazılmış başlık belge türü sayılmaz", () => {
   assert.equal(documentKindOf("Mekan X — Ek protokol"), null);
 });

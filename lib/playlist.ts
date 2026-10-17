@@ -136,31 +136,14 @@ export async function attachSongsToPlaylist(
   return { added: fresh.length, skipped: songs.length - fresh.length, resolvedSuggestions };
 }
 
-// Embed'e kapalı bulunan şarkıyı TÜM mekanların kataloğundan ve playlist'lerinden
-// söker. songs satırı bilerek bırakılır: hem çalma geçmişi (queue) ona bağlıdır,
-// hem de embeddable=false'ın kendisi kara listedir — satır silinseydi bir sonraki
-// playlist senkronu videoyu "yeni" sanıp geri koyardı.
-export async function purgeUnplayableSong(songId: string): Promise<void> {
-  const { data: affected } = await supabaseAdmin
-    .from("playlist_songs")
-    .delete()
-    .eq("song_id", songId)
-    .select("venue_id");
-
-  // 0026 trigger'ı son playlist üyeliği gidince venue_songs satırını düşürür,
-  // ama şarkı playlist'e hiç girmeden doğrudan kataloğa eklenmiş olabilir
-  const { data: catalogRows } = await supabaseAdmin
-    .from("venue_songs")
-    .delete()
-    .eq("song_id", songId)
-    .select("venue_id");
-
-  const venueIds = new Set([
-    ...(affected ?? []).map((r) => r.venue_id),
-    ...(catalogRows ?? []).map((r) => r.venue_id),
-  ]);
-  for (const venueId of venueIds) revalidateTag(`venue-songs-${venueId}`, "max");
-}
+// ÇALINAMAZ ŞARKI HİÇBİR LİSTEDEN SİLİNMEZ (17 Eki 2026 kararı). Eskiden
+// purgeUnplayableSong damgalı şarkıyı bütün mekanların listelerinden ve
+// kataloglarından siliyordu; o gün player'ın sahte hatası çalınabilen 15 şarkıyı
+// böyle yok etti. Artık damga (songs.embeddable=false) yalnızca şarkıyı ÇALMADAN
+// ve MÜŞTERİ SATIŞINDAN çıkarır: dolum, müşteri katalogları ve /api/queue onu
+// süzer, şarkı mekanın listesinde yerinde durur. YouTube sonradan videoyu
+// açarsa 30 günlük metadata tazelemesi embeddable'ı geri true yapar ve şarkı
+// kendiliğinden döner. Kural: geri gelebilecek bir şeyi kod silmez.
 
 // Kaynak YouTube listesinden çıkarılmış videoları hedef playlist'ten düşürür.
 // Yalnızca video kimliğiyle çağrılır: mekanın elle eklediği şarkılar bu yoldan
@@ -238,7 +221,6 @@ export async function addSongToVenuePlaylist(
   // Kara liste: upsert embeddable'a dokunmaz, yani bir kez kapalı işaretlenen
   // video bu yoldan (panelden elle ekleme / öneri kabulü) geri giremez.
   if (songRow.embeddable === false) {
-    await purgeUnplayableSong(songRow.id);
     return { error: "Bu şarkı YouTube'da dış oynatıcıya kapalı, kataloğa eklenemez", status: 422 };
   }
 

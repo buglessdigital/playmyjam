@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
-import { runSingleFlight } from "@/lib/queue-lock";
+import { runSingleFlight, runSingleFlightWaiting } from "@/lib/queue-lock";
 import { orderFromResume, scanSequential } from "@/lib/rotation-order";
 import { withActor } from "@/lib/actor";
 
@@ -77,11 +77,18 @@ function shuffleInPlace<T>(list: T[]): T[] {
 // Temizleme ve dolum TEK kilit altında: ikisi de playlist_rotation ile
 // playlist_rotation_consumed'a yazıyor. Ayrı kilitlerle yapılınca aradaki
 // boşluğa başka bir dolum girip kuyruğu eski imleçle dolduruyordu.
+//
+// Panel komutudur: kilit doluysa BEKLER, düşmez (bkz. runSingleFlightWaiting).
 export async function resetAutoQueue(venueId: string): Promise<void> {
-  await runSingleFlight(venueId, async () => {
-    await clearAutoQueue(venueId);
-    await runFill(venueId);
-  });
+  await runSingleFlightWaiting(
+    venueId,
+    async () => {
+      await clearAutoQueue(venueId);
+      await runFill(venueId);
+    },
+    () => runFill(venueId),
+    { label: "kuyruğu yeniden kur" }
+  );
 }
 
 /**
@@ -90,8 +97,16 @@ export async function resetAutoQueue(venueId: string): Promise<void> {
  * İçeride fillQueue DEĞİL, runFill çağrılmalı (kilit zaten alınmış durumda) —
  * bunun için `runFillUnlocked` dışa açık.
  */
-export async function withFillLock(venueId: string, fn: () => Promise<void>): Promise<void> {
-  await runSingleFlight(venueId, fn);
+//
+// Kilit doluysa BEKLER: panel komutu sessizce düşmemeli (17 Eki 2026, bkz.
+// runSingleFlightWaiting). fn tek kez koşar; kilidi tutarken gelen dolum
+// istekleri fn tekrarlanarak değil düz dolumla karşılanır.
+export async function withFillLock(
+  venueId: string,
+  fn: () => Promise<void>,
+  label = "panel komutu"
+): Promise<void> {
+  await runSingleFlightWaiting(venueId, fn, () => runFill(venueId), { label });
 }
 
 /** withFillLock'un içinden çağrılan dolum: kilidi yeniden almaya çalışmaz. */
@@ -557,6 +572,23 @@ export async function fillQueue(venueId: string): Promise<void> {
   // yazılsın (bkz. lib/actor.ts): admin'in düğmesinden sonra koşan dolum
   // "mekan bilerek yaptı" sayılmamalı
   await withActor("autofill", () => runSingleFlight(venueId, () => runFill(venueId)));
+}
+
+/**
+ * Kuyruk BOŞKEN yapılan dolum: müzik bunu bekliyor. fillQueue kilit doluysa
+ * hiçbir şey yapmadan dönüyordu; sıradaki şarkıyı arayan ilerletme ikinci
+ * okumada da boş kuyruk bulup "kuyruk boşaldı" diyor ve müzik duruyordu
+ * (17 Eki 2026 Mezzanine, 18:54). Bu yol kilidi bekler — kilidi tutan dolum
+ * bitince kuyruk zaten dolmuş olur — ama sessizlik uzamasın diye kısa: süre
+ * dolarsa dolum kilitsiz yapılır (yarış riski, sessizlikten iyidir).
+ */
+export async function fillQueueNow(venueId: string): Promise<void> {
+  await withActor("autofill", () =>
+    runSingleFlightWaiting(venueId, () => runFill(venueId), () => runFill(venueId), {
+      label: "boş kuyruğu doldur",
+      maxWaitMs: 8_000,
+    })
+  );
 }
 
 async function runFill(venueId: string): Promise<void> {

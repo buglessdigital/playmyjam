@@ -540,10 +540,11 @@ const PRELOAD_AFTER_SEC = 5;
 const PRELOAD_RETRY_MS = 10_000;
 
 // --- YOUTUBE HATA KODLARI ---
-// Yalnızca bu üçü videonun KALICI olarak çalınamadığını söyler: 100 kaldırılmış
-// ya da gizlenmiş, 101/150 sahibi gömmeyi kapatmış. Şarkı ancak bu kodlarda
-// damgalanır (bkz. lib/queue.ts markUnplayable) — damga kalıcıdır, şarkıyı
-// mekanların kataloğundan ve playlist'lerinden de siler.
+// Yalnızca bu üçü videonun KALICI olarak çalınamıyor OLABİLECEĞİNİ söyler: 100
+// kaldırılmış ya da gizlenmiş, 101/150 sahibi gömmeyi kapatmış. Bu kodlarda
+// sunucu YouTube'a sorar, damgayı ancak YouTube doğrularsa vurur (bkz.
+// lib/queue.ts markUnplayable) ve şarkı hiçbir listeden silinmez. Kanıt değil
+// tetikleyicidir: 17 Eki 2026'da önyükleme deck'i çalınabilen 15 şarkıya 150 dedi.
 // 2 (geçersiz parametre) ve 5 (HTML5 oynatıcı hatası) ise GEÇİCİ olabiliyor:
 // iframe henüz oturmamışken gelen cue/load çağrısı ya da tarayıcının o anki
 // hali bu kodları üretiyor. Eskiden onError her kodda damga vuruyordu; mekan
@@ -2723,11 +2724,18 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
             // da siliyor, geçici bir aksilik bunu hak etmez.
             const code = typeof e.data === "number" ? e.data : -1;
             const fatal = FATAL_YT_ERROR_CODES.has(code);
+            const onPreload = key !== activeDeckRef.current;
+            // Kayda HATA VEREN video yazılır. Eskiden önyüklemede de çalan
+            // şarkının kimliği yazılıyordu: 17 Eki 2026'da 15 şarkı silinirken
+            // kayıtta yalnızca çalan 3 şarkı görünüyordu.
+            const erroredVideo = onPreload
+              ? preloadedVideoRef.current ?? prewarmCuedRef.current
+              : currentVideoRef.current;
             report(
               "youtube_error",
               fatal ? "error" : "warn",
-              `YouTube hatası ${code}${fatal ? " (şarkı çalınamaz)" : " (geçici)"}${key === activeDeckRef.current ? "" : " — sıradaki önyüklemede"}`,
-              { code, video_id: currentVideoRef.current }
+              `YouTube hatası ${code}${fatal ? " (sunucu YouTube'a doğrulatacak)" : " (geçici)"}${onPreload ? " — sıradaki önyüklemede" : ""}`,
+              { code, video_id: erroredVideo, playing_video_id: currentVideoRef.current }
             );
             if (key !== activeDeckRef.current) {
               // BOŞTAKİ deck: çalan şarkı kesilmez, ama şarkı SUNUCUDA da
@@ -2752,13 +2760,22 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
                 preloadRetryAtRef.current = Date.now() + PRELOAD_RETRY_MS;
                 return;
               }
-              unplayableRef.current.add(failed);
-              plog(`önyükleme videosu çalınamıyor — işaretleniyor (${failed})`);
-              void api({ action: "unplayable", video_id: failed, code }).finally(() => {
-                // İşaretleme yolda: sıradaki peek artık bu videoyu atlayacak,
-                // 10 sn'lik cezayı beklemeden hemen yeniden dene
-                preloadRetryAtRef.current = 0;
-              });
+              // Bu oturumda bu videoyu bir daha tampona alma; geçiş anında aktif
+              // deck'te taze yüklenir (sahte hatada orada sorunsuz çalıyor).
+              // Sunucu YouTube'a sorup gerçekten çalınamazsa damgalar — şarkı
+              // hiçbir listeden SİLİNMEZ, yalnızca çalmada atlanır.
+              // Hata deck'in o anki halinden de gelebildiği için video ilk
+              // hatada elenmez: 10 sn sonra bir kez daha tampona alınır, ancak
+              // ikinci kez düşerse bu oturumda tamponlanmaz.
+              const seenFatal = (transientErrorsRef.current.get(failed) ?? 0) + 1;
+              transientErrorsRef.current.set(failed, seenFatal);
+              if (seenFatal >= 2) unplayableRef.current.add(failed);
+              plog(`önyükleme videosu hata ${code} verdi (${seenFatal}. kez) — sunucu doğrulayacak (${failed})`);
+              if (seenFatal === 1) void api({ action: "unplayable", video_id: failed, code });
+              // Hemen yeniden deneme YOK: eskiden işaretlemenin ardından anında
+              // sıradaki tampona alınıyordu, deck hâlâ bozukken o da hata verip
+              // damgalanıyordu — bir aksilik 5 şarkılık bir kayba dönüşüyordu.
+              preloadRetryAtRef.current = Date.now() + PRELOAD_RETRY_MS;
               return;
             }
             endCrossfade();

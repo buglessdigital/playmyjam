@@ -15,6 +15,9 @@ export type Song = {
   duration_ms: number;
   play_count: number;
   in_venue_list: boolean;
+  // false: YouTube çalınamaz dedi (sunucu doğruladı). Şarkı listede KALIR,
+  // yalnızca çalmada atlanır ve müşteriye satılmaz; YouTube açarsa döner.
+  embeddable: boolean;
 };
 
 export type Playlist = {
@@ -169,7 +172,7 @@ export function useLibrary(
       const { data } = await fetchAllRows<VenueSongRow>((from, to) =>
         supabase
           .from("venue_songs")
-          .select("id, play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
+          .select("id, play_count, in_venue_list, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms, embeddable)")
           .eq("venue_id", venueDbIdArg)
           // Yalnızca PMJ listesinden gelen şarkılar mekanın kataloğu sayılmaz
           // (0081): onlar "PMJ Listeleri" çubuğunda, burada görünmez.
@@ -182,7 +185,13 @@ export function useLibrary(
       setSongs(
         data
           .filter((vs) => vs.songs)
-          .map((vs) => ({ ...vs.songs!, venueSongId: vs.id, play_count: vs.play_count, in_venue_list: vs.in_venue_list }))
+          .map((vs) => ({
+            ...vs.songs!,
+            embeddable: vs.songs!.embeddable !== false,
+            venueSongId: vs.id,
+            play_count: vs.play_count,
+            in_venue_list: vs.in_venue_list,
+          }))
       );
     },
     [supabase]

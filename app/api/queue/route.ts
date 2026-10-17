@@ -71,6 +71,21 @@ async function handlePOST(req: NextRequest) {
     );
   }
 
+  // YouTube'un çalınamaz dediği şarkı satılmaz: jeton alınır ama şarkı
+  // kuyrukta atlanırdı. Şarkı mekanın listesinde durur, yalnızca satıştan çıkar
+  // (müşteri kataloğu da onu göstermez; bu, bayat ekrana karşı asıl kilit).
+  const { data: songState } = await supabaseAdmin
+    .from("songs")
+    .select("embeddable")
+    .eq("id", song_id)
+    .maybeSingle();
+  if (songState?.embeddable === false) {
+    return NextResponse.json(
+      { error: "Bu şarkı şu an YouTube'da çalınamıyor — başka bir şarkı seç", code: "unplayable" },
+      { status: 409 }
+    );
+  }
+
   // Cooldown + çalıyor kontrolü + jeton düşümü + pozisyon + insert tek transaction (0005)
   const { data: result, error } = await supabaseAdmin.rpc("request_song", {
     p_user_id: userId,

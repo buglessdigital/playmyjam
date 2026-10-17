@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
-import { playSongNow } from "@/lib/queue";
+import { playSongNow, reportQueueWorkFailure } from "@/lib/queue";
 import {
   hasManualBlock,
   jumpManualBlock,
@@ -8,6 +8,7 @@ import {
   startPlaylistFrom,
   withFillLock,
 } from "@/lib/queue-fill";
+import { isLatestIntent } from "@/lib/queue-lock";
 import { withActor } from "@/lib/actor";
 
 // Panelden "şimdi çal": sahnedeki şarkı yarıda kesilir, seçilen şarkı başlar.
@@ -65,6 +66,7 @@ async function handlePOST(req: NextRequest) {
   }
 
   const playedSongId = result.song_id;
+  const intent = result.intent;
   after(
     (async () => {
       // Kısa yol: listeyi devret + imleci taşı + kuyruğun başını yaz (iki DB
@@ -72,18 +74,26 @@ async function handlePOST(req: NextRequest) {
       // güncellensin diye.
       // İmleç taşıma ve dolum TEK kilit altında: ikisi de aynı rotasyon
       // durumuna yazıyor, araya başka bir dolum girerse kuyruk eski imleçle
-      // dolar (bkz. 0047).
-      await withFillLock(session.venue_id, async () => {
-        if (targetList && playedSongId) {
-          if (manualBlock) await jumpManualBlock(session.venue_id, targetList, playedSongId);
-          else await startPlaylistFrom(session.venue_id, targetList, playedSongId);
-        }
-        await runFillUnlocked(session.venue_id);
-      });
-    })().catch(() => {})
+      // dolar (bkz. 0047). Kilit doluysa BEKLENİR — eskiden komut burada
+      // sessizce düşüyor, şarkı bitince eski listeden devam ediliyordu.
+      await withFillLock(
+        session.venue_id,
+        async () => {
+          // Beklerken daha yeni bir komut geldiyse bu listeyi geri getirme:
+          // mekan sahibinin SON tıklaması geçerlidir
+          const latest = !intent || (await isLatestIntent(session.venue_id, intent));
+          if (targetList && playedSongId && latest) {
+            if (manualBlock) await jumpManualBlock(session.venue_id, targetList, playedSongId);
+            else await startPlaylistFrom(session.venue_id, targetList, playedSongId);
+          }
+          await runFillUnlocked(session.venue_id);
+        },
+        "şarkıdan çal: listeyi devral"
+      );
+    })().catch((err) => reportQueueWorkFailure(session.venue_id, "şarkıdan çal", err))
   );
 
-  return NextResponse.json(result);
+  return NextResponse.json({ ok: true, video_id: result.video_id, song_id: result.song_id });
 }
 
 // Kuyruk sağlık kaydı değişikliği bu adla yazar (bkz. lib/actor.ts)

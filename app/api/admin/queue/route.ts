@@ -9,6 +9,7 @@ import {
   fillQueue,
   playlistSongsForQueue,
 } from "@/lib/queue-fill";
+import { reportQueueWorkFailure } from "@/lib/queue";
 import { withActor } from "@/lib/actor";
 
 // "Sıraya ekle": şarkı ÇALAN ŞARKIDAN HEMEN SONRA çalar (Spotify'daki gibi).
@@ -105,7 +106,7 @@ async function handlePATCH(req: NextRequest) {
     const playlistId = typeof body?.playlist_id === "string" ? body.playlist_id : undefined;
     await clearManualQueue(session.venue_id, playlistId);
     // Boşalan yeri çalan liste kapatsın — dolum (onlarca DB turu) yanıttan sonra.
-    after(fillQueue(session.venue_id).catch(() => {}));
+    after(fillQueue(session.venue_id).catch((err) => reportQueueWorkFailure(session.venue_id, "sırayı temizle", err)));
     return NextResponse.json({ ok: true });
   }
 

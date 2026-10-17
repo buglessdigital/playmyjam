@@ -289,7 +289,10 @@ async function handlePost(
         return reply({ ok: false, claim_lost: true }, { status: 409 });
       }
       const progressMs = typeof body?.progress_ms === "number" ? Math.floor(body.progress_ms) : 0;
-      const synced = await syncPlayingVideo(venueId, videoId, progressMs, fromVideoId);
+      const playedIds = Array.isArray(body?.played_video_ids)
+        ? (body.played_video_ids as unknown[]).filter((id): id is string => typeof id === "string").slice(0, 20)
+        : [];
+      const synced = await syncPlayingVideo(venueId, videoId, progressMs, fromVideoId, playedIds);
       // Hizalama ertelendi: player bir sonraki turda yine bildirir
       if (synced.busy) return reply(synced, { status: 503 });
       return reply(synced);

@@ -689,6 +689,25 @@ async function playSongNowLocked(
   return { ok: true, video_id: song.youtube_video_id, song_id: song.id, intent };
 }
 
+// Panelden gelen "şimdi çal" sahne kilidine (biten şarkının geçişi) takılırsa
+// tıklama KAYBOLMAZ: kilit kısa işler için tutulur, birkaç saniye içinde yeniden
+// denenir. Eskiden busy dönüp panel eski şarkıyı baştan başlatıyordu.
+const PLAY_NOW_BUSY_ATTEMPTS = 8;
+const PLAY_NOW_BUSY_WAIT_MS = 400;
+
+export async function playSongNowPatient(
+  venueId: string,
+  target: PlayNowTarget,
+  options?: { deferQueueWork?: boolean }
+): Promise<PlayNowResult> {
+  let result = await playSongNow(venueId, target, options);
+  for (let attempt = 1; result.busy && attempt < PLAY_NOW_BUSY_ATTEMPTS; attempt++) {
+    await new Promise((r) => setTimeout(r, PLAY_NOW_BUSY_WAIT_MS));
+    result = await playSongNow(venueId, target, options);
+  }
+  return result;
+}
+
 // Crossfade için sıradaki şarkıyı KUYRUĞU TÜKETMEDEN okur: player, çalan şarkının
 // son saniyelerine gelmeden videoyu ikinci deck'e yükleyip tamponlayabilsin.
 // Hiçbir yan etkisi yoktur (status değişmez, dolum tetiklenmez) — geçiş fiilen
@@ -698,7 +717,15 @@ async function playSongNowLocked(
 // anında başka bir video döner. Player bu durumu (önyüklenen ≠ dönen) tanıyıp
 // videoyu geçiş anında yükler; ses akışı bozulmaz, yalnızca tamponlama avantajı
 // kaybolur.
-export async function peekNextFromQueue(venueId: string): Promise<{ video_id: string | null }> {
+// video_ids: sıradaki çalınabilir şarkılar (en fazla PEEK_BACKUP). Player bunları
+// YEDEK olarak tutar: sunucuya ulaşılamazsa tek şarkıyla değil bunlarla devam
+// eder (bkz. YouTubePlayer advance). Sırayı her zaman sunucu belirler; yedek her
+// yoklamada (kuyruk her değiştiğinde) tazelenir.
+const PEEK_BACKUP = 5;
+
+export async function peekNextFromQueue(
+  venueId: string
+): Promise<{ video_id: string | null; video_ids: string[] }> {
   const { data } = await supabaseAdmin
     .from("queue")
     .select("songs(youtube_video_id, embeddable)")
@@ -711,18 +738,18 @@ export async function peekNextFromQueue(venueId: string): Promise<{ video_id: st
     .order("added_at", { ascending: true })
     .order("id", { ascending: true })
     // Baştaki birkaç satır çalınamaz olabilir (embed kapalı); playNext bunları
-    // atlayacağı için biz de atlayıp ilk çalınabilir olanı döneriz
-    .limit(5);
+    // atlayacağı için biz de atlayıp çalınabilir olanları döneriz
+    .limit(PEEK_BACKUP * 2);
 
   type SongInfo = { youtube_video_id: string | null; embeddable: boolean | null };
+  const ids: string[] = [];
   for (const row of data ?? []) {
     const songRel = row.songs as unknown as SongInfo | SongInfo[] | null;
     const song = Array.isArray(songRel) ? songRel[0] : songRel;
-    if (song?.youtube_video_id && song.embeddable !== false) {
-      return { video_id: song.youtube_video_id };
-    }
+    if (song?.youtube_video_id && song.embeddable !== false) ids.push(song.youtube_video_id);
+    if (ids.length >= PEEK_BACKUP) break;
   }
-  return { video_id: null };
+  return { video_id: ids[0] ?? null, video_ids: ids };
 }
 
 // Player, ağ kesintisi sırasında sunucuya ulaşamayınca önden tamponladığı
@@ -743,14 +770,18 @@ export async function syncPlayingVideo(
   venueId: string,
   videoId: string,
   progressMs = 0,
-  fromVideoId: string | null = null
+  fromVideoId: string | null = null,
+  // Kesinti sırasında yedekten çalınıp BİTMİŞ şarkılar (çalınma sırasıyla, şu an
+  // çalan hariç). Sıradaki satırları 'played' olur — yoksa bağlantı dönünce
+  // aynı şarkılar ikinci kez çalardı.
+  playedVideoIds: string[] = []
 ): Promise<{ ok: boolean; matched: boolean; busy?: boolean }> {
   // Sahne kilidi (0047): burası da sahnedeki satırı kapatıp başkasını 'playing'
   // yapıyor. Kilit doluysa hizalama ertelenir — player bir sonraki turda yine
   // bildirir, kesinti sonrası mutabakat kaybolmaz.
   return runExclusive(
     venueId,
-    () => syncPlayingVideoLocked(venueId, videoId, progressMs, fromVideoId),
+    () => syncPlayingVideoLocked(venueId, videoId, progressMs, fromVideoId, playedVideoIds),
     () => ({ ok: false, matched: false, busy: true })
   );
 }
@@ -759,8 +790,11 @@ async function syncPlayingVideoLocked(
   venueId: string,
   videoId: string,
   progressMs = 0,
-  fromVideoId: string | null = null
+  fromVideoId: string | null = null,
+  playedVideoIds: string[] = []
 ): Promise<{ ok: boolean; matched: boolean }> {
+  await markOfflinePlayed(venueId, playedVideoIds.filter((id) => id !== videoId));
+
   const { data: song } = await supabaseAdmin
     .from("songs")
     .select("id")
@@ -869,6 +903,41 @@ async function syncPlayingVideoLocked(
   await supabaseAdmin.from("now_playing").update(npPatch).eq("venue_id", venueId);
   fillQueue(venueId).catch((err) => reportFillFailure(venueId, err));
   return { ok: true, matched: !!row };
+}
+
+// Yedekten çalınmış şarkıların kuyruktaki İLK bekleyen satırı (çalma sırasıyla
+// aynı sıralama) 'played' yapılır. Satırı yoksa (bu arada panelden çıkarılmış)
+// atlanır. Tek tek ve sırayla: aynı şarkı iki kez çaldıysa iki satır kapanır.
+async function markOfflinePlayed(venueId: string, videoIds: string[]): Promise<void> {
+  if (videoIds.length === 0) return;
+  const { data: songs } = await supabaseAdmin
+    .from("songs")
+    .select("id, youtube_video_id")
+    .in("youtube_video_id", [...new Set(videoIds)]);
+  const songIdByVideo = new Map((songs ?? []).map((s) => [s.youtube_video_id as string, s.id as string]));
+  const now = new Date().toISOString();
+  for (const videoId of videoIds) {
+    const songId = songIdByVideo.get(videoId);
+    if (!songId) continue;
+    const { data: row } = await supabaseAdmin
+      .from("queue")
+      .select("id")
+      .eq("venue_id", venueId)
+      .eq("song_id", songId)
+      .eq("status", "queued")
+      .order("priority", { ascending: false })
+      .order("position", { ascending: true })
+      .order("added_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (!row) continue;
+    await supabaseAdmin
+      .from("queue")
+      .update({ status: "played", started_at: now, played_at: now })
+      .eq("id", row.id)
+      .eq("status", "queued");
+  }
 }
 
 // Panelin "geri" düğmesi: en son çalınmış şarkıya döner. Çalmakta olan satır

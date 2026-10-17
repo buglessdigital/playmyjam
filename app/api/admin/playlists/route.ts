@@ -14,7 +14,7 @@ import {
   verifyPlaylistOpener,
   withFillLock,
 } from "@/lib/queue-fill";
-import { playSongNow, reportQueueWorkFailure } from "@/lib/queue";
+import { playSongNowPatient, reportQueueWorkFailure } from "@/lib/queue";
 import { isLatestIntent, markLatestIntent } from "@/lib/queue-lock";
 import { withActor } from "@/lib/actor";
 
@@ -407,7 +407,7 @@ async function handlePATCH(req: NextRequest) {
     // sıradaki ilk müşteri satırı çalmaya başlar. İmleç yine listeye taşınır ama
     // listenin ilk şarkısı tüketilmez — müşteri istekleri bitince o çalacak.
     if (promoteId) {
-      const promoted = await playSongNow(
+      const promoted = await playSongNowPatient(
         session.venue_id,
         { queueId: promoteId },
         { deferQueueWork: true }
@@ -427,7 +427,7 @@ async function handlePATCH(req: NextRequest) {
 
     // Sahne devralınıyor. video_id yanıtla döner — panel player'a DB → Realtime
     // turunu beklemeden "bu videoyu yükle" der.
-    const played = await playSongNow(
+    const played = await playSongNowPatient(
       session.venue_id,
       { songId: opener, playlistId },
       { deferQueueWork: true }

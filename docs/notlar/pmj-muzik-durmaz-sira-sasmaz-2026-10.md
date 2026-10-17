@@ -26,6 +26,12 @@ metadata:
 - **K8 Sunucuya ulaşılamaması "kuyruk boş" değildir.** Player geçiş cevapsız kalınca sessizlik ekranına düşmez, 3/5/10/15 sn aralıkla aynı geçişi yeniden dener (sahne bu arada değiştiyse vazgeçer). Gerçek "kuyruk boş"ta 8 sn'lik boşta yoklama zaten vardı (`reason: "idle-retry"`, kayıt basmaz); sunucunun `queue_empty` kaydı mekan başına 10 dk'da bir.
 - `markLatestIntent` yazamazsa undefined döner, komut koşulsuz uygulanır (önceki sürüm devri atlıyordu).
 
+**Sağlamlaştırma 2 (18 Eki 2026):**
+- "Şimdi çal" ve play tuşu sahne kilidine (503) takılınca sunucu 8×400 ms kendisi yeniden dener (`playSongNowPatient`), panel de 6×600 ms. Ağ hatasında panel player'ı `now_playing`'deki gerçek şarkıya hizalar.
+- Çalan deck'te 100/101/150: atlamadan önce aynı video BİR kez yeniden yüklenir.
+- **Yedek 5 şarkı:** `peek` artık `video_ids` (sıradaki 5 çalınabilir) döner; player `backupIdsRef`'te tutar, her başarılı yoklamada (kuyruk her değiştiğinde) tazeler, kesintide DOKUNMAZ. Sunucuya ulaşılamazken sırayla çalar (`lib/offline-backup.ts`); bağlantı dönünce `sync` `played_video_ids` ile yedekten çalınıp bitenleri kapatır (yoksa tekrar çalarlardı). Sırayı yine sunucu belirler; müşteri eklemesi kesinti bitince sıradaki olur. İnternet tamamen kesikse YouTube da yok — yedek yalnız BİZİM sunucumuz yokken işe yarar.
+- Sekme donması kodla çözülemez: panel SSS'sinde Chrome Bellek/Enerji Tasarrufu + uyku ayarları rehberi.
+
 **Testler:** `lib/lock-wait.test.ts`, `lib/playability.test.ts`, `lib/queue-invariants.test.ts` o günün durumlarını kurar.
 
 **Veri onarımı (17 Eki):** 101 damga YouTube'a soruldu, 70'i kaldırıldı; `playlist_sources.snapshot_video_ids` sırasından 84 liste üyeliği orijinal pozisyonuyla geri kuruldu. Snapshot'ı olmayan (elle eklenmiş) üyelikler ve silinen `venue_songs.play_count` geri gelmedi.

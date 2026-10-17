@@ -84,6 +84,10 @@ export const isMovable = (item: QueueItem) => item.user_id === null;
 // added_by='auto'dur, müşteri satırlarında kullanıcı adı yazar.
 export const isManualRow = (item: QueueItem) => item.user_id === null && item.added_by === "admin";
 
+// "Şimdi çal" sahne kilidine (503) takılırsa kaç kez, hangi aralıkla yeniden denenir
+const PLAY_NOW_BUSY_RETRIES = 6;
+const PLAY_NOW_BUSY_RETRY_MS = 600;
+
 export function formatTime(ms: number) {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -801,11 +805,20 @@ export function usePlayback(venueDbId: string) {
     }
 
     try {
-      const res = await fetch("/api/admin/play-now", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(target),
-      });
+      // 503 = sahne kilidi meşgul (biten şarkının geçişi tam o anda sürüyor).
+      // Tıklama KAYBOLMASIN: kısa aralıkla yeniden denenir. Eskiden tek denemede
+      // reddedilip player eski şarkıya BAŞTAN dönüyordu.
+      let res: Response | null = null;
+      for (let attempt = 0; attempt <= PLAY_NOW_BUSY_RETRIES; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, PLAY_NOW_BUSY_RETRY_MS));
+        res = await fetch("/api/admin/play-now", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(target),
+        });
+        if (res.status !== 503) break;
+      }
+      if (!res) throw new Error("yanıt yok");
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         localActionAtRef.current = 0;
@@ -827,7 +840,23 @@ export function usePlayback(venueDbId: string) {
       return { ok: true as const };
     } catch {
       localActionAtRef.current = 0;
-      return { ok: false as const, error: "Bağlantı hatası" };
+      // İstek sunucuya ulaştı mı bilinmiyor: player'ı iyimser şarkıda bırakırsak
+      // sunucu başka şarkıyı bilir ve sıra ayrışır. Gerçek sahne okunur, player
+      // ona hizalanır (sunucu isteği işlediyse zaten yeni şarkıdır).
+      try {
+        const { data: np } = await supabase
+          .from("now_playing")
+          .select("video_id")
+          .eq("venue_id", venueDbId)
+          .maybeSingle();
+        const serverVideo = (np?.video_id as string | null | undefined) ?? null;
+        if (song && serverVideo && serverVideo !== song.youtube_video_id) {
+          sendCommand({ type: "load", video_id: serverVideo });
+        }
+      } catch {}
+      leavingRef.current = null;
+      void fetchQueue(venueDbId);
+      return { ok: false as const, error: "Bağlantı hatası — çalan şarkı sunucuyla eşitlendi" };
     }
   };
 

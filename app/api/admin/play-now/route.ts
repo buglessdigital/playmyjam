@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
-import { playSongNow, reportQueueWorkFailure } from "@/lib/queue";
+import { playSongNowPatient, reportQueueWorkFailure } from "@/lib/queue";
 import {
   hasManualBlock,
   jumpManualBlock,
@@ -45,7 +45,7 @@ async function handlePOST(req: NextRequest) {
 
   // Senkron kalan tek iş sahne; kuyruk temizliği, imleç ve dolum (onlarca DB
   // turu) yanıttan sonra koşar — düğme bekletmesin, kuyruk Realtime ile düzelir.
-  const result = await playSongNow(
+  const result = await playSongNowPatient(
     session.venue_id,
     {
       queueId: queueId || undefined,

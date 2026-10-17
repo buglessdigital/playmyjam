@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { pickOfflineVideo } from "@/lib/offline-backup";
 import { createClient } from "@/lib/supabase/client";
 import {
   joinPlayerBus,
@@ -631,6 +632,8 @@ async function readNowPlaying(
 type PlayerApiResult = {
   started?: boolean;
   video_id?: string | null;
+  // peek: sıradaki çalınabilir şarkılar — sunucuya ulaşılamazsa yedek
+  video_ids?: string[];
   queueEmpty?: boolean;
   error?: string;
   ok?: boolean;
@@ -846,6 +849,14 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     attempt: 0,
   });
   const advanceFnRef = useRef<((payload: Record<string, unknown>) => Promise<void>) | null>(null);
+  // YEDEK: sunucunun son "sıradakiler" cevabı (en fazla 5). Yalnızca sunucuya
+  // ulaşılamazken kullanılır; sırayı her zaman sunucu belirler, yedek her
+  // yoklamada tazelenir. Eskiden kesintide yalnızca tampondaki TEK şarkı
+  // çalınabiliyordu, sonra müzik susuyordu.
+  const backupIdsRef = useRef<string[]>([]);
+  // Kesinti sırasında yedekten çalınıp BİTEN şarkılar: bağlantı dönünce sunucu
+  // bunları "çalındı" sayar (sync played_video_ids), ikinci kez çalmaz.
+  const offlinePlayedRef = useRef<string[]>([]);
   // Pencere odağının video iframe'ine geçtiği an: kullanıcının YouTube'un kendi
   // duraklat düğmesine tıkladığını buradan anlarız (iframe içi tıklama üst
   // sayfada olay üretmez, ama odak devrini blur olarak görürüz)
@@ -1586,6 +1597,21 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     }
   }, [activePlayer]);
 
+  // Kesintide çalınacak sıradaki şarkı: önce tampondaki, yoksa yedek
+  // listesinden henüz çalınmamış ilki. Hiçbiri yoksa null (artık yedek bitti).
+  const nextOfflineVideo = useCallback(
+    (): string | null =>
+      pickOfflineVideo({
+        preloaded: preloadedVideoRef.current,
+        backup: backupIdsRef.current,
+        current: currentVideoRef.current,
+        fallbackFrom: fallbackFromRef.current,
+        played: offlinePlayedRef.current,
+        unplayable: unplayableRef.current,
+      }),
+    []
+  );
+
   // Şarkı bitti / hata verdi → kuyruğu ilerlet, dönen videoyu yükle
   const advance = useCallback(
     async (payload: Record<string, unknown>) => {
@@ -1625,7 +1651,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           if (attempt >= limit) break;
           // Ağ yok ve sıradaki şarkı tamponda hazır: bir denemeden sonra yedeğe
           // geç, mekan sessiz beklemesin
-          if (failure === "network" && preloadedVideoRef.current && attempt >= 1) break;
+          if (failure === "network" && nextOfflineVideo() && attempt >= 1) break;
           await new Promise((resolve) =>
             setTimeout(resolve, failure === "busy" ? ADVANCE_BUSY_RETRY_MS : ADVANCE_RETRY_MS)
           );
@@ -1666,19 +1692,26 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           if (result.video_id === currentVideoRef.current && !activeDeckFinished()) return;
           // Tamponda duruyorsa oradan çal, yoksa normal yükle
           if (!playPreloaded(result.video_id)) loadVideo(result.video_id);
-        } else if (!result && !blockedRef.current && preloadedVideoRef.current) {
-          // Sunucuya ulaşılamıyor AMA sıradaki şarkıyı önceden öğrenip tampona
-          // almıştık: müzik susmasın, onu çal. Kuyruk sunucuda ilerlemedi;
-          // bağlantı dönünce reconcile eşitler (bkz. syncOfflineFallback).
-          const fallback = preloadedVideoRef.current;
+        } else if (!result && !blockedRef.current && nextOfflineVideo()) {
+          // Sunucuya ulaşılamıyor AMA sıradakileri önceden öğrenmiştik (tampon
+          // + yedek listesi): müzik susmasın, sıradakini çal. Kuyruk sunucuda
+          // ilerlemedi; bağlantı dönünce reconcile eşitler (syncOfflineFallback).
+          const fallback = nextOfflineVideo()!;
           report(
             "offline_fallback",
             "warn",
-            `Sunucuya ulaşılamadı (${lastFailRef.current ?? "?"}) — player kendi tamponundaki şarkıyı çalıyor (${fallback})`
+            `Sunucuya ulaşılamadı (${lastFailRef.current ?? "?"}) — player yedekteki sıradaki şarkıyı çalıyor (${fallback})`
           );
           // Zaten yedekteysek ilk yedeğin çıkış şarkısı korunur: sunucunun
-          // sahnesinde hâlâ o duruyor
-          if (!offlineFallbackRef.current) fallbackFromRef.current = currentVideoRef.current;
+          // sahnesinde hâlâ o duruyor. Yedekten çalıp biten şarkı ise "kesintide
+          // çalındı" listesine girer.
+          if (!offlineFallbackRef.current) {
+            fallbackFromRef.current = currentVideoRef.current;
+            offlinePlayedRef.current = [];
+          } else if (currentVideoRef.current) {
+            offlinePlayedRef.current.push(currentVideoRef.current);
+          }
+          backupIdsRef.current = backupIdsRef.current.filter((id) => id !== fallback);
           if (!playPreloaded(fallback)) loadVideo(fallback);
           offlineFallbackRef.current = true;
         } else if (!result && !blockedRef.current) {
@@ -1723,6 +1756,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           preloadRetryAtRef.current = 0;
           offlineFallbackRef.current = false;
           fallbackFromRef.current = null;
+          offlinePlayedRef.current = [];
           setIdle(true);
           onTrackChange?.({ videoId: null, isPlaying: false });
           broadcastState({ video_id: null, is_playing: false, progress_ms: 0 });
@@ -1733,6 +1767,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     },
     [
       api,
+      nextOfflineVideo,
       loadVideo,
       onTrackChange,
       endCrossfade,
@@ -1789,6 +1824,14 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     preloadedForRef.current = anchor;
 
     const result = await api({ action: "peek" });
+    // Yedek her başarılı yoklamada tazelenir. Kesintide (yedekten çalarken)
+    // DOKUNULMAZ: sunucunun sahnesi o sırada bayattır, yanıt az önce çaldığımız
+    // şarkıları yeniden "sıradaki" diye getirir.
+    if (result && !offlineFallbackRef.current) {
+      backupIdsRef.current = (result.video_ids ?? (result.video_id ? [result.video_id] : [])).filter(
+        (id) => id !== currentVideoRef.current
+      );
+    }
     const videoId = result?.video_id;
     // Şarkı bu arada değiştiyse tampon geçersiz. Çevrimdışı yedekle çalarken
     // kuyruk sunucuda ilerlemediği için peek ÇALAN şarkıyı döndürebilir —
@@ -2361,6 +2404,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     if (!videoId) {
       offlineFallbackRef.current = false;
       fallbackFromRef.current = null;
+      offlinePlayedRef.current = [];
       return;
     }
     let progress = 0;
@@ -2378,6 +2422,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
         // bulursa (kesinti sırasında panelden "şimdi çal" vb.) onu yakmaz,
         // sıraya geri koyar
         ...(fallbackFromRef.current ? { from_video_id: fallbackFromRef.current } : {}),
+        // Yedekten çalınıp biten şarkılar: sunucu bunları "çalındı" sayar
+        ...(offlinePlayedRef.current.length > 0 ? { played_video_ids: offlinePlayedRef.current } : {}),
       });
     } finally {
       setAdvancing(false);
@@ -2386,6 +2432,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
     if (!result) return;
     offlineFallbackRef.current = false;
     fallbackFromRef.current = null;
+    offlinePlayedRef.current = [];
     // Şarkı katalogda bulunamadı (olmaması gereken durum): now_playing bize
     // hizalanamadı, kuyruğu ileri sarıp tutarlı duruma dön
     if (result.ok === false) {
@@ -2832,6 +2879,17 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
               return;
             }
             if (fatal) {
+              // Kalıcı kod da sahte olabiliyor (17 Eki 2026: dakikalar önce
+              // sonuna kadar çalmış şarkılara 150). Atlamadan önce aynı video BİR
+              // kez yeniden yüklenir; yine düşerse atlanır ve sunucu YouTube'a
+              // sorar. Sayaç şarkı gerçekten çalmaya başlayınca sıfırlanır.
+              const seenFatal = (transientErrorsRef.current.get(failed) ?? 0) + 1;
+              transientErrorsRef.current.set(failed, seenFatal);
+              if (seenFatal < 2) {
+                plog(`çalan şarkı hata ${code} verdi — atlamadan önce bir kez yeniden yükleniyor`);
+                loadVideo(failed);
+                return;
+              }
               advance({ action: "error", video_id: failed, code });
               return;
             }

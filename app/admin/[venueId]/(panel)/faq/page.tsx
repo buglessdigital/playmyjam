@@ -28,6 +28,33 @@ const faqs: Faq[] = [
     ),
   },
   {
+    q: "Müzik ara ara kesiliyor ya da bilgisayar bir süre kullanılmayınca duruyor",
+    a: (
+      <>
+        <p>
+          Tarayıcı ve işletim sistemi, uzun süre dokunulmayan sekmeleri pil ve bellek tasarrufu için
+          dondurabiliyor; bilgisayar uykuya geçince de müzik durur. Müziği çalan bilgisayarda bir kez şu
+          ayarları yapın:
+        </p>
+        <ul className="list-disc pl-5 mt-2 space-y-1">
+          <li>
+            Chrome: Ayarlar → Performans → <b>Bellek Tasarrufu</b> bölümünde &quot;Bu siteleri her zaman etkin
+            tut&quot; listesine <b>playmyjam.com.tr</b> ekleyin. Aynı sayfada <b>Enerji Tasarrufu</b>&apos;nu kapatın.
+          </li>
+          <li>
+            Windows: Ayarlar → Sistem → Güç → ekran ve uyku sürelerinde &quot;Uyku&quot; için <b>Hiçbir zaman</b>.
+            Mac: Sistem Ayarları → Ekran Kilidi / Enerji → uyku <b>Hiçbir zaman</b>.
+          </li>
+          <li>Dizüstü bilgisayarın kapağını kapatmayın ve şarj kablosunu takılı tutun.</li>
+          <li>
+            Müziği çalan paneli ya da TV modunu ayrı bir pencerede açık bırakın; aynı tarayıcıda çok sayıda sekme
+            açmaktan kaçının.
+          </li>
+        </ul>
+      </>
+    ),
+  },
+  {
     q: "Panel açık ama müzik başlamıyor",
     a: (
       <p>

@@ -145,14 +145,6 @@ body {
   }
 }
 
-/* Landing: SSS akordeonu — "+" işareti açılınca "×" olur */
-details.faq-item summary::-webkit-details-marker {
-  display: none;
-}
-details.faq-item[open] .faq-chevron {
-  transform: rotate(45deg);
-}
-
 /* Admin paneli: ses kaydırıcısı. Tarayıcı varsayılanı kalın ve mavi odak
    halkalı geliyordu; ince ray + pembe topuz ile panelin diline uyduruluyor. */
 .volume-slider {
@@ -322,6 +314,43 @@ html[data-theme="light"] .pmj-white-logo {
     animation: vinyl-spin 5.4s linear infinite;
   }
 }
+
+/* Vitrin "Nasıl çalışır" telefon ekranları (components/landing/HowItWorks.tsx).
+   Başlangıç durumları yalnız keyframes içinde: azaltılmış harekette her öğe son
+   hâlinde durur; dokunma halkası (hiw-tap) ise hiç görünmez. */
+.hiw-tap { opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .hiw-progress { transform-origin: left; animation: hiw-progress 5.2s linear both; }
+  .hiw-fade { animation: hiw-fade 0.45s ease both; }
+  .hiw-rise { animation: hiw-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .hiw-type { animation: hiw-type 0.9s steps(8) 0.3s both; }
+  .hiw-caret { animation: hiw-caret 0.8s step-end infinite; }
+  .hiw-tap { animation: hiw-tap 0.6s ease-out both; }
+  .hiw-sheet { animation: hiw-sheet 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.15s both; }
+  .hiw-track { animation: hiw-track 5.2s linear both; }
+  .hiw-sway { animation: hiw-sway 4.5s ease-in-out infinite; }
+  .hiw-bokeh { animation: hiw-bokeh 6s ease-in-out infinite alternate; }
+  .hiw-lock { animation: hiw-lock 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .hiw-climb { animation: hiw-climb 0.7s cubic-bezier(0.3, 0.8, 0.2, 1) both; }
+  .hiw-drop { animation: hiw-drop 0.7s cubic-bezier(0.3, 0.8, 0.2, 1) both; }
+}
+@keyframes hiw-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes hiw-fade { from { opacity: 0; } }
+@keyframes hiw-rise { from { opacity: 0; transform: translateY(16px); } }
+@keyframes hiw-type { from { max-width: 0; } to { max-width: 5em; } }
+@keyframes hiw-caret { 50% { opacity: 0; } }
+@keyframes hiw-tap { from { opacity: 0.5; transform: scale(0.3); } to { opacity: 0; transform: scale(1.5); } }
+@keyframes hiw-sheet { from { transform: translateY(100%); } }
+@keyframes hiw-track { from { transform: scaleX(0.35); } to { transform: scaleX(0.62); } }
+@keyframes hiw-sway {
+  /* Yatay ortalama Tailwind'in ayrı `translate` özelliğinde; burada yalnız sallantı */
+  0%, 100% { transform: rotate(-1.2deg) translateY(0); }
+  50% { transform: rotate(1deg) translateY(-6px); }
+}
+@keyframes hiw-bokeh { to { transform: translate(14px, -10px) scale(1.12); opacity: 0.45; } }
+@keyframes hiw-lock { from { opacity: 0; transform: scale(1.25); } }
+@keyframes hiw-climb { from { transform: translateY(160px); } }
+@keyframes hiw-drop { from { transform: translateY(-80px); } }
 
 /* Vitrin: kağıt setlist kenarındaki delikli kesim */
 .ticket-edge {

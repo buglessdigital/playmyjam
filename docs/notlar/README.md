@@ -88,6 +88,7 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Git akışı: dal + PR](pmj-git-akisi-pr.md) — main korumalı, CI herkese zorunlu; Taner (buglessdigital hesabı) onaysız merge eder, Berkay'ın PR'ları Taner'in onayını bekler
 - [Mekan canlı yayını](pmj-canli-yayin-2026-09.md) — müşteri ekranları `venue-live:<id>` Broadcast'i dinler (postgres_changes değil); 0060 ŞART ve koddan ÖNCE prod'a; 20× az DB isteği
 - [Ölçek eşikleri](pmj-olcek-esikleri-2026-09.md) — Redis/replika/arama servisi/kuyruk ŞİMDİ kurulmaz; her biri hangi ölçümle tetiklenir + dalga öncesi `npm run load:venue`
+- [50 mekan yük testi](pmj-yuk-testi-50-mekan-2026-10.md) — `npm run load:fleet`, gerçek rotalar; yazılım temiz (kayıp/jeton/sıra hatası 0), engel Supabase Free Realtime (200 bağlantı, 100 mesaj/sn) → 50 mekan öncesi Pro şart
 - [Sorunlar ekranı](pmj-sorunlar-ekrani-2026-09.md) — /super-admin/issues: bildirim akıbeti (gönderildi≠göründü, sw.js onayı) + ödeme/cron/sunucu hataları, Sentry'ye de gider; 0061 ŞART; toplu "çözüldü" için 0075 ŞART
 - [Katalog: talep yönlü kapsama](pmj-katalog-talep-yonlu-2026-09.md) — hacim değil kapsama sorunu; isimden kanal `forHandle` ile 1 birim, search.list ASLA
 - [Katalog ekranı](pmj-katalog-ekrani-2026-10.md) — /super-admin/catalog: havuzda arama + hasat ilerleme çubuğu; 0064+0065 ŞART, arama en az 3 harf
@@ -98,3 +99,4 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Kilit dosyası npm tuzağı](pmj-kilit-dosyasi-npm-tuzagi.md) — yerel npm @emnapi kayıtlarını + libc alanlarını siliyor, CI npm ci kırılıyor; kilidi main'den alıp elle güncelle
 - [Mobil uygulama](pmj-mobil-uygulama-2026-10.md) — Capacitor kabuğu (web ile aynı kod), yalnız müşteri; iOS'ta Apple IAP; hediye 1 jeton kayıtlı hesap+cihaz başına, doğrulayıcı gelene kadar fail-closed; 0076 ŞART
 - [Müşteri paneli açık tema](pmj-acik-tema-2026-10.md) — renkler --pmj-* değişkenlerinde (bg-canvas, text-ink…); yeni bileşende sabit koyu renk yazma; 15 Eki'den beri herkese açık (varsayılan koyu)
+- [Vitrin: Hakkımızda + telif + Nasıl çalışır](pmj-vitrin-hakkimizda-2026-10.md) — telif bandında YouTube/altyapı ANLATILMAZ, kanıt = sözleşme Ek-2 maddeleri; telefondaki ekranlar kısmen gerçek bileşen, kısmen kopya (panel değişirse güncelle)

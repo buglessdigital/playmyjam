@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import Coin from "@/components/ui/Coin";
 import SoundBackdrop from "@/components/landing/SoundBackdrop";
@@ -150,6 +151,72 @@ function TurntableArt() {
   );
 }
 
+// Hakkımızda + telif güvencesi. Telif bandındaki her iddia mekan sözleşmesinin
+// Ek-2'sindeki (lib/contract-template.ts, musicUndertaking) bir maddeye dayanır;
+// madde numaraları orada değişirse sözlükteki "c*Proof" metinleri de güncellenmeli.
+// Bilinçli olarak sade: çalma altyapısı (hangi oynatıcı/kaynak) burada anlatılmaz.
+export function AboutSection() {
+  const t = useT();
+  const a = t.home.about;
+
+  const claims = [
+    { n: "01", title: a.c1Title, proof: a.c1Proof },
+    { n: "02", title: a.c2Title, proof: a.c2Proof },
+    { n: "03", title: a.c3Title, proof: a.c3Proof },
+  ];
+
+  return (
+    <section id="hakkimizda" className="scroll-mt-24">
+      <div className="mx-auto grid w-full max-w-6xl items-center gap-12 px-5 py-20 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16 lg:py-28">
+        {/* Marka jetonu: hero'daki plağın etiketindeki jetonun sakin hali */}
+        <div aria-hidden className="mx-auto flex w-full max-w-[200px] justify-center sm:max-w-[260px] lg:max-w-[340px]">
+          <div className="w-full drop-shadow-[0_30px_60px_rgba(233,30,140,0.25)] [&>svg]:h-auto [&>svg]:w-full">
+            <Coin size={340} />
+          </div>
+        </div>
+
+        <div className="mx-auto max-w-2xl lg:mx-0">
+          <p className="font-tag text-xs uppercase tracking-[0.18em] text-[#ff8fd0]">{a.kicker}</p>
+          <h2 className="font-display mt-4 text-4xl font-extrabold leading-[1.02] tracking-tight text-white sm:text-5xl">
+            {a.title}
+          </h2>
+          <p className="mt-8 text-base leading-relaxed text-[#d1d5db] sm:text-lg">{a.p1}</p>
+          <p className="mt-5 text-base leading-relaxed text-[#9ca3af] sm:text-lg">{a.p2}</p>
+        </div>
+      </div>
+
+      {/* Telif güvencesi: mekanizma anlatılmaz, yalnız sonuç + sözleşme maddesi.
+          "Nasıl çalışır" listesiyle aynı dil: ikon/kart yok, çizgi + tipografi.
+          Zemin bilerek koyu: hemen altındaki "Mekan sahibiysen" bloğu pembe. */}
+      <div className="border-t border-white/[0.06]">
+        <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-20 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16 lg:py-28">
+          <div>
+            <p className="font-tag text-xs uppercase tracking-[0.18em] text-[#ff8fd0]">{a.copyrightKicker}</p>
+            <h3 className="font-display mt-4 text-4xl font-extrabold leading-[1.02] tracking-tight text-white sm:text-5xl">
+              {a.copyrightTitle}
+            </h3>
+            <p className="mt-5 max-w-sm text-base leading-relaxed text-[#9ca3af]">{a.copyrightLead}</p>
+          </div>
+          <ol className="border-t border-white/15">
+            {claims.map((c) => (
+              <li
+                key={c.n}
+                className="grid grid-cols-[48px_minmax(0,1fr)] gap-x-4 gap-y-2 border-b border-white/15 py-7 sm:grid-cols-[56px_minmax(0,1fr)_auto] sm:items-baseline sm:gap-x-6"
+              >
+                <span className="font-tag text-sm text-[#ff8fd0]">{c.n}</span>
+                <p className="font-display text-2xl font-bold leading-snug text-white sm:text-[28px]">{c.title}</p>
+                <span className="font-tag col-start-2 text-[11px] uppercase tracking-[0.14em] text-[#6b7280] sm:col-start-3 sm:text-right">
+                  {a.proofLabel} {c.proof}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // İki kapı: misafir ve mekan sahibi aynı ekranda kendi yolunu bulsun.
 // id'ler eski bağlantılar (/#mekanlar, /#mekan-basvuru) kırılmasın diye burada.
 export function AudienceSection() {
@@ -224,73 +291,124 @@ export function AudienceSection() {
   );
 }
 
-// Adımlar bir plak arka kapağındaki parça listesi gibi: A1, A2, B1, B2.
-export function HowItWorksSection() {
-  const t = useT();
-
-  const steps = [
-    { side: "A1", title: t.home.steps.scanTitle, desc: t.home.steps.scanDesc },
-    { side: "A2", title: t.home.steps.pickTitle, desc: t.home.steps.pickDesc },
-    { side: "B1", title: t.home.steps.payTitle, desc: t.home.steps.payDesc },
-    { side: "B2", title: t.home.steps.listenTitle, desc: t.home.steps.listenDesc },
-  ];
-
-  return (
-    <section id="nasil-calisir" className="mx-auto w-full max-w-6xl scroll-mt-24 px-5 py-20 sm:px-6 lg:py-28">
-      <h2 className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
-        {t.home.steps.heading}
-      </h2>
-      <ol className="mt-12 border-t border-white/15">
-        {steps.map((s) => (
-          <li
-            key={s.side}
-            className="grid gap-2 border-b border-white/15 py-7 sm:grid-cols-[80px_minmax(0,1fr)_minmax(0,1.3fr)] sm:items-baseline sm:gap-8"
-          >
-            <span className="font-tag text-sm text-[#ff8fd0]">{s.side}</span>
-            <h3 className="font-display text-2xl font-bold text-white sm:text-3xl">{s.title}</h3>
-            <p className="text-base leading-relaxed text-[#9ca3af]">{s.desc}</p>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
+// İki kitle, iki liste: misafir ve mekan sahibi kendi sorularını ayrı görür.
+// Kapalı sekme ve kapalı cevaplar DOM'da kalır (hidden / 0fr): arama motoru ve
+// sayfa içi arama hepsini bulur. Aynı anda tek cevap açık.
 export function FaqSection() {
   const t = useT();
+  const f = t.home.faq;
+  const [tab, setTab] = useState<"guest" | "venue">("guest");
+  const [open, setOpen] = useState(0);
 
-  const faqs = [
-    { q: t.home.faq.q1, a: t.home.faq.a1 },
-    { q: t.home.faq.q2, a: t.home.faq.a2 },
-    { q: t.home.faq.q3, a: t.home.faq.a3 },
-    { q: t.home.faq.q4, a: t.home.faq.a4 },
-    { q: t.home.faq.q5, a: t.home.faq.a5 },
-    { q: t.home.faq.q6, a: t.home.faq.a6 },
+  const lists = {
+    guest: [
+      { q: f.g1q, a: f.g1a },
+      { q: f.g2q, a: f.g2a },
+      { q: f.g3q, a: f.g3a },
+      { q: f.g4q, a: f.g4a },
+      { q: f.g5q, a: f.g5a },
+      { q: f.g6q, a: f.g6a },
+      { q: f.g7q, a: f.g7a },
+    ],
+    venue: [
+      { q: f.v1q, a: f.v1a },
+      { q: f.v2q, a: f.v2a },
+      { q: f.v3q, a: f.v3a },
+      { q: f.v4q, a: f.v4a },
+      { q: f.v5q, a: f.v5a },
+      { q: f.v6q, a: f.v6a },
+    ],
+  };
+  const tabs = [
+    { key: "guest" as const, label: f.guestTab },
+    { key: "venue" as const, label: f.venueTab },
   ];
 
   return (
     <section id="sss" className="scroll-mt-24 border-t border-white/[0.06]">
-      <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-20 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:py-28">
-        <h2 className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
-          {t.home.faq.heading}
-        </h2>
-        <div className="border-t border-white/15">
-          {faqs.map((f) => (
-            <details key={f.q} className="faq-item group border-b border-white/15">
-              <summary
-                className={`flex min-h-16 cursor-pointer list-none items-center justify-between gap-6 py-5 ${FOCUS_RING} focus-visible:outline-offset-0`}
+      <div className="mx-auto grid w-full max-w-6xl gap-12 px-5 py-20 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16 lg:py-28">
+        <div className="lg:sticky lg:top-28 lg:self-start">
+          <h2 className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl">{f.heading}</h2>
+          <p className="mt-5 max-w-sm text-base leading-relaxed text-[#9ca3af]">{f.sub}</p>
+
+          <div role="tablist" aria-label={f.heading} className="mt-8 inline-flex rounded-full border border-white/15 p-1">
+            {tabs.map((x) => (
+              <button
+                key={x.key}
+                type="button"
+                role="tab"
+                aria-selected={tab === x.key}
+                aria-controls={`sss-${x.key}`}
+                onClick={() => {
+                  setTab(x.key);
+                  setOpen(0);
+                }}
+                className={`min-h-11 rounded-full px-6 text-sm font-bold transition-colors ${FOCUS_RING} focus-visible:outline-offset-2 ${
+                  tab === x.key ? "bg-white text-[#0f0a18]" : "text-white/70 hover:text-white"
+                }`}
               >
-                <span className="text-base font-semibold text-white sm:text-lg">{f.q}</span>
-                <span
-                  aria-hidden
-                  className="faq-chevron font-tag flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/20 text-lg leading-none text-white transition-transform"
-                >
-                  +
-                </span>
-              </summary>
-              <p className="max-w-2xl pb-6 text-base leading-relaxed text-[#9ca3af]">{f.a}</p>
-            </details>
+                {x.label}
+              </button>
+            ))}
+          </div>
+
+          <p className="mt-10 hidden text-sm text-[#9ca3af] lg:block">
+            {f.more}{" "}
+            <a href="#iletisim" className={`font-semibold text-white underline decoration-white/30 underline-offset-4 hover:decoration-[#ff2d9c] ${FOCUS_RING}`}>
+              {f.moreCta}
+            </a>
+          </p>
+        </div>
+
+        <div>
+          {tabs.map((x) => (
+            <ol key={x.key} id={`sss-${x.key}`} role="tabpanel" hidden={tab !== x.key} className="hiw-fade border-t border-white/15">
+              {lists[x.key].map((item, i) => {
+                const on = tab === x.key && open === i;
+                return (
+                  <li key={item.q} className="border-b border-white/15">
+                    <h3>
+                      <button
+                        type="button"
+                        aria-expanded={on}
+                        onClick={() => setOpen(on ? -1 : i)}
+                        className={`group grid w-full grid-cols-[40px_minmax(0,1fr)_auto] items-start gap-x-3 py-6 text-left sm:grid-cols-[52px_minmax(0,1fr)_auto] ${FOCUS_RING} focus-visible:outline-offset-0`}
+                      >
+                        <span className={`font-tag pt-1 text-sm transition-colors ${on ? "text-[#ff8fd0]" : "text-white/30"}`}>
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <span className={`text-lg font-semibold leading-snug transition-colors sm:text-xl ${on ? "text-white" : "text-white/80 group-hover:text-white"}`}>
+                          {item.q}
+                        </span>
+                        <span
+                          aria-hidden
+                          className={`flex h-9 w-9 items-center justify-center rounded-full border transition-[transform,background-color,border-color] duration-300 ${
+                            on ? "rotate-45 border-[#ff2d9c] bg-[#ff2d9c] text-white" : "border-white/20 text-white group-hover:border-white/50"
+                          }`}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                          </svg>
+                        </span>
+                      </button>
+                    </h3>
+                    <div className={`grid transition-[grid-template-rows,opacity] duration-300 ${on ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                      <div className="overflow-hidden">
+                        <p className="max-w-2xl pb-7 pl-[52px] text-base sm:pr-12 leading-relaxed text-[#9ca3af] sm:pl-[64px]">{item.a}</p>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
           ))}
+
+          <p className="mt-8 text-sm text-[#9ca3af] lg:hidden">
+            {f.more}{" "}
+            <a href="#iletisim" className={`font-semibold text-white underline decoration-white/30 underline-offset-4 ${FOCUS_RING}`}>
+              {f.moreCta}
+            </a>
+          </p>
         </div>
       </div>
     </section>

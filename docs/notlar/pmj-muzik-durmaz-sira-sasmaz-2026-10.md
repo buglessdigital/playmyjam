@@ -1,6 +1,6 @@
 ---
 name: pmj-muzik-durmaz-sira-sasmaz-2026-10
-description: "17 Eki 2026 olayı + projenin değişmez kuralları: kod şarkı SİLMEZ, damga yalnız YouTube API doğrularsa, panel komutu kaybolmaz, son tıklama kazanır, sıradaki otomatik satır yalnız çalan listeden; migration yok"
+description: "17 Eki 2026 olayı + projenin değişmez kuralları: kod şarkı SİLMEZ (Şimdi güncelle dahil), damga yalnız YouTube API doğrularsa, panel komutu kaybolmaz, son tıklama kazanır, sıradaki otomatik satır yalnız çalan listeden, okuma hatasında dolum durur, ağ hatası kuyruk-boş sayılmaz; migration yok"
 metadata:
   type: project
 ---
@@ -19,6 +19,12 @@ metadata:
 - **K4 Son tıklama kazanır.** `playSongNow(..., {deferQueueWork})` sahne kilidi içinde `markLatestIntent` damgası atar (`queue_fill_locks` satırı, `scope='intent'` — tablo/migration yok). Ertelenen liste devri `isLatestIntent` değilse uygulanmaz.
 - **K5 Sıradaki otomatik satır yalnız çalan listeden** (`queue_position` dolu). Her geçişte `advanceToNext` denetler (`lib/queue-invariants.ts`); ihlalde o listenin bekleyen otomatik satırları düşer, sıra çalan listeden yeniden kurulur, Sorunlar `order_repaired` + e-posta.
 - **Alarm:** `alertOrderProblem` (lib/music-alert.ts) — `order_repaired`, `command_failed`, `queue_empty` OPS_ALERT_EMAIL'e (mekan+tür başına 30 dk). `queue_empty` artık Sorunlar'da da.
+
+**Sağlamlaştırma 1 (18 Eki 2026):**
+- **K6 "Şimdi güncelle" SİLMEZ.** YouTube'dan çıkarılmış ama listede duran şarkılar yanıtta `gone` döner; panel sarı kutuda "Listeden kaldır / Kalsın" diye sorar (`removeGoneSongs`, YouTube'da gerçekten yok mu yeniden doğrular). Okuma eksikse (500 tavanı, şarkı sayısı varken boş yanıt) "çıkarılmış" kararı hiç verilmez, snapshot'tan bir şey düşmez (`lib/playlist-sync-diff.ts`). Eskiden 500'ü aşan listede 500'ün ötesi siliniyordu.
+- **K7 Okuma hatası = dur.** Dolum (`runFill`, `pickFromRotation`), liste devri (`startPlaylistFrom`: okuma artık yazmalardan ÖNCE), `jumpManualBlock`, `clearAutoQueue` hata/yarım okumada `QueueReadError` fırlatıp hiçbir şey yazmaz. `fetchAllRows` hata alınca yarım veri döndürür — hatasını kontrol etmeden kullanma. Boş kuyrukta ilerletme dolumu 3 kez dener.
+- **K8 Sunucuya ulaşılamaması "kuyruk boş" değildir.** Player geçiş cevapsız kalınca sessizlik ekranına düşmez, 3/5/10/15 sn aralıkla aynı geçişi yeniden dener (sahne bu arada değiştiyse vazgeçer). Gerçek "kuyruk boş"ta 8 sn'lik boşta yoklama zaten vardı (`reason: "idle-retry"`, kayıt basmaz); sunucunun `queue_empty` kaydı mekan başına 10 dk'da bir.
+- `markLatestIntent` yazamazsa undefined döner, komut koşulsuz uygulanır (önceki sürüm devri atlıyordu).
 
 **Testler:** `lib/lock-wait.test.ts`, `lib/playability.test.ts`, `lib/queue-invariants.test.ts` o günün durumlarını kurar.
 

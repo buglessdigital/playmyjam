@@ -25,6 +25,27 @@ export function chunk<T>(list: T[], size = IN_CHUNK): T[][] {
   return out;
 }
 
+// OKUMA HATASI = DUR. Dolum ve liste devri yarım/boş okumayla devam ederse
+// sırayı kendi eliyle bozuyordu: katalog okunamayınca listenin bütün şarkıları
+// "çalınamaz" sayılıp tüketiliyor (liste bitmiş sanılıp düşüyor/başa sarıyordu),
+// listeler okunamayınca "çalan liste yok" denip kuyruğa rastgele katalog
+// şarkıları giriyordu, çalma geçmişi okunamayınca liste baştan diziliyordu.
+// Kuyruk zaten dolu olduğu için durmak müziği etkilemez; boş kuyrukta çağıran
+// yeniden dener (bkz. lib/queue.ts advanceToNext). fetchAllRows hata alınca
+// O ANA KADAR okuduğunu döndürür — hatası kontrol edilmeyen yarım liste tam
+// liste sanılırdı.
+export class QueueReadError extends Error {
+  constructor(what: string, message: string) {
+    super(`${what} okunamadı: ${message}`);
+    this.name = "QueueReadError";
+  }
+}
+
+function must<T>(res: { data: T; error: { message: string } | null }, what: string): T {
+  if (res.error) throw new QueueReadError(what, res.error.message);
+  return res.data;
+}
+
 // Kuyruktaki üç sınıf added_by ile ayrılır: müşteri satırlarında kullanıcı adı,
 // otomatik dolumda "auto", adminin panelden elle eklediğinde "admin". İkincisi
 // budanabilir, üçüncüsü budanamaz — admin bilerek koymuştur.
@@ -119,13 +140,16 @@ export async function runFillUnlocked(venueId: string): Promise<void> {
 // jumpPlaylistCursorTo) dolum ancak imleç yerine oturduktan sonra yapılmalı;
 // yoksa kuyruk eski imleçle dolar ve ikinci dolum boş geçer.
 export async function clearAutoQueue(venueId: string): Promise<void> {
-  const { data: pending } = await supabaseAdmin
-    .from("queue")
-    .select("song_id, source_playlist_id")
-    .eq("venue_id", venueId)
-    .eq("status", "queued")
-    .is("user_id", null)
-    .eq("added_by", AUTO_ADDED_BY);
+  const pending = must(
+    await supabaseAdmin
+      .from("queue")
+      .select("song_id, source_playlist_id")
+      .eq("venue_id", venueId)
+      .eq("status", "queued")
+      .is("user_id", null)
+      .eq("added_by", AUTO_ADDED_BY),
+    "bekleyen otomatik satırlar"
+  );
 
   await supabaseAdmin
     .from("queue")
@@ -277,7 +301,7 @@ async function pickFromRotation(
   ctx: EligibilityContext
 ): Promise<RotationPick[] | null> {
   // Listeler ve imleç birbirine bağlı değil — birlikte okunur
-  const [{ data: allLists }, { data: state }] = await Promise.all([
+  const [listsRes, stateRes] = await Promise.all([
     supabaseAdmin
       .from("playlists")
       // play_once artık okunmaz: kural her liste için aynı — turunu bitiren düşer.
@@ -291,6 +315,8 @@ async function pickFromRotation(
       .eq("venue_id", venueId)
       .maybeSingle(),
   ]);
+  const allLists = must(listsRes, "listeler");
+  const state = must(stateRes, "rotasyon imleci");
 
   const active = (allLists ?? []).filter((p) => p.queue_position !== null);
   if (active.length === 0) return null;
@@ -304,7 +330,7 @@ async function pickFromRotation(
 
   // Sayfalı: aktif listelerin toplam şarkısı 1000'i aşan mekanlarda tek sayfa
   // havuzu kırpar ve listelerin sonundaki şarkılar hiç çalmazdı.
-  const [{ data: members }, { data: consumedRows }] = await Promise.all([
+  const [membersRes, consumedRes] = await Promise.all([
     fetchAllRows<{ playlist_id: string; song_id: string }>((from, to) =>
       supabaseAdmin
         .from("playlist_songs")
@@ -327,6 +353,9 @@ async function pickFromRotation(
         .range(from, to)
     ),
   ]);
+
+  const members = must(membersRes, "liste şarkıları");
+  const consumedRows = must(consumedRes, "rotasyon defteri");
 
   const songsByList = new Map<string, string[]>();
   for (const m of members ?? []) {
@@ -602,13 +631,7 @@ async function runFill(venueId: string): Promise<void> {
   // played_at hep started_at'ten sonra olduğu için played_at filtresi üst küme;
   // asıl çapa (başlangıç anı) aşağıda süzülür.
   const cutoff = Date.now() - COOLDOWN_MS;
-  const [
-    { data: queuedRows },
-    { data: playingNow },
-    { data: recentUserPlays },
-    { data: venueSongs },
-    { data: recentListPlays },
-  ] = await Promise.all([
+  const [queuedRes, playingRes, recentUserRes, venueSongsRes, recentListRes] = await Promise.all([
       // Sayım da bu satırlardan çıkar: ayrı bir count sorgusu atılmaz
       supabaseAdmin
         .from("queue")
@@ -657,6 +680,11 @@ async function runFill(venueId: string): Promise<void> {
         .order("started_at", { ascending: false, nullsFirst: false })
         .limit(200),
     ]);
+  const queuedRows = must(queuedRes, "kuyruk");
+  const playingNow = must(playingRes, "sahnedeki şarkı");
+  const recentUserPlays = must(recentUserRes, "müşteri çalma geçmişi");
+  const venueSongs = must(venueSongsRes, "mekan kataloğu");
+  const recentListPlays = must(recentListRes, "liste çalma geçmişi");
 
   const queued = queuedRows ?? [];
   const current = queued.length;
@@ -746,11 +774,13 @@ async function runFill(venueId: string): Promise<void> {
   // da kuyruğa müşteri/admin satırı girdiyse) başka bir yazma girmiş olabilir.
   // Bayat sayımla çalan listeyle alakasız rastgele katalog şarkıları kuyruğa
   // giriyordu — yedek yalnızca kuyruk GERÇEKTEN tabanın altındaysa çalışmalı.
-  const { count: freshCount } = await supabaseAdmin
+  const freshRes = await supabaseAdmin
     .from("queue")
     .select("id", { count: "exact", head: true })
     .eq("venue_id", venueId)
     .eq("status", "queued");
+  if (freshRes.error) throw new QueueReadError("kuyruk sayımı", freshRes.error.message);
+  const freshCount = freshRes.count;
 
   // Çalan bir liste varken taban 10 değil 1'dir: kısa bir liste (ör. 3 şarkı)
   // kendi şarkılarının hepsi sahnede/kuyrukta olduğu için yeni şarkı veremez ve
@@ -975,7 +1005,7 @@ export async function jumpManualBlock(
   songId: string
 ): Promise<void> {
   const bandTop = MANUAL_LIST_BASE + MANUAL_BAND_SIZE;
-  const [{ data: laneData }, ordered] = await Promise.all([
+  const [laneRes, ordered] = await Promise.all([
     supabaseAdmin
       .from("queue")
       .select("id, song_id, source_playlist_id, position")
@@ -988,7 +1018,9 @@ export async function jumpManualBlock(
       .order("position", { ascending: true }),
     orderedEligibleSongs(venueId, playlistId),
   ]);
-  const lane = laneData ?? [];
+  // Şerit okunamazsa dur: boş sanılırsa eski blok silinmeden yenisi yazılır ve
+  // liste kuyrukta iki kopya olur
+  const lane = must(laneRes, "elle eklenen liste şeridi") ?? [];
   const block = lane.filter((r) => r.source_playlist_id === playlistId);
   const others = lane.filter((r) => r.source_playlist_id !== playlistId);
 
@@ -1069,7 +1101,7 @@ async function orderedEligibleSongs(
   venueId: string,
   playlistId: string
 ): Promise<{ shuffle: boolean; ids: string[] }> {
-  const [{ data: playlist }, members] = await Promise.all([
+  const [playlistRes, membersRes] = await Promise.all([
     supabaseAdmin
       .from("playlists")
       .select("shuffle")
@@ -1089,8 +1121,10 @@ async function orderedEligibleSongs(
     ),
   ]);
 
+  const playlist = must(playlistRes, "liste");
+  const members = must(membersRes, "liste şarkıları");
   if (!playlist) return { shuffle: false, ids: [] };
-  const memberIds = (members.data ?? []).map((m) => m.song_id);
+  const memberIds = (members ?? []).map((m) => m.song_id);
   if (memberIds.length === 0) return { shuffle: playlist.shuffle, ids: [] };
 
   // Uygunluk yalnızca listenin şarkıları için sorulur; parçalar aynı anda gider
@@ -1107,7 +1141,7 @@ async function orderedEligibleSongs(
     )
   );
 
-  const eligible = new Set(results.flatMap((r) => (r.data ?? []).map((vs) => vs.song_id)));
+  const eligible = new Set(results.flatMap((r) => (must(r, "liste uygunluğu") ?? []).map((vs) => vs.song_id)));
   const ordered = memberIds.filter((id) => eligible.has(id));
   return {
     shuffle: playlist.shuffle,
@@ -1143,9 +1177,13 @@ export async function startPlaylistFrom(
   // --- 1. TUR: okumalar ve "listeyi devret" yazmaları hep birlikte ----------
   // Yazmalar okumalardan bağımsız: silinecek otomatik satırlar zaten kuyruktan
   // düşüyor, kalanları (müşteri + elle eklenen) ayrıca okuyoruz.
-  const [ordered, { data: keptRows }, { data: recentUserPlays }, { data: state }] =
+  // Listenin sırası YAZMALARDAN ÖNCE okunur: okunamazsa (QueueReadError) hiçbir
+  // şeye dokunulmadan durulur. Eskiden okuma ile "listeyi devret" yazmaları aynı
+  // turdaydı; okuma düşünce liste devredilmiş, eski satırlar silinmiş ama yenisi
+  // yazılmamış oluyordu.
+  const ordered = await orderedEligibleSongs(venueId, playlistId);
+  const [keptRes, recentUserRes, stateRes] =
     await Promise.all([
-      orderedEligibleSongs(venueId, playlistId),
       supabaseAdmin
         .from("queue")
         .select("song_id")
@@ -1160,31 +1198,41 @@ export async function startPlaylistFrom(
         .not("user_id", "is", null)
         .gte("played_at", new Date(cutoff).toISOString()),
       supabaseAdmin.from("playlist_rotation").select("cycle").eq("venue_id", venueId).maybeSingle(),
-      // Liste tek çalan liste olur; ötekiler kuyruktan düşer
-      supabaseAdmin
-        .from("playlists")
-        .update({ queue_position: 1 })
-        .eq("venue_id", venueId)
-        .eq("id", playlistId),
-      supabaseAdmin
-        .from("playlists")
-        .update({ queue_position: null })
-        .eq("venue_id", venueId)
-        .neq("id", playlistId)
-        .not("queue_position", "is", null),
-      // Bütün ilerlemeler silinir: bu liste baştan çalacak, ötekiler kuyruktan
-      // düştüğü için sonradan geri alınırlarsa baştan çalmalılar. Tüketimi
-      // tek tek geri almaya (unconsumeRows) gerek yok — hepsi gidiyor.
-      supabaseAdmin.from("playlist_rotation_consumed").delete().eq("venue_id", venueId),
-      // Bekleyen otomatik satırlar düşer; müşteri ve elle eklenenler kalır
-      supabaseAdmin
-        .from("queue")
-        .update({ status: "removed" })
-        .eq("venue_id", venueId)
-        .eq("status", "queued")
-        .is("user_id", null)
-        .eq("added_by", AUTO_ADDED_BY),
     ]);
+  const keptRows = must(keptRes, "elle/müşteri satırları");
+  const recentUserPlays = must(recentUserRes, "müşteri çalma geçmişi");
+  const state = must(stateRes, "rotasyon imleci");
+
+  // Okumalar tamam: liste devri artık yarım kalmaz. Yazma hatası da sessiz
+  // kalmaz — yarım devri sıradaki geçişteki sıra denetimi onarır, ama iz kalsın.
+  const handoff = await Promise.all([
+    // Liste tek çalan liste olur; ötekiler kuyruktan düşer
+    supabaseAdmin
+      .from("playlists")
+      .update({ queue_position: 1 })
+      .eq("venue_id", venueId)
+      .eq("id", playlistId),
+    supabaseAdmin
+      .from("playlists")
+      .update({ queue_position: null })
+      .eq("venue_id", venueId)
+      .neq("id", playlistId)
+      .not("queue_position", "is", null),
+    // Bütün ilerlemeler silinir: bu liste baştan çalacak, ötekiler kuyruktan
+    // düştüğü için sonradan geri alınırlarsa baştan çalmalılar. Tüketimi
+    // tek tek geri almaya (unconsumeRows) gerek yok — hepsi gidiyor.
+    supabaseAdmin.from("playlist_rotation_consumed").delete().eq("venue_id", venueId),
+    // Bekleyen otomatik satırlar düşer; müşteri ve elle eklenenler kalır
+    supabaseAdmin
+      .from("queue")
+      .update({ status: "removed" })
+      .eq("venue_id", venueId)
+      .eq("status", "queued")
+      .is("user_id", null)
+      .eq("added_by", AUTO_ADDED_BY),
+  ]);
+  const handoffErr = handoff.find((r) => r.error)?.error;
+  if (handoffErr) throw new Error(`liste devri yazılamadı: ${handoffErr.message}`);
 
   const cycle = state?.cycle ?? 1;
   const kept = keptRows ?? [];
@@ -1510,7 +1558,7 @@ export async function jumpPlaylistCursorTo(
       .range(from, to)
   );
 
-  const ids = (members.data ?? []).map((m) => m.song_id);
+  const ids = (must(members, "liste şarkıları") ?? []).map((m) => m.song_id);
   const index = ids.indexOf(songId);
   if (index < 0) return false;
 

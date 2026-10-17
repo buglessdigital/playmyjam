@@ -178,13 +178,20 @@ export async function runSingleFlightWaiting(
 // kapsamıyla tek satır yazılır. Bu kapsam hiçbir zaman kilit olarak alınmaz.
 const INTENT_SCOPE = "intent";
 
-export async function markLatestIntent(venueId: string): Promise<string> {
+// Damga YAZILAMAZSA undefined döner ve komut koşulsuz uygulanır. Eskiden token
+// yine dönüyordu: satırda bir önceki komutun damgası kaldığı için bu komut
+// kendini "eskimiş" sanıp liste devrini atlıyordu — korumaya çalıştığımız
+// "yanlış listeden devam" hatası bu yoldan geri gelirdi.
+export async function markLatestIntent(venueId: string): Promise<string | undefined> {
   const token = randomUUID();
   const { error } = await supabaseAdmin.from("queue_fill_locks").upsert(
     { venue_id: venueId, scope: INTENT_SCOPE, holder: token, locked_until: new Date().toISOString(), dirty: false },
     { onConflict: "venue_id,scope" }
   );
-  if (error) console.error("[queue-lock] komut damgası yazılamadı:", error.message);
+  if (error) {
+    console.error("[queue-lock] komut damgası yazılamadı, komut koşulsuz uygulanacak:", error.message);
+    return undefined;
+  }
   return token;
 }
 

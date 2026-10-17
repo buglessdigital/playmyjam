@@ -77,6 +77,8 @@ const ADVANCE_RETRIES = 2;
 const ADVANCE_RETRY_MS = 1_200;
 const ADVANCE_BUSY_RETRIES = 6;
 const ADVANCE_BUSY_RETRY_MS = 700;
+// Sunucuya hiç ulaşılamayan geçiş: vazgeçilmez, artan aralıkla yeniden denenir
+const ADVANCE_UNREACHABLE_RETRY_MS = [3_000, 5_000, 10_000, 15_000];
 // Yükleme sonrası bu süre içinde gelen "duraklat" yankıları yok sayılır — skip
 // anında yarışan bayat heartbeat'ler yeni şarkıyı durduramasın
 const PAUSE_ECHO_GRACE_MS = 8_000;
@@ -837,6 +839,13 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
   const wakeGraceUntilRef = useRef(0);
   // Kuyruk boşaldığı için sustuk: niyet "dur"a döner ama mekan müzik istiyordu
   const idleWantedRef = useRef(false);
+  // Sunucuya ulaşılamayan geçişin yeniden denemesi (bkz. advance) ve advance'in
+  // güncel sürümü (zamanlayıcılar kendi kapanışlarından eski sürümü çağırmasın)
+  const advanceRetryRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; attempt: number }>({
+    timer: null,
+    attempt: 0,
+  });
+  const advanceFnRef = useRef<((payload: Record<string, unknown>) => Promise<void>) | null>(null);
   // Pencere odağının video iframe'ine geçtiği an: kullanıcının YouTube'un kendi
   // duraklat düğmesine tıkladığını buradan anlarız (iframe içi tıklama üst
   // sayfada olay üretmez, ama odak devrini blur olarak görürüz)
@@ -1584,6 +1593,11 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
         plog(`ilerlet(${payload.action}) ATLANDI — önceki istek sürüyor`);
         return;
       }
+      // Bekleyen yeniden deneme bu istekle karşılanır
+      if (advanceRetryRef.current.timer) {
+        clearTimeout(advanceRetryRef.current.timer);
+        advanceRetryRef.current.timer = null;
+      }
       setAdvancing(true);
       plog(`ilerlet(${payload.action}) istendi`);
       // Hangi şarkıdan ilerlettiğimizi söyleriz: sunucu sahnede artık başka
@@ -1639,6 +1653,7 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           // mutabakat zaten birazdan yeniden dener.
           if (!result) return;
         }
+        if (result) advanceRetryRef.current.attempt = 0;
         if (result?.started && result.video_id) {
           if (result.already) {
             plog(`sahne zaten değişmişti — sunucunun şarkısı çalınıyor (${result.video_id})`);
@@ -1666,8 +1681,36 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
           if (!offlineFallbackRef.current) fallbackFromRef.current = currentVideoRef.current;
           if (!playPreloaded(fallback)) loadVideo(fallback);
           offlineFallbackRef.current = true;
+        } else if (!result && !blockedRef.current) {
+          // SUNUCUYA ULAŞILAMADI — bu "kuyruk boş" DEĞİL. Eskiden burada da
+          // sessizlik ekranına düşülüyordu ve player kendini bir daha
+          // başlatmıyordu (Biralem 2 Eki: ağ/sekme donması sırasında 108 kez
+          // "kuyruk boş", kuyruk doluyken). Artık aynı geçiş artan aralıkla
+          // yeniden denenir; sunucu dönünce müzik kendiliğinden sürer.
+          const retry = advanceRetryRef.current;
+          const delay = ADVANCE_UNREACHABLE_RETRY_MS[Math.min(retry.attempt, ADVANCE_UNREACHABLE_RETRY_MS.length - 1)];
+          if (retry.attempt === 0) {
+            report(
+              "advance_unreachable",
+              "error",
+              `Sıradaki şarkı istenemedi (${lastFailRef.current ?? "?"}) — sunucu dönene kadar yeniden denenecek`
+            );
+          }
+          retry.attempt++;
+          const from = currentVideoRef.current;
+          plog(`ilerletme cevapsız — ${Math.round(delay / 1000)} sn sonra yeniden (${retry.attempt}. deneme)`);
+          retry.timer = setTimeout(() => {
+            retry.timer = null;
+            // Bu arada sahne başka yoldan değiştiyse (Realtime, mutabakat,
+            // panel) bu deneme artık gereksiz — yeni şarkıyı atlamasın
+            if (currentVideoRef.current !== from || blockedRef.current) return;
+            void advanceFnRef.current?.(payload);
+          }, delay);
         } else if (!blockedRef.current) {
-          report("idle_silence", "error", "Kuyruk boş — player sessizlik ekranına geçti, müzik durdu");
+          // Boştayken yapılan yoklama her turda yeniden kayıt düşmesin
+          if (payload.reason !== "idle-retry") {
+            report("idle_silence", "error", "Kuyruk boş — player sessizlik ekranına geçti, müzik durdu");
+          }
           // Niyet aşağıda söner ama bu bir duraklatma değil: sessizlik ölçülmeye devam eder
           idleWantedRef.current = true;
           // Yalnızca gerçekten sıradaki yoksa idle'a düş. Oturum düşmesi ya da
@@ -1701,6 +1744,10 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
       activeDeckFinished,
     ]
   );
+
+  useEffect(() => {
+    advanceFnRef.current = advance;
+  }, [advance]);
 
   // Sıradaki videoyu boştaki deck'e tampona al. Kuyruk TÜKETİLMEZ (peek): geçiş
   // fiilen başlayınca gerçek "next" atılır. Arada öncelikli istek gelirse dönen
@@ -2981,7 +3028,8 @@ export default function YouTubePlayer({ venueDbId, loginHref, onTrackChange, com
   // olarak sıradakini iste; sunucu tarafı dolum yaptığı için çalma kendi toparlanır
   useEffect(() => {
     if (!started || !idle || blocked) return;
-    const interval = setInterval(() => advance({ action: "next" }), IDLE_RETRY_MS);
+    // reason: her turda "kuyruk boş" kaydı yeniden düşmesin (bkz. advance)
+    const interval = setInterval(() => advance({ action: "next", reason: "idle-retry" }), IDLE_RETRY_MS);
     return () => clearInterval(interval);
   }, [started, idle, blocked, advance]);
 

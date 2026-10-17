@@ -18,6 +18,7 @@
     "load:venue": "node scripts/load-venue.ts",
     "load:map": "node scripts/load-map.ts",
     "load:players": "node scripts/load-players.ts",
+    "load:fleet": "node scripts/load-fleet.ts",
     "check": "npm run lint && npm run typecheck && npm test",
     "e2e": "playwright test",
     "find:channels": "node scripts/find-artist-channels.ts"

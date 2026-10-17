@@ -17,15 +17,20 @@ import { handleSilenceAlerts } from "@/lib/music-alert";
 // Panelin "oynatıcı çevrimdışı" eşiğiyle aynı: 45 sn.
 const CLAIM_STALE_MS = 45_000;
 
-// Şarkıyı KALICI olarak çalınamaz sayan YouTube hata kodları: 100 kaldırılmış/
-// gizli, 101/150 gömmeye kapalı. Damga şarkıyı mekanların kataloğundan da
-// sildiği için (bkz. lib/queue.ts markUnplayable) geri dönüşü elle olur —
-// 2 ve 5 gibi geçici kodlarda asla vurulmamalı. İstemci artık geçici kodları
+// YouTube'a "bu video çalınamaz mı?" diye sorduran hata kodları: 100 kaldırılmış/
+// gizli, 101/150 gömmeye kapalı. Damgayı player değil YouTube Data API verir
+// (bkz. lib/queue.ts markUnplayable) ve şarkı hiçbir listeden silinmez —
+// 2 ve 5 gibi geçici kodlarda soru bile sorulmaz. İstemci artık geçici kodları
 // zaten göndermiyor; burası önbellekten açılmış eski bir player'a karşı emniyet.
 const FATAL_YT_ERROR_CODES = new Set([100, 101, 150]);
 
 // Kod GÖNDERİLMEDİYSE (eski istemci) eski davranış korunur: damga vurulur.
 // Gönderildiyse yalnızca kalıcı kodlar damgalanır.
+function errorCode(body: unknown): number | null {
+  const code = (body as { code?: unknown } | null)?.code;
+  return typeof code === "number" ? code : null;
+}
+
 function isFatalPlaybackError(body: unknown): boolean {
   const code = (body as { code?: unknown } | null)?.code;
   if (typeof code !== "number") return true;
@@ -399,7 +404,12 @@ async function handlePost(
         if (skipped.busy) return reply(skipped, { status: 503 });
         return reply(skipped);
       }
-      const result = await markUnplayableAndSkip(venueId, videoId);
+      // Şarkı hemen atlanır; damga ancak YouTube doğrularsa vurulur ve şarkı
+      // hiçbir listeden silinmez (bkz. lib/queue.ts markUnplayable)
+      const result = await markUnplayableAndSkip(venueId, videoId, {
+        code: errorCode(body),
+        source: "active",
+      });
       if (result.busy) return reply(result, { status: 503 });
       return reply(result);
     }
@@ -416,7 +426,16 @@ async function handlePost(
       }
       // Geçici hatada damga yok: önyükleme birazdan aynı videoyu yeniden dener
       if (!isFatalPlaybackError(body)) return reply({ ok: true, skipped: true });
-      return reply(await markUnplayable(videoId));
+      // Önyükleme hatası player'ın kendi durumundan da gelebilir (17 Eki 2026:
+      // çalınabilen 15 şarkıya 150 dedi). Karar YouTube'a sorularak yanıttan
+      // sonra verilir; player beklemez.
+      after(
+        markUnplayable(videoId, venueId, { code: errorCode(body), source: "preload" }).then(
+          () => {},
+          (err) => console.error("[player] unplayable doğrulaması düştü:", err)
+        )
+      );
+      return reply({ ok: true });
     }
 
     // Player 15 sn'de bir ilerleme + sağlık sinyali yollar. started_at çapası

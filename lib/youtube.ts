@@ -1,4 +1,5 @@
 import { parseVideoTitle, parseISODuration, videoThumbnail } from "@/lib/youtube-parse";
+import { playabilityVerdict, type PlayabilityItem, type PlayabilityVerdict } from "@/lib/playability";
 
 const API_KEY = process.env.YOUTUBE_API_KEY!;
 const API_BASE = "https://www.googleapis.com/youtube/v3";
@@ -135,6 +136,21 @@ export async function refreshVideoMetadata(
     }
   }
   return result;
+}
+
+// Player'ın "çalınamaz" dediği videoyu YouTube'a sorar (videos.list, 1 birim).
+// API'ye ulaşılamazsa (kota, ağ) "unknown": damga vurulmaz, şarkı korunur —
+// yanlış silmek, bir kez daha denemekten çok daha pahalı.
+export async function checkVideoPlayable(videoId: string): Promise<PlayabilityVerdict> {
+  try {
+    const params = new URLSearchParams({ part: "status,contentDetails", id: videoId, key: API_KEY });
+    const data = await fetchJson<{ items?: (PlayabilityItem & { id: string })[] }>(
+      `${API_BASE}/videos?${params}`
+    );
+    return playabilityVerdict(data.items?.find((v) => v.id === videoId) ?? null);
+  } catch {
+    return "unknown";
+  }
 }
 
 // search.list (100 birim) — 22 Ağu 2026'da kaldırılmıştı, 15 Eki 2026'da YALNIZ

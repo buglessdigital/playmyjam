@@ -5,6 +5,7 @@ import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { parseSongInput } from "@/lib/validate";
 import { addSongToVenuePlaylist, assertVenuePlaylist } from "@/lib/playlist";
 import { AUTO_ADDED_BY, fillQueue, runFillUnlocked, withFillLock } from "@/lib/queue-fill";
+import { reportQueueWorkFailure } from "@/lib/queue";
 import { withActor } from "@/lib/actor";
 
 async function handlePOST(req: NextRequest) {
@@ -32,7 +33,7 @@ async function handlePOST(req: NextRequest) {
   revalidateTag(`venue-songs-${session.venue_id}`, "max");
   // Kuyruk listelerin sonuna kadar yazılı: yeni şarkı kendiliğinden görünmez,
   // kuyruğun arkasına eklenmesi gerekir. Yanıttan SONRA — düğme beklemez.
-  after(fillQueue(session.venue_id).catch(() => {}));
+  after(fillQueue(session.venue_id).catch((err) => reportQueueWorkFailure(session.venue_id, "listeye şarkı ekle/çıkar", err)));
   return NextResponse.json(result);
 }
 
@@ -154,8 +155,8 @@ async function handleDELETE(req: NextRequest) {
           .eq("added_by", AUTO_ADDED_BY)
           .eq("song_id", venueSong.song_id);
         await runFillUnlocked(session.venue_id);
-      });
-    })().catch(() => {})
+      }, "listeden şarkı çıkar");
+    })().catch((err) => reportQueueWorkFailure(session.venue_id, "listeden şarkı çıkar", err))
   );
 
   revalidateTag(`venue-songs-${session.venue_id}`, "max");

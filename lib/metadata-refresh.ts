@@ -1,6 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { refreshVideoMetadata, YouTubeQuotaError, type VideoRefresh } from "@/lib/youtube";
-import { purgeUnplayableSong } from "@/lib/playlist";
 import { reportIssue } from "@/lib/ops-log";
 
 // YouTube Developer Policy III.E.4: 30 günden eski metadata tazelenmeli.
@@ -185,12 +184,12 @@ export async function refreshStaleMetadata(
       return out;
     });
 
-    // Hak sahibi embed'i kapatmış ya da video kalkmış: mekan kataloglarından düşür
+    // Hak sahibi embed'i kapatmış ya da video kalkmış: embeddable=false yazıldı,
+    // şarkı çalmadan ve satıştan çıktı. Listelerden SİLİNMEZ (bkz. lib/playlist.ts
+    // başlığı) — YouTube açarsa bir sonraki tazelemede kendiliğinden döner.
+    // `purged` artık "damgalanan" sayısıdır.
     await timed("purge", async () => {
-      for (const row of unplayable) {
-        await purgeUnplayableSong(row.song_id);
-        result.purged++;
-      }
+      result.purged += unplayable.length;
     });
   }
 

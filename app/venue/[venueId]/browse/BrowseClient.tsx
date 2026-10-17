@@ -156,8 +156,11 @@ export default function BrowseClient({ venueId, venueDbId, initialVenueSongs, re
       const { data: vSongs } = await fetchAllRows<VenueSongRow>((from, to) =>
         supabase
           .from("venue_songs")
-          .select("play_count, in_venue_list, playlist_visible, songs(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
+          .select("play_count, in_venue_list, playlist_visible, songs!inner(id, youtube_video_id, title, artist, album_cover_url, duration_ms)")
           .eq("venue_id", venueDbId)
+          // YouTube'un çalınamaz dediği şarkı müşteriye gösterilmez ve satılmaz;
+          // mekanın listesinde durur (bkz. lib/playlist.ts başlığı)
+          .eq("songs.embeddable", true)
           .order("song_id", { ascending: true })
           .range(from, to)
       );

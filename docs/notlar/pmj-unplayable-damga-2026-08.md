@@ -1,12 +1,14 @@
 ---
 name: pmj-unplayable-damga-2026-08
-description: "Çalınamaz damgası yalnızca YouTube 100/101/150'de vurulur; damgayı geri almak için snapshot'tan da silmek şart"
+description: "ESKİDİ (17 Eki 2026): damga artık yalnız YouTube API doğrularsa ve şarkı HİÇBİR listeden silinmez — bkz. pmj-muzik-durmaz-sira-sasmaz-2026-10"
 metadata: 
   node_type: memory
   type: project
   originSessionId: da15e4e1-9da1-42f1-bebe-1a3f0b706ad6
   modified: 2026-08-12T15:04:07.680Z
 ---
+
+> **17 Eki 2026: bu not tarihsel.** `purgeUnplayableSong` kaldırıldı, player hatası tek başına damga vurmaz, şarkı listeden silinmez. Güncel kural: [[pmj-muzik-durmaz-sira-sasmaz-2026-10]].
 
 12 Ağu 2026'da düzeltildi (c887c38): player'ın `onError`'u HER YouTube hata
 kodunda `embeddable=false` damgası vuruyordu. Damga kalıcıdır ve

@@ -100,14 +100,20 @@ export async function handleSilenceAlerts(venueId: string, events: VenueEventInp
   }
 }
 
-async function mailOps(venueId: string, venue: VenueInfo, title: string, body: string) {
+async function mailOps(
+  venueId: string,
+  venue: VenueInfo,
+  title: string,
+  body: string,
+  rateKey = `music-alert-mail:${venueId}`
+) {
   const recipients = (process.env.OPS_ALERT_EMAIL ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
   if (recipients.length === 0) return;
   // Takılma serisi gelen kutusunu doldurmasın: mekan başına yarım saatte bir
-  const { allowed } = await consumeRateLimit(`music-alert-mail:${venueId}`, 1, MAIL_WINDOW_SECONDS);
+  const { allowed } = await consumeRateLimit(rateKey, 1, MAIL_WINDOW_SECONDS);
   if (!allowed) return;
 
   const health = "https://playmyjam.com.tr/super-admin/health";
@@ -123,5 +129,22 @@ async function mailOps(venueId: string, venue: VenueInfo, title: string, body: s
 
   for (const to of recipients) {
     await sendMail({ to, subject: `[PMJ] ${venue.name}: ${title}`, html, text });
+  }
+}
+
+/**
+ * SIRA / KOMUT ALARMI: müzik çalıyor ama mekan sahibinin belirlediği sıradan
+ * sapıldı ya da panel komutu uygulanamadı. Sessizlik alarmı bunları görmez;
+ * 17 Eki 2026'da yanlış listeden çalma ve silinen şarkılar hiçbir alarma
+ * düşmedi. OPS_ALERT_EMAIL'e gider (mekan + tür başına 30 dk'da bir); Sorunlar
+ * kaydını çağıran taraf ayrıca yazar.
+ */
+export async function alertOrderProblem(venueId: string, kind: string, title: string, body: string): Promise<void> {
+  try {
+    const venue = await venueInfo(venueId);
+    if (!venue) return;
+    await mailOps(venueId, venue, title, `${venue.name}: ${body}`, `order-alert-mail:${venueId}:${kind}`);
+  } catch (err) {
+    console.error("[music-alert] sıra alarmı gönderilemedi:", err);
   }
 }

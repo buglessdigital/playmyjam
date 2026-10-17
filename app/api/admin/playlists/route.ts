@@ -14,7 +14,8 @@ import {
   verifyPlaylistOpener,
   withFillLock,
 } from "@/lib/queue-fill";
-import { playSongNow } from "@/lib/queue";
+import { playSongNow, reportQueueWorkFailure } from "@/lib/queue";
+import { isLatestIntent, markLatestIntent } from "@/lib/queue-lock";
 import { withActor } from "@/lib/actor";
 
 const MAX_NAME = 40;
@@ -150,7 +151,7 @@ async function handlePATCH(req: NextRequest) {
     // tek başına yetmez: bekleyen otomatik satırlar yeni sıraya göre yeniden
     // kurulur. Sahnedeki şarkıya, müşteri isteklerine ve adminin elle
     // eklediklerine dokunulmaz; çalınmış şarkılar çalınmış kalır.
-    after(resetAutoQueue(session.venue_id).catch(() => {}));
+    after(resetAutoQueue(session.venue_id).catch((err) => reportQueueWorkFailure(session.venue_id, "kuyruğu yeniden kur", err)));
     return NextResponse.json({ ok: true });
   }
 
@@ -270,7 +271,7 @@ async function handlePATCH(req: NextRequest) {
     // Yanıttan SONRA çalışır: panel sıra değişikliğini beklemeden görür, kuyruk
     // birkaç yüz ms sonra kendi kendine düzelir.
     if (changed.length > 0 && playlist.queue_position !== null && !playlist.shuffle) {
-      after(resetAutoQueue(session.venue_id).catch(() => {}));
+      after(resetAutoQueue(session.venue_id).catch((err) => reportQueueWorkFailure(session.venue_id, "kuyruğu yeniden kur", err)));
     }
     return NextResponse.json({ ok: true });
   }
@@ -386,11 +387,21 @@ async function handlePATCH(req: NextRequest) {
     // tur ediyor ve panelde sıra 8-9 saniye sonra beliriyordu.
     // İmleç taşıma ve dolum TEK kilit altında (0047): ikisi de aynı rotasyon
     // durumuna yazıyor, araya başka bir dolum girerse kuyruk eski imleçle dolar.
-    const queueWork = async () =>
-      withFillLock(session.venue_id, async () => {
-        await startPlaylistFrom(session.venue_id, playlistId, openerReachedStage ? opener : null);
-        await runFillUnlocked(session.venue_id);
-      });
+    // Kilit doluysa BEKLER (komut düşmez); beklerken daha yeni bir komut
+    // geldiyse bu liste geri getirilmez — mekan sahibinin son tıklaması geçerli.
+    const queueWork = async (intent: string | undefined) =>
+      withFillLock(
+        session.venue_id,
+        async () => {
+          if (!intent || (await isLatestIntent(session.venue_id, intent))) {
+            await startPlaylistFrom(session.venue_id, playlistId, openerReachedStage ? opener : null);
+          }
+          await runFillUnlocked(session.venue_id);
+        },
+        "listeyi çal"
+      );
+    const runQueueWork = (intent: string | undefined) =>
+      after(queueWork(intent).catch((err) => reportQueueWorkFailure(session.venue_id, "listeyi çal", err)));
 
     // Sahneyi müşteri şarkısı devralıyor: sahnedeki jetonsuz şarkı kapanır,
     // sıradaki ilk müşteri satırı çalmaya başlar. İmleç yine listeye taşınır ama
@@ -402,7 +413,7 @@ async function handlePATCH(req: NextRequest) {
         { deferQueueWork: true }
       );
 
-      after(queueWork().catch(() => {}));
+      runQueueWork(promoted.ok ? promoted.intent : await markLatestIntent(session.venue_id));
       return NextResponse.json({
         ok: true,
         video_id: promoted.ok ? promoted.video_id : undefined,
@@ -410,7 +421,7 @@ async function handlePATCH(req: NextRequest) {
     }
 
     if (!takeover) {
-      after(queueWork().catch(() => {}));
+      runQueueWork(await markLatestIntent(session.venue_id));
       return NextResponse.json({ ok: true });
     }
 
@@ -422,7 +433,7 @@ async function handlePATCH(req: NextRequest) {
       { deferQueueWork: true }
     );
 
-    after(queueWork().catch(() => {}));
+    runQueueWork(played.ok ? played.intent : await markLatestIntent(session.venue_id));
     return NextResponse.json({ ok: true, video_id: played.ok ? played.video_id : undefined });
   }
 
@@ -461,9 +472,9 @@ async function handlePATCH(req: NextRequest) {
         .update({ queue_position: null })
         .eq("id", playlistId)
         .eq("venue_id", session.venue_id);
-      after(resetAutoQueue(session.venue_id).catch(() => {}));
+      after(resetAutoQueue(session.venue_id).catch((err) => reportQueueWorkFailure(session.venue_id, "kuyruğu yeniden kur", err)));
     } else {
-      after(fillQueue(session.venue_id).catch(() => {}));
+      after(fillQueue(session.venue_id).catch((err) => reportQueueWorkFailure(session.venue_id, "liste dolumu", err)));
     }
     return NextResponse.json({ ok: true });
   }
@@ -506,7 +517,7 @@ async function handlePATCH(req: NextRequest) {
   // Liste içi sıra düzeni değişti: bekleyen otomatik şarkılar yeni düzene göre
   // yeniden seçilsin (tüketim de geri alınır, bkz. resetAutoQueue).
   if (hasShuffle) {
-    after(resetAutoQueue(session.venue_id).catch(() => {}));
+    after(resetAutoQueue(session.venue_id).catch((err) => reportQueueWorkFailure(session.venue_id, "kuyruğu yeniden kur", err)));
   }
   return NextResponse.json({ ok: true });
 }
@@ -551,7 +562,7 @@ async function handleDELETE(req: NextRequest) {
 
   revalidateTag(`venue-songs-${session.venue_id}`, "max");
   if (playlist.queue_position !== null) {
-    after(resetAutoQueue(session.venue_id).catch(() => {}));
+    after(resetAutoQueue(session.venue_id).catch((err) => reportQueueWorkFailure(session.venue_id, "kuyruğu yeniden kur", err)));
   }
   return NextResponse.json({ ok: true });
 }

@@ -604,6 +604,15 @@ export default function LibraryPane({
                   {song.title}
                 </p>
                 <p className="text-xs truncate" style={{ color: nowPlayingRow ? "#f9a8d4" : "#6b7280" }}>
+                  {!song.embeddable && (
+                    <span
+                      className="mr-1 rounded px-1 py-px text-[10px] font-semibold"
+                      style={{ background: "rgba(239,68,68,0.15)", color: "#f87171" }}
+                      title="YouTube bu videoyu şu an oynatmaya kapatmış. Şarkı listede duruyor; çalmada atlanır, müşteriye gösterilmez. YouTube açarsa kendiliğinden döner."
+                    >
+                      YouTube&apos;da kapalı
+                    </span>
+                  )}
                   {song.artist} {song.duration_ms ? `· ${formatDur(song.duration_ms)}` : ""} · {song.play_count} çalınma
                   {viewId === ALL && (memberships[song.id] ?? []).length > 0
                     ? ` · ${(memberships[song.id] ?? [])

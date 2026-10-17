@@ -1,5 +1,6 @@
+import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { runExclusive } from "@/lib/queue-lock";
+import { markLatestIntent, runExclusive } from "@/lib/queue-lock";
 import {
   ADMIN_ADDED_BY,
   AUTO_ADDED_BY,
@@ -7,13 +8,16 @@ import {
   chunk,
   clearAutoQueue,
   fillQueue,
+  fillQueueNow,
   jumpPlaylistCursorTo,
 } from "@/lib/queue-fill";
 import { sendPushToUser } from "@/lib/push";
 import { reportIssue } from "@/lib/ops-log";
+import { alertOrderProblem } from "@/lib/music-alert";
 import { runInBackground } from "@/lib/background";
-import { purgeUnplayableSong } from "@/lib/playlist";
 import { shouldKeepStage } from "@/lib/stage-clock";
+import { checkVideoPlayable } from "@/lib/youtube";
+import { staleAutoRow } from "@/lib/queue-invariants";
 
 export type NextResult = {
   started: boolean;
@@ -160,7 +164,9 @@ async function advanceToNext(
 
   const { data: nextItem } = await supabaseAdmin
     .from("queue")
-    .select("id, song_id, user_id, songs(youtube_video_id, embeddable, title, artist, album_cover_url)")
+    .select(
+      "id, song_id, user_id, added_by, source_playlist_id, songs(youtube_video_id, embeddable, title, artist, album_cover_url)"
+    )
     .eq("venue_id", venueId)
     .eq("status", "queued")
     // Sıra: öncelikliler her zaman üstte (sonradan eklenmiş olsa bile), her iki
@@ -177,16 +183,45 @@ async function advanceToNext(
 
   if (!nextItem) {
     // Sıra boş yakalandıysa dolumu bekleyip bir kez daha dene — mekan listesinde
-    // şarkı olduğu sürece "kuyruk boş" dönmemeli, çalma hiç durmamalı
+    // şarkı olduğu sürece "kuyruk boş" dönmemeli, çalma hiç durmamalı.
+    // fillQueue DEĞİL fillQueueNow: o, kilit doluyken hiçbir şey yapmadan
+    // dönüyordu ve ikinci okuma da boş kuyruk bulup müziği durduruyordu.
     if (retryAfterFill) {
-      await fillQueue(venueId).catch((err) => reportFillFailure(venueId, err));
+      await fillQueueNow(venueId).catch((err) => reportFillFailure(venueId, err));
       return advanceToNext(venueId, false, skips, force);
     }
     await supabaseAdmin
       .from("now_playing")
       .update({ song_id: null, video_id: null, is_playing: false, progress_ms: 0 })
       .eq("venue_id", venueId);
+    // Müzik DURDU. Eskiden yalnızca mekan kaydına düşüyordu (17 Eki 2026,
+    // Mezzanine 18:54) — Sorunlar ekranı da alarm da görmüyordu.
+    runInBackground(async () => {
+      await reportIssue({
+        area: "queue",
+        kind: "queue_empty",
+        severity: "error",
+        message: "Kuyruk boşaldı, dolum da şarkı bulamadı — müzik durdu",
+        venueId,
+      });
+      await alertOrderProblem(
+        venueId,
+        "queue_empty",
+        "Kuyruk boşaldı, müzik durdu",
+        "sıradaki şarkı istendi ama kuyruk boştu ve dolum şarkı bulamadı. Çalan listede çalınabilir şarkı kalmış mı bakılmalı."
+      );
+    });
     return { started: false, queueEmpty: true };
+  }
+
+  // SIRA KURALI (değişmez): otomatik dolum yalnızca ÇALAN listeden gelir. Sıradaki
+  // otomatik satır artık çalmayan bir listeye aitse, o listeyi devralma işi bir
+  // yerde kaybolmuş demektir (17 Eki 2026: başka listeden şarkı açıldı, bitince
+  // eski listeden devam etti). Satır çalınmaz; o listenin bütün bekleyen
+  // otomatik satırları düşer ve kuyruk çalan listeden yeniden kurulur.
+  if (nextItem.user_id === null && nextItem.added_by === AUTO_ADDED_BY && nextItem.source_playlist_id) {
+    const repaired = await repairStaleAutoRows(venueId, nextItem.source_playlist_id);
+    if (repaired && skips < MAX_SKIPS) return advanceToNext(venueId, true, skips + 1, force);
   }
 
   // Replenish queue after consuming a song — fire-and-forget
@@ -216,8 +251,8 @@ async function advanceToNext(
     if (!song?.youtube_video_id && nextItem.song_id) {
       await supabaseAdmin.from("songs").update({ embeddable: false }).eq("id", nextItem.song_id);
     }
-    // Çalınamayan şarkı listelerde kalmasın (embed kapalı olan da dahil)
-    if (nextItem.song_id) await purgeUnplayableSong(nextItem.song_id);
+    // Şarkı mekanın listesinden SİLİNMEZ: damgalı şarkıyı dolum zaten seçmez,
+    // satır yalnızca bu kuyruktan düşer (bkz. lib/playlist.ts başlığı).
 
     if (skips >= MAX_SKIPS) {
       return { started: false, error: `çalınabilir şarkı bulunamadı (${unplayable})` };
@@ -248,6 +283,77 @@ async function advanceToNext(
   notifySongOwner(venueId, nextItem.user_id, song);
 
   return { started: true, video_id: song.youtube_video_id, song_id: nextItem.song_id };
+}
+
+// Sıra kuralı ihlalinin onarımı (bkz. advanceToNext). true: kuyruk değişti,
+// sıradaki yeniden seçilmeli.
+async function repairStaleAutoRows(venueId: string, sourcePlaylistId: string): Promise<boolean> {
+  const { data: playingLists, error } = await supabaseAdmin
+    .from("playlists")
+    .select("id")
+    .eq("venue_id", venueId)
+    .not("queue_position", "is", null);
+  // Okunamadıysa dokunma: emin olmadan kuyruk silmek, korumaya çalıştığımız
+  // sırayı bozar
+  if (error) return false;
+
+  const playingIds = (playingLists ?? []).map((p) => p.id);
+  if (!staleAutoRow(sourcePlaylistId, playingIds)) return false;
+
+  const { data: dropped } = await supabaseAdmin
+    .from("queue")
+    .update({ status: "removed" })
+    .eq("venue_id", venueId)
+    .eq("status", "queued")
+    .is("user_id", null)
+    .eq("added_by", AUTO_ADDED_BY)
+    .eq("source_playlist_id", sourcePlaylistId)
+    .select("id");
+
+  const [{ data: stale }, { data: current }] = await Promise.all([
+    supabaseAdmin.from("playlists").select("name").eq("id", sourcePlaylistId).maybeSingle(),
+    playingIds.length > 0
+      ? supabaseAdmin.from("playlists").select("name").in("id", playingIds)
+      : Promise.resolve({ data: [] as { name: string }[] }),
+  ]);
+  await reportIssue({
+    area: "queue",
+    kind: "order_repaired",
+    severity: "error",
+    message: `Sıra kuralı ihlali onarıldı: sıradaki şarkı çalmayan "${stale?.name ?? sourcePlaylistId}" listesindendi (çalan: ${
+      (current ?? []).map((p) => `"${p.name}"`).join(", ") || "yok"
+    }); ${dropped?.length ?? 0} satır düşürüldü`,
+    venueId,
+    detail: { stale_playlist_id: sourcePlaylistId, playing_playlist_ids: playingIds, dropped: dropped?.length ?? 0 },
+  });
+  runInBackground(() =>
+    alertOrderProblem(
+      venueId,
+      "order_repaired",
+      "Sıra kuralı ihlali onarıldı",
+      `sıradaki şarkı çalmayan "${stale?.name ?? "?"}" listesindendi; çalınmadan düşürüldü ve sıra çalan listeden yeniden kuruldu. Sebep bulunmalı.`
+    )
+  );
+  return true;
+}
+
+// Panel komutunun yanıttan sonra koşan kuyruk işi patladı: komut uygulanmamış
+// olabilir. Eskiden `.catch(() => {})` ile yutuluyordu — iz bile kalmıyordu.
+export async function reportQueueWorkFailure(venueId: string, label: string, err: unknown): Promise<void> {
+  await reportIssue({
+    area: "queue",
+    kind: "command_failed",
+    severity: "error",
+    message: `Panel komutu kuyruğa uygulanamadı: ${label}`,
+    venueId,
+    error: err,
+  });
+  await alertOrderProblem(
+    venueId,
+    "command_failed",
+    "Panel komutu uygulanamadı",
+    `"${label}" komutu kuyruğa işlenemedi — sıra mekanın istediğinden farklı olabilir. Sıradaki şarkı geçişinde sıra kuralı yine denetlenecek.`
+  );
 }
 
 // Otomatik doldurma başarısızsa ilerletme yine sürer (fail-open) ama iz kalsın:
@@ -309,6 +415,10 @@ export type PlayNowResult = {
   error?: string;
   // Sahneyi değiştiren başka bir iş sürüyor; bu çağrı hiçbir şey yapmadı.
   busy?: boolean;
+  // deferQueueWork'te: bu komutun damgası (bkz. markLatestIntent). Ertelenen
+  // kuyruk işi uygulanmadan önce isLatestIntent ile doğrulanmalı — arada daha
+  // yeni bir komut geldiyse eski komutun listesi geri getirilmez.
+  intent?: string;
 };
 
 type PlayNowTarget = {
@@ -553,9 +663,13 @@ async function playSongNowLocked(
   // doldurulur: imleç yeni yerinde olduğu için liste kaldığı noktadan devam eder.
   if (!options?.deferQueueWork) await fillQueue(venueId).catch((err) => reportFillFailure(venueId, err));
 
+  // Damga SAHNE KİLİDİ İÇİNDE atılır: sahne değişimleri burada sıralı olduğu
+  // için damgaların sırası da tıklamaların sırasıdır
+  const intent = options?.deferQueueWork ? await markLatestIntent(venueId) : undefined;
+
   notifySongOwner(venueId, rowUserId, song);
 
-  return { ok: true, video_id: song.youtube_video_id, song_id: song.id };
+  return { ok: true, video_id: song.youtube_video_id, song_id: song.id, intent };
 }
 
 // Crossfade için sıradaki şarkıyı KUYRUĞU TÜKETMEDEN okur: player, çalan şarkının
@@ -803,33 +917,84 @@ async function playPreviousLocked(venueId: string): Promise<NextResult> {
   return { started: true, video_id: song.youtube_video_id, song_id: prevItem.song_id };
 }
 
-// Player onError (embed kapalı/bölge engelli/kaldırılmış) bildirdiğinde çağrılır:
-// şarkı bir daha kuyruğa girmesin diye işaretlenir, kuyruk sıradakine ilerler.
+// Player onError (100/101/150) bildirdiğinde çağrılır. Şarkı HEMEN atlanır —
+// müzik beklemez — ama damga ancak YouTube doğrularsa vurulur (markUnplayable).
 export async function markUnplayableAndSkip(
   venueId: string,
-  videoId: string
+  videoId: string,
+  context: UnplayableContext
 ): Promise<NextResult> {
-  await markUnplayable(videoId);
-  // Şarkı fiilen çalamıyor: erken ilerletme kapısı burada uygulanmaz. Ama hata
-  // bu videonundur — sahne çoktan başka şarkıya geçtiyse o şarkı atlanmamalı.
-  return playNextFromQueue(venueId, { force: true, fromVideoId: videoId });
+  const result = await playNextFromQueue(venueId, { force: true, fromVideoId: videoId });
+  runInBackground(async () => {
+    await markUnplayable(videoId, venueId, context);
+  });
+  return result;
 }
 
-// Aynı işaretleme, ATLAMADAN. Hatayı bildiren boştaki (önyükleme) deck ise
-// çalan şarkıya dokunulmamalıdır. Bu yol olmadığı için önyükleme sonsuz
-// döngüye giriyordu: peek gömmeye kapalı videoyu döndürüyor → deck 150 hatası
-// veriyor → istemci tamponu düşürüp susuyor → 10 sn sonra peek AYNI videoyu
-// döndürüyor. Şarkı bir kez işaretlendiğinde peek onu artık atlar.
-export async function markUnplayable(videoId: string): Promise<{ ok: boolean }> {
-  const { data, error } = await supabaseAdmin
-    .from("songs")
-    .update({ embeddable: false })
-    .eq("youtube_video_id", videoId)
-    .select("id")
-    .maybeSingle();
+export type UnplayableContext = { code: number | null; source: "active" | "preload" };
 
-  // İşaretlemek yetmez: şarkı playlist'lerde durdukça mekan onu listesinde
-  // görmeye devam eder ve elle çalmayı deneyip aynı hatayı alır.
-  if (data?.id) await purgeUnplayableSong(data.id);
-  return { ok: !error };
+// Aynı video için YouTube'a dakikada bir kez sorulur: önyükleme hatası 5 sn'de
+// bir tekrarlayabiliyor, her biri kota yemesin.
+const verdictCache = new Map<string, { verdict: "playable" | "unplayable" | "unknown"; at: number }>();
+const VERDICT_TTL_MS = 60_000;
+
+/**
+ * Player'ın "çalınamaz" bildirimi. TEK BAŞINA KANIT DEĞİLDİR: 17 Eki 2026'da
+ * önyükleme deck'i dakikalar önce çalmış 15 şarkıya 150 dedi. Karar YouTube Data
+ * API'nindir (lib/playability.ts):
+ *   - unplayable → songs.embeddable=false (çalmadan + satıştan çıkar, listede KALIR)
+ *   - playable   → dokunulmaz; player'ın hatası çevreseldir, Sorunlar'a yazılır
+ *   - unknown    → (kota/ağ) dokunulmaz — yanlış damga, bir kez daha denemekten pahalı
+ * Her durumda olay Sorunlar ekranına düşer: hangi mekanda, hangi video, ne karar.
+ */
+export async function markUnplayable(
+  videoId: string,
+  venueId: string,
+  context: UnplayableContext
+): Promise<{ ok: boolean; verdict: "playable" | "unplayable" | "unknown" }> {
+  const cached = verdictCache.get(videoId);
+  const fresh = cached && Date.now() - cached.at < VERDICT_TTL_MS;
+  const verdict = fresh ? cached.verdict : await checkVideoPlayable(videoId);
+  if (!fresh) verdictCache.set(videoId, { verdict, at: Date.now() });
+  // Aynı karar az önce kaydedildi: tekrar yazma
+  if (fresh) return { ok: true, verdict };
+
+  const { data: song } = await supabaseAdmin
+    .from("songs")
+    .select("id, title, artist, embeddable")
+    .eq("youtube_video_id", videoId)
+    .maybeSingle();
+  const label = song ? `${song.title} — ${song.artist}` : videoId;
+  const where = context.source === "preload" ? "önyüklemede" : "çalarken";
+
+  if (verdict === "unplayable") {
+    if (song && song.embeddable !== false) {
+      await supabaseAdmin.from("songs").update({ embeddable: false }).eq("id", song.id);
+      // Müşteri kataloğu önbellekli: şarkı satıştan hemen çıksın
+      const { data: holders } = await supabaseAdmin.from("venue_songs").select("venue_id").eq("song_id", song.id);
+      for (const v of new Set((holders ?? []).map((h) => h.venue_id))) revalidateTag(`venue-songs-${v}`, "max");
+    }
+    await reportIssue({
+      area: "player",
+      kind: "song_unplayable",
+      severity: "warn",
+      message: `YouTube doğruladı, çalınamaz: ${label} (hata ${context.code ?? "?"}, ${where}) — listede kaldı, çalmada atlanıyor`,
+      venueId,
+      detail: { video_id: videoId, song_id: song?.id ?? null, ...context },
+    });
+    return { ok: true, verdict };
+  }
+
+  await reportIssue({
+    area: "player",
+    kind: verdict === "playable" ? "youtube_error_unconfirmed" : "youtube_error_unverified",
+    severity: "warn",
+    message:
+      verdict === "playable"
+        ? `Player hata ${context.code ?? "?"} verdi (${where}) ama YouTube çalınabilir diyor: ${label} — şarkı korundu, bu sefer atlandı`
+        : `Player hata ${context.code ?? "?"} verdi (${where}), YouTube'a sorulamadı: ${label} — şarkı korundu, bu sefer atlandı`,
+    venueId,
+    detail: { video_id: videoId, song_id: song?.id ?? null, ...context },
+  });
+  return { ok: true, verdict };
 }

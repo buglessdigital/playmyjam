@@ -56,7 +56,8 @@ Ekibin (ve Claude'un) ortak hafızası: alınmış kararlar, tuzaklar, "şu migr
 - [Google girişi kendi alan adımızdan](pmj-google-oauth-kendi-alan-adi-2026-10.md) — 11 Eki DEVREDE; branding incelemede (logo onayla gelir); env yoksa eski Supabase akışı, preview'larda Google girişi yok
 - [Talep onay akışı](pmj-talep-onay-akisi-2026-08.md) — bildirimden onay + 10 dk tek seferlik çalma hakkı; 0045 ŞART; karar verilmeyen talep 10 dk'da pg_cron ile kapanır (0078 ŞART), katalog hiç değişmez
 - [Talep için YouTube araması](pmj-talep-youtube-arama-2026-10.md) — havuzda yoksa önce search.list (günde en fazla 30, `YOUTUBE_SEARCH_DAILY_CAP`), kota/tavan bitince bağlantı yapıştırma; migration yok
-- [Çalınamaz damgası](pmj-unplayable-damga-2026-08.md) — damga sadece 100/101/150; geri alırken snapshot'tan da sil, yoksa şarkı hiç dönmez
+- [Müzik durmaz, sıra şaşmaz](pmj-muzik-durmaz-sira-sasmaz-2026-10.md) — DEĞİŞMEZ KURALLAR: kod şarkı silmez, damga yalnız YouTube API doğrularsa, panel komutu beklenir (düşmez), son tıklama kazanır, sıradaki otomatik satır yalnız çalan listeden; 17 Eki olayı
+- [Çalınamaz damgası](pmj-unplayable-damga-2026-08.md) — ESKİDİ: yerini pmj-muzik-durmaz-sira-sasmaz aldı
 - [Mekana özel panel PWA](pmj-admin-pwa-2026-08.md) — her mekan kendi panelini ayrı uygulama olarak kurar; manifest+ikon proxy'de muaf; manifest head'e inline script ile konuyor (Next body'ye akıtıyordu)
 - [Panel içi mini player](pmj-mini-player-2026-08.md) — müzik artık panel kabuğundaki yüzen kartta; ayrı sekme TV modu
 - [Müşteri onboarding düzeni](pmj-musteri-onboarding-2026-08.md) — açılış GÖZAT, alt menüde JETON AL; anlatım modalı silindi, ilk girişte arama kendiliğinden açılıyor

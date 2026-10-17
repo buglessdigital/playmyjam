@@ -18,7 +18,8 @@
     "home": "Ana sayfa",
     "menu": "Menü",
     "close": "Kapat",
-    "forOwners": "Mekan sahipleri"
+    "forOwners": "Mekan sahipleri",
+    "about": "Hakkımızda"
   },
   "footer": {
     "tagline": "PlayMyJam, kafe ve eğlence mekanlarında müzik sırasını misafirlere açan dijital şarkı istek platformudur. {company} tarafından işletilmektedir.",
@@ -70,7 +71,10 @@
       "payTitle": "Jetonla sıraya ekle",
       "payDesc": "Normal ya da öncelikli sıra seç. Ödeme iyzico güvencesinde, jeton anında yüklenir.",
       "listenTitle": "Hoparlörden duy",
-      "listenDesc": "Sıranın nasıl ilerlediğini telefonundan canlı izle."
+      "listenDesc": "Sıranın nasıl ilerlediğini telefonundan canlı izle.",
+      "kicker": "4 adımda",
+      "demoScanOpen": "Sayfayı aç",
+      "demoScanPlaque": "Okut, şarkını sen seç"
     },
     "pricing": {
       "heading": "Şeffaf ve tek fiyat",
@@ -98,18 +102,37 @@
     },
     "faq": {
       "heading": "Sık sorulan sorular",
-      "q1": "Jeton nedir, nerede kullanılır?",
-      "a1": "Jeton, PlayMyJam platformunda şarkı isteği göndermek için kullanılan dijital birimdir. Yalnızca PlayMyJam kullanan mekanlardaki şarkı istekleri için geçerlidir; nakde çevrilemez ve platform dışına aktarılamaz. Bakiyen tüm PlayMyJam mekanlarında ortaktır.",
-      "q2": "Ödeme nasıl yapılır, güvenli mi?",
-      "a2": "Ödemeler kredi kartı veya banka kartı ile 256-bit SSL şifreli bağlantı üzerinden alınır. Kart bilgilerin bizde saklanmaz; işlemler lisanslı ödeme kuruluşu altyapısı üzerinden gerçekleştirilir.",
-      "q3": "Jetonlarım ne zaman hesabıma geçer?",
-      "a3": "Anında. Jetonlar dijital üründür — ödemen onaylandığı saniye bakiyene yüklenir ve hemen şarkı istemeye başlayabilirsin. Kargo veya bekleme süresi yoktur.",
-      "q4": "İade hakkım var mı?",
-      "a4": "Var. Paketteki jetonların hiçbirini kullanmadıysan satın alma tarihinden itibaren 14 gün içinde iade talep edebilirsin. Ayrıca şarkı isteğin mekan tarafından reddedilirse harcanan jetonlar bakiyene otomatik iade edilir. Detaylar Teslimat ve İade Şartları sayfasındadır.",
-      "q5": "Şarkı isteğim ne kadar jeton tutar?",
-      "a5": "Normal sıra isteği ve öncelikli sıra isteği için gereken jeton adedi mekana göre belirlenir ve istek göndermeden önce ekranda açıkça gösterilir. Öncelikli istekler sırada öne alınır.",
-      "q6": "Mekanım için PlayMyJam'i nasıl kullanabilirim?",
-      "a6": "Mekanını Kaydet formunu doldurman yeterli, ekibimiz seni arar. Kurulum ücretsizdir; mekandaki mevcut ekran/hoparlör düzeni ve bir tarayıcı yeterlidir."
+      "sub": "Misafir de olsan mekan sahibi de, aklındaki sorunun cevabı büyük ihtimalle burada.",
+      "guestTab": "Misafirler",
+      "venueTab": "Mekanlar",
+      "more": "Cevabını bulamadın mı?",
+      "moreCta": "Bize yaz",
+      "g1q": "Bir mekanda aldığım jetonu başka bir mekanda kullanabilir miyim?",
+      "g1a": "Evet. Jeton bakiyen tek bir cüzdanda tutulur ve PlayMyJam kullanan bütün mekanlarda geçerlidir. Bir mekanda aldığın jetonun kalanını başka bir mekanda harcayabilirsin.",
+      "g2q": "Uygulama indirmem ya da üye olmam gerekiyor mu?",
+      "g2a": "Hayır. Masadaki karekodu okuttuğunda mekanın sayfası tarayıcında açılır. Şarkılara göz atmak için üyelik gerekmez; jetonlarını farklı cihazlarda ve mekanlarda kullanmak istersen hesabını birkaç saniyede bağlayabilirsin.",
+      "g3q": "İstediğim şarkı listede yoksa ne olur?",
+      "g3a": "Aramada bulamadığın şarkıyı mekana istek olarak gönderebilirsin. Mekan onaylarsa şarkı kısa bir süreliğine eklenebilir hale gelir ve sana haber verilir.",
+      "g4q": "Şarkım ne zaman çalar?",
+      "g4a": "Şarkını eklemeden önce tahmini bekleme süresini görürsün; ekledikten sonra sıranın ilerleyişini telefonundan canlı izlersin. Öncelikli sıra, normal sıradaki şarkıların önüne geçer.",
+      "g5q": "Aynı şarkıyı tekrar isteyebilir miyim?",
+      "g5a": "Şarkı şu an çalıyorsa ya da zaten sıradaysa eklenemez. Çalmaya başladıktan 30 dakika sonra yeniden istenebilir; böylece aynı şarkı art arda çalmaz.",
+      "g6q": "Şarkım çalmazsa jetonum ne olur?",
+      "g6a": "Şarkı isteğin mekan tarafından reddedilirse harcadığın jetonlar bakiyene otomatik olarak geri yüklenir.",
+      "g7q": "Ödeme güvenli mi, iade alabilir miyim?",
+      "g7a": "Ödemeler kredi kartı veya banka kartı ile 256-bit SSL şifreli bağlantı üzerinden alınır. Kart bilgilerin bizde saklanmaz; işlemler lisanslı ödeme kuruluşu altyapısı üzerinden gerçekleştirilir. Satın aldığın jetonların hiçbirini kullanmadıysan satın alma tarihinden itibaren 14 gün içinde iade talep edebilirsin. Ayrıntılar Teslimat ve İade Şartları sayfasındadır.",
+      "v1q": "PlayMyJam'i mekanıma koymak telif açısından sorun çıkarır mı?",
+      "v1a": "PlayMyJam hiçbir ses ya da görüntü dosyası barındırmaz ve size müzik lisansı satmaz; yalnızca misafirlerin isteklerini sıraya alan bir yazılımdır. İşletmede müzik çalmak için gereken izinler (MESAM, MSG, MÜYAP gibi) zaten müzik çalan her işletmenin yükümlülüğüdür; PlayMyJam bu konuda yeni bir yükümlülük getirmez. Ayrıntılar sözleşmenizde yazılıdır.",
+      "v2q": "Kurulum için ne gerekiyor, ücreti var mı?",
+      "v2a": "Kurulum ücretsizdir. Mekandaki mevcut ekran ya da hoparlör düzeni ve bir tarayıcı yeterli; ek cihaz gerekmez. Masalara konacak karekodları biz hazırlarız.",
+      "v3q": "Müziğin kontrolü bende kalır mı?",
+      "v3a": "Evet, son söz her zaman sizde. Misafirler yalnızca sizin listelerinizden seçer; listede olmayan şarkılar sizin onayınız olmadan çalmaz. Panelden şarkı atlayabilir, sırayı düzenleyebilir, ses seviyesini ayarlayabilir ve yoğun saatlerde misafir eklemelerini geçici olarak kapatabilirsiniz.",
+      "v4q": "Kendi çalma listelerimi kullanabilir miyim?",
+      "v4a": "Evet. Mevcut çalma listelerinizi panele aktarabilir ya da katalogdan yeni listeler oluşturabilirsiniz. İstek gelmediği zamanlarda müzik bu listelerden kendiliğinden devam eder, mekan hiç sessiz kalmaz.",
+      "v5q": "Mekan olarak ne kazanırım?",
+      "v5a": "Misafirlerin şarkılar için harcadığı ücretli jetonlardan gelir payı alırsınız. Oranlar ve ödeme dönemleri sözleşmenizde yazılıdır; hakedişlerinizi panelden takip edersiniz.",
+      "v6q": "Nasıl başlarım?",
+      "v6a": "Mekanını Kaydet formunu doldurmanız yeterli; ekibimiz sizi arar, sözleşme ve kurulum adımlarında yanınızda olur."
     },
     "contact": {
       "heading": "İletişim",
@@ -133,6 +156,22 @@
       "venue3": "Misafir isteklerinden gelir payı alırsın; dökümünü panelinden takip edersin.",
       "venueCta": "Mekanını kaydet",
       "venueLogin": "Zaten kayıtlıyım, panele gir"
+    },
+    "about": {
+      "kicker": "Hakkımızda",
+      "title": "Mekanın müziğini misafir seçer.",
+      "p1": "PlayMyJam, kafe, bar ve restoranlarda çalan müziği misafirlerin belirlemesini sağlayan bir şarkı istek platformudur. Misafir masadaki karekodu okutur, mekanın kataloğundan şarkısını seçer ve jetonuyla sıraya ekler; şarkısının ne zaman çalacağını telefonundan canlı izler.",
+      "p2": "Misyonumuz, insanların bulunduğu mekanın atmosferine aktif olarak katılmasını sağlamak ve işletmelere misafirleriyle bağ kuran, ek gelir getiren modern bir araç sunmak. Mekan, müzik akışını tek panelden yönetir: hangi listelerin çalacağına, hangi isteklerin kabul edileceğine ve ses seviyesine her an kendisi karar verir.",
+      "copyrightKicker": "Telif ve lisans",
+      "copyrightTitle": "Telif konusunda içiniz rahat olsun.",
+      "proofLabel": "Sözleşme",
+      "copyrightLead": "Bu bir iddia değil; mekanlarla yaptığımız sözleşmede yazılı.",
+      "c1Title": "Hiçbir müzik dosyası barındırmıyoruz.",
+      "c1Proof": "Ek-2 · md. 2.2",
+      "c2Title": "Müzik lisansı mekanın sorumluluğundadır.",
+      "c2Proof": "Ek-2 · md. 3.1",
+      "c3Title": "Jeton bir lisans bedeli değildir.",
+      "c3Proof": "Ek-2 · md. 2.4"
     }
   },
   "venuesPage": {

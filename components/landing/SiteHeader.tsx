@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import LangToggle from "@/components/ui/LangToggle";
@@ -16,6 +16,10 @@ const FOCUS_RING = "focus-visible:outline-2 focus-visible:outline-offset-2 focus
 // (mono, büyük harf) fontunda, tek dolu pembe düğme. Mobilde tek satır: logo,
 // birincil düğme ve "Menü"; geri kalan her şey tam ekran paneldedir.
 //
+// Masaüstü kalabalık olmasın diye: üstte yalnız dört bölüm bağlantısı ("Mekanlar
+// İçin" ve "İletişim" sayfada ve alt bilgide zaten var), mekan sahibine dönük
+// her şey tek "Mekan sahipleri" açılır menüsünde. Mobil panelde hepsi açık durur.
+//
 // Mağaza uygulamasında (müşteri uygulaması) mekan sahibi bağlantıları (kayıt,
 // panel girişi) çizilmez — uygulamada yeri yok, App Store incelemesini de
 // karıştırır. "Mekanı Bul" yerine karekod okutma gelir, logo mekanlar listesine döner.
@@ -26,6 +30,24 @@ export default function SiteHeader() {
   // gidenler dahil), ayrıca sayfa değişimini dinlemeye gerek yok
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const [ownersOpen, setOwnersOpen] = useState(false);
+  const ownersId = useId();
+  const ownersRef = useRef<HTMLDivElement>(null);
+
+  // Açılır menü: dışarı tıklama ve Esc kapatır
+  useEffect(() => {
+    if (!ownersOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!ownersRef.current?.contains(e.target as Node)) setOwnersOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOwnersOpen(false);
+    document.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [ownersOpen]);
 
   // Panel açıkken arka plan kaymasın, Esc kapatsın
   useEffect(() => {
@@ -41,11 +63,18 @@ export default function SiteHeader() {
   }, [open]);
 
   const sections = [
+    { href: "/#hakkimizda", label: t.nav.about },
     { href: "/#nasil-calisir", label: t.nav.howItWorks },
     { href: "/#mekanlar", label: t.nav.forVenues },
     { href: "/#fiyatlar", label: t.nav.pricing },
     { href: "/#sss", label: t.nav.faq },
     { href: "/#iletisim", label: t.nav.contact },
+  ];
+  const desktopSections = sections.filter((s) => s.href !== "/#mekanlar" && s.href !== "/#iletisim");
+  const ownerLinks = [
+    { href: "/mekan-kayit", label: t.nav.registerVenue },
+    { href: "/mekan-girisi", label: t.nav.venueLogin },
+    { href: "/#mekanlar", label: t.nav.forVenues },
   ];
 
   const primary = inApp ? (
@@ -66,12 +95,12 @@ export default function SiteHeader() {
           <Image src="/logo.png" alt="PlayMyJam" width={1600} height={500} priority className="h-9 w-auto lg:h-10" />
         </Link>
 
-        <nav aria-label={t.nav.menu} className="hidden items-center gap-7 lg:flex">
-          {sections.map((s) => (
+        <nav aria-label={t.nav.menu} className="hidden items-center gap-6 lg:flex xl:gap-8">
+          {desktopSections.map((s) => (
             <Link
               key={s.href}
               href={s.href}
-              className={`font-tag text-[12px] uppercase tracking-[0.14em] text-[#c7cad1] transition-colors hover:text-white ${FOCUS_RING}`}
+              className={`font-tag whitespace-nowrap text-[12px] uppercase tracking-[0.14em] text-[#c7cad1] transition-colors hover:text-white ${FOCUS_RING}`}
             >
               {s.label}
             </Link>
@@ -82,22 +111,43 @@ export default function SiteHeader() {
           <div className="hidden lg:block">
             <LangToggle />
           </div>
-          {/* Mekan sahibi her sayfadan tek tıkla panele ve kayda ulaşsın */}
+          {/* Mekan sahibi her sayfadan iki tıkla panele ve kayda ulaşsın */}
           {!inApp && (
-            <>
-              <Link
-                href="/mekan-girisi"
-                className={`hidden whitespace-nowrap text-sm font-semibold text-[#c7cad1] transition-colors hover:text-white xl:block ${FOCUS_RING}`}
+            <div ref={ownersRef} className="relative hidden lg:block">
+              <button
+                type="button"
+                onClick={() => setOwnersOpen((v) => !v)}
+                aria-expanded={ownersOpen}
+                aria-controls={ownersId}
+                className={`flex items-center gap-2 whitespace-nowrap rounded-full border px-5 py-2.5 text-sm font-bold text-white transition-colors ${
+                  ownersOpen ? "border-white" : "border-white/25 hover:border-white"
+                } ${FOCUS_RING}`}
               >
-                {t.nav.venueLogin}
-              </Link>
-              <Link
-                href="/mekan-kayit"
-                className={`hidden whitespace-nowrap rounded-full border border-white/25 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:border-white lg:block ${FOCUS_RING}`}
+                {t.nav.forOwners}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden className={`transition-transform ${ownersOpen ? "rotate-180" : ""}`}>
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <div
+                id={ownersId}
+                hidden={!ownersOpen}
+                className="absolute right-0 top-full mt-3 w-60 rounded-2xl border border-white/10 bg-[#170f24] p-2 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.8)]"
               >
-                {t.nav.registerVenue}
-              </Link>
-            </>
+                {ownerLinks.map((l, i) => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    onClick={() => setOwnersOpen(false)}
+                    className={`flex min-h-11 items-center justify-between rounded-xl px-4 text-sm transition-colors hover:bg-white/[0.06] ${
+                      i === 0 ? "font-bold text-white" : "font-semibold text-[#c7cad1] hover:text-white"
+                    } ${FOCUS_RING} focus-visible:outline-offset-0`}
+                  >
+                    {l.label}
+                    {i === 0 && <span aria-hidden className="text-[#ff8fd0]">→</span>}
+                  </Link>
+                ))}
+              </div>
+            </div>
           )}
           {primary}
           <button

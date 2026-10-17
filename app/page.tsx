@@ -4,12 +4,13 @@ import { getGlobalTokenPackages, getTokenUnitPrice } from "@/lib/pricing-cache";
 import SiteHeader from "@/components/landing/SiteHeader";
 import SiteFooter from "@/components/landing/SiteFooter";
 import PricingSection from "@/components/landing/PricingSection";
+import { HowItWorksSection } from "@/components/landing/HowItWorks";
 import {
+  AboutSection,
   AudienceSection,
   ContactSection,
   FaqSection,
   HeroSection,
-  HowItWorksSection,
 } from "@/components/landing/LandingSections";
 import { landingFontVars } from "@/components/landing/fonts";
 
@@ -35,6 +36,7 @@ export default function HomePage() {
 
       <main>
         <HeroSection />
+        <AboutSection />
         <AudienceSection />
         <HowItWorksSection />
 

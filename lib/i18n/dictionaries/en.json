@@ -18,7 +18,8 @@
     "home": "Home",
     "menu": "Menu",
     "close": "Close",
-    "forOwners": "Venue owners"
+    "forOwners": "Venue owners",
+    "about": "About"
   },
   "footer": {
     "tagline": "PlayMyJam is a digital song request platform that hands the music queue to guests in cafés and entertainment venues. Operated by {company}.",
@@ -70,7 +71,10 @@
       "payTitle": "Queue it with a token",
       "payDesc": "Choose the normal or priority queue. Payment is secured by iyzico and tokens load instantly.",
       "listenTitle": "Hear it play",
-      "listenDesc": "Follow the queue live on your phone."
+      "listenDesc": "Follow the queue live on your phone.",
+      "kicker": "In 4 steps",
+      "demoScanOpen": "Open page",
+      "demoScanPlaque": "Scan and pick the song"
     },
     "pricing": {
       "heading": "One transparent price",
@@ -97,19 +101,38 @@
       "noticeConfirm": "The cost is shown clearly before you add the song — no surprises."
     },
     "faq": {
-      "heading": "Frequently Asked Questions",
-      "q1": "What is a token and where is it used?",
-      "a1": "Tokens are digital currency used to submit song requests on the PlayMyJam platform. They are valid only for song requests at venues using PlayMyJam; they cannot be converted to cash or transferred outside the platform. The balance is shared across all PlayMyJam venues.",
-      "q2": "How is the payment made, and is it secure?",
-      "a2": "Payments are processed via credit card or debit card through a 256-bit SSL encrypted connection. Your card details are not stored with us; transactions run through licensed payment institution infrastructure.",
-      "q3": "When will my tokens be credited to my account?",
-      "a3": "Instant. Tokens are a digital product — they are loaded into your balance the second your payment is confirmed, and you can start requesting songs right away. No shipping or waiting times.",
-      "q4": "Do I have a right to a refund?",
-      "a4": "Yes. If you haven't used any of the tokens in the package, you can request a refund within 14 days of the purchase date. Also, if your song request is rejected by the venue, any spent tokens will be automatically refunded to your balance. Details can be found on the Delivery and Return Terms page.",
-      "q5": "How much will my song request cost in tokens?",
-      "a5": "The number of tokens required for normal and priority queue requests is determined by the venue and is clearly displayed on the screen before submitting a request. Priority requests are moved to the front of the queue.",
-      "q6": "How can I use PlayMyJam for my venue?",
-      "a6": "Just fill in the Register Your Venue form and our team will call you. Setup is free; your existing screen/speaker setup and a browser are all you need."
+      "heading": "Frequently asked questions",
+      "sub": "Whether you're a guest or a venue owner, the answer to your question is probably here.",
+      "guestTab": "Guests",
+      "venueTab": "Venues",
+      "more": "Didn't find your answer?",
+      "moreCta": "Write to us",
+      "g1q": "Can I use tokens I bought at one venue at another venue?",
+      "g1a": "Yes. Your token balance is kept in a single wallet and is valid at every venue that uses PlayMyJam. You can spend the rest of the tokens you bought at one venue at another.",
+      "g2q": "Do I need to download an app or sign up?",
+      "g2a": "No. Scanning the QR code on the table opens the venue's page in your browser. You don't need an account to browse songs; if you want to use your tokens across devices and venues, you can link an account in a few seconds.",
+      "g3q": "What if the song I want isn't on the list?",
+      "g3a": "You can send a song you can't find as a request to the venue. If the venue approves it, the song becomes available to add for a short time and you're notified.",
+      "g4q": "When will my song play?",
+      "g4a": "You see the estimated wait before adding your song, and after adding it you follow the queue live on your phone. The priority queue goes ahead of songs in the normal queue.",
+      "g5q": "Can I request the same song again?",
+      "g5a": "A song can't be added while it's playing or already in the queue. It can be requested again 30 minutes after it started playing, so the same song doesn't play back to back.",
+      "g6q": "What happens to my tokens if my song doesn't play?",
+      "g6a": "If the venue rejects your song request, the tokens you spent are automatically returned to your balance.",
+      "g7q": "Is payment secure, and can I get a refund?",
+      "g7a": "Payments are taken by credit or debit card over a 256-bit SSL encrypted connection. Your card details are not stored by us; transactions are processed through a licensed payment institution's infrastructure. If you haven't used any of the tokens you bought, you can request a refund within 14 days of the purchase date. Details are on the Delivery and Refund Terms page.",
+      "v1q": "Will putting PlayMyJam in my venue cause copyright problems?",
+      "v1a": "PlayMyJam does not host any audio or video files and does not sell you a music licence; it is software that queues guests' requests. The permits needed to play music in a business (from collecting societies such as MESAM, MSG and MÜYAP) are already an obligation of every business that plays music; PlayMyJam adds no new obligation. The details are written in your contract.",
+      "v2q": "What do I need to get set up, and does it cost anything?",
+      "v2a": "Setup is free. Your existing screen or speaker setup and a browser are enough; no extra device is needed. We prepare the QR codes for your tables.",
+      "v3q": "Do I stay in control of the music?",
+      "v3a": "Yes, you always have the final say. Guests only choose from your lists; songs that aren't on them never play without your approval. From the dashboard you can skip songs, reorder the queue, set the volume and temporarily close guest additions during busy hours.",
+      "v4q": "Can I use my own playlists?",
+      "v4a": "Yes. You can import your existing playlists into the dashboard or build new ones from the catalog. When there are no requests, music continues from these lists automatically, so your venue is never silent.",
+      "v5q": "What does my venue earn?",
+      "v5a": "You receive a revenue share from the paid tokens guests spend on songs. Rates and payment periods are written in your contract, and you track your earnings from the dashboard.",
+      "v6q": "How do I get started?",
+      "v6a": "Just fill in the Register Your Venue form; our team will call you and guide you through the contract and setup."
     },
     "contact": {
       "heading": "Contact",
@@ -133,6 +156,22 @@
       "venue3": "You earn a share of guest requests and track it in your dashboard.",
       "venueCta": "Register your venue",
       "venueLogin": "Already registered? Sign in"
+    },
+    "about": {
+      "kicker": "About us",
+      "title": "Guests choose the venue's music.",
+      "p1": "PlayMyJam is a song-request platform that lets guests decide the music playing in cafes, bars and restaurants. Guests scan the QR code on the table, pick a song from the venue's catalog and add it to the queue with a token, then follow live on their phone when it will play.",
+      "p2": "Our mission is to let people take an active part in the atmosphere of the place they're in, and to give venues a modern tool that connects them with their guests and brings in extra revenue. The venue runs the music from a single dashboard and decides at any moment which playlists play, which requests are accepted and how loud it is.",
+      "copyrightKicker": "Copyright & licensing",
+      "copyrightTitle": "No need to worry about copyright.",
+      "proofLabel": "Contract",
+      "copyrightLead": "This isn't just a claim; it's written into our contract with venues.",
+      "c1Title": "We don't host any music files.",
+      "c1Proof": "Annex 2 · cl. 2.2",
+      "c2Title": "Music licensing is the venue's responsibility.",
+      "c2Proof": "Annex 2 · cl. 3.1",
+      "c3Title": "A token is not a licence fee.",
+      "c3Proof": "Annex 2 · cl. 2.4"
     }
   },
   "venuesPage": {

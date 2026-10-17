@@ -117,6 +117,14 @@ export function useLibrary(
 
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState("");
+  // "Şimdi güncelle" sonrası: YouTube listesinden çıkarılmış ama bu listede
+  // duran şarkılar. Hiçbiri kendiliğinden silinmez — mekan onaylarsa kalkar.
+  const [syncGone, setSyncGone] = useState<{
+    playlistId: string;
+    playlistName: string;
+    songs: { video_id: string; title: string; artist: string }[];
+  } | null>(null);
+  const [removingGone, setRemovingGone] = useState(false);
 
   // Aynı anda birden fazla tam yükleme başlamasın: biri uçarken gelen istek ona
   // bağlanır, uçuş sırasında yeni olay geldiyse bitiminde bir kez daha koşar.
@@ -947,20 +955,49 @@ export function useLibrary(
         setSyncNote(data.error ?? "Güncellenemedi");
         return;
       }
-      // Elle senkron iki yönlü: YouTube'dan çıkarılan şarkı buradan da düşer
-      const parts: string[] = [];
-      if (data.added > 0) parts.push(`${data.added} yeni şarkı eklendi`);
-      if (data.removed > 0) parts.push(`${data.removed} şarkı kaldırıldı`);
+      // Senkron hiçbir şey SİLMEZ: YouTube'dan çıkarılmış şarkılar mekana sorulur
+      const gone = Array.isArray(data.gone) ? (data.gone as { video_id: string; title: string; artist: string }[]) : [];
+      setSyncGone(gone.length > 0 ? { playlistId: playlist.id, playlistName: playlist.name, songs: gone } : null);
       setSyncNote(
-        parts.length > 0
-          ? `"${playlist.name}": ${parts.join(", ")}`
-          : `"${playlist.name}" zaten güncel`
+        data.added > 0
+          ? `"${playlist.name}": ${data.added} yeni şarkı eklendi`
+          : gone.length > 0
+            ? ""
+            : `"${playlist.name}" zaten güncel`
       );
       await refresh();
     } catch {
       setSyncNote("Bağlantı hatası, tekrar deneyin");
     } finally {
       setSyncingId(null);
+    }
+  };
+
+  // Mekanın onayı: YouTube'dan çıkarılmış şarkıları bu listeden kaldır
+  const removeGone = async () => {
+    if (!syncGone || removingGone) return;
+    setRemovingGone(true);
+    try {
+      const res = await fetch("/api/admin/playlist/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          playlist_id: syncGone.playlistId,
+          remove_video_ids: syncGone.songs.map((s) => s.video_id),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncNote(data.error ?? "Kaldırılamadı");
+        return;
+      }
+      setSyncNote(`"${syncGone.playlistName}": ${data.removed ?? 0} şarkı kaldırıldı`);
+      setSyncGone(null);
+      await refresh();
+    } catch {
+      setSyncNote("Bağlantı hatası, tekrar deneyin");
+    } finally {
+      setRemovingGone(false);
     }
   };
 
@@ -1085,6 +1122,10 @@ export function useLibrary(
     syncingId,
     syncNote,
     setSyncNote,
+    syncGone,
+    setSyncGone,
+    removeGone,
+    removingGone,
     createList,
     renameList,
     deleteList,

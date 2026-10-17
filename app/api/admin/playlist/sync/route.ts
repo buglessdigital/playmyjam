@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVerifiedAdminSession } from "@/lib/admin-session";
 import { assertVenuePlaylist } from "@/lib/playlist";
-import { syncPlaylistSources } from "@/lib/playlist-sync";
+import { removeGoneSongs, syncPlaylistSources } from "@/lib/playlist-sync";
+import { resetAutoQueue } from "@/lib/queue-fill";
+import { reportQueueWorkFailure } from "@/lib/queue";
 import { withActor } from "@/lib/actor";
 
 // "Şimdi güncelle": tek playlist'i beklemeden YouTube kaynağıyla eşitler.
@@ -10,8 +12,9 @@ import { withActor } from "@/lib/actor";
 // veya senkron hata verip durduğunda elle tetiklemek için.
 // force: sıra ve şarkı-sayısı kısayolu atlanır — mekan butona bastıysa listenin
 // gerçekten okunduğunu görmeli.
-// prune: elle senkronda iki liste birebir eşitlenir, YouTube'dan çıkarılan şarkı
-// PMJ listesinden de düşer. Günlük cron bunu YAPMAZ (bkz. syncPlaylistSources).
+// HİÇBİR ŞEY SİLMEZ (17 Eki 2026): YouTube'dan çıkarılmış ama listede duran
+// şarkılar yanıtta `gone` olarak döner, panel mekana sorar. Mekan onaylarsa
+// aynı uca `remove_video_ids` ile gelinir ve yalnızca onlar kaldırılır.
 async function handlePOST(req: NextRequest) {
   const session = await getVerifiedAdminSession(req);
   if (!session) {
@@ -41,17 +44,39 @@ async function handlePOST(req: NextRequest) {
     );
   }
 
+  // Mekanın onayı: panelde gösterilen çıkarılmış şarkılardan seçilenler kalkar
+  const removeIds: unknown = body?.remove_video_ids;
+  if (Array.isArray(removeIds)) {
+    const ids = removeIds.filter((id): id is string => typeof id === "string").slice(0, 500);
+    try {
+      const removed = await removeGoneSongs(playlistId, ids);
+      // Kuyruk liste sonuna kadar yazılı: kaldırılan şarkıların bekleyen
+      // otomatik satırları da düşmeli, yoksa listeden çıkmış şarkı yine çalar
+      if (removed > 0) {
+        after(
+          resetAutoQueue(session.venue_id).catch((err) =>
+            reportQueueWorkFailure(session.venue_id, "çıkarılmış şarkıları kaldır", err)
+          )
+        );
+      }
+      return NextResponse.json({ ok: true, removed });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Kaldırılamadı";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
   try {
     const report = await syncPlaylistSources({
       playlistIds: [playlistId],
       force: true,
-      prune: true,
+      collectGone: true,
     });
     return NextResponse.json({
       ok: true,
       added: report.added,
-      removed: report.removed,
       failed: report.failed,
+      gone: report.gone.map((g) => ({ video_id: g.video_id, title: g.title, artist: g.artist })),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Senkron başarısız";

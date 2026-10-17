@@ -22,7 +22,9 @@ yalnızca `songs`'ta hiç olmayan videolar için. Tipik gün ~20 birim.
 `snapshot_video_ids` bilerek `playlist_songs`'tan ayrı: mekan bir şarkıyı elle
 sildiğinde YouTube'da durmaya devam eder, fark playlist_songs'tan alınsaydı şarkı
 her gün geri gelirdi. **Karar: YouTube'dan çıkarılan şarkı PMJ'den SİLİNMEZ**
-(kullanıcı 5 Ağu'da böyle istedi) — sadece snapshot'tan düşer.
+(kullanıcı 5 Ağu'da böyle istedi). 18 Eki 2026'dan beri elle "Şimdi güncelle"
+de silmiyor (arada `prune` ile siliyordu): çıkarılmışları panel mekana sorar —
+bkz. [[pmj-muzik-durmaz-sira-sasmaz-2026-10]] K6.
 
 **How to apply:**
 - 0029 migration Supabase SQL Editor'dan uygulanmalı, YOKSA panel ve cron 500 verir.

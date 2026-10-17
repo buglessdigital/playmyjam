@@ -14,6 +14,7 @@ import {
 import { sendPushToUser } from "@/lib/push";
 import { reportIssue } from "@/lib/ops-log";
 import { alertOrderProblem } from "@/lib/music-alert";
+import { consumeRateLimit } from "@/lib/rate-limit";
 import { runInBackground } from "@/lib/background";
 import { shouldKeepStage } from "@/lib/stage-clock";
 import { checkVideoPlayable } from "@/lib/youtube";
@@ -41,6 +42,9 @@ export type NextResult = {
 // Arka arkaya kaç bozuk satır atlanabilir. Tavan yalnızca sonsuz özyinelemeye
 // karşı emniyet; normalde kuyrukta bir iki bozuk satır olur.
 const MAX_SKIPS = 25;
+// Kuyruk boşken dolum kaç kez denenir (aralarında bekleyerek)
+const EMPTY_FILL_ATTEMPTS = 3;
+const EMPTY_FILL_RETRY_MS = 1_500;
 
 // Bu yollar erken ilerletme kapısına takılmaz (bkz. lib/stage-clock.ts):
 // kullanıcının kendi iradesi (panelden atlama) ya da şarkının fiilen çalamadığı
@@ -186,8 +190,18 @@ async function advanceToNext(
     // şarkı olduğu sürece "kuyruk boş" dönmemeli, çalma hiç durmamalı.
     // fillQueue DEĞİL fillQueueNow: o, kilit doluyken hiçbir şey yapmadan
     // dönüyordu ve ikinci okuma da boş kuyruk bulup müziği durduruyordu.
+    // Dolum okuma hatasında yazmadan durur (bkz. lib/queue-fill.ts must): boş
+    // kuyrukta bu "müzik durdu" demek olacağı için kısa aralıkla yeniden denenir.
     if (retryAfterFill) {
-      await fillQueueNow(venueId).catch((err) => reportFillFailure(venueId, err));
+      for (let attempt = 0; attempt < EMPTY_FILL_ATTEMPTS; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, EMPTY_FILL_RETRY_MS));
+        try {
+          await fillQueueNow(venueId);
+          break;
+        } catch (err) {
+          if (attempt === EMPTY_FILL_ATTEMPTS - 1) await reportFillFailure(venueId, err);
+        }
+      }
       return advanceToNext(venueId, false, skips, force);
     }
     await supabaseAdmin
@@ -197,6 +211,9 @@ async function advanceToNext(
     // Müzik DURDU. Eskiden yalnızca mekan kaydına düşüyordu (17 Eki 2026,
     // Mezzanine 18:54) — Sorunlar ekranı da alarm da görmüyordu.
     runInBackground(async () => {
+      // Boştaki player 8 sn'de bir yeniden soruyor: kayıt mekan başına 10 dk'da bir
+      const { allowed } = await consumeRateLimit(`queue-empty:${venueId}`, 1, 600).catch(() => ({ allowed: true }));
+      if (!allowed) return;
       await reportIssue({
         area: "queue",
         kind: "queue_empty",

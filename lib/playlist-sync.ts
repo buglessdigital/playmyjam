@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { diffSource, nextSnapshot } from "@/lib/playlist-sync-diff";
 import {
   attachSongsToPlaylist,
   detachVideosFromPlaylist,
@@ -40,6 +41,8 @@ type SourceRow = {
   fail_count: number;
 };
 
+export type GoneSong = { playlist_id: string; video_id: string; title: string; artist: string };
+
 export type SyncReport = {
   checked: number;
   fetched: number;
@@ -47,6 +50,9 @@ export type SyncReport = {
   removed: number;
   failed: number;
   units: number;
+  // YouTube kaynağından çıkarılmış ama PMJ listesinde DURAN şarkılar. Hiçbiri
+  // otomatik silinmez: panel mekana gösterir, mekan isterse kaldırır.
+  gone: GoneSong[];
   budget_exhausted: boolean;
   quota_exceeded: boolean;
 };
@@ -152,6 +158,51 @@ async function resolveSongs(
   return { songs, units };
 }
 
+// Kaynaktan çıkarılmış videolardan PMJ listesinde hâlâ duranlar (başlıklarıyla)
+async function goneStillInPlaylist(playlistId: string, videoIds: string[]): Promise<GoneSong[]> {
+  const out: GoneSong[] = [];
+  for (let i = 0; i < videoIds.length; i += 200) {
+    const { data, error } = await supabaseAdmin
+      .from("playlist_songs")
+      .select("songs!inner(youtube_video_id, title, artist)")
+      .eq("playlist_id", playlistId)
+      .in("songs.youtube_video_id", videoIds.slice(i, i + 200));
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      const rel = row.songs as unknown as
+        | { youtube_video_id: string; title: string; artist: string }
+        | { youtube_video_id: string; title: string; artist: string }[];
+      const song = Array.isArray(rel) ? rel[0] : rel;
+      if (song) out.push({ playlist_id: playlistId, video_id: song.youtube_video_id, title: song.title, artist: song.artist });
+    }
+  }
+  return out;
+}
+
+/**
+ * Mekanın ONAYIYLA çağrılır: panelde "YouTube listesinden çıkarılmış" diye
+ * gösterilen şarkılardan seçilenleri PMJ listesinden kaldırır. Yalnızca bu
+ * kaynaktan gelmiş (snapshot'ta olan) ve YouTube'da artık OLMAYAN videolar
+ * kaldırılabilir — istemciden gelen kimlik listesine körü körüne güvenilmez.
+ */
+export async function removeGoneSongs(playlistId: string, videoIds: string[]): Promise<number> {
+  const { data: source, error } = await supabaseAdmin
+    .from("playlist_sources")
+    .select("venue_id, youtube_playlist_id, snapshot_video_ids")
+    .eq("playlist_id", playlistId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!source) return 0;
+
+  const { videoIds: current, complete } = await getPlaylistVideoIds(source.youtube_playlist_id);
+  if (!complete) throw new Error("YouTube listesi sonuna kadar okunamadı — kaldırma yapılmadı");
+  const live = new Set(current);
+  const known = new Set(source.snapshot_video_ids as string[]);
+  const removable = videoIds.filter((id) => known.has(id) && !live.has(id));
+  if (removable.length === 0) return 0;
+  return detachVideosFromPlaylist(source.venue_id as string, playlistId, removable);
+}
+
 /**
  * Otomatik senkronu açık, sırası gelmiş playlist'leri günceller.
  *
@@ -160,18 +211,19 @@ async function resolveSongs(
  *                     gün 1 ekleyip 1 silmektir (sayı sabit kalır), bu tur onu kapatır.
  * @param playlistIds  Yalnızca bu playlist'ler. Panelden "şimdi güncelle" için;
  *                     verildiğinde sıra (next_check_at) ve auto_sync gözetilmez.
- * @param prune        Kaynak listeden çıkarılan şarkıları PMJ listesinden de düşürür.
- *                     Yalnızca panelden elle tetiklenen senkronda açılır: günlük cron
- *                     kimseye sormadan katalog silmemeli, ama butona basan mekan iki
- *                     listenin birebir aynı olmasını bekliyor.
+ * @param collectGone  Kaynak listeden çıkarılmış ama PMJ listesinde duran
+ *                     şarkıları rapora (gone) yazar. SİLMEZ (17 Eki 2026 kararı:
+ *                     "Şimdi güncelle" eskiden onları siliyordu; 500'ü aşan listede
+ *                     500'ün ötesi de "çıkarılmış" sanılıp gidiyordu). Panel listeyi
+ *                     mekana gösterir, mekan onaylarsa removeGoneSongs ile kalkar.
  */
 export async function syncPlaylistSources(
   {
     force = false,
     budget = UNIT_BUDGET,
     playlistIds,
-    prune = false,
-  }: { force?: boolean; budget?: number; playlistIds?: string[]; prune?: boolean } = {}
+    collectGone = false,
+  }: { force?: boolean; budget?: number; playlistIds?: string[]; collectGone?: boolean } = {}
 ): Promise<SyncReport> {
   const report: SyncReport = {
     checked: 0,
@@ -180,6 +232,7 @@ export async function syncPlaylistSources(
     removed: 0,
     failed: 0,
     units: 0,
+    gone: [],
     budget_exhausted: false,
     quota_exceeded: false,
   };
@@ -266,29 +319,26 @@ export async function syncPlaylistSources(
 
     try {
       // Kademe 2 — listeyi sayfa sayfa oku
-      const { videoIds, units } = await getPlaylistVideoIds(youtubePlaylistId);
+      const { videoIds, units, complete } = await getPlaylistVideoIds(youtubePlaylistId);
       report.units += units;
       report.fetched++;
 
-      // Kademe 3 — fark, tamamen yerel. Silinenler snapshot'tan çıkarılır:
-      // ölçüt "bir zamanlar bu kaynaktan geldi ama artık listede yok" olduğu için
-      // mekanın elle eklediği şarkılar prune turunda da yerinde kalır.
-      const current = new Set(videoIds);
-      const perRow = rows.map((row) => {
-        const seen = new Set(row.snapshot_video_ids);
-        return {
-          row,
-          newIds: videoIds.filter((id) => !seen.has(id)),
-          goneIds: prune ? row.snapshot_video_ids.filter((id) => !current.has(id)) : [],
-        };
-      });
+      // Kademe 3 — fark, tamamen yerel (lib/playlist-sync-diff.ts). Okuma
+      // EKSİKSE (tavanda kesildi ya da şarkı sayısı varken boş döndü) "listede
+      // yok" kararı verilmez. Ölçüt "bir zamanlar bu kaynaktan geldi ama artık
+      // listede yok" olduğu için mekanın elle eklediği şarkılar hiçbir zaman
+      // çıkarılmış sayılmaz.
+      const perRow = rows.map((row) => ({
+        row,
+        ...diffSource({ snapshot: row.snapshot_video_ids, videoIds, complete, itemCount }),
+      }));
 
       // Kademe 4 — detay yalnızca hiç tanımadığımız videolar için
       const union = [...new Set(perRow.flatMap((p) => p.newIds))];
       const { songs, units: detailUnits } = await resolveSongs(union);
       report.units += detailUnits;
 
-      for (const { row, newIds, goneIds } of perRow) {
+      for (const { row, newIds, goneIds, reliable } of perRow) {
         const toAttach = newIds
           .map((id) => songs.get(id))
           .filter((s): s is AttachableSong => !!s);
@@ -300,19 +350,26 @@ export async function syncPlaylistSources(
           report.added += added;
         }
 
-        let removed = 0;
-        if (goneIds.length > 0) {
-          removed = await detachVideosFromPlaylist(row.venue_id, row.playlist_id, goneIds);
-          report.removed += removed;
-        }
+        // Çıkarılmış ama PMJ listesinde DURAN şarkılar: silinmez, snapshot'ta
+        // tutulur (her elle güncellemede yeniden gösterilsin, ama "yeni" sanılıp
+        // tekrar da eklenmesin). Mekan kaldırınca bir sonraki turda düşer.
+        const stillMembers = goneIds.length > 0 ? await goneStillInPlaylist(row.playlist_id, goneIds) : [];
+        if (collectGone) report.gone.push(...stillMembers);
 
-        // snapshot HER ZAMAN tam listeyle güncellenir — embed'e kapalı ve
-        // eklenemeyen videolar dahil. Yoksa her gün yeniden denenirler.
-        const streak = added > 0 || removed > 0 ? 0 : row.unchanged_streak + 1;
+        // snapshot tam listeyle güncellenir — embed'e kapalı ve eklenemeyen
+        // videolar dahil, yoksa her gün yeniden denenirler. Okuma eksikse eski
+        // snapshot'tan hiçbir şey düşmez.
+        const snapshot = nextSnapshot({
+          snapshot: row.snapshot_video_ids,
+          videoIds,
+          reliable,
+          stillMemberGoneIds: stillMembers.map((g) => g.video_id),
+        });
+        const streak = added > 0 ? 0 : row.unchanged_streak + 1;
         await supabaseAdmin
           .from("playlist_sources")
           .update({
-            snapshot_video_ids: videoIds,
+            snapshot_video_ids: snapshot,
             last_item_count: itemCount,
             last_synced_at: new Date().toISOString(),
             last_added: added,

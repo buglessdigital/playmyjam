@@ -138,6 +138,10 @@ export default function LibraryPane({
     setShuffle,
     syncNote,
     setSyncNote,
+    syncGone,
+    setSyncGone,
+    removeGone,
+    removingGone,
   } = lib;
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -425,8 +429,44 @@ export default function LibraryPane({
             </div>
           </div>
 
-          {(syncNote || orderError || playNote) && (
+          {(syncNote || orderError || playNote || syncGone) && (
             <div className="mt-2 flex flex-col gap-1.5">
+              {syncGone && (
+                <div
+                  className="text-xs rounded-xl px-3 py-2"
+                  style={{ background: "rgba(251,191,36,0.1)", color: "#fbbf24" }}
+                >
+                  <p className="font-semibold">
+                    &quot;{syncGone.playlistName}&quot;: YouTube listesinden çıkarılmış {syncGone.songs.length} şarkı bu
+                    listede duruyor
+                  </p>
+                  <p className="mt-1 text-[#d1d5db]">
+                    {syncGone.songs
+                      .slice(0, 8)
+                      .map((s) => `${s.title} — ${s.artist}`)
+                      .join(" · ")}
+                    {syncGone.songs.length > 8 ? ` · +${syncGone.songs.length - 8} şarkı` : ""}
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => void removeGone()}
+                      disabled={removingGone}
+                      className="rounded-lg px-2.5 py-1 font-semibold disabled:opacity-50"
+                      style={{ background: "rgba(239,68,68,0.15)", color: "#f87171" }}
+                    >
+                      {removingGone ? "Kaldırılıyor..." : "Listeden kaldır"}
+                    </button>
+                    <button
+                      onClick={() => setSyncGone(null)}
+                      disabled={removingGone}
+                      className="rounded-lg px-2.5 py-1 font-semibold"
+                      style={{ background: "rgba(255,255,255,0.06)", color: "#d1d5db" }}
+                    >
+                      Kalsın
+                    </button>
+                  </div>
+                </div>
+              )}
               {playNote && (
                 <button
                   onClick={() => setPlayNote("")}

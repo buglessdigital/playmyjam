@@ -315,7 +315,7 @@ const PLAYLIST_MAX_ITEMS = 500;
 export async function getPlaylistVideoIds(
   playlistId: string,
   accessToken?: string
-): Promise<{ videoIds: string[]; units: number }> {
+): Promise<{ videoIds: string[]; units: number; complete: boolean }> {
   const videoIds: string[] = [];
   let pageToken: string | undefined;
   let units = 0;
@@ -339,5 +339,8 @@ export async function getPlaylistVideoIds(
     pageToken = data.nextPageToken;
   } while (pageToken && videoIds.length < PLAYLIST_MAX_ITEMS);
 
-  return { videoIds: [...new Set(videoIds)], units };
+  // complete=false: liste tavanda kesildi, sonuna kadar okunmadı. Bu durumda
+  // "listede yok" kararı VERİLEMEZ (bkz. lib/playlist-sync.ts) — eskiden 500'ü
+  // aşan listede "Şimdi güncelle" 500'ün ötesindeki bütün şarkıları siliyordu.
+  return { videoIds: [...new Set(videoIds)], units, complete: !pageToken };
 }
